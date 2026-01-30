@@ -56,8 +56,8 @@ FlowPal is a multi-tenant SaaS platform that enables organizations to define and
 
 **User Roles:**
 - **Admin**: Full organization management, billing, user management
-- **Engineer**: Can respond to AI queries, provide credentials, configure integrations
-- **User**: Can create/execute workflows, view results
+- **Engineer**: Can respond to AI queries, provide credentials, configure integrations, **review/approve workflows**, and **edit workflow code artifacts** (setup/run)
+- **User**: Can create workflows, request runs, view results (subject to approval and permissions)
 
 ### 2.2 Two-Layer AI Agent Architecture
 
@@ -99,7 +99,7 @@ FlowPal is a multi-tenant SaaS platform that enables organizations to define and
 - **Sandbox**: Where the generated code actually runs and interacts with user systems
 
 **Why OpenCode?**
-- Open source (92.5k GitHub stars)
+- Open source with a large community and strong ecosystem
 - Model-agnostic (Claude, OpenAI, Google, or local models)
 - Client/server architecture enables integration
 - Built-in LSP support for code intelligence
@@ -109,10 +109,26 @@ FlowPal is a multi-tenant SaaS platform that enables organizations to define and
 **Features:**
 - Natural language to code generation
 - Version control for workflows
+- **Approval gate for newly created workflows (and optionally for edits)**
 - Similarity search for reuse (pgvector embeddings)
 - Execution history and audit logs
 
 **Similarity Detection:** When a user creates a workflow similar to an existing one (>90% similarity), the system can adapt the existing workflow instead of generating from scratch.
+
+#### Workflow Lifecycle (Draft → Approval → Published)
+
+To reduce risk from auto-generated code, a workflow version is **not executable** until an engineer approves it.
+
+**Workflow version states:**
+- **draft**: Created but not yet routed for approval (optional; can skip directly to pending_approval)
+- **pending_approval**: Awaiting engineer review
+- **approved (published)**: Executable (manual, scheduled, webhook triggers)
+- **rejected**: Not executable; retains review notes
+- **archived**: Hidden from default lists; preserved for audit
+
+**Versioning policy (recommended):**
+- Editing `setup.py` / `run.py` always creates a **new immutable version** (e.g. `v2`) that returns to **pending_approval**.
+- Approval metadata stored with the version: `approved_by`, `approved_at`, `approval_notes` (plus full audit trail of edits).
 
 #### Two-Phase Workflow Structure
 
@@ -146,6 +162,15 @@ Workflow Package (stored in S3)
 - **Performance**: Workspace snapshots allow skipping setup on subsequent runs
 - **Separation**: Setup runs once; execution runs many times
 
+**Engineer review/edit surface (required for new workflows):**
+- Engineers can view and edit **both** `setup.py` and `run.py` (and optionally `workflow.json`) before publishing.
+- The review UI should highlight:
+  - **Diff** vs prior version (or initial generated draft for `v1`)
+  - **Credential refs** used (names/IDs only, no secret values)
+  - **Network egress** targets (best-effort extraction) and/or declared allowlist in `workflow.json`
+  - **Workspace persistence** implications (`persist_workspace`)
+  - Optional: **Test Run** in a restricted sandbox before approval
+
 ### 2.4 Credential & Knowledge Management
 
 **Credential Vault:**
@@ -170,8 +195,16 @@ Tenant Context Store (PostgreSQL + S3)
 ├── Workflows (PostgreSQL + S3)
 │   ├── workflow_id, name, description
 │   ├── description_embedding (pgvector) → for similarity search
-│   ├── code_package_path (S3 reference)
-│   └── workflow.json metadata
+│   ├── current_published_version_id (nullable)
+│   └── archived_at (nullable)
+│
+├── Workflow Versions (PostgreSQL + S3)
+│   ├── workflow_version_id, workflow_id, version_number
+│   ├── state: draft | pending_approval | approved | rejected | archived
+│   ├── code_package_path (S3 reference to {setup.py, run.py, workflow.json})
+│   ├── approved_by, approved_at, approval_notes (nullable)
+│   ├── created_by, created_at
+│   └── audit trail (who edited which files, when)
 │
 ├── Integrations (PostgreSQL) - Generic, not typed
 │   │
@@ -298,10 +331,15 @@ Since integrations are generic, the Coding Agent requests information by describ
 
 **Security Features:**
 - Isolated filesystem per execution
-- Network egress whitelist only
+- Network egress whitelist only (ideally derived from integrations + explicit per-workflow allowlist)
 - Resource limits (CPU, memory, time)
 - Pre-installed runtimes (Python, Node.js)
 - FlowPal SDK injected for secure credential access
+
+**Credential handling clarity (important):**
+- Workflow packages contain **credential references only** (e.g. `cred:stripe-api-key`), never raw secrets.
+- At execution time, the sandbox manager resolves credential refs and injects them into the sandbox (commonly as env vars or a local ephemeral credentials file).
+- `flowpal-sdk` helpers like `sdk.get_credential("cred:...")` read from that injected runtime store. This keeps secrets out of AI prompts, code artifacts, and databases.
 
 #### Two-Phase Execution Flow
 
@@ -365,6 +403,8 @@ Since integrations are generic, the Coding Agent requests information by describ
 | `search_knowledge` | Query the organization's knowledge base |
 | `get_credential_reference` | Get a credential reference ID to pass to the coding agent |
 | `get_integrations` | Retrieve tenant's connected git repos, databases, APIs |
+| `web_search` | Search the web for information |
+| `fetch_url` | Fetch a URL and return the content |
 
 **Important:** The Orchestrator never directly queries user databases or makes HTTP requests to user APIs. It only gathers context and invokes the Coding Agent.
 
@@ -402,6 +442,23 @@ When the AI needs information it doesn't have:
 4. Engineer answers with option to save to knowledge base
 5. AI resumes workflow creation with the answer
 6. Knowledge persisted for future similar requests
+
+### Workflow Approval Flow
+
+Separate from “answering AI questions,” engineers also act as a **human safety gate** for newly created workflows.
+
+1. User requests a new workflow in natural language
+2. Orchestrator + Coding Agent produce `setup.py`, `run.py`, `workflow.json`
+3. Workflow version is saved as **pending_approval**
+4. Engineers are notified (Slack/email/in-app) with a link to review
+5. Engineer reviews and can **edit** `setup.py` / `run.py`
+6. Engineer approves → version becomes **published**, and triggers are enabled
+7. All actions are audited (who changed what, when, and why)
+
+**Policy edge cases to define:**
+- Who can approve (any Engineer vs a subset / “Approver”)?
+- Do workflow updates require re-approval? (recommended: **yes**)
+- Can Users run a workflow while pending approval? (recommended: **no**, except an explicit “test run” initiated by an Engineer)
 
 ### Real-Time Updates
 
@@ -518,13 +575,19 @@ Layer 6: AI Safety    - Prompt injection detection, code scanning
    - Store metadata + embeddings in PostgreSQL
                     |
                     v
-7. Ready for execution
+7. Engineer approval (required for new workflows)
+   - Set version state: pending_approval
+   - Engineer can review + edit setup.py/run.py in UI
+   - On approval: mark version published (approved) and enable triggers
+                    |
+                    v
+8. Ready for execution (published workflows only)
 ```
 
 ### Data Flow: Executing a Workflow
 
 ```
-1. User triggers workflow (manual, scheduled, or webhook)
+1. User/system triggers a **published** workflow (manual, scheduled, or webhook)
                     |
                     v
 2. Check for workspace snapshot
@@ -558,12 +621,28 @@ Layer 6: AI Safety    - Prompt injection detection, code scanning
 ```
 
 **Key Points:**
-- Orchestrator and Coding Agent are NOT involved during execution
+- Orchestrator and Coding Agent are NOT involved during sandbox execution (aside from triggering/queuing runs)
 - setup.py runs once (or when snapshot is invalidated)
 - run.py runs every execution
 - Credentials are resolved at runtime, never stored in code
 
 ---
+
+### UI/UX (Workflows & Runs)
+
+The UI should make it easy to **discover existing workflows**, **understand status/ownership**, and **debug runs** quickly.
+
+**Workflows**
+- Workflow list: search/filter by status, tags, owner; show last run + last updated + approval status
+- Workflow detail: overview, triggers, versions, integrations used, credential refs (names only), recent runs
+
+**Approvals (Engineers)**
+- Approval queue: list `pending_approval` workflow versions
+- Review screen: `setup.py` / `run.py` / `workflow.json` tabs, diff view, inline editing (Monaco), approve/reject with notes, optional test run
+
+**Executions / Runs**
+- Runs list: filter by workflow, status, time range, trigger source (manual/schedule/webhook)
+- Run detail: logs (live + final), timeline, inputs/outputs/artifacts, retry/re-run controls (permissioned)
 
 ## 8. Project Structure
 
@@ -575,6 +654,7 @@ flowpal/
 │   │   │   ├── (dashboard)/
 │   │   │   │   ├── workflows/
 │   │   │   │   ├── executions/
+│   │   │   │   ├── approvals/
 │   │   │   │   ├── credentials/
 │   │   │   │   └── knowledge/
 │   │   └── components/
@@ -676,10 +756,13 @@ To verify the architecture works end-to-end:
 4. **Workflow Creation**: Submit prompt, verify AI generates setup.py + run.py
 5. **Context Request**: Trigger Coding Agent to request_context(), verify Orchestrator responds
 6. **Engineer Q&A**: Trigger missing info scenario, answer question, verify knowledge base update
-7. **First Execution**: Run workflow, verify setup.py runs, workspace snapshot created
-8. **Subsequent Execution**: Run again, verify snapshot used (setup.py skipped)
-9. **Snapshot Invalidation**: Update workflow code, verify setup.py runs again
-10. **Similarity**: Create similar workflow, verify reuse suggestion
+7. **Approval Gate**: Create workflow as User, verify it is pending_approval and cannot run
+8. **Engineer Edit + Approve**: Edit `setup.py`/`run.py`, approve, verify it becomes runnable and audit trail is correct
+9. **First Execution**: Run workflow, verify setup.py runs, workspace snapshot created
+10. **Subsequent Execution**: Run again, verify snapshot used (setup.py skipped)
+11. **Snapshot Invalidation**: Update workflow code, verify setup.py runs again
+12. **Similarity**: Create similar workflow, verify reuse suggestion
+13. **UI Coverage**: Verify workflows list + workflow detail + executions list + run detail show correct status, logs, and history
 
 ---
 
