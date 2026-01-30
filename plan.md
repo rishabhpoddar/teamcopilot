@@ -17,7 +17,7 @@ FlowPal is a multi-tenant SaaS platform that enables organizations to define and
                                              v
 +------------------+              +----------+---------+              +------------------+
 |   Notification   |<----------->|    API Gateway     |<------------>|  Authentication  |
-|   Service        |              |  (Kong/Traefik)   |              |  (SuperTokens)   |
+|   Service        |              |  (Kong/Traefik)   |              |                  |
 +------------------+              +----------+---------+              +------------------+
                                              |
                     +------------------------+------------------------+
@@ -207,10 +207,19 @@ Tenant Context Store (PostgreSQL + S3)
 ├── Workflow Versions (PostgreSQL + S3)
 │   ├── workflow_version_id, workflow_id, version_number
 │   ├── state: draft | pending_approval | approved | rejected | archived
-│   ├── code_package_path (S3 reference to {setup.py, run.py, workflow.json})
+│   ├── code_package_path (S3 reference to {setup.py, run.py, ui/, workflow.json})
 │   ├── approved_by, approved_at, approval_notes (nullable)
 │   ├── created_by, created_at
 │   └── audit trail (who edited which files, when)
+│
+├── Workflow Data (S3 + PostgreSQL metadata)
+│   │
+│   │  Mutable data layer for each workflow (separate from versioned code)
+│   │
+│   ├── workflow_id → links to workflow
+│   ├── data_path (S3 reference: {tenant_id}/workflow-data/{workflow_id}/)
+│   ├── keys[] → list of data keys with metadata (size, last_modified, schema_ref)
+│   └── audit_log → all modifications with who, when, previous_value
 │
 ├── Integrations (PostgreSQL) - Generic, not typed
 │   │
@@ -427,7 +436,7 @@ Workflows produce results that need to be displayed to users. Rather than requir
 
 The UI Sandbox includes pre-bundled libraries the Coding Agent can use:
 
-- **React 18** - Core rendering
+- **React** - Core rendering
 - **shadcn/ui primitives** - Buttons, cards, tables, dialogs, etc.
 - **recharts** - Charts and visualizations
 - **date-fns** - Date formatting
@@ -533,7 +542,203 @@ If a workflow has no custom UI component (or for quick debugging), FlowPal provi
 - When workflow code is updated, the UI can be updated too
 - Historical executions always render with the UI version they were created with
 
-### 2.8 Execution Environment
+### 2.8 Workflow Data Layer
+
+Workflows often need to operate on data that changes more frequently than the code itself. Instead of modifying workflow code to add test cases, update rules, or change configurations, the **Workflow Data Layer** allows data to be stored and modified separately from the code.
+
+**Why Separate Data from Code?**
+
+| Scenario | Without Data Layer | With Data Layer |
+|----------|-------------------|-----------------|
+| Add test cases to a test workflow | Modify `run.py`, re-approve | Add rows to test data, no code change |
+| Update filtering rules | Modify code logic, re-approve | Update rules in data store |
+| Change notification recipients | Hardcode in `run.py` | Store in workflow data |
+| Adjust thresholds/parameters | Code change required | Update configuration data |
+
+**Key Benefits:**
+- **No re-approval needed** for data-only changes (configurable policy)
+- **AI can modify behavior** by updating data instead of regenerating code
+- **Users can edit data** directly via UI without touching code
+- **Audit trail** for all data changes separate from code versions
+
+**Architecture:**
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                     WORKFLOW PACKAGE (S3)                            │
+│  Immutable code artifacts (require approval to change)              │
+│  ├── setup.py                                                        │
+│  ├── run.py          ← Reads from data layer via sdk.get_data()     │
+│  ├── ui/ResultsView.tsx                                              │
+│  └── workflow.json                                                   │
+└─────────────────────────────────────────────────────────────────────┘
+                                   │
+                                   │ sdk.get_data() / sdk.set_data()
+                                   ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                     WORKFLOW DATA STORE                              │
+│  Mutable data (can be modified without code approval)               │
+│                                                                      │
+│  Storage: S3 + PostgreSQL metadata                                   │
+│  Path: {tenant_id}/workflow-data/{workflow_id}/                      │
+│                                                                      │
+│  ├── config.json         ← Key-value configuration                   │
+│  ├── test_cases.json     ← Array of test case objects               │
+│  ├── rules.json          ← Business rules / filters                  │
+│  └── {custom_key}.json   ← Any arbitrary data                        │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**SDK Methods for Data Access:**
+
+```python
+from flowpal import sdk
+
+# Read data (returns None if key doesn't exist)
+test_cases = sdk.get_data("test_cases")  # Returns parsed JSON
+config = sdk.get_data("config", default={"threshold": 100})
+
+# Write data (from within workflow execution)
+sdk.set_data("last_run_stats", {"processed": 150, "failed": 3})
+
+# Append to array data (atomic operation)
+sdk.append_data("test_cases", {"input": "new test", "expected": "result"})
+
+# Update specific fields (merge)
+sdk.update_data("config", {"threshold": 200})  # Only updates threshold
+```
+
+**Data Schema Declaration (optional):**
+
+Workflows can declare expected data schemas in `workflow.json`:
+
+```json
+{
+  "runtime": "python3.11",
+  "credential_refs": ["cred:stripe"],
+  "data_schema": {
+    "test_cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "input": { "type": "object" },
+          "expected_output": { "type": "object" }
+        },
+        "required": ["name", "input", "expected_output"]
+      },
+      "ui_editor": "table"
+    },
+    "config": {
+      "type": "object",
+      "properties": {
+        "threshold": { "type": "number", "default": 100 },
+        "notify_on_failure": { "type": "boolean", "default": true }
+      },
+      "ui_editor": "form"
+    }
+  }
+}
+```
+
+**Data Modification Methods:**
+
+| Method | Who | Use Case |
+|--------|-----|----------|
+| **UI Editor** | Users/Engineers | Manual edits via FlowPal web app (form or table editor based on schema) |
+| **AI Agent** | Orchestrator | AI modifies data in response to user requests ("add these test cases") |
+| **Workflow Self-Modification** | run.py | Workflow updates its own data during execution (e.g., caching, state) |
+| **API** | External systems | Webhooks or API calls update workflow data |
+
+**Example: Test Suite Workflow**
+
+```
+User Request: "Create a workflow that runs API tests against our staging server"
+
+Generated run.py:
+┌─────────────────────────────────────────────────────────────────┐
+│ from flowpal import sdk                                         │
+│ import requests                                                 │
+│                                                                 │
+│ # Get test cases from data layer (not hardcoded!)               │
+│ test_cases = sdk.get_data("test_cases", default=[])             │
+│ config = sdk.get_data("config", default={"base_url": ""})       │
+│                                                                 │
+│ results = []                                                    │
+│ for test in test_cases:                                         │
+│     response = requests.request(                                │
+│         method=test["method"],                                  │
+│         url=f"{config['base_url']}{test['endpoint']}",          │
+│         json=test.get("body")                                   │
+│     )                                                           │
+│     results.append({                                            │
+│         "name": test["name"],                                   │
+│         "passed": response.status_code == test["expected_status"],│
+│         "actual_status": response.status_code                   │
+│     })                                                          │
+│                                                                 │
+│ sdk.output({"results": results, "total": len(results)})         │
+└─────────────────────────────────────────────────────────────────┘
+
+Initial data (created alongside code):
+┌─────────────────────────────────────────────────────────────────┐
+│ // test_cases.json                                              │
+│ [                                                               │
+│   {                                                             │
+│     "name": "Health check",                                     │
+│     "method": "GET",                                            │
+│     "endpoint": "/health",                                      │
+│     "expected_status": 200                                      │
+│   }                                                             │
+│ ]                                                               │
+│                                                                 │
+│ // config.json                                                  │
+│ {                                                               │
+│   "base_url": "https://staging.example.com/api"                 │
+│ }                                                               │
+└─────────────────────────────────────────────────────────────────┘
+
+Later: User says "Add a test for the /users endpoint"
+
+AI response: Updates test_cases.json (no code change needed!)
+┌─────────────────────────────────────────────────────────────────┐
+│ [                                                               │
+│   { "name": "Health check", ... },                              │
+│   {                                                             │
+│     "name": "List users",                                       │
+│     "method": "GET",                                            │
+│     "endpoint": "/users",                                       │
+│     "expected_status": 200                                      │
+│   }                                                             │
+│ ]                                                               │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Data Versioning & Audit:**
+
+- All data modifications are logged with: `modified_by`, `modified_at`, `previous_value`
+- Optional: Enable data versioning to keep full history (similar to S3 versioning)
+- Data can be rolled back to previous versions via UI or API
+- Separate audit trail from code changes (data changes are typically lower risk)
+
+**Access Control for Data:**
+
+| Role | Permissions |
+|------|-------------|
+| **Admin** | Full data access for all workflows |
+| **Engineer** | Read/write data for workflows they have access to |
+| **User** | Read data; write only if workflow grants `user_editable: true` on specific keys |
+
+**Security Considerations:**
+
+- Data is tenant-isolated (same RLS as other tenant data)
+- Data cannot contain credentials (use credential refs instead)
+- Size limits per key (default: 10MB) and per workflow (default: 100MB)
+- Rate limits on writes to prevent abuse
+- Validation against declared schema (if provided)
+
+### 2.9 Execution Environment
 
 **Sandbox Options:**
 - **Firecracker microVMs** - Strongest isolation (recommended for production)
@@ -613,6 +818,8 @@ If a workflow has no custom UI component (or for quick debugging), FlowPal provi
 | `search_knowledge` | Query the organization's knowledge base |
 | `get_credential_reference` | Get a credential reference ID to pass to the coding agent |
 | `search_integrations` | Search tenant's integrations by description/name (returns matching integrations with their credential refs and linked knowledge) |
+| `get_workflow_data` | Read data from a workflow's data layer (for inspection or modification planning) |
+| `set_workflow_data` | Write/update data in a workflow's data layer (for adding test cases, updating config, etc.) |
 | `web_search` | Search the web for information (e.g., API docs, library usage) |
 | `fetch_url` | Fetch a URL and return the content |
 
@@ -626,7 +833,62 @@ If a workflow has no custom UI component (or for quick debugging), FlowPal provi
 | `read_file` | Read files in the isolated workspace |
 | `write_file` | Write setup.py, run.py, and other workflow files |
 | `shell` | Execute shell commands in the isolated container |
+| `get_workflow_data` | Read existing workflow data (to understand structure when modifying workflows) |
+| `set_workflow_data` | Write initial workflow data alongside code, or modify existing data |
 | Standard OpenCode tools | LSP, file operations, etc. |
+
+**Data Access: Orchestrator vs Coding Agent**
+
+Both agents can access the workflow data layer, but for different purposes:
+
+| Agent | When | Use Case |
+|-------|------|----------|
+| **Orchestrator** | Before invoking Coding Agent | Inspect existing data to decide if code change is needed vs data-only change |
+| **Orchestrator** | After user request | Directly modify data without involving Coding Agent (e.g., "add this test case") |
+| **Coding Agent** | During code generation | Read existing data structure to generate compatible code |
+| **Coding Agent** | During workflow creation | Write initial data alongside code (e.g., seed test cases) |
+
+**Example Flow: "Add a test case to my API test workflow"**
+
+```
+1. User: "Add a test for the /users endpoint"
+                    |
+                    v
+2. Orchestrator: get_workflow_data("test_cases")
+   - Sees existing test cases, understands the structure
+   - Determines: this is a DATA change, not a CODE change
+                    |
+                    v
+3. Orchestrator: set_workflow_data("test_cases", [...existing, newTest])
+   - Adds the new test case directly
+   - No Coding Agent invoked, no approval needed
+                    |
+                    v
+4. Done! User can run the workflow immediately with the new test
+```
+
+**Example Flow: "Change the test workflow to also check response times"**
+
+```
+1. User: "Update my test workflow to also measure response times"
+                    |
+                    v
+2. Orchestrator: get_workflow_data("test_cases")
+   - Reads existing data to pass as context
+   - Determines: this requires CODE change (new logic in run.py)
+                    |
+                    v
+3. Orchestrator: invoke_coding_agent(context including existing data)
+                    |
+                    v
+4. Coding Agent: get_workflow_data("test_cases")
+   - Reads existing test structure to maintain compatibility
+   - Generates updated run.py that adds timing logic
+   - set_workflow_data("config", {measure_timing: true})
+                    |
+                    v
+5. New version created → pending_approval → Engineer reviews
+```
 
 **`request_context` Usage:**
 
@@ -891,7 +1153,8 @@ The UI should make it easy to **discover existing workflows**, **understand stat
 
 **Workflows**
 - Workflow list: search/filter by status, tags, owner; show last run + last updated + approval status
-- Workflow detail: overview, triggers, versions, integrations used, credential refs (names only), recent runs
+- Workflow detail: overview, triggers, versions, integrations used, credential refs (names only), recent runs, data editor
+- Workflow data tab: view/edit workflow data (test cases, config, etc.) with schema-aware editors (table for arrays, form for objects)
 
 **Approvals (Engineers)**
 - Approval queue: list `pending_approval` workflow versions
@@ -944,6 +1207,10 @@ flowpal/
 │       ├── src/
 │       │   ├── routes/
 │       │   ├── services/
+│       │   │   └── workflow-data/       # Workflow data layer
+│       │   │       ├── data-store.ts    # S3 read/write for workflow data
+│       │   │       ├── schema-validator.ts # Validate against declared schemas
+│       │   │       └── audit-log.ts     # Track all data modifications
 │       │   ├── agents/
 │       │   │   ├── orchestrator/
 │       │   │   └── coding/
@@ -1047,6 +1314,11 @@ To verify the architecture works end-to-end:
 14. **Dynamic UI Rendering**: Verify execution results render using the generated UI component in sandboxed iframe
 15. **UI Fallback**: Verify JSON/table fallback renders when no custom UI component exists
 16. **UI Security**: Verify sandboxed iframe blocks network requests, cookies, and dangerous JS patterns
+17. **Workflow Data Layer**: Create workflow with data schema, verify sdk.get_data() reads initial data correctly
+18. **Data Modification via AI**: Ask AI to "add a test case", verify it updates workflow data without modifying code
+19. **Data UI Editor**: Verify users can edit workflow data via table/form editors in the UI
+20. **Data Audit Trail**: Modify workflow data, verify audit log captures who, when, and previous value
+21. **Data Schema Validation**: Attempt to write invalid data, verify schema validation rejects it
 
 ---
 
@@ -1060,7 +1332,10 @@ To verify the architecture works end-to-end:
 6. `apps/api/src/services/integration-service.ts` - Generic integration CRUD (name, description, credential refs, linked knowledge)
 7. `apps/api/src/execution/sandbox-manager.ts` - Sandbox provisioning with snapshot support
 8. `apps/api/src/execution/workspace-snapshot.ts` - Workspace snapshot creation/restoration
-9. `packages/flowpal-sdk/src/index.ts` - SDK for setup.py/run.py (shell, get_credential, http helpers, sdk.output())
+9. `packages/flowpal-sdk/src/index.ts` - SDK for setup.py/run.py (shell, get_credential, http helpers, sdk.output(), sdk.get_data/set_data)
 10. `apps/web/components/ui-sandbox/UISandbox.tsx` - Sandboxed iframe container for dynamic UI rendering
 11. `apps/web/components/ui-sandbox/bundler.ts` - esbuild service for bundling workflow UI components on-the-fly
 12. `apps/api/src/services/ui-validator.ts` - Static analysis for dangerous patterns in generated UI code
+13. `apps/api/src/services/workflow-data/data-store.ts` - S3-backed storage for workflow data layer
+14. `apps/api/src/services/workflow-data/schema-validator.ts` - JSON Schema validation for workflow data
+15. `apps/web/components/workflow-data-editor/` - Schema-aware editors (table for arrays, form for objects)
