@@ -402,8 +402,8 @@ Since integrations are generic, the Coding Agent requests information by describ
 | `ask_engineer` | Request help for missing information (async, notifies via Slack/email) |
 | `search_knowledge` | Query the organization's knowledge base |
 | `get_credential_reference` | Get a credential reference ID to pass to the coding agent |
-| `get_integrations` | Retrieve tenant's connected git repos, databases, APIs |
-| `web_search` | Search the web for information |
+| `search_integrations` | Search tenant's integrations by description/name (returns matching integrations with their credential refs and linked knowledge) |
+| `web_search` | Search the web for information (e.g., API docs, library usage) |
 | `fetch_url` | Fetch a URL and return the content |
 
 **Important:** The Orchestrator never directly queries user databases or makes HTTP requests to user APIs. It only gathers context and invokes the Coding Agent.
@@ -418,15 +418,33 @@ Since integrations are generic, the Coding Agent requests information by describ
 | `shell` | Execute shell commands in the isolated container |
 | Standard OpenCode tools | LSP, file operations, etc. |
 
-**`request_context` Types:**
-- `schema` - Database table/collection schema
-- `api_spec` - API endpoint documentation
-- `credential` - Additional credential reference
-- `file_content` - Content from a connected git repo
-- `business_rule` - Domain-specific logic or constraints
-- `clarification` - Ambiguous requirement needing input
+**`request_context` Usage:**
 
-This bidirectional communication ensures the Coding Agent can request exactly what it needs without the Orchestrator having to anticipate everything upfront.
+Since integrations are generic, the Coding Agent describes what it needs in natural language:
+
+```
+request_context({
+  query: "I need the schema for the 'orders' table in the production database"
+})
+
+request_context({
+  query: "How do I authenticate with the internal ML service?"
+})
+
+request_context({
+  query: "What's the Slack channel ID for the finance team notifications?"
+})
+```
+
+The Orchestrator then:
+1. Searches the knowledge base and integrations for relevant info
+2. If found, returns the context
+3. If not found, asks an engineer (async) and caches the answer
+
+This natural language approach means:
+- No need to pre-define context types
+- Works with any integration, even custom/internal ones
+- Knowledge accumulates over time as engineers answer questions
 
 ---
 
@@ -644,6 +662,24 @@ The UI should make it easy to **discover existing workflows**, **understand stat
 - Runs list: filter by workflow, status, time range, trigger source (manual/schedule/webhook)
 - Run detail: logs (live + final), timeline, inputs/outputs/artifacts, retry/re-run controls (permissioned)
 
+**Integrations (Engineers/Admins)**
+
+Integrations are generic - any external system the org uses:
+
+- Integration list: search by name/description, show linked credentials count, knowledge docs count
+- Create/edit integration:
+  - Name + description (used for AI matching)
+  - Link credentials (select from credential vault)
+  - Link knowledge docs (upload docs, paste schemas, add API specs, etc.)
+- Integration detail: overview, linked credentials (names only), linked knowledge, workflows using this integration
+
+Example integrations an org might create:
+- "Stripe" → credentials: API key, webhook secret; knowledge: Stripe API docs, webhook event schemas
+- "Production Postgres" → credentials: connection string; knowledge: table schemas, query examples
+- "GitHub" → credentials: PAT; knowledge: repo list, branch conventions
+- "Internal CRM API" → credentials: API key, base URL; knowledge: OpenAPI spec, auth flow docs
+- "AWS S3 (Data Lake)" → credentials: access key, secret key, region; knowledge: bucket structure, naming conventions
+
 ## 8. Project Structure
 
 ```
@@ -655,6 +691,7 @@ flowpal/
 │   │   │   │   ├── workflows/
 │   │   │   │   ├── executions/
 │   │   │   │   ├── approvals/
+│   │   │   │   ├── integrations/    # Generic integrations (credentials + knowledge)
 │   │   │   │   ├── credentials/
 │   │   │   │   └── knowledge/
 │   │   └── components/
@@ -752,8 +789,8 @@ To verify the architecture works end-to-end:
 
 1. **Auth Flow**: Create org, invite user, assign roles
 2. **Credential Storage**: Store a test API key, verify encryption
-3. **Integration Setup**: Connect a git repo, database, and API
-4. **Workflow Creation**: Submit prompt, verify AI generates setup.py + run.py
+3. **Integration Setup**: Create generic integration with credentials + knowledge docs (e.g., "Test API" with API key + usage docs)
+4. **Workflow Creation**: Submit prompt, verify AI generates setup.py + run.py and correctly references the integration
 5. **Context Request**: Trigger Coding Agent to request_context(), verify Orchestrator responds
 6. **Engineer Q&A**: Trigger missing info scenario, answer question, verify knowledge base update
 7. **Approval Gate**: Create workflow as User, verify it is pending_approval and cannot run
@@ -773,7 +810,7 @@ To verify the architecture works end-to-end:
 3. `apps/api/src/agents/orchestrator/context-gatherer.ts` - Fetches tenant context for workflow creation
 4. `apps/api/src/agents/coding/opencode-client.ts` - OpenCode integration with request_context callback
 5. `apps/api/src/services/credential-vault.ts` - Secure credential storage
-6. `apps/api/src/services/integration-manager.ts` - Manages tenant's git repos, DBs, APIs
+6. `apps/api/src/services/integration-service.ts` - Generic integration CRUD (name, description, credential refs, linked knowledge)
 7. `apps/api/src/execution/sandbox-manager.ts` - Sandbox provisioning with snapshot support
 8. `apps/api/src/execution/workspace-snapshot.ts` - Workspace snapshot creation/restoration
-9. `packages/flowpal-sdk/src/index.ts` - SDK for setup.py/run.py (git_clone, get_credential, http_post, etc.)
+9. `packages/flowpal-sdk/src/index.ts` - SDK for setup.py/run.py (shell, get_credential, http helpers, etc.)
