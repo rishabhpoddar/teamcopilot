@@ -49,7 +49,7 @@ workflows/<slug>/
 ├── .env                   ← REQUIRED: runtime secrets
 ├── .env.example           ← RECOMMENDED: documented template
 ├── .venv/                 ← REQUIRED: per-workflow virtualenv
-├── requirements.lock.txt  ← REQUIRED: pinned deps for reproducibility
+├── requirements.lock.txt  ← REQUIRED: records installed versions for reference
 ├── data/                  ← OPTIONAL: non-secret config/state files
 └── runs/                  ← REQUIRED: run outputs/logs (local artifacts)
 ```
@@ -125,12 +125,30 @@ if __name__ == "__main__":
 
 ### 4. `requirements.txt` — Dependencies
 
-List all Python dependencies. Be specific with versions for reproducibility.
+List all Python dependencies. **Do NOT specify versions** — always use the latest version.
 
 ```
-stripe>=5.0.0
-requests>=2.28.0
+stripe
+requests
 ```
+
+**Important:** When adding dependencies:
+- Do NOT add version specifiers in `requirements.txt` (e.g., don't use `stripe>=5.0.0`)
+- Do NOT use `pip install package==version` — just use `pip install package`
+- Always install the latest version available
+- After adding any new dependency, you MUST run: `pip freeze > requirements.lock.txt`
+
+### `requirements.lock.txt` — Locked Dependencies
+
+This file records the exact versions of all installed packages. **The only way to modify this file is by running:**
+
+```bash
+pip freeze > requirements.lock.txt
+```
+
+- Run this command every time you add, remove, or update any dependency
+- Never edit this file manually
+- This ensures the lock file accurately reflects what's installed in the virtualenv
 
 ### 5. `runs/` — Run Outputs
 
@@ -187,7 +205,7 @@ data/
    - `requirements.txt` — List dependencies
    - `.env` — Add runtime secrets (never commit)
    - `.venv/` — Create a per-workflow virtualenv
-   - `requirements.lock.txt` — Pin exact dependency versions
+   - `requirements.lock.txt` — Record installed dependency versions
    - `runs/` — Create empty folder for run outputs
 4. **Create `.env.example`** — Document all required secrets as a template
 5. **Optionally create `data/`** — If the workflow needs to persist state between runs (document structure in README)
@@ -208,7 +226,7 @@ data/
 - If not approved, the tool returns an error — you cannot bypass this
 - Outputs are captured and returned by the tool
 - Each workflow has its own `.venv/` virtualenv (managed by the execution environment)
-- Dependencies are installed from `requirements.txt` and pinned in `requirements.lock.txt`
+- Dependencies are installed from `requirements.txt` (always latest versions) and recorded in `requirements.lock.txt`
 
 ### Credential Handling
 
@@ -282,8 +300,8 @@ When asked to "Create a workflow that checks Stripe for failed payments":
 3. Create all required files:
    - `workflow.json` — Define inputs (customer_id, days_back) and runtime config
    - `run.py` — Implement Stripe API logic with argparse for inputs
-   - `requirements.txt` — Add `stripe` dependency
-   - `requirements.lock.txt` — Pin exact versions after installing
+   - `requirements.txt` — Add `stripe` dependency (no version specifier)
+   - `requirements.lock.txt` — Record installed versions after installing
    - `.env` — Add `STRIPE_API_KEY` (never commit)
    - `.env.example` — Template with `STRIPE_API_KEY=sk_test_...`
    - `.venv/` — Create virtualenv with `python -m venv .venv`
