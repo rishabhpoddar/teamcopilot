@@ -16,7 +16,7 @@ FlowPal consists of just:
 
 **Communication model:**
 - the **Node backend communicates with the opencode agent** (bi-directional) to pass user input, tool results, and status updates
-- **opencode plugins** provide all tools the agent needs (e.g., `findSimilarWorkflow`, `runWorkflow`, `askAnEngineer`)
+- **opencode plugins** provide all tools the agent needs (e.g., `findSimilarWorkflow`, `runWorkflow`)
 - the agent **never runs scripts directly**; all workflow execution goes through the `runWorkflow` plugin which enforces approval checks
 
 This document describes the architecture and operational model for an **open-source distribution** where operators host **one isolated instance (frontend + backend + Postgres)**, while opencode runs on a user machine where the workspace lives.
@@ -57,8 +57,7 @@ This document describes the architecture and operational model for an **open-sou
      |  | (runs in workspace)  |            with agent (bi-directional)    |
      |  | + FlowPal plugins:   |                                           |
      |  |   - findSimilarWorkflow                                          |
-     |  |   - runWorkflow                                                  |
-     |  |   - askAnEngineer                                                |
+     |  |   - runWorkflow                                                  |                                             |
      |  +----------------------+                                           |
      +--------------------------------------------------------------------+
 ```
@@ -77,9 +76,8 @@ FlowPal OSS assumes:
 - All data is scoped to the instance; there is no tenant_id column requirement.
 
 **User roles (suggested):**
-- **Admin**: manage instance settings, users, and credentials policy
-- **Engineer**: edit workflow code, manage integrations
-- **User**: request workflows, trigger runs, view outputs subject to permissions
+- **Admin**: manage instance settings, users, credentials policy, and **approve workflows for execution**
+- **User**: request workflows, trigger runs (for approved workflows only), view outputs subject to permissions
 
 > You can simplify further (single “owner” role) for early OSS releases; the rest of the doc still applies.
 
@@ -115,16 +113,11 @@ All tools the agent uses are implemented as **opencode plugins**, not as workspa
 - Approval enforcement for workflow execution
 - Clean separation between workspace content and tooling
 
-**Available plugins:**
+**Available tools:**
 - `findSimilarWorkflow`: queries embeddings/metadata and returns up to N candidate workflows (with paths + summaries) to reuse/adapt.
-- `runWorkflow`: executes a workflow by slug with provided inputs. **Enforces approval check** — only workflows approved by an engineer can be run. Returns an error if the workflow is not yet approved.
-- `askAnEngineer`: opens a question thread in the FlowPal UI for async human input (can take hours).
+- `runWorkflow`: executes a workflow by slug with provided inputs. **Enforces approval check** — only workflows approved by a human can be run. Returns an error if the workflow is not yet approved.
 
 **Key constraint:** the agent **must never run scripts directly** (e.g., via shell commands). All workflow execution must go through the `runWorkflow` plugin, which validates approval status before execution.
-
-#### Async/Long-Running Operations
-
-For operations where the result may take hours (e.g., waiting for a human engineer to respond via `askAnEngineer`), the opencode plugin architecture allows the agent to pause and resume when the result becomes available.
 
 ### 2.3 Workflow System
 
@@ -205,18 +198,13 @@ The agent should be able to:
 - list and inspect workflow folders
 - propose new workflows
 - modify existing workflows (edits files in place)
-- request missing information from a human via the `askAnEngineer` opencode plugin
+- request missing information from a human
 - reuse existing work via `findSimilarWorkflow` tool (optional but recommended when pgvector is enabled)
 
 In this architecture, the Node backend maintains a bi-directional communication channel with the opencode agent (e.g., WebSocket). It:
 - forwards UI chat messages (user → agent)
 - forwards agent events (agent → UI): status, diffs (optional), questions, run progress
 - persists artifacts to Postgres (workflow metadata, run metadata, audit logs)
-
-For OSS, the `askAnEngineer` plugin is implemented as:
-- creating a UI task / notification for an Admin/Engineer
-- optionally sending email/Slack if configured
-- returning the answer to the agent only when a human responds (can take hours)
 
 ### 2.7 Workflow Data Layer
 
@@ -318,7 +306,7 @@ Execute an approved workflow with the provided inputs. **This is the ONLY way th
 - `inputs` (object, optional): Key-value pairs matching the workflow's input schema from `workflow.json`
 
 **Behavior:**
-- Checks if the workflow has been approved by an engineer
+- Checks if the workflow has been approved by an admin user
 - If NOT approved: returns an error (the agent cannot run unapproved workflows)
 - If approved: executes the workflow and returns the output
 - Automatically converts the `inputs` object to command-line arguments for the workflow
@@ -348,28 +336,9 @@ Execute an approved workflow with the provided inputs. **This is the ONLY way th
 {
   "status": "error",
   "error": "workflow_not_approved",
-  "message": "The workflow 'failed-stripe-payments' has not been approved by an engineer. Please wait for approval before running."
+  "message": "The workflow 'failed-stripe-payments' has not been approved by an admin. Please wait for admin approval before running."
 }
 ```
-
-#### `askAnEngineer`
-
-Ask a human for help when you need information or clarification. This is an async operation that can take minutes to hours.
-
-**Parameters:**
-- `question` (string, required): The question to ask the engineer
-- `context` (string, optional): Additional context to help the engineer understand the question
-
-**Behavior:**
-- Creates a question/task in the FlowPal UI for Admin/Engineer
-- Optionally sends notifications (email/Slack if configured)
-- The agent pauses and resumes when a human responds
-- Can take minutes to hours depending on human availability
-
-**When to use:**
-- When missing credentials or API details
-- When unsure about implementation approach
-- When needing approval or clarification on requirements
 
 ---
 
@@ -395,7 +364,7 @@ POST /api/chat
 - `workflow_created`: new workflow folder created
 - `workflow_updated`: existing workflow modified
 - `question`: agent needs clarification
-- `human_needed`: task created for Admin/Engineer, will resume when answered
+- `human_needed`: task created for a human, will resume when answered
 
 **Workflow operations API (suggested):**
 | Endpoint | Purpose |
@@ -415,7 +384,7 @@ POST /api/chat
 
 When the agent needs information it doesn't have:
 1. Agent identifies missing info (credentials, schema, API details)
-2. Agent creates a question/task in the app addressed to Admin/Engineer
+2. Agent creates a question/task in the app addressed to a human
 3. Optional notifications are sent (email/Slack/webhooks if configured)
 4. Human answers (with optional “save to knowledge base”)
 5. Agent resumes with the answer
@@ -470,7 +439,7 @@ FlowPal OSS provides guardrails, but **operators own the threat model** and must
 
 ### Authentication & Authorization
 - support local auth (email/password) or SSO (OIDC) depending on operator needs
-- RBAC enforced server-side (Admin/Engineer/User)
+- RBAC enforced server-side (Admin/User)
 - audit logs for edits, executions, and credential access
 
 ### Data Security
@@ -506,13 +475,13 @@ FlowPal OSS provides guardrails, but **operators own the threat model** and must
 1. user sends a chat request in the UI
 2. Node backend forwards the message to the opencode agent (running on the user machine)
 3. agent inspects existing workflows for reuse (and may call `findSimilarWorkflow` tool)
-4. if missing info: agent uses the `askAnEngineer` plugin — the agent pauses until a human responds (can take hours)
+4. if missing info: agent asks the user for help
 5. agent writes/updates a workflow folder
 6. backend indexes metadata in Postgres (workflow list) and the UI reflects the updated workflow immediately
 
 ### Executing a Workflow
 1. user triggers run manually from UI, OR the agent calls the `runWorkflow` plugin
-2. `runWorkflow` plugin (or backend) **checks if the workflow is approved by an engineer**
+2. `runWorkflow` plugin (or backend) **checks if the workflow is approved by an admin user**
 3. if not approved: returns an error to the caller (agent or UI)
 4. if approved: backend starts a run session (RBAC enforced) and executes on the workspace host (local runner), optionally using a sandbox policy (Docker/gVisor/Firecracker depending on operator preference)
 5. console output (stdout/stderr) is captured; optional artifacts written to `runs/`
@@ -528,7 +497,7 @@ Minimum UI surfaces:
 - chat screen (requests + agent updates)
 - workflows list + detail page
 - workspace viewer (VSCode in browser) to view the workspace directory via the web app
-- code viewer/editor for Admin/Engineer
+- code viewer/editor for a human
 - runs page (status, logs, artifacts)
 - instance settings (LLM provider config, notifications, security policy)
 
@@ -600,7 +569,7 @@ Operators should validate:
 Backend:
 - `apps/api/` (Node API: auth, chat, workflows, runs)
 - `packages/db/` (schema + migrations)
-- `packages/opencode-plugins/` (FlowPal plugins: findSimilarWorkflow, runWorkflow, askAnEngineer)
+- `packages/opencode-plugins/` (FlowPal plugins: findSimilarWorkflow, runWorkflow)
 
 Frontend:
 - `apps/web/` (Next.js UI)

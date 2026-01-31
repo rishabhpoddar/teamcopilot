@@ -9,7 +9,7 @@ This document is your operating manual for working within this directory (called
 **You must NEVER execute workflow scripts directly using shell commands.**
 
 All workflow execution **must** go through the `runWorkflow` tool. This is enforced because:
-- Only workflows that have been **approved by an engineer** can be executed
+- Only workflows that have been **approved by an admin user** can be executed
 - The `runWorkflow` tool checks approval status before execution
 - If a workflow is not approved, `runWorkflow` will return an error
 
@@ -31,7 +31,7 @@ A **workflow** is a self-contained automation package that lives in `workflows/<
 - Has a unique slug (lowercase, hyphenated, e.g., `failed-stripe-payments`)
 - Is filesystem-first: the folder contents are the source of truth
 - Can be triggered manually via the `runWorkflow` tool (by you) or from the UI (by a human)
-- Must be **approved by an engineer** before it can be executed
+- Must be **approved by an admin user** before it can be executed
 - Internally runs with `python run.py {optional args}` (but you must use `runWorkflow`, not shell commands)
 
 ---
@@ -266,7 +266,7 @@ days_back = args.days_back
 
 1. **Never run scripts directly** — Always use the `runWorkflow` tool to execute workflows
 2. **Always check for existing workflows** before creating new ones. Only create new ones if no existing workflow can fit the request. If needed, modify the existing workflow to fit the request WITHOUT losing older functionality.
-3. **Ask for help** when unsure — use the `askAnEngineer` tool to ask help from an engineer
+3. **Ask the user for help** when unsure.
 4. **Keep workflows focused** — one workflow, one purpose
 5. **Document thoroughly** — future you (and others) will thank you
 6. **Handle errors gracefully** — workflows should fail cleanly
@@ -307,8 +307,8 @@ When asked to "Create a workflow that checks Stripe for failed payments":
    - `.venv/` — Create virtualenv with `python -m venv .venv`
    - `runs/` — Create empty folder for run outputs
    - `README.md` — Document usage and required secrets
-4. If unsure about Stripe API details, use the `askAnEngineer` tool to get help or search the web using your tools.
-5. **Do NOT run the workflow directly** — inform the user that the workflow needs engineer approval before it can be executed via `runWorkflow`
+4. If unsure about Stripe API details, ask the user for help or search the web using your tools.
+5. **Do NOT run the workflow directly** — inform the user that the workflow needs admin approval before it can be executed via `runWorkflow`
 
 ## Example: Running an Existing Workflow
 
@@ -316,5 +316,5 @@ When asked to "Run the failed-stripe-payments workflow for customer cus_123":
 
 1. **DO NOT** run `python run.py` or any shell command
 2. Use the `runWorkflow` tool.
-3. If the workflow is not approved, inform the user about the error and that they need to wait for engineer approval
+3. If the workflow is not approved, inform the user about the error and that they need to wait for admin approval
 4. If the workflow runs successfully, report the output to the user
