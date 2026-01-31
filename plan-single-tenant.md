@@ -2,9 +2,24 @@
 
 ## Executive Summary
 
-FlowPal OSS is a **single-tenant, self-hosted** application that lets a team define and execute programmatic workflows using AI. Users describe what they want in natural language, and a **single agent** (with access to a workspace filesystem + shell) can create, update, and run workflows directly inside that workspace.
+FlowPal OSS is a **single-tenant, self-hosted** application that lets a team define and execute programmatic workflows using AI with a deliberately simple architecture.
 
-This document describes the architecture and operational model for an **open-source distribution** where users host **one isolated instance (frontend + backend)** on their own infrastructure.
+Users run an instance of **opencode** on their machine inside their project/workspace directory. That workspace contains:
+- workflow folders (`workflows/<slug>/...`)
+- a workspace-root instruction document for the agent (`FLOWPAL_AGENT.md`)
+- pre-written tool scripts (`.flowpal/tools/*`)
+
+FlowPal consists of just:
+- a **Next.js frontend**
+- a **Node.js backend**
+- a **PostgreSQL database**
+- a **VSCode-in-browser workspace viewer** accessible from the web app (for viewing the workspace directory)
+
+**Communication model:**
+- tool scripts (running in the workspace) call the **Node backend API**
+- the **Node backend communicates with the opencode agent** (bi-directional) to pass user input, tool results, and status updates
+
+This document describes the architecture and operational model for an **open-source distribution** where operators host **one isolated instance (frontend + backend + Postgres)**, while opencode runs on a user machine where the workspace lives.
 
 **Non-goals (for OSS single-tenant):**
 - Multi-tenant SaaS concerns (tenant isolation, billing, per-tenant namespaces)
@@ -16,39 +31,37 @@ This document describes the architecture and operational model for an **open-sou
 ## 1. High-Level Architecture
 
 ```
-                     +---------------------------+
-                     |   FlowPal Web (Next.js)  |
-                     |   UI + Admin Console     |
-                     +-------------+-------------+
-                                   |
-                                   v
-                     +-------------+-------------+
-                     |        Backend API        |
-                     |     (Bun + Hono TS)       |
-                     +------+------+-------------+
-                            |      |
-                            |      +--------------------+
-                            |                           |
-                            v                           v
-                +-----------+-----------+     +---------+---------+
-                |     PostgreSQL        |     |     Redis/Queue   |
-                |   (pgvector optional) |     |   (BullMQ)        |
-                +-----------+-----------+     +---------+---------+
-                            |                           |
-                            v                           v
-                +-----------+-----------+     +---------+---------+
-                | Workspace Filesystem  |<--->| Execution Worker  |
-                | (workflows + runs)    |     | (runs workflows)  |
-                +-----------+-----------+     +---------+---------+
-                            |
-                            v
-                +-----------+-----------+
-                |  Sandbox Runtime      |
-                |  (gVisor/Firecracker) |
-                +-----------------------+
+                      (Self-hosted single-tenant instance)
+     +---------------------------+        +---------------------------+
+     |   FlowPal Web (Next.js)   |<------>|     Node Backend API      |
+     |   UI + Admin Console      |        | (auth, chat, routing)     |
+     +-------------+-------------+        |  routing)                 |
+                   |                      +-------------+-------------+
+                   |                                    |
+                   |                                    v
+                   |                      +---------------------------+
+                   |                      |        PostgreSQL         |
+                   |                      | (metadata, runs,          |
+                   |                      |  knowledge)               |
+                   |                      +---------------------------+
+                   |
+                   | chat + events (WebSocket/SSE)
+                   v
+                    (User machine / Workspace)
+     +--------------------------------------------------------------------+
+     | Workspace directory                                                 |
+     |  - `FLOWPAL_AGENT.md` (agent instructions)                           |
+     |  - `.flowpal/tools/*` (scripts → call Node backend)                  |
+     |  - `workflows/<slug>/...` (workflow folders)                         |
+     |                                                                      |
+     |  +----------------------+                                            |
+     |  | opencode agent       |<----------- Node backend communicates ------|
+     |  | (runs in workspace)  |            with agent (bi-directional)      |
+     |  +----------------------+                                            |
+     +--------------------------------------------------------------------+
 ```
 
-**Key property:** the filesystem workspace is the **source of truth** for workflows. The database stores metadata (workflows index, versions, runs, audit logs, users), while the workflow content lives in folders.
+**Key property:** the filesystem workspace is the **source of truth** for workflows. The database stores metadata (workflows index, runs, audit logs, users), while the workflow content lives in folders.
 
 ---
 
@@ -62,17 +75,18 @@ FlowPal OSS assumes:
 - All data is scoped to the instance; there is no tenant_id column requirement.
 
 **User roles (suggested):**
-- **Admin**: manage instance settings, users, credentials policy, and approvals
-- **Engineer**: review/approve workflows, edit workflow code, manage integrations
+- **Admin**: manage instance settings, users, and credentials policy
+- **Engineer**: edit workflow code, manage integrations
 - **User**: request workflows, trigger runs, view outputs subject to permissions
 
 > You can simplify further (single “owner” role) for early OSS releases; the rest of the doc still applies.
 
-### 2.2 Single-Agent Architecture (Filesystem-First)
+### 2.2 Single-Agent Architecture (Local opencode, Workspace-First)
 
-FlowPal uses **one agent** that has:
-- a **workspace filesystem** (containing all workflows in folders)
+FlowPal uses **one local agent** (opencode) that has:
+- a **workspace filesystem** (your actual project directory; containing all workflows in folders)
 - the ability to run **shell commands** inside that workspace
+- a small set of **workspace-provided tool scripts** (see below)
 
 This is intentionally simple: the agent can discover existing workflows by listing folders, decide whether to create a new workflow vs run an existing one, and implement changes by editing files.
 
@@ -80,26 +94,42 @@ This is intentionally simple: the agent can discover existing workflows by listi
 - **Simplest (default)**: credentials live in per-workflow `.env` files (human-managed)
 - **Recommended (production)**: credentials are stored outside the workspace (Vault/KMS/Secrets Manager) and injected at run time with scoped tokens or via internal proxy endpoints
 
+#### Workspace Root Agent Instructions + Tool Scripts
+
+At the **root of every workspace**, we include a markdown “operating manual” for the opencode agent:
+- `FLOWPAL_AGENT.md`: what a “workflow” is, required files, conventions, and how to create/update/run workflows safely.
+
+We also include a folder of **pre-written scripts** the agent can invoke as tools:
+
+```
+<workspace_root>/
+├── FLOWPAL_AGENT.md
+└── .flowpal/
+    └── tools/
+        ├── askAnEngineer        # create a question for engineers on the platform/instance
+        └── findSimilarWorkflow  # return up to N similar workflows for a description
+```
+
+These scripts are the stable integration boundary between the local agent and the self-hosted instance:
+- `askAnEngineer`: opens a question thread, routes it to engineers/admins, and returns the answer (async/polling) plus optional knowledge write-back.
+- `findSimilarWorkflow`: queries embeddings/metadata and returns up to N candidate workflows (with paths + summaries) to reuse/adapt.
+
+**Key constraint (simple architecture):** tool scripts talk to the **Node backend API**, and the Node backend is responsible for forwarding the right information to/from the opencode agent.
+
 ### 2.3 Workflow System
 
 **Features:**
 - Natural language to code generation
-- Version control for workflows
-- **Approval gate for newly created workflows**
 - Similarity search for reuse (optional; uses pgvector embeddings)
 - Execution history and audit logs
 
 #### Workflow Lifecycle
 
-**Workflow version states (simplified):**
-- **pending**: awaiting engineer/admin review (not executable)
-- **approved**: executable (manual, scheduled, webhook triggers)
-- **rejected**: not executable; retains review notes
+In v1, FlowPal does **not** implement workflow versioning or an approval gate.
 
-**Versioning policy:**
-- Editing workflow code/contract files (`run.py`, `workflow.json`, `README.md`, `requirements.txt`, `.env.example`) creates a **new immutable version** that returns to **pending**.
-- Editing `data/` does **not** create a new version (data is mutable by design).
-- Editing `.env` is a local operational change and is never versioned/approved by FlowPal.
+- A workflow is whatever is currently in `workflows/<slug>/`.
+- Changes are applied directly to the workflow folder (agent edits files in place).
+- Execution is allowed immediately (subject to RBAC + any operator-configured sandbox/network policy).
 
 #### Workflow Package Structure
 
@@ -120,7 +150,6 @@ Workspace
         ├── requirements.lock.txt  ← Recommended: pinned deps for reproducibility
         ├── data/                  ← Optional: non-secret config/state files
         ├── runs/                  ← Optional: run outputs/logs (local artifacts)
-        ├── versions/              ← Optional: approved snapshots (immutable)
         └── tests/                 ← Optional: unit/integration tests
 ```
 
@@ -152,7 +181,7 @@ FlowPal needs to handle two different “knowledge” categories:
 
 **Production recommendation:**
 - Secrets remain outside the workspace in your secret store.
-- The execution worker fetches secrets at runtime and injects them into the sandbox (env vars) for that single run only.
+- The runner process fetches secrets at runtime and injects them into the execution environment (env vars) for that single run only.
 - Access is audited.
 
 ### 2.5 Instance Context Model (Single Tenant)
@@ -167,10 +196,16 @@ Instead of “tenant context”, FlowPal OSS maintains:
 The agent should be able to:
 - list and inspect workflow folders
 - propose new workflows
-- modify existing workflows (creates new pending version)
-- request missing information from a human via the UI (if enabled)
+- modify existing workflows (edits files in place)
+- request missing information from a human via the UI (if enabled), via `askAnEngineer`
+- reuse existing work via `findSimilarWorkflow` (optional but recommended when pgvector is enabled)
 
-For OSS, “ask an engineer” is implemented as:
+In this architecture, the Node backend maintains a bi-directional communication channel with the opencode agent (e.g., WebSocket). It:
+- forwards UI chat messages (user → agent)
+- forwards agent events (agent → UI): status, diffs (optional), questions, run progress
+- persists artifacts to Postgres (workflow metadata, run metadata, audit logs)
+
+For OSS, `askAnEngineer` is implemented as:
 - creating a UI task / notification for an Admin/Engineer
 - optionally sending email/Slack if configured
 
@@ -193,9 +228,9 @@ Operators should treat workflow data as **application state** and back it up wit
 
 ### 2.8 Execution Environment
 
-Workflows execute via a worker that:
-- checks workflow version is **approved**
-- provisions a sandbox (container/gVisor/Firecracker depending on policy)
+Workflows execute on the **user machine** (where opencode is running) in the workspace. The backend coordinates and records metadata, but does not require a separate worker tier.
+
+Execution responsibilities:
 - creates/uses a Python venv
 - installs dependencies
 - runs `run.py` with inputs
@@ -236,7 +271,7 @@ The agent runtime typically needs:
 - `fs`: read/write within workspace
 - `shell`: run commands (venv, install deps, run workflow/tests)
 - `http`: make outbound requests (optional; can be disabled globally)
-- `ask_human`: create an approval/question task for Admin/Engineer
+- `ask_human`: create a question task for Admin/Engineer
 
 For self-hosting, operators should be able to configure which tools are enabled and their boundaries (e.g., allowed outbound domains, max runtime, filesystem allowlist).
 
@@ -261,8 +296,8 @@ POST /api/chat
 ```
 
 **Response types:**
-- `workflow_created`: new workflow generated, pending approval
-- `workflow_updated`: existing workflow modified (new pending version)
+- `workflow_created`: new workflow folder created
+- `workflow_updated`: existing workflow modified
 - `question`: agent needs clarification
 - `human_needed`: task created for Admin/Engineer, will resume when answered
 
@@ -275,8 +310,6 @@ POST /api/chat
 | `POST /api/workflows/{id}/run` | Trigger execution with optional inputs |
 | `GET /api/workflows/{id}/runs` | List executions |
 | `GET /api/runs/{id}` | Get execution details and logs |
-| `POST /api/workflows/{id}/approve` | Approve pending version |
-| `POST /api/workflows/{id}/reject` | Reject pending version |
 
 ---
 
@@ -290,16 +323,6 @@ When the agent needs information it doesn't have:
 3. Optional notifications are sent (email/Slack/webhooks if configured)
 4. Human answers (with optional “save to knowledge base”)
 5. Agent resumes with the answer
-
-### Workflow Approval Flow
-
-1. User requests a new workflow in natural language
-2. Agent creates/updates workflow files (`run.py`, `workflow.json`, `README.md`, `requirements.txt`, `.env.example`)
-3. Workflow version is saved as **pending**
-4. Admin/Engineer reviews and can **edit** workflow files
-5. Admin/Engineer approves → version becomes **approved**
-6. Triggers become active (schedule/webhook)
-7. All actions are audited
 
 ### Real-Time Updates
 
@@ -315,11 +338,10 @@ Optional but recommended:
 ### Backend
 | Component | Technology |
 |-----------|------------|
-| API Framework | Hono (TypeScript) |
-| Runtime | Bun |
+| Runtime | Node.js |
+| API Framework | Express or Fastify (TypeScript) |
 | Database | PostgreSQL (pgvector optional) |
-| Cache/Queue | Redis + BullMQ |
-| Real-time | Socket.IO (or SSE) |
+| Real-time | WebSocket (ws/Socket.IO) or SSE |
 | Sandbox | gVisor/Firecracker (recommended) or Docker (simplest) |
 
 ### Frontend
@@ -353,7 +375,7 @@ FlowPal OSS provides guardrails, but **operators own the threat model** and must
 ### Authentication & Authorization
 - support local auth (email/password) or SSO (OIDC) depending on operator needs
 - RBAC enforced server-side (Admin/Engineer/User)
-- audit logs for approvals, edits, executions, and credential access
+- audit logs for edits, executions, and credential access
 
 ### Data Security
 - database encryption-at-rest depends on your Postgres deployment
@@ -385,21 +407,19 @@ FlowPal OSS provides guardrails, but **operators own the threat model** and must
 ## 8. Data Flow
 
 ### Creating a Workflow
-1. user sends a chat request
-2. backend calls agent runtime
-3. agent inspects existing workflows for reuse
-4. agent writes a new workflow folder or creates a new pending version
-5. backend indexes metadata in Postgres (workflow list, versions)
-6. UI shows “pending approval”
+1. user sends a chat request in the UI
+2. Node backend forwards the message to the opencode agent (running on the user machine)
+3. agent inspects existing workflows for reuse (and may call `findSimilarWorkflow`)
+4. if missing info: agent calls `askAnEngineer` and waits for an answer
+5. agent writes/updates a workflow folder
+6. backend indexes metadata in Postgres (workflow list) and the UI reflects the updated workflow immediately
 
 ### Executing a Workflow
 1. user triggers run (manual/scheduled/webhook)
-2. backend enqueues run job in Redis/BullMQ
-3. worker validates version is approved
-4. worker provisions sandbox and mounts the workspace
-5. worker runs `run.py` with inputs
-6. logs and artifacts written to `runs/<run_id>/`
-7. run metadata stored in Postgres; UI streams status/logs
+2. backend starts a run session (RBAC enforced) and forwards run request to the agent/runner on the user machine
+3. run is executed on the workspace host (local runner), optionally using a sandbox policy (Docker/gVisor/Firecracker depending on operator preference)
+4. logs and artifacts written to `runs/<run_id>/`
+5. run metadata stored in Postgres; UI streams status/logs
 
 ---
 
@@ -408,8 +428,8 @@ FlowPal OSS provides guardrails, but **operators own the threat model** and must
 Minimum UI surfaces:
 - chat screen (requests + agent updates)
 - workflows list + detail page
-- code viewer/editor for Admin/Engineer (with diff between versions)
-- approvals queue (pending versions)
+- workspace viewer (VSCode in browser) to view the workspace directory via the web app
+- code viewer/editor for Admin/Engineer
 - runs page (status, logs, artifacts)
 - instance settings (LLM provider config, notifications, security policy)
 
@@ -425,9 +445,9 @@ Minimum UI surfaces:
 
 ### Phase 1 — “Self-Hosted MVP”
 - docker-compose deployment
-- Postgres + Redis
-- approvals + versioning
-- worker queue + run history
+- Postgres
+- workflow creation/editing + run history
+- run history
 
 ### Phase 2 — “Production-Ready Self-Hosting”
 - sandbox isolation (gVisor/Firecracker)
@@ -449,10 +469,10 @@ Minimum UI surfaces:
 - optional pgvector for similarity search
 - mature self-hosting story
 
-### Why a Separate Worker + Queue?
-- isolates long-running/unsafe execution from the API
-- supports retries and concurrency control
-- makes deployments more predictable
+### Why Node Backend ↔ Local Agent (Instead of Running the Agent Server-Side)?
+- keeps code execution and workspace access on the user machine
+- makes the “tools → backend → agent” boundary explicit and debuggable
+- keeps the hosted/self-hosted stack minimal: Next.js + Node + Postgres
 
 ---
 
@@ -472,15 +492,14 @@ Operators should validate:
 - **backup/restore**: Postgres + workspace volume can be restored into a fresh install
 - **upgrade path**: DB migrations are safe and reversible (or at least recoverable)
 - **security**: sandbox limits enforced; webhook auth configured; secrets not exposed in UI/logs
-- **reliability**: worker restarts do not lose jobs; runs are idempotent where needed
+- **reliability**: backend restarts do not corrupt history; agent disconnect/reconnect is handled cleanly; runs are idempotent where needed
 
 ---
 
 ## 14. Critical Files to Implement First (Repo Layout Suggestion)
 
 Backend:
-- `apps/api/` (Hono routes, auth, workflows, runs)
-- `apps/worker/` (queue consumer, sandbox runner)
+- `apps/api/` (Node API: auth, chat, workflows, runs)
 - `packages/db/` (schema + migrations)
 - `packages/agent/` (agent orchestration + tools)
 
