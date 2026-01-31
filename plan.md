@@ -511,7 +511,13 @@ orders = fetch_orders(customer_id, date_range)
 
 ## 3. AI Agent Tools
 
-The single agent is intentionally given a minimal capability surface: It will have the same set of tools as OpenCode has.
+The single agent is intentionally given a minimal capability surface (roughly the same baseline as OpenCode), plus **one communication tool** to reach engineers when blocked.
+
+| Tool | Purpose |
+|------|---------|
+| `filesystem` | List/read/write files and folders in the tenant workspace (`workflows/*`, `data/`, run artifacts, etc.) |
+| `shell` | Execute commands in the tenant workspace (create venv, install deps, run workflows, run tests) |
+| `ask_engineer` | Ask an engineer a question (async). Used when missing critical info (credentials, schema, internal API details). The requester sees a status update while the question is routed to engineers. |
 ---
 
 ## 4. User Interface & API
@@ -522,6 +528,10 @@ The single agent is intentionally given a minimal capability surface: It will ha
 - Users interact with FlowPal through a chat-like interface in the web app
 - Natural language requests are sent to the agent
 - The agent responds with status updates, questions, or completed workflows
+
+**Two stakeholders during an agent operation:**
+- **Requester**: the person asking for the workflow (default audience for agent replies in the chat UI)
+- **Engineer**: contacted only when needed via `ask_engineer` (async), to provide missing operational context
 
 **API Endpoint:**
 ```
@@ -558,13 +568,13 @@ POST /api/chat
 
 ### Engineer Question Flow
 
-When the AI needs information it doesn't have:
+When the agent needs information it doesn't have:
 
-1. AI identifies missing info (credentials, schema, API details)
-2. Creates a question in the system
+1. Agent identifies missing info (credentials, schema, API details)
+2. Agent calls `ask_engineer(question, context)` to create a question in the system
 3. Notifies engineers via Slack, email, and in-app
 4. Engineer answers with option to save to knowledge base
-5. AI resumes workflow creation with the answer
+5. Agent resumes workflow creation with the answer
 6. Knowledge persisted for future similar requests
 
 ### Workflow Approval Flow
@@ -636,11 +646,14 @@ All security concerns are consolidated here for clarity.
 - Unified audit service for: workflow versions, workflow data, credential access, executions
 
 ### Credential Security (Layer 4)
-- Envelope encryption with KMS-managed master keys
-- Per-tenant data encryption keys (DEK)
-- Credentials never exposed to AI agents (only references)
-- Credentials never stored in workflow code or database
-- Audit logging of all credential access
+**v1 (filesystem-first):**
+- Credentials live in per-workflow `.env` files (human-managed; not committed)
+- Secrets are accessible to the agent because it has full workspace control
+
+**production (recommended):**
+- Credentials stored outside the workspace (Vault/KMS)
+- Workflow runs receive only scoped, short-lived tokens or use internal proxy endpoints
+- Audit logging of credential usage/access
 
 ### Execution Security (Layer 5)
 - Firecracker microVM isolation per execution
