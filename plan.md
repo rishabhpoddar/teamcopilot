@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-FlowPal is a multi-tenant SaaS platform that enables organizations to define and execute programmatic workflows using AI agents. Users describe workflows in natural language, and a two-layer AI agent architecture implements, executes, and continuously improves these workflows.
+FlowPal is a multi-tenant SaaS platform that enables organizations to define and execute programmatic workflows using AI. Users describe what they want in natural language, and a **single agent** (with full access to a tenant-scoped filesystem + shell) can create, update, and run workflows directly inside that workspace.
 
 ---
 
@@ -25,18 +25,14 @@ FlowPal is a multi-tenant SaaS platform that enables organizations to define and
                     v                        v                        v
           +---------+---------+    +---------+---------+    +---------+---------+
           |   Workflow        |    |   AI Agent        |    |   Execution       |
-          |   Service         |    |   Orchestrator    |    |   Service         |
+          |   Service         |    |   (Single)        |    |   Service         |
           +---------+---------+    +---------+---------+    +---------+---------+
                     |                        |                        |
-                    |              +---------+---------+              |
-                    |              |   Coding Agent    |              |
-                    |              |   (Custom/OpenCode)|             |
-                    |              +-------------------+              |
                     |                                                 |
                     v                        v                        v
           +---------+---------+    +---------+---------+    +---------+---------+
-          |   PostgreSQL      |    |   Credential      |    |   Sandbox         |
-          |   (pgvector)      |    |   Vault           |    |   Runtime         |
+          |   PostgreSQL      |    |   Tenant          |    |   Sandbox         |
+          |   (pgvector)      |    |   Workspace FS    |    |   Runtime         |
           +-------------------+    +-------------------+    +-------------------+
 ```
 
@@ -59,49 +55,17 @@ FlowPal is a multi-tenant SaaS platform that enables organizations to define and
 - **Engineer**: Can respond to AI queries, provide credentials, configure integrations, **review/approve workflows**, and **edit workflow code**
 - **User**: Can create workflows, request runs, view results (subject to approval and permissions)
 
-### 2.2 Two-Layer AI Agent Architecture
+### 2.2 Single-Agent Architecture (Filesystem-First)
 
-```
-+------------------------------------------------------------------+
-|                     ORCHESTRATOR AGENT                            |
-|  Manages workflow lifecycle, coordinates everything               |
-|  DOES NOT directly access user databases or APIs                  |
-|                                                                   |
-|  - Context Manager        - Invokes Coding Agent                  |
-|  - Similarity Search      - Credential Reference Lookup           |
-|  - Engineer Communication - Data Layer Management                 |
-+------------------------------------------------------------------+
-                                   |
-                                   v
-+------------------------------------------------------------------+
-|                     CODING AGENT                                  |
-|  Generates workflow code that runs in sandbox                     |
-|                                                                   |
-|  - Code Generation        - File Operations                       |
-|  - Uses FlowPal SDK       - Natural Language Context Requests     |
-+------------------------------------------------------------------+
-                                   |
-                                   v
-+------------------------------------------------------------------+
-|                     SANDBOX EXECUTION                             |
-|  Generated code runs here with actual system access               |
-|                                                                   |
-|  - Connects to user databases via FlowPal SDK                     |
-|  - Makes HTTP requests to user APIs                               |
-|  - Credentials resolved at runtime (never in code)                |
-+------------------------------------------------------------------+
-```
+FlowPal uses **one agent** that has:
+- a **tenant-scoped workspace filesystem** (containing all workflows in folders)
+- the ability to run **shell commands** inside that workspace
 
-**Key Separation:**
-- **Orchestrator**: Plans and coordinates, but never touches user data directly
-- **Coding Agent**: Writes code that *will* access user systems when executed
-- **Sandbox**: Where the generated code actually runs and interacts with user systems
+This is intentionally simple: the agent can discover existing workflows by listing folders, decide whether to create a new workflow vs run an existing one, and implement changes by editing files.
 
-**Coding Agent Options:**
-- **Option A: Custom Agent** (Recommended) - Build using LLM APIs + custom tool definitions. Full control over multi-tenant security. No external dependency.
-- **Option B: OpenCode** - Open source, but requires ephemeral container isolation per tenant. More setup overhead.
-
-The Orchestrator abstraction allows swapping between implementations without changing the rest of the system.
+**Important implication:** if the agent has full filesystem + shell access, then any secrets present in that workspace are accessible to the agent. This plan therefore treats credential security as a deployment choice:
+- **MVP / simplest**: credentials live in per-workflow `.env` files (human-managed). Fast to build, but secrets are not hidden from the agent.
+- **Production / safer**: credentials are never written into the workspace; instead workflows call internal proxy endpoints or use short-lived scoped tokens injected at run time. (See Credential Handling section.)
 
 ### 2.3 Workflow System
 
@@ -122,90 +86,131 @@ The Orchestrator abstraction allows swapping between implementations without cha
 - **rejected**: Not executable; retains review notes
 
 **Versioning policy:**
-- Editing `run.py` creates a **new immutable version** that returns to **pending**.
+- Editing workflow code/contract files (`run.py`, `workflow.json`, `README.md`, `requirements.txt`, `.env.example`) creates a **new immutable version** that returns to **pending**.
+- Editing `data/` does **not** create a new version (data is mutable by design); editing `.env` is a local operational change and is never versioned/approved via FlowPal.
 - Approval metadata stored with the version: `approved_by`, `approved_at`, `approval_notes`.
 
 #### Workflow Package Structure
 
-Each workflow consists of a single code artifact generated by the Coding Agent:
+Each workflow is a folder in the tenant workspace. Workflows are **filesystem-first**: the folder contents are the source of truth.
 
 ```
-Workflow Package (stored in S3)
-├── run.py                      ← Workflow logic (generated by Coding Agent)
-│   - Environment setup (idempotent - checks before installing)
-│   - The actual workflow business logic
-│   - Uses FlowPal SDK for credentials, APIs, databases
-│   - Outputs structured data via sdk.output()
-│
-└── workflow.json               ← Metadata
-    {
-      "display_name": "Check failed Stripe payments",
-      "intent_summary": "Lists failed Stripe payments for a given customer/date range and returns a summary for finance review.",
-      "runtime": "python3.11",
-      "credential_refs": ["cred:stripe", "cred:github-pat"],
-      "timeout_seconds": 300,
-      "egress_allowlist": ["api.stripe.com", "github.com"],
-      "input_schema": {
-        "type": "object",
-        "properties": {
-          "customer_id": { "type": "string", "description": "Stripe customer ID" },
-          "date_range": {
-            "type": "object",
-            "properties": { "days": { "type": "number" } },
-            "default": { "days": 7 }
-          }
-        },
-        "required": ["customer_id"]
-      },
-      "output_schema": {
-        "type": "object",
-        "properties": {
-          "count": { "type": "number" },
-          "payments": { "type": "array", "items": { "type": "object" } }
-        },
-        "required": ["count", "payments"]
-      },
-      "side_effects": [
-        "Reads Stripe API",
-        "No writes performed"
-      ]
-    }
+Tenant Workspace
+└── workflows/
+    └── failed-stripe-payments/
+        ├── workflow.json          ← Required: workflow contract + runtime metadata
+        ├── README.md              ← Required: docs + usage (with frontmatter)
+        ├── run.py                 ← Required: entrypoint script
+        ├── requirements.txt       ← Required: Python deps (pinned if possible)
+        ├── .env                   ← Required: runtime config (human-managed; not committed)
+        ├── .env.example           ← Recommended: documented template (committed)
+        ├── .gitignore             ← Recommended: ignore `.env`, `.venv/`, `runs/`, etc.
+        ├── .venv/                 ← Recommended: per-workflow virtualenv (created locally)
+        ├── requirements.lock.txt  ← Recommended: fully pinned deps for reproducibility
+        ├── data/                  ← Optional: non-secret config/state files
+        ├── runs/                  ← Optional: run outputs/logs (local artifacts)
+        ├── versions/              ← Optional: approved snapshots (immutable)
+        └── tests/                 ← Optional: unit/integration tests
 ```
 
-#### Workflow Contract (How the Orchestrator Knows What a Workflow Does)
+#### Workflow Contract (How the System Knows What a Workflow Does)
 
-In v1, FlowPal does **not** try to “understand” arbitrary Python by parsing `run.py`. Instead, every workflow version ships a small **manifest** in `workflow.json` that the Orchestrator and UI treat as the workflow’s contract:
+In v1, FlowPal does **not** try to “understand” arbitrary Python by parsing `run.py`. Instead, every workflow folder contains a small **manifest** in `workflow.json` that the UI and execution layer treat as the workflow’s contract:
 
 - **`intent_summary`**: a human-readable “what it does” summary (generated by AI, editable by engineers during review)
 - **`input_schema`**: JSON Schema describing runtime arguments (used to render the Run form and validate inputs)
-- **`output_schema` (optional)**: JSON Schema describing the shape of `sdk.output()` (used to label/render results)
+- **`output_schema` (optional)**: JSON Schema describing the shape of the workflow output JSON (used to label/render results)
 - **`side_effects`**: short list of expected external effects (helps review and safe re-runs)
-- **`credential_refs` / `egress_allowlist`**: concrete security and execution constraints (reviewable and enforceable)
+- **`env_vars` / `egress_allowlist`**: concrete runtime and security constraints (reviewable and enforceable)
 
 **Contract enforcement (simple v1 rule):**
-- Workflows may only read runtime arguments via `sdk.get_input(...)`.
-- If `input_schema` is present, the API validates inputs before enqueueing a run; missing/invalid inputs fail fast with a clear error.
+- Workflows accept runtime inputs via `FLOWPAL_INPUT_JSON` (a JSON object string) and/or standard input (see Workflow Conventions).
+- If `input_schema` is present, the API validates inputs before launching a run; missing/invalid inputs fail fast with a clear error.
 
-**Why Single File?**
-- **Simplicity**: One file to review, approve, and maintain
-- **Idempotent Setup**: Code checks if dependencies are installed before installing
-- **Fewer Moving Parts**: No snapshot management, no two-phase execution
+**Why a workflow folder (not a single file)?**
+- **Practicality**: workflows need docs, env config templates, and dependency manifests
+- **Reproducibility**: `requirements.txt` + `.venv` keeps dependencies scoped
+- **Operability**: `runs/` artifacts make debugging and auditing easy
 
 **Engineer review/edit surface:**
-- Engineers can view and edit `run.py` and `workflow.json` before publishing
+- Engineers can view and edit `run.py`, `workflow.json`, and `README.md` before publishing
 - The review UI highlights:
   - **Diff** vs prior version
-  - **Credential refs** used (names/IDs only, no secret values)
+  - **`.env.example`** changes (and warnings if `.env` was modified)
   - **Network egress** targets
   - Optional: **Test Run** in a restricted sandbox before approval
 
+#### Workflow Conventions (Filesystem-First)
+
+These conventions are what make “one agent with filesystem + bash” reliable.
+
+**Folder location:**
+- All workflows live under `workflows/<workflow_slug>/` within the tenant workspace.
+
+**Required files:**
+- `workflow.json`: machine-readable contract (inputs/outputs/egress/timeout/etc).
+- `README.md`: human-readable docs, with frontmatter (see below).
+- `run.py`: entrypoint that performs the workflow.
+- `requirements.txt`: dependencies for `run.py`.
+- `.env`: runtime config for the workflow (human-managed; not committed).
+
+**Strongly recommended files:**
+- `.env.example`: template for `.env` (committed; never contains real secrets).
+- `.venv/`: per-workflow virtual environment (created locally; not committed).
+- `.gitignore`: ensures `.env`, `.venv/`, `runs/`, and other local artifacts are never committed.
+- `requirements.lock.txt` (or `constraints.txt`): fully pinned dependency lock for reproducible runs (optional for MVP, recommended for critical workflows).
+
+**Optional files/folders (supported):**
+- `data/`: non-secret config/state files (JSON/YAML/CSV) that the workflow reads/writes.
+- `runs/`: local run artifacts: `runs/<run_id>/{stdout.log,stderr.log,output.json,meta.json}`.
+- `versions/`: immutable snapshots of approved versions (optional implementation detail; useful for audit/debug).
+- `tests/`: tests that can be run with `pytest`.
+- `scripts/`: helper scripts like `scripts/setup.sh` or `scripts/test.sh`.
+- `.python-version`: pin interpreter version when using pyenv/asdf (optional; `runtime` in `workflow.json` remains the source of truth).
+
+**README frontmatter format:**
+
+`README.md` must start with YAML frontmatter:
+```yaml
+---
+name: "Workflow Name"
+summary: "One-line description shown in the UI."
+---
+```
+
+Then the rest of the README contains:
+- detailed description
+- setup steps (venv creation, install deps, `.env` creation)
+- how to run (example inputs)
+- expected output shape
+- troubleshooting and safety notes
+
+**Standard runtime input interface:**
+- The runner sets `FLOWPAL_INPUT_JSON` to a JSON object string (validated by `input_schema` when present).
+- The runner executes `run.py` from the workflow directory.
+
+Example command shape (implementation detail):
+`FLOWPAL_INPUT_JSON='{"days":7}' ./.venv/bin/python run.py`
+
+**Output convention:**
+- `run.py` must produce a JSON result either by printing JSON to stdout or writing `runs/<run_id>/output.json` (the runner will capture/normalize results).
+
+**Workflow discovery:**
+- The agent discovers workflows by listing `workflows/` and reading each `workflow.json` + `README.md` frontmatter.
+
 ### 2.4 Credential & Knowledge Management
 
-**Credential Vault:**
-- Envelope encryption (KMS-managed keys)
-- Per-tenant data encryption keys (DEK)
-- Audit logging of all access
-- Never pass raw credentials to AI - only references
+**Credential Handling (Filesystem-First v1):**
+
+Because the agent has filesystem + shell access, FlowPal defines credentials as a **human-managed runtime concern**:
+- Each workflow folder contains a `.env` file with required environment variables.
+- `.env` is never committed; `.env.example` documents the expected keys.
+- The simplest approach is to place secrets directly in `.env`. This is operationally easy but means the agent can read those secrets.
+
+**Safer production approach (recommended):**
+- Do not place raw secrets in the workspace.
+- Workflows authenticate via short-lived, scoped tokens minted at run time, or call internal proxy endpoints that hold secrets.
+- The runner injects only those scoped tokens into the environment (and audits usage).
 
 **Knowledge Base:**
 - Stores learned information from engineers
@@ -219,25 +224,10 @@ In v1, FlowPal does **not** try to “understand” arbitrary Python by parsing 
 All tenant-specific data that informs workflow creation:
 
 ```
-Tenant Context Store (PostgreSQL + S3)
+Tenant Context Store (PostgreSQL + Workspace FS)
 │
-├── Workflows (PostgreSQL + S3)
-│   ├── workflow_id, name, description
-│   ├── description_embedding (pgvector) → for similarity search
-│   ├── current_published_version_id (nullable)
-│   └── archived_at (nullable)
-│
-├── Workflow Versions (PostgreSQL + S3)
-│   ├── workflow_version_id, workflow_id, version_number
-│   ├── state: pending | approved | rejected
-│   ├── code_package_path (S3 reference to {run.py, workflow.json})
-│   ├── approved_by, approved_at, approval_notes (nullable)
-│   └── created_by, created_at
-│
-├── Workflow Data (S3 + PostgreSQL metadata)
-│   ├── workflow_id → links to workflow
-│   ├── data_path (S3 reference: {tenant_id}/workflow-data/{workflow_id}/)
-│   └── keys[] → list of data keys with metadata (size, last_modified)
+├── Workflows (Workspace FS)
+│   └── workflows/<workflow_slug>/{workflow.json,README.md,run.py,...}
 │
 ├── Integrations (PostgreSQL)
 │   │
@@ -252,82 +242,25 @@ Tenant Context Store (PostgreSQL + S3)
 │   ├── content_embedding → for semantic search
 │   ├── integration_id (optional) → links to an integration
 │   └── Auto-indexed engineer answers
-│
-└── Credentials (Vault)
-    ├── credential_id, name, description
-    └── Encrypted value (never in PostgreSQL, never exposed to AI)
 ```
 
 **Context Retrieval for New Workflows:**
-When a user requests a new workflow, the Orchestrator:
-1. Searches similar workflows by embedding similarity
-2. Matches request against integration descriptions to find relevant ones
-3. Retrieves knowledge entries linked to matched integrations
-4. Searches broader knowledge base for additional context
-5. Gathers credential references (not values) for needed integrations
-6. Passes all context to the Coding Agent
+When a user requests a new workflow, the agent:
+1. Lists existing workflow folders and reads `workflow.json` + `README.md` summaries
+2. (Optional) Searches similar workflows by embedding similarity
+3. Matches the request against integration descriptions / knowledge base
+4. Creates a new workflow folder or updates an existing one (by editing files)
 
-### 2.6 Agent Communication Protocol
+### 2.6 Agent Interaction Model
 
-The Coding Agent can request additional context from the Orchestrator mid-generation using **natural language queries**:
+There is no separate “coding agent” and no internal agent-to-agent protocol.
 
-```
-┌─────────────────┐                      ┌─────────────────┐
-│   Orchestrator  │                      │  Coding Agent   │
-└────────┬────────┘                      └────────┬────────┘
-         │                                        │
-         │  invoke_coding_agent()                 │
-         │  Initial Context:                      │
-         │  - Workflow requirements               │
-         │  - Relevant integrations               │
-         │  - Credential refs                     │
-         │  - Similar workflow code               │
-         │  - Knowledge base excerpts             │
-         │───────────────────────────────────────►│
-         │                                        │
-         │                                        │  Coding Agent starts
-         │                                        │  generating code...
-         │                                        │
-         │  request_context(query)                │
-         │  "I need the schema for orders table"  │
-         │◄───────────────────────────────────────│
-         │                                        │
-         │  Orchestrator:                         │
-         │  - Searches knowledge base             │
-         │  - If not found, asks engineer         │
-         │  - Caches answer for future            │
-         │                                        │
-         │  Context Response:                     │
-         │  { schema: "CREATE TABLE orders..." }  │
-         │───────────────────────────────────────►│
-         │                                        │
-         │                                        │  Continues generating
-         │                                        │  with new context
-         │                                        │
-         │  Workflow Complete                     │
-         │  { run.py, workflow.json }             │
-         │◄───────────────────────────────────────│
-```
+The single agent:
+- reads tenant context from the workspace filesystem and Postgres-backed knowledge/integration metadata
+- creates/updates workflow folders by editing files
+- runs workflows using shell commands in the sandbox runtime
 
-**Natural Language Context Requests:**
-
-The Coding Agent describes what it needs in plain language:
-
-```
-request_context("I need the schema for the 'orders' table in the production database")
-request_context("How do I authenticate with the internal ML service?")
-request_context("What's the Slack channel ID for the finance team notifications?")
-```
-
-The Orchestrator then:
-1. Searches the knowledge base and integrations for relevant info
-2. If found, returns the context
-3. If not found, asks an engineer (async) and caches the answer
-
-**Why Natural Language?**
-- No need to pre-define context types
-- Works with any integration, even custom/internal ones
-- Knowledge accumulates over time as engineers answer questions
+When the agent is missing critical information (e.g., “DB schema”, “which Slack channel to notify”), it uses the existing “ask engineer” flow (see Communication System section). Answers can be persisted into the knowledge base to reduce future questions and runs.
 
 ### 2.7 Workflow Data Layer
 
@@ -351,42 +284,49 @@ Workflows often need to operate on data that changes more frequently than the co
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                     WORKFLOW PACKAGE (S3)                            │
-│  Immutable code artifacts (require approval to change)              │
-│  ├── run.py          ← Reads from data layer via sdk.get_data()     │
-│  └── workflow.json                                                   │
+│                     WORKFLOW FOLDER (Workspace FS)                   │
+│  Code + docs + dependency manifest                                   │
+│  ├── run.py                                                         │
+│  ├── workflow.json                                                   │
+│  ├── README.md                                                       │
+│  └── requirements.txt                                                │
 └─────────────────────────────────────────────────────────────────────┘
                                    │
-                                   │ sdk.get_data() / sdk.set_data()
+                                   │ read/write files in `data/`
                                    ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│                     WORKFLOW DATA STORE                              │
-│  Mutable data (can be modified without code approval)               │
-│                                                                      │
-│  Storage: S3 + PostgreSQL metadata                                   │
-│  Path: {tenant_id}/workflow-data/{workflow_id}/                      │
-│                                                                      │
-│  ├── config.json         ← Key-value configuration                   │
-│  ├── test_cases.json     ← Array of test case objects               │
-│  ├── rules.json          ← Business rules / filters                  │
-│  └── {custom_key}.json   ← Any arbitrary data                        │
+│                     WORKFLOW DATA FOLDER                              │
+│  Mutable data (can be modified without regenerating code)            │
+│  Location: workflows/<workflow_slug>/data/                            │
+│                                                                        │
+│  ├── config.json         ← Key-value configuration                     │
+│  ├── test_cases.json     ← Array of test case objects                 │
+│  ├── rules.json          ← Business rules / filters                    │
+│  └── {custom_key}.json   ← Any arbitrary data                          │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-**SDK Methods for Data Access:**
+**Data Access Pattern (no SDK required):**
 
 ```python
-from flowpal import sdk
+import json
+from pathlib import Path
+
+DATA_DIR = Path(__file__).parent / "data"
 
 # Read data (returns None if key doesn't exist)
-test_cases = sdk.get_data("test_cases")
-config = sdk.get_data("config", default={"threshold": 100})
+test_cases_path = DATA_DIR / "test_cases.json"
+config_path = DATA_DIR / "config.json"
+
+test_cases = json.loads(test_cases_path.read_text()) if test_cases_path.exists() else []
+config = json.loads(config_path.read_text()) if config_path.exists() else {"threshold": 100}
 
 # Write data (from within workflow execution)
-sdk.set_data("last_run_stats", {"processed": 150, "failed": 3})
+(DATA_DIR / "last_run_stats.json").write_text(json.dumps({"processed": 150, "failed": 3}))
 
-# Append to array data (atomic operation)
-sdk.append_data("test_cases", {"input": "new test", "expected": "result"})
+# Append to array data (best-effort)
+test_cases.append({"input": "new test", "expected": "result"})
+test_cases_path.write_text(json.dumps(test_cases))
 ```
 
 **Data Schema Declaration (optional in workflow.json):**
@@ -413,7 +353,7 @@ sdk.append_data("test_cases", {"input": "new test", "expected": "result"})
 | Method | Who | Use Case |
 |--------|-----|----------|
 | **UI Editor** | Users/Engineers | Manual edits via FlowPal web app |
-| **AI Agent** | Orchestrator | AI modifies data in response to user requests |
+| **AI Agent** | Agent | AI modifies data in response to user requests |
 | **Workflow Self-Modification** | run.py | Workflow updates its own data during execution |
 | **API** | External systems | Webhooks or API calls update workflow data |
 
@@ -428,12 +368,11 @@ sdk.append_data("test_cases", {"input": "new test", "expected": "result"})
 - Network egress whitelist only
 - Resource limits (CPU, memory, time)
 - Pre-installed runtimes (Python, Node.js)
-- FlowPal SDK injected for secure credential access
+- Tenant workspace mounted read/write (or copied into an ephemeral run dir)
 
 **Credential Handling:**
-- Workflow packages contain **credential references only**, never raw secrets
-- At execution time, the sandbox manager resolves credential refs and injects them as environment variables
-- `sdk.get_credential("cred:...")` reads from the injected runtime store
+- v1 simplest: the runner loads environment variables from the workflow’s `.env` (human-managed)
+- production: the runner injects only short-lived scoped tokens or uses an internal proxy (no raw secrets in workspace)
 
 **Execution Flow:**
 
@@ -442,18 +381,15 @@ sdk.append_data("test_cases", {"input": "new test", "expected": "result"})
                     |
                     v
 2. Provision fresh sandbox (Firecracker/gVisor)
-   - Mount workflow package from S3
-   - Inject FlowPal SDK
-   - Resolve credentials → environment variables
+   - Mount tenant workspace (or copy workflow folder to an ephemeral run dir)
+   - Load `.env` (and/or inject scoped tokens)
                     |
                     v
 3. Run run.py
    - Idempotent setup (install deps if not present)
    - Actual workflow logic executes
-   - SDK provides secure access to credentials, APIs, DBs
    - All external access through egress whitelist
    - Logs streamed via WebSocket
-   - sdk.output() captures structured results
                     |
                     v
 4. Capture results, destroy sandbox
@@ -478,7 +414,7 @@ sdk.append_data("test_cases", {"input": "new test", "expected": "result"})
 
 **Webhook Triggers:**
 - Each workflow can have a unique webhook URL: `POST /api/webhooks/{workflow_id}/{secret_token}`
-- Payload is passed to workflow as `sdk.get_input("webhook_payload")`
+- Payload is passed to workflow as part of `FLOWPAL_INPUT_JSON` (e.g. `{ "webhook_payload": {...} }`)
 - Authentication via secret token in URL or HMAC signature header
 
 **Runtime Input Parameters:**
@@ -486,11 +422,14 @@ sdk.append_data("test_cases", {"input": "new test", "expected": "result"})
 Workflows can accept input parameters at execution time:
 
 ```python
-from flowpal import sdk
+import json
+import os
+
+inputs = json.loads(os.environ.get("FLOWPAL_INPUT_JSON", "{}"))
 
 # Get input passed at trigger time
-customer_id = sdk.get_input("customer_id")
-date_range = sdk.get_input("date_range", default={"days": 7})
+customer_id = inputs["customer_id"]
+date_range = inputs.get("date_range", {"days": 7})
 
 # Use in workflow logic
 orders = fetch_orders(customer_id, date_range)
@@ -503,8 +442,8 @@ orders = fetch_orders(customer_id, date_range)
 - **API calls**: Inputs passed in request body
 
 **How inputs are defined (v1):**
-- The Coding Agent generates an `input_schema` in `workflow.json` whenever practical.
-- The Orchestrator/UI use `input_schema` to:
+- The agent generates an `input_schema` in `workflow.json` whenever practical.
+- The UI/runner use `input_schema` to:
   - Render a simple “Run workflow” form
   - Validate inputs on `POST /api/workflows/{id}/run`
   - Provide better errors (“customer_id is required”) instead of runtime stack traces
@@ -572,53 +511,17 @@ orders = fetch_orders(customer_id, date_range)
 
 ## 3. AI Agent Tools
 
-### Orchestrator Agent Tools
-
-| Tool | Purpose |
-|------|---------|
-| `invoke_coding_agent` | Generate workflow code (run.py) |
-| `find_similar_workflows` | Search for reusable existing workflows by embedding similarity |
-| `ask_engineer` | Request help for missing information (async, notifies via Slack/email) |
-| `search_knowledge` | Query the organization's knowledge base |
-| `get_credential_reference` | Get a credential reference ID to pass to the coding agent |
-| `search_integrations` | Search tenant's integrations by description/name |
-| `get_workflow_data` | Read data from a workflow's data layer |
-| `set_workflow_data` | Write/update data in a workflow's data layer |
-| `web_search` | Search the web for information (e.g., API docs) |
-| `fetch_url` | Fetch a URL and return the content |
-
-**Important:** The Orchestrator never directly queries user databases or makes HTTP requests to user APIs. It only gathers context and invokes the Coding Agent.
-
-### Coding Agent Tools
-
-| Tool | Purpose |
-|------|---------|
-| `request_context` | Ask Orchestrator for additional information (natural language query) |
-| `read_file` | Read files in the isolated workspace |
-| `write_file` | Write run.py and other workflow files |
-| `shell` | Execute shell commands in the isolated container |
-| `get_workflow_data` | Read existing workflow data |
-| `set_workflow_data` | Write initial workflow data alongside code |
-
-**Data Access: Orchestrator vs Coding Agent**
-
-| Agent | When | Use Case |
-|-------|------|----------|
-| **Orchestrator** | Before invoking Coding Agent | Inspect data to decide if code change is needed vs data-only change |
-| **Orchestrator** | After user request | Directly modify data without Coding Agent (e.g., "add this test case") |
-| **Coding Agent** | During code generation | Read existing data structure to generate compatible code |
-| **Coding Agent** | During workflow creation | Write initial data alongside code |
-
+The single agent is intentionally given a minimal capability surface: It will have the same set of tools as OpenCode has.
 ---
 
 ## 4. User Interface & API
 
-### How Users Interact with the Orchestrator
+### How Users Interact with the Agent
 
 **Chat Interface:**
 - Users interact with FlowPal through a chat-like interface in the web app
-- Natural language requests are sent to the Orchestrator Agent
-- The Orchestrator responds with status updates, questions, or completed workflows
+- Natural language requests are sent to the agent
+- The agent responds with status updates, questions, or completed workflows
 
 **API Endpoint:**
 ```
@@ -633,7 +536,7 @@ POST /api/chat
 - `workflow_created`: New workflow generated, pending approval
 - `workflow_updated`: Existing workflow modified
 - `data_updated`: Workflow data changed (no code change)
-- `question`: Orchestrator needs clarification
+- `question`: Agent needs clarification
 - `engineer_needed`: Question routed to engineer, will resume when answered
 
 **Workflow Operations API:**
@@ -667,10 +570,10 @@ When the AI needs information it doesn't have:
 ### Workflow Approval Flow
 
 1. User requests a new workflow in natural language
-2. Orchestrator + Coding Agent produce `run.py`, `workflow.json`
+2. Agent creates/updates the workflow folder (`run.py`, `workflow.json`, `README.md`, `requirements.txt`, `.env.example`)
 3. Workflow version is saved as **pending**
 4. Engineers are notified with a link to review
-5. Engineer reviews and can **edit** `run.py`
+5. Engineer reviews and can **edit** the workflow files
 6. Engineer approves → version becomes **approved**, triggers enabled
 7. All actions are audited
 
@@ -706,8 +609,8 @@ When the AI needs information it doesn't have:
 | Component | Technology |
 |-----------|------------|
 | Orchestration | Kubernetes |
-| Secrets | HashiCorp Vault or AWS Secrets Manager |
-| Storage | S3-compatible |
+| Secrets | v1: per-workflow `.env` in workspace (human-managed); production: Vault / AWS Secrets Manager |
+| Storage | Per-tenant filesystem volume (source of truth for workflows); optional S3-compatible backups/artifacts |
 | Monitoring | Prometheus + Grafana |
 
 ---
@@ -752,8 +655,8 @@ All security concerns are consolidated here for clarity.
 - Natural language queries validated before processing
 
 ### Workflow Data Security
-- Tenant-isolated (same RLS as other data)
-- Cannot contain raw credentials (only refs)
+- Tenant-isolated by per-tenant workspace mounts and API authorization (no cross-tenant filesystem access)
+- `data/` should not contain raw credentials (treat it as non-secret config/state)
 - Size limits: 10MB per key, 100MB per workflow
 - Rate limits on writes
 - Schema validation when declared
@@ -768,11 +671,11 @@ All security concerns are consolidated here for clarity.
 1. User: "Create workflow to check Stripe for failed payments and notify finance"
                     |
                     v
-2. Orchestrator: Analyze request, gather context
-   - Search tenant's integrations (finds "Stripe" integration)
-   - Search similar workflows (pgvector)
+2. Agent: Analyze request, gather context
+   - List existing workflow folders (`workflows/`)
+   - Search similar workflows (pgvector) (optional)
    - Search knowledge base for relevant docs
-   - Gather credential REFERENCES (not values)
+   - Search tenant's integrations (finds "Stripe" integration)
                     |
                     v
 3. Missing information?
@@ -780,49 +683,44 @@ All security concerns are consolidated here for clarity.
    - No → Continue
                     |
                     v
-4. Orchestrator invokes Coding Agent
-   - Passes: requirements, integrations, credential refs, knowledge context
-   - Coding Agent may request_context() for additional info
-   - Orchestrator fetches from knowledge base and responds
-                    |
-                    v
-5. Coding Agent generates workflow:
+4. Agent creates/updates a workflow folder:
 
-   run.py:
+   run.py (example shape):
    ┌─────────────────────────────────────────────────────┐
-   │ from flowpal import sdk                             │
+   │ import json                                         │
+   │ import os                                           │
    │ import stripe                                       │
    │                                                     │
-   │ # Idempotent setup                                  │
-   │ sdk.ensure_package("stripe")                        │
+   │ inputs = json.loads(os.environ.get("FLOWPAL_INPUT_JSON", "{}")) │
+   │ customer_id = inputs["customer_id"]                 │
    │                                                     │
-   │ # Get credentials securely                          │
-   │ stripe.api_key = sdk.get_credential("cred:stripe")  │
+   │ # Credentials come from env (runner loads .env)      │
+   │ stripe.api_key = os.environ["STRIPE_API_KEY"]        │
    │                                                     │
    │ # Workflow logic                                    │
-   │ failed = stripe.PaymentIntent.list(status="failed") │
+   │ failed = stripe.PaymentIntent.list(customer=customer_id, status="failed") │
    │                                                     │
    │ # Output results                                    │
-   │ sdk.output({                                        │
+   │ print(json.dumps({                                  │
    │     "count": len(failed.data),                      │
-   │     "payments": [format(p) for p in failed.data]    │
-   │ })                                                  │
+   │     "payments": [p.to_dict() for p in failed.data]  │
+   │ }))                                                 │
    └─────────────────────────────────────────────────────┘
                     |
                     v
-6. Validate & store workflow package
-   - Security scan run.py for dangerous patterns
-   - Store package in S3: {tenant_id}/workflows/{workflow_id}/
-   - Store metadata + embeddings in PostgreSQL
+5. Validate & index workflow
+   - Security scan for dangerous patterns
+   - Store/update metadata + embeddings in PostgreSQL
+   - Workflow folder in workspace FS is the source of truth
                     |
                     v
-7. Engineer approval (required)
+6. Engineer approval (required)
    - Set version state: pending
-   - Engineer can review + edit run.py in UI
+   - Engineer can review + edit workflow files in UI
    - On approval: mark version approved, enable triggers
                     |
                     v
-8. Ready for execution
+7. Ready for execution
 ```
 
 ### Executing a Workflow
@@ -832,17 +730,16 @@ All security concerns are consolidated here for clarity.
                     |
                     v
 2. Provision sandbox (Firecracker/gVisor)
-   - Mount workflow package from S3
-   - Inject FlowPal SDK
-   - Resolve credentials → environment variables
-   - Pass inputs via sdk.get_input()
+   - Mount tenant workspace (or copy workflow folder to ephemeral run dir)
+   - Load `.env` (and/or inject scoped tokens)
+   - Pass inputs via `FLOWPAL_INPUT_JSON`
                     |
                     v
 3. Run run.py
    - Idempotent setup (install deps if needed)
    - Workflow logic executes
    - Logs streamed via WebSocket
-   - sdk.output() captures results
+   - stdout/stderr captured; JSON output normalized
                     |
                     v
 4. Capture results, destroy sandbox
@@ -884,74 +781,26 @@ All security concerns are consolidated here for clarity.
 
 ---
 
-## 10. Project Structure
-
-```
-flowpal/
-├── apps/
-│   ├── web/                    # Next.js frontend
-│   │   ├── app/
-│   │   │   ├── (dashboard)/
-│   │   │   │   ├── workflows/
-│   │   │   │   ├── executions/
-│   │   │   │   ├── approvals/
-│   │   │   │   ├── integrations/
-│   │   │   │   ├── credentials/
-│   │   │   │   └── knowledge/
-│   │   ├── components/
-│   │   │   └── results-viewer/     # JSON tree, auto-table, log viewer
-│   │   └── lib/
-│   │
-│   └── api/                    # Hono/Bun backend
-│       ├── src/
-│       │   ├── routes/
-│       │   ├── services/
-│       │   │   ├── workflow-data/
-│       │   │   └── audit/          # Unified audit logging
-│       │   ├── agents/
-│       │   │   ├── orchestrator/
-│       │   │   └── coding/
-│       │   ├── execution/
-│       │   ├── triggers/           # Scheduling, webhooks
-│       │   └── db/
-│
-├── packages/
-│   ├── flowpal-sdk/            # SDK for sandbox execution
-│   └── shared/                 # Shared types
-│
-└── infra/
-    ├── kubernetes/
-    ├── terraform/
-    └── docker/
-```
-
----
-
-## 11. Implementation Phases
+## 10. Implementation Phases
 
 | Phase | Focus |
 |-------|-------|
 | 1 | Foundation: Multi-tenant DB, auth, basic API |
-| 2 | Core Workflow: CRUD, Coding Agent integration, basic sandbox |
-| 3 | AI Agent Layer: Orchestrator, tools, similarity search |
-| 4 | Credentials: Vault, engineer Q&A, notifications |
+| 2 | Core Workflow: filesystem-backed workflow CRUD, basic sandbox runner |
+| 3 | AI Agent Layer: single agent (filesystem + shell), similarity search (optional) |
+| 4 | Credentials: `.env` workflow config, engineer Q&A, notifications; production option: Vault/proxy |
 | 5 | Triggers: Scheduling, webhooks, input parameters |
 | 6 | Hardening: Firecracker, security audit, monitoring |
 
 ---
 
-## 12. Key Design Decisions
+## 11. Key Design Decisions
 
-### Why Two-Layer Agents?
-- **Orchestrator** handles business logic, security, and coordination
-- **Coding Agent** focuses purely on code generation
-- Separation of concerns allows swapping coding agent implementation
-
-### Why Custom Coding Agent over OpenCode?
-- Full control over multi-tenant security model
-- No external dependency to maintain
-- Simpler deployment (no container-per-tenant overhead)
-- OpenCode can be used later if custom agent proves limiting
+### Why a Single Agent with Full Workspace Control?
+- **Fewer moving parts**: no agent-to-agent protocols, fewer “tool calls”, simpler debugging
+- **Filesystem as state**: workflows are discoverable and editable by listing folders and reading files
+- **Operational clarity**: everything needed to run a workflow (code/docs/deps/config) lives in one folder
+- **Good enough for MVP**: production-grade secret isolation can be added later (proxy/scoped tokens)
 
 ### Why pgvector for Similarity?
 - Single database for relational + vector data
@@ -972,7 +821,7 @@ flowpal/
 
 ---
 
-## 13. Future Enhancements
+## 12. Future Enhancements
 
 These features are intentionally deferred to reduce initial complexity:
 
@@ -1003,43 +852,41 @@ These features are intentionally deferred to reduce initial complexity:
 
 ---
 
-## 14. Verification Plan
+## 13. Verification Plan
 
 To verify the architecture works end-to-end:
 
 1. **Auth Flow**: Create org, invite user, assign roles
-2. **Credential Storage**: Store a test API key, verify encryption
+2. **Workflow Config**: Create `.env.example` + `.env` for a workflow and verify the runner loads env vars correctly (production option: verify Vault/proxy path)
 3. **Integration Setup**: Create integration with credentials
 4. **Knowledge Base**: Add knowledge entry linked to integration
-5. **Workflow Creation**: Submit prompt, verify AI generates run.py
-6. **Context Request**: Trigger Coding Agent to request_context(), verify Orchestrator responds
+5. **Workflow Creation**: Submit prompt, verify agent creates a workflow folder with `workflow.json`, `README.md`, `requirements.txt`, `run.py`
 7. **Engineer Q&A**: Trigger missing info scenario, answer question, verify knowledge base update
 8. **Approval Gate**: Create workflow as User, verify it is pending and cannot run
 9. **Engineer Approve**: Approve workflow, verify it becomes runnable
 10. **Manual Execution**: Run workflow, verify logs stream, results captured
 11. **Scheduled Execution**: Create schedule, verify workflow runs on time
 12. **Webhook Execution**: POST to webhook URL, verify workflow runs with payload
-13. **Input Parameters**: Run with inputs, verify sdk.get_input() works
+13. **Input Parameters**: Run with inputs, verify `FLOWPAL_INPUT_JSON` is passed and parsed correctly
 14. **Workflow Contract**: Verify `intent_summary` + `input_schema` are present and used (run form + validation)
 15. **Similarity**: Create similar workflow, verify reuse suggestion
-16. **Workflow Data Layer**: Create workflow with data, verify sdk.get_data() works
+16. **Workflow Data Folder**: Create workflow with `data/`, verify reads/writes work and UI editor updates files
 17. **Data Modification via AI**: Ask AI to "add a test case", verify data updates without code change
 18. **Error Handling**: Force a failure, verify retry and notifications
 19. **Audit Trail**: Verify all actions logged in unified audit system
 
 ---
 
-## 15. Critical Files to Implement First
+## 14. Critical Files to Implement First
 
 1. `apps/api/src/db/schema.sql` - Database schema with RLS
-2. `apps/api/src/agents/orchestrator/index.ts` - Main orchestrator with tool definitions
-3. `apps/api/src/agents/orchestrator/context-gatherer.ts` - Fetches tenant context
-4. `apps/api/src/agents/coding/agent.ts` - Custom coding agent implementation
-5. `apps/api/src/services/credential-vault.ts` - Secure credential storage
+2. `apps/api/src/agents/agent.ts` - Single agent entrypoint (filesystem + shell)
+3. `apps/api/src/workspaces/tenant-workspace.ts` - Per-tenant workspace provisioning/mounting
+4. `apps/api/src/execution/runner.ts` - Standard runner: loads `.env`, sets `FLOWPAL_INPUT_JSON`, captures output/logs
+5. `apps/api/src/services/credentials/` - v1 `.env` management helpers; production option: Vault/proxy integration
 6. `apps/api/src/services/audit/index.ts` - Unified audit logging service
 7. `apps/api/src/execution/sandbox-manager.ts` - Sandbox provisioning
 8. `apps/api/src/triggers/scheduler.ts` - Cron-based scheduling
 9. `apps/api/src/triggers/webhook.ts` - Webhook handler
-10. `packages/flowpal-sdk/src/index.ts` - SDK (get_credential, get_input, get_data, output)
 11. `apps/web/components/results-viewer/` - JSON tree, auto-table, log viewer
-12. `apps/api/src/services/workflow-data/data-store.ts` - Workflow data layer
+12. `apps/web/components/workflow-file-editor/` - Edit `run.py`, `workflow.json`, `README.md`, `data/` (Monaco + safe defaults)
