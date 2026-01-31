@@ -7,7 +7,6 @@ FlowPal OSS is a **single-tenant, self-hosted** application that lets a team def
 Users run an instance of **opencode** on their machine inside their project/workspace directory. That workspace contains:
 - workflow folders (`workflows/<slug>/...`)
 - a workspace-root instruction document for the agent (`AGENTS.md`)
-- tool scripts (`./tools/*`)
 
 FlowPal consists of just:
 - a **Next.js frontend**
@@ -16,9 +15,9 @@ FlowPal consists of just:
 - a **VSCode-in-browser workspace viewer** accessible from the web app (for viewing the workspace directory)
 
 **Communication model:**
-- tool scripts (running in the workspace) call the **Node backend API**
 - the **Node backend communicates with the opencode agent** (bi-directional) to pass user input, tool results, and status updates
-- **opencode plugins** (like `askAnEngineer`) handle long-running async operations where results may take hours
+- **opencode plugins** provide all tools the agent needs (e.g., `findSimilarWorkflow`, `runWorkflow`, `askAnEngineer`)
+- the agent **never runs scripts directly**; all workflow execution goes through the `runWorkflow` plugin which enforces approval checks
 
 This document describes the architecture and operational model for an **open-source distribution** where operators host **one isolated instance (frontend + backend + Postgres)**, while opencode runs on a user machine where the workspace lives.
 
@@ -36,8 +35,7 @@ This document describes the architecture and operational model for an **open-sou
      +---------------------------+        +---------------------------+
      |   FlowPal Web (Next.js)   |<------>|     Node Backend API      |
      |   UI + Admin Console      |        | (auth, chat, routing)     |
-     +-------------+-------------+        |  routing)                 |
-                   |                      +-------------+-------------+
+     +-------------+-------------+        +-------------+-------------+
                    |                                    |
                    |                                    v
                    |                      +---------------------------+
@@ -51,14 +49,17 @@ This document describes the architecture and operational model for an **open-sou
                     (User machine / Workspace)
      +--------------------------------------------------------------------+
      | Workspace directory                                                 |
-     |  - `AGENTS.md` (agent instructions)                           |
-     |  - `./tools/*` (scripts → call Node backend)                          |
-     |  - `workflows/<slug>/...` (workflow folders)                         |
-     |                                                                      |
-     |  +----------------------+                                            |
-     |  | opencode agent       |<----------- Node backend communicates ------|
-     |  | (runs in workspace)  |            with agent (bi-directional)      |
-     |  +----------------------+                                            |
+     |  - `AGENTS.md` (agent instructions)                                 |
+     |  - `workflows/<slug>/...` (workflow folders)                        |
+     |                                                                     |
+     |  +----------------------+                                           |
+     |  | opencode agent       |<----------- Node backend communicates ----|
+     |  | (runs in workspace)  |            with agent (bi-directional)    |
+     |  | + FlowPal plugins:   |                                           |
+     |  |   - findSimilarWorkflow                                          |
+     |  |   - runWorkflow                                                  |
+     |  |   - askAnEngineer                                                |
+     |  +----------------------+                                           |
      +--------------------------------------------------------------------+
 ```
 
@@ -95,30 +96,35 @@ This is intentionally simple: the agent can discover existing workflows by listi
 - **Simplest (default)**: credentials live in per-workflow `.env` files (human-managed)
 - **Recommended (production)**: credentials are stored outside the workspace (Vault/KMS/Secrets Manager) and injected at run time with scoped tokens or via internal proxy endpoints
 
-#### Workspace Root Agent Instructions + Tool Scripts
+#### Workspace Root Agent Instructions
 
-At the **root of every workspace**, we include a markdown “operating manual” for the opencode agent:
-- `AGENTS.md`: what a “workflow” is, required files, conventions, and how to create/update/run workflows safely.
-
-We also include a folder of **pre-written scripts** the agent can invoke as tools:
+At the **root of every workspace**, we include a markdown "operating manual" for the opencode agent:
+- `AGENTS.md`: what a "workflow" is, required files, conventions, and how to create/update/run workflows safely.
 
 ```
 <workspace_root>/
 ├── AGENTS.md
-└── tools/
-    └── findSimilarWorkflow  # return up to N similar workflows for a description
+└── workflows/
+    └── <slug>/...
 ```
 
-**Tool scripts** are the stable integration boundary between the local agent and the self-hosted instance:
+#### opencode Plugins (All Agent Tools)
+
+All tools the agent uses are implemented as **opencode plugins**, not as workspace scripts. This design ensures:
+- Centralized control over what the agent can do
+- Approval enforcement for workflow execution
+- Clean separation between workspace content and tooling
+
+**Available plugins:**
 - `findSimilarWorkflow`: queries embeddings/metadata and returns up to N candidate workflows (with paths + summaries) to reuse/adapt.
+- `runWorkflow`: executes a workflow by slug with provided inputs. **Enforces approval check** — only workflows approved by an engineer can be run. Returns an error if the workflow is not yet approved.
+- `askAnEngineer`: opens a question thread in the FlowPal UI for async human input (can take hours).
 
-**Key constraint (simple architecture):** tool scripts talk to the **Node backend API**, and the Node backend is responsible for forwarding the right information to/from the opencode agent.
+**Key constraint:** the agent **must never run scripts directly** (e.g., via shell commands). All workflow execution must go through the `runWorkflow` plugin, which validates approval status before execution.
 
-#### opencode Plugins (Async/Long-Running Operations)
+#### Async/Long-Running Operations
 
-For operations where the result may take hours (e.g., waiting for a human engineer to respond), we use **opencode plugins** instead of tool scripts. This allows the agent to pause and resume when the result becomes available.
-
-- `askAnEngineer`: opens a question thread in the FlowPal UI, routes it to engineers/admins, and the result is passed back to the agent only when a human responds. This can take minutes to hours, so it's implemented as a plugin rather than a blocking tool call.
+For operations where the result may take hours (e.g., waiting for a human engineer to respond via `askAnEngineer`), the opencode plugin architecture allows the agent to pause and resume when the result becomes available.
 
 ### 2.3 Workflow System
 
@@ -261,16 +267,109 @@ Design workflows to be idempotent when possible. Document idempotency expectatio
 
 **Built-in opencode capabilities:**
 - `fs`: read/write within workspace
-- `shell`: run commands (venv, install deps, run workflow)
+- `shell`: run commands (venv setup, install deps) — **NOT for running workflows**
 - `http`: make outbound requests (optional; can be disabled globally)
 
-**Workspace tool scripts** (in `./tools/`):
-- `findSimilarWorkflow`: query similar workflows via backend API
-
-**opencode plugins** (for async/long-running operations):
-- `askAnEngineer`: create a question task for Admin/Engineer, resume when answered
+**Critical constraint:** The agent must **never** use shell commands to run workflow scripts directly. All workflow execution must go through the `runWorkflow` plugin.
 
 For self-hosting, operators should be able to configure which tools are enabled and their boundaries (e.g., allowed outbound domains, max runtime, filesystem allowlist).
+
+### 3.1 FlowPal opencode Plugins (Tool Definitions)
+
+All FlowPal-specific tools are implemented as opencode plugins. The agent receives these tool definitions in its system prompt context.
+
+#### `findSimilarWorkflow`
+
+Query for existing workflows before creating new ones.
+
+**Parameters:**
+- `description` (string, required): Natural language description of what you're looking for
+- `limit` (integer, optional, default: 5): Maximum number of results to return
+
+**Behavior:**
+- Queries the workflow database using semantic similarity (pgvector embeddings when enabled)
+- Returns up to N candidate workflows with paths and summaries
+- Helps avoid duplicate work
+
+**Example response:**
+```json
+{
+  "matches": [
+    {
+      "path": "workflows/stripe-payment-alerts",
+      "similarity": 0.89,
+      "summary": "Monitors Stripe payments and sends Slack notifications for failures"
+    },
+    {
+      "path": "workflows/payment-retry-notifier",
+      "similarity": 0.72,
+      "summary": "Retries failed payments and emails customers"
+    }
+  ]
+}
+```
+
+#### `runWorkflow`
+
+Execute an approved workflow with the provided inputs. **This is the ONLY way the agent should execute workflows.**
+
+**Parameters:**
+- `slug` (string, required): The workflow slug (folder name under `workflows/`)
+- `inputs` (object, optional): Key-value pairs matching the workflow's input schema from `workflow.json`
+
+**Behavior:**
+- Checks if the workflow has been approved by an engineer
+- If NOT approved: returns an error (the agent cannot run unapproved workflows)
+- If approved: executes the workflow and returns the output
+- Automatically converts the `inputs` object to command-line arguments for the workflow
+
+**Example usage:**
+```json
+{
+  "slug": "failed-stripe-payments",
+  "inputs": {
+    "customer_id": "cus_123456",
+    "days_back": 14
+  }
+}
+```
+
+**Success response:**
+```json
+{
+  "status": "success",
+  "output": "Found 3 failed payments for customer cus_123456 in the last 14 days...",
+  "run_id": "run_abc123"
+}
+```
+
+**Error response (workflow not approved):**
+```json
+{
+  "status": "error",
+  "error": "workflow_not_approved",
+  "message": "The workflow 'failed-stripe-payments' has not been approved by an engineer. Please wait for approval before running."
+}
+```
+
+#### `askAnEngineer`
+
+Ask a human for help when you need information or clarification. This is an async operation that can take minutes to hours.
+
+**Parameters:**
+- `question` (string, required): The question to ask the engineer
+- `context` (string, optional): Additional context to help the engineer understand the question
+
+**Behavior:**
+- Creates a question/task in the FlowPal UI for Admin/Engineer
+- Optionally sends notifications (email/Slack if configured)
+- The agent pauses and resumes when a human responds
+- Can take minutes to hours depending on human availability
+
+**When to use:**
+- When missing credentials or API details
+- When unsure about implementation approach
+- When needing approval or clarification on requirements
 
 ---
 
@@ -412,11 +511,14 @@ FlowPal OSS provides guardrails, but **operators own the threat model** and must
 6. backend indexes metadata in Postgres (workflow list) and the UI reflects the updated workflow immediately
 
 ### Executing a Workflow
-1. user triggers run manually (from UI or agent)
-2. backend starts a run session (RBAC enforced) and forwards run request to the agent/runner on the user machine
-3. run is executed on the workspace host (local runner), optionally using a sandbox policy (Docker/gVisor/Firecracker depending on operator preference)
-4. console output (stdout/stderr) is captured; optional artifacts written to `runs/`
-5. run metadata stored in Postgres; UI streams status/logs
+1. user triggers run manually from UI, OR the agent calls the `runWorkflow` plugin
+2. `runWorkflow` plugin (or backend) **checks if the workflow is approved by an engineer**
+3. if not approved: returns an error to the caller (agent or UI)
+4. if approved: backend starts a run session (RBAC enforced) and executes on the workspace host (local runner), optionally using a sandbox policy (Docker/gVisor/Firecracker depending on operator preference)
+5. console output (stdout/stderr) is captured; optional artifacts written to `runs/`
+6. run metadata stored in Postgres; UI streams status/logs
+
+**Important:** The agent must never run workflows directly via shell commands. It must always use the `runWorkflow` plugin, which enforces approval checks.
 
 ---
 
@@ -498,7 +600,7 @@ Operators should validate:
 Backend:
 - `apps/api/` (Node API: auth, chat, workflows, runs)
 - `packages/db/` (schema + migrations)
-- `packages/agent/` (agent orchestration + tools)
+- `packages/opencode-plugins/` (FlowPal plugins: findSimilarWorkflow, runWorkflow, askAnEngineer)
 
 Frontend:
 - `apps/web/` (Next.js UI)

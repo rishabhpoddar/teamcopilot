@@ -4,13 +4,35 @@ This document is your operating manual for working within this directory (called
 
 ---
 
+## ⚠️ CRITICAL: Never Run Scripts Directly
+
+**You must NEVER execute workflow scripts directly using shell commands.**
+
+All workflow execution **must** go through the `runWorkflow` tool. This is enforced because:
+- Only workflows that have been **approved by an engineer** can be executed
+- The `runWorkflow` tool checks approval status before execution
+- If a workflow is not approved, `runWorkflow` will return an error
+
+**Forbidden actions:**
+- ❌ `python run.py`
+- ❌ `cd workflows/xxx && python run.py`
+- ❌ Any shell command that runs a workflow script
+
+**Required action:**
+- ✅ Use the `runWorkflow` tool to execute any workflow
+
+Violating this constraint bypasses safety checks and is not permitted.
+
+---
+
 ## What is a Workflow?
 
 A **workflow** is a self-contained automation package that lives in `workflows/<slug>/`. Each workflow:
 - Has a unique slug (lowercase, hyphenated, e.g., `failed-stripe-payments`)
 - Is filesystem-first: the folder contents are the source of truth
-- Can be triggered manually (either by you or a human)
-- Runs with `python run.py {optional args}` from within its folder
+- Can be triggered manually via the `runWorkflow` tool (by you) or from the UI (by a human)
+- Must be **approved by an engineer** before it can be executed
+- Internally runs with `python run.py {optional args}` (but you must use `runWorkflow`, not shell commands)
 
 ---
 
@@ -29,7 +51,7 @@ workflows/<slug>/
 ├── .venv/                 ← REQUIRED: per-workflow virtualenv
 ├── requirements.lock.txt  ← REQUIRED: pinned deps for reproducibility
 ├── data/                  ← OPTIONAL: non-secret config/state files
-└── runs/                  ← OPTIONAL: run outputs/logs (local artifacts)
+└── runs/                  ← REQUIRED: run outputs/logs (local artifacts)
 ```
 
 ---
@@ -110,6 +132,46 @@ stripe>=5.0.0
 requests>=2.28.0
 ```
 
+### 5. `runs/` — Run Outputs
+
+This folder stores the output of workflow executions performed by the `runWorkflow` tool. It is automatically populated when workflows are run.
+
+**Contents:**
+- Console output (stdout/stderr) from each run
+- Any artifacts the workflow explicitly writes to this folder
+- Run metadata for inspection and debugging
+
+**Usage:**
+- Use this folder to inspect past run outputs if needed
+- Workflows can write additional artifacts here (e.g., generated reports, exported data)
+- Each run may create a subfolder or file with a timestamp or run ID
+
+**Note:** This folder is managed by the execution environment. You can read from it but typically don't need to write to it directly from workflow code (use stdout instead).
+
+---
+
+## Optional Files
+
+### `data/` — Workflow State and Configuration
+
+This folder is for storing non-secret state and configuration as JSON files. Use it when your workflow needs to persist data between runs.
+
+**Guidelines:**
+- Store state as JSON files (e.g., `last_processed.json`, `cache.json`, `config.json`, `data.json` etc.)
+- Structure the folder however fits your workflow's needs
+- **Document any data structure in `README.md`** — whenever you add a new file, change the schema of an existing file, or modify the folder structure, update the workflow's README to reflect these changes
+
+**Example structure:**
+```
+data/
+├── last_sync.json       # Timestamp of last successful sync
+├── customer_cache.json  # Cached customer data to avoid re-fetching
+└── config.json          # Workflow-specific configuration overrides
+...
+```
+
+**Important:** Always document the purpose and schema of each file in the workflow's `README.md`. This helps future maintainers and AI agents understand what data is being stored and how it's structured.
+
 ---
 
 ## Conventions
@@ -126,7 +188,9 @@ requests>=2.28.0
    - `.env` — Add runtime secrets (never commit)
    - `.venv/` — Create a per-workflow virtualenv
    - `requirements.lock.txt` — Pin exact dependency versions
+   - `runs/` — Create empty folder for run outputs
 4. **Create `.env.example`** — Document all required secrets as a template
+5. **Optionally create `data/`** — If the workflow needs to persist state between runs (document structure in README)
 
 ### Updating an Existing Workflow
 
@@ -137,9 +201,13 @@ requests>=2.28.0
 
 ### Running Workflows
 
-- Workflows run from their folder with `python run.py {optional args}`
-- Outputs are written to the console (stdout/stderr)
-- Each workflow has its own `.venv/` virtualenv
+**⚠️ CRITICAL: Never run workflows directly via shell commands. Always use the `runWorkflow` tool.**
+
+- Workflows are executed via the `runWorkflow` tool (NOT via shell commands)
+- The tool checks if the workflow is approved before execution
+- If not approved, the tool returns an error — you cannot bypass this
+- Outputs are captured and returned by the tool
+- Each workflow has its own `.venv/` virtualenv (managed by the execution environment)
 - Dependencies are installed from `requirements.txt` and pinned in `requirements.lock.txt`
 
 ### Credential Handling
@@ -150,15 +218,16 @@ requests>=2.28.0
 
 ### Output and Artifacts
 
-- Write outputs to the console (stdout/stderr)
+- Write outputs to the console (stdout/stderr) — this is captured by the `runWorkflow` tool
 - Use structured formats (JSON) for machine-readable output when appropriate
-- Optionally write artifacts to `runs/` if file output is needed
+- The `runs/` folder stores execution outputs automatically
+- Workflows can write additional artifacts to `runs/` if file output is needed (e.g., reports, exports)
 
 ---
 
 ## Input Handling
 
-Inputs are passed as command-line arguments to `run.py`. Use `argparse` to parse them:
+When **writing** workflow code, inputs are passed as command-line arguments to `run.py`. Use `argparse` to parse them:
 
 ```python
 import argparse
@@ -173,66 +242,19 @@ customer_id = args.customer_id
 days_back = args.days_back
 ```
 
-Run the workflow with:
-```bash
-python run.py --customer_id cus_123 --days_back 14
-```
-
----
-
-## Available Tools
-
-The following tools are available in `./tools/` for your use:
-
-### `findSimilarWorkflow`
-
-Use to discover existing workflows that might be reusable or adaptable.
-
-**Behavior:**
-- Queries the workflow database using semantic similarity
-- Returns up to N candidate workflows with paths and summaries
-- Helps avoid duplicate work
-
-**When to use:**
-- Before creating a new workflow
-- When the user's request seems similar to existing functionality
-- To find patterns or code to reuse
-
-**Example usage:**
-```bash
-./tools/findSimilarWorkflow --description "Check Stripe for failed payments and notify via Slack" --limit 3
-```
-
-**Example response:**
-```json
-{
-  "matches": [
-    {
-      "path": "workflows/stripe-payment-alerts",
-      "similarity": 0.89,
-      "summary": "Monitors Stripe payments and sends Slack notifications for failures"
-    },
-    {
-      "path": "workflows/payment-retry-notifier",
-      "similarity": 0.72,
-      "summary": "Retries failed payments and emails customers"
-    }
-  ]
-}
-```
-
 ---
 
 ## Best Practices
 
-1. **Always check for existing workflows** before creating new ones. Only create new ones if no existing workflow can fit the request. If needed, modify the existing workflow to fit the request WITHOUT loosing older functionality.
-2. **Ask for help** when unsure — use your tools to ask help from an engineer.
-3. **Keep workflows focused** — one workflow, one purpose
-4. **Document thoroughly** — future you (and others) will thank you
-5. **Handle errors gracefully** — workflows should fail cleanly
-6. **Be idempotent** — workflows may be retried; design for it
-7. **Respect rate limits** — add appropriate delays for API calls
-8. **Log meaningfully** — include context in log messages
+1. **Never run scripts directly** — Always use the `runWorkflow` tool to execute workflows
+2. **Always check for existing workflows** before creating new ones. Only create new ones if no existing workflow can fit the request. If needed, modify the existing workflow to fit the request WITHOUT losing older functionality.
+3. **Ask for help** when unsure — use the `askAnEngineer` tool to ask help from an engineer
+4. **Keep workflows focused** — one workflow, one purpose
+5. **Document thoroughly** — future you (and others) will thank you
+6. **Handle errors gracefully** — workflows should fail cleanly
+7. **Be idempotent** — workflows may be retried; design for it
+8. **Respect rate limits** — add appropriate delays for API calls
+9. **Log meaningfully** — include context in log messages
 
 ---
 
@@ -255,7 +277,7 @@ Use to discover existing workflows that might be reusable or adaptable.
 
 When asked to "Create a workflow that checks Stripe for failed payments":
 
-1. Run `findSimilarWorkflow` to check for existing payment-related workflows
+1. Use the `findSimilarWorkflow` tool to check for existing payment-related workflows
 2. If no match, create `workflows/failed-stripe-payments/`
 3. Create all required files:
    - `workflow.json` — Define inputs (customer_id, days_back) and runtime config
@@ -265,5 +287,16 @@ When asked to "Create a workflow that checks Stripe for failed payments":
    - `.env` — Add `STRIPE_API_KEY` (never commit)
    - `.env.example` — Template with `STRIPE_API_KEY=sk_test_...`
    - `.venv/` — Create virtualenv with `python -m venv .venv`
+   - `runs/` — Create empty folder for run outputs
    - `README.md` — Document usage and required secrets
-4. If unsure about Stripe API details, use your tools to ask an engineer, or search the web etc.
+4. If unsure about Stripe API details, use the `askAnEngineer` tool to get help or search the web using your tools.
+5. **Do NOT run the workflow directly** — inform the user that the workflow needs engineer approval before it can be executed via `runWorkflow`
+
+## Example: Running an Existing Workflow
+
+When asked to "Run the failed-stripe-payments workflow for customer cus_123":
+
+1. **DO NOT** run `python run.py` or any shell command
+2. Use the `runWorkflow` tool.
+3. If the workflow is not approved, inform the user about the error and that they need to wait for engineer approval
+4. If the workflow runs successfully, report the output to the user
