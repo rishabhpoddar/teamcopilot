@@ -6,7 +6,7 @@ FlowPal OSS is a **single-tenant, self-hosted** application that lets a team def
 
 Users run an instance of **opencode** on their machine inside their project/workspace directory. That workspace contains:
 - workflow folders (`workflows/<slug>/...`)
-- a workspace-root instruction document for the agent (`FLOWPAL_AGENT.md`)
+- a workspace-root instruction document for the agent (`AGENTS.md`)
 - pre-written tool scripts (`.flowpal/tools/*`)
 
 FlowPal consists of just:
@@ -50,7 +50,7 @@ This document describes the architecture and operational model for an **open-sou
                     (User machine / Workspace)
      +--------------------------------------------------------------------+
      | Workspace directory                                                 |
-     |  - `FLOWPAL_AGENT.md` (agent instructions)                           |
+     |  - `AGENTS.md` (agent instructions)                           |
      |  - `.flowpal/tools/*` (scripts → call Node backend)                  |
      |  - `workflows/<slug>/...` (workflow folders)                         |
      |                                                                      |
@@ -97,13 +97,13 @@ This is intentionally simple: the agent can discover existing workflows by listi
 #### Workspace Root Agent Instructions + Tool Scripts
 
 At the **root of every workspace**, we include a markdown “operating manual” for the opencode agent:
-- `FLOWPAL_AGENT.md`: what a “workflow” is, required files, conventions, and how to create/update/run workflows safely.
+- `AGENTS.md`: what a “workflow” is, required files, conventions, and how to create/update/run workflows safely.
 
 We also include a folder of **pre-written scripts** the agent can invoke as tools:
 
 ```
 <workspace_root>/
-├── FLOWPAL_AGENT.md
+├── AGENTS.md
 └── .flowpal/
     └── tools/
         ├── askAnEngineer        # create a question for engineers on the platform/instance
