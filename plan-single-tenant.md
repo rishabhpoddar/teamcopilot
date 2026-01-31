@@ -7,7 +7,7 @@ FlowPal OSS is a **single-tenant, self-hosted** application that lets a team def
 Users run an instance of **opencode** on their machine inside their project/workspace directory. That workspace contains:
 - workflow folders (`workflows/<slug>/...`)
 - a workspace-root instruction document for the agent (`AGENTS.md`)
-- pre-written tool scripts (`.flowpal/tools/*`)
+- tool scripts (`./tools/*`)
 
 FlowPal consists of just:
 - a **Next.js frontend**
@@ -18,6 +18,7 @@ FlowPal consists of just:
 **Communication model:**
 - tool scripts (running in the workspace) call the **Node backend API**
 - the **Node backend communicates with the opencode agent** (bi-directional) to pass user input, tool results, and status updates
+- **opencode plugins** (like `askAnEngineer`) handle long-running async operations where results may take hours
 
 This document describes the architecture and operational model for an **open-source distribution** where operators host **one isolated instance (frontend + backend + Postgres)**, while opencode runs on a user machine where the workspace lives.
 
@@ -51,7 +52,7 @@ This document describes the architecture and operational model for an **open-sou
      +--------------------------------------------------------------------+
      | Workspace directory                                                 |
      |  - `AGENTS.md` (agent instructions)                           |
-     |  - `.flowpal/tools/*` (scripts → call Node backend)                  |
+     |  - `./tools/*` (scripts → call Node backend)                          |
      |  - `workflows/<slug>/...` (workflow folders)                         |
      |                                                                      |
      |  +----------------------+                                            |
@@ -104,17 +105,20 @@ We also include a folder of **pre-written scripts** the agent can invoke as tool
 ```
 <workspace_root>/
 ├── AGENTS.md
-└── .flowpal/
-    └── tools/
-        ├── askAnEngineer        # create a question for engineers on the platform/instance
-        └── findSimilarWorkflow  # return up to N similar workflows for a description
+└── tools/
+    └── findSimilarWorkflow  # return up to N similar workflows for a description
 ```
 
-These scripts are the stable integration boundary between the local agent and the self-hosted instance:
-- `askAnEngineer`: opens a question thread, routes it to engineers/admins, and returns the answer (async/polling) plus optional knowledge write-back.
+**Tool scripts** are the stable integration boundary between the local agent and the self-hosted instance:
 - `findSimilarWorkflow`: queries embeddings/metadata and returns up to N candidate workflows (with paths + summaries) to reuse/adapt.
 
 **Key constraint (simple architecture):** tool scripts talk to the **Node backend API**, and the Node backend is responsible for forwarding the right information to/from the opencode agent.
+
+#### opencode Plugins (Async/Long-Running Operations)
+
+For operations where the result may take hours (e.g., waiting for a human engineer to respond), we use **opencode plugins** instead of tool scripts. This allows the agent to pause and resume when the result becomes available.
+
+- `askAnEngineer`: opens a question thread in the FlowPal UI, routes it to engineers/admins, and the result is passed back to the agent only when a human responds. This can take minutes to hours, so it's implemented as a plugin rather than a blocking tool call.
 
 ### 2.3 Workflow System
 
@@ -143,30 +147,28 @@ Workspace
         ├── README.md              ← Required: docs + usage
         ├── run.py                 ← Required: entrypoint script
         ├── requirements.txt       ← Required: Python deps
-        ├── .env                   ← Required (simplest): runtime config (human-managed; not committed)
+        ├── .env                   ← Required: runtime secrets (human-managed; not committed)
+        ├── .venv/                 ← Required: per-workflow virtualenv (local)
+        ├── requirements.lock.txt  ← Required: pinned deps for reproducibility
         ├── .env.example           ← Recommended: documented template (committed)
-        ├── .gitignore             ← Recommended: ignore `.env`, `.venv/`, `runs/`, etc.
-        ├── .venv/                 ← Recommended: per-workflow virtualenv (local)
-        ├── requirements.lock.txt  ← Recommended: pinned deps for reproducibility
         ├── data/                  ← Optional: non-secret config/state files
-        ├── runs/                  ← Optional: run outputs/logs (local artifacts)
-        └── tests/                 ← Optional: unit/integration tests
+        └── runs/                  ← Optional: run outputs/logs (local artifacts)
 ```
 
 #### Workflow Contract (How the System Knows What a Workflow Does)
 
-FlowPal does not attempt to parse arbitrary `run.py`. Instead, each workflow folder contains a small manifest in `workflow.json` that the UI and execution layer treat as the workflow’s contract:
-- **`intent_summary`**: human-readable “what it does” summary
+FlowPal does not attempt to parse arbitrary `run.py`. Instead, each workflow folder contains a small manifest in `workflow.json` that the UI and execution layer treat as the workflow's contract:
+- **`intent_summary`**: human-readable "what it does" summary
 - **`inputs`**: required/optional inputs with types/defaults
-- **`triggers`**: schedule/webhook/manual trigger configuration
-- **`runtime`**: execution requirements (python version, timeout, retries)
-- **`capabilities`**: declared external access needs (network, filesystem paths, etc.)
+- **`triggers`**: trigger configuration (manual is always true)
+- **`runtime`**: execution requirements (python version, timeout)
 
 #### Workflow Conventions (Filesystem-First)
 
 To keep self-hosting predictable:
-- Workflows must be runnable from their folder with `python run.py` (or a wrapper the runner controls).
-- Workflow outputs should be written to `runs/<run_id>/` (never overwrite global files).
+- Workflows must be runnable from their folder with `python run.py {optional args}`.
+- Workflow outputs are written to the console (stdout/stderr).
+- Optionally write artifacts to `runs/` if file output is needed.
 - Never commit `.env` to source control; use `.env.example`.
 
 ### 2.4 Credential & Knowledge Management
@@ -197,32 +199,22 @@ The agent should be able to:
 - list and inspect workflow folders
 - propose new workflows
 - modify existing workflows (edits files in place)
-- request missing information from a human via the UI (if enabled), via `askAnEngineer`
-- reuse existing work via `findSimilarWorkflow` (optional but recommended when pgvector is enabled)
+- request missing information from a human via the `askAnEngineer` opencode plugin
+- reuse existing work via `findSimilarWorkflow` tool (optional but recommended when pgvector is enabled)
 
 In this architecture, the Node backend maintains a bi-directional communication channel with the opencode agent (e.g., WebSocket). It:
 - forwards UI chat messages (user → agent)
 - forwards agent events (agent → UI): status, diffs (optional), questions, run progress
 - persists artifacts to Postgres (workflow metadata, run metadata, audit logs)
 
-For OSS, `askAnEngineer` is implemented as:
+For OSS, the `askAnEngineer` plugin is implemented as:
 - creating a UI task / notification for an Admin/Engineer
 - optionally sending email/Slack if configured
+- returning the answer to the agent only when a human responds (can take hours)
 
 ### 2.7 Workflow Data Layer
 
-Each workflow can store small bits of non-secret state/data in `data/` or via a backend-provided key/value interface. Minimal interface:
-
-```python
-# Read data (returns None if key doesn't exist)
-value = flowpal.data.get("cursor")
-
-# Write data
-flowpal.data.set("cursor", "2026-01-31T00:00:00Z")
-
-# Append to array data (best-effort)
-flowpal.data.append("processed_ids", "evt_123")
-```
+Each workflow can store small bits of non-secret state/data in the `data/` folder within the workflow directory. This is plain filesystem storage.
 
 Operators should treat workflow data as **application state** and back it up with the rest of the workspace volume.
 
@@ -231,10 +223,10 @@ Operators should treat workflow data as **application state** and back it up wit
 Workflows execute on the **user machine** (where opencode is running) in the workspace. The backend coordinates and records metadata, but does not require a separate worker tier.
 
 Execution responsibilities:
-- creates/uses a Python venv
-- installs dependencies
-- runs `run.py` with inputs
-- captures logs + artifacts
+- uses the workflow's `.venv/` virtualenv
+- installs dependencies from `requirements.txt`
+- runs `python run.py` with command-line arguments
+- captures console output (stdout/stderr)
 
 **Sandbox choices:**
 - **Simplest**: Docker container + Linux user isolation (fastest to ship, weakest boundary)
@@ -243,35 +235,40 @@ Execution responsibilities:
 ### 2.9 Workflow Triggers & Inputs
 
 Triggers:
-- **manual** (from UI)
-- **schedule** (cron-like)
-- **webhook** (HTTP endpoint that maps to a workflow)
+- **manual** (from UI or by the agent) — always enabled
 
-Inputs are passed into the run as JSON and made available through the runtime helper:
+Inputs are passed as command-line arguments to `run.py`. Use `argparse` to parse them:
 
 ```python
-inputs = flowpal.inputs()
-customer_id = inputs.get("customer_id")
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--customer_id", required=True, help="The Stripe customer ID")
+parser.add_argument("--days_back", type=int, default=7, help="Days to look back")
+args = parser.parse_args()
 ```
 
-### 2.10 Error Handling & Retry
+### 2.10 Error Handling
 
 Per workflow runtime config:
-- max retries
-- retry backoff
 - timeout
 
-Retries must be careful with side effects; the workflow contract should document idempotency expectations.
+Design workflows to be idempotent when possible. Document idempotency expectations in `README.md`.
 
 ---
 
-## 3. AI Agent Tools (OSS Distribution)
+## 3. AI Agent Tools & Plugins (OSS Distribution)
 
-The agent runtime typically needs:
+**Built-in opencode capabilities:**
 - `fs`: read/write within workspace
-- `shell`: run commands (venv, install deps, run workflow/tests)
+- `shell`: run commands (venv, install deps, run workflow)
 - `http`: make outbound requests (optional; can be disabled globally)
-- `ask_human`: create a question task for Admin/Engineer
+
+**Workspace tool scripts** (in `./tools/`):
+- `findSimilarWorkflow`: query similar workflows via backend API
+
+**opencode plugins** (for async/long-running operations):
+- `askAnEngineer`: create a question task for Admin/Engineer, resume when answered
 
 For self-hosting, operators should be able to configure which tools are enabled and their boundaries (e.g., allowed outbound domains, max runtime, filesystem allowlist).
 
@@ -409,16 +406,16 @@ FlowPal OSS provides guardrails, but **operators own the threat model** and must
 ### Creating a Workflow
 1. user sends a chat request in the UI
 2. Node backend forwards the message to the opencode agent (running on the user machine)
-3. agent inspects existing workflows for reuse (and may call `findSimilarWorkflow`)
-4. if missing info: agent calls `askAnEngineer` and waits for an answer
+3. agent inspects existing workflows for reuse (and may call `findSimilarWorkflow` tool)
+4. if missing info: agent uses the `askAnEngineer` plugin — the agent pauses until a human responds (can take hours)
 5. agent writes/updates a workflow folder
 6. backend indexes metadata in Postgres (workflow list) and the UI reflects the updated workflow immediately
 
 ### Executing a Workflow
-1. user triggers run (manual/scheduled/webhook)
+1. user triggers run manually (from UI or agent)
 2. backend starts a run session (RBAC enforced) and forwards run request to the agent/runner on the user machine
 3. run is executed on the workspace host (local runner), optionally using a sandbox policy (Docker/gVisor/Firecracker depending on operator preference)
-4. logs and artifacts written to `runs/<run_id>/`
+4. console output (stdout/stderr) is captured; optional artifacts written to `runs/`
 5. run metadata stored in Postgres; UI streams status/logs
 
 ---
