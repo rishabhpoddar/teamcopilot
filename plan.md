@@ -362,6 +362,7 @@ test_cases_path.write_text(json.dumps(test_cases))
 **Sandbox Options:**
 - **Firecracker microVMs** - Strongest isolation (recommended for production)
 - **gVisor containers** - Lighter weight for lower-risk workloads
+- **Vercel Sandbox** - Managed, multi-tenant isolated sandboxes (Firecracker-backed) suitable for running untrusted code and agent-driven workflows ([docs](https://vercel.com/docs/vercel-sandbox))
 
 **Security Features:**
 - Isolated filesystem per execution
@@ -605,7 +606,7 @@ When the agent needs information it doesn't have:
 | Database | PostgreSQL + pgvector |
 | Cache/Queue | Redis + BullMQ |
 | Real-time | Socket.IO |
-| Sandbox | Firecracker/gVisor |
+| Sandbox | Firecracker/gVisor (self-managed) or [Vercel Sandbox](https://vercel.com/docs/vercel-sandbox) (managed option) |
 
 ### Frontend
 | Component | Technology |
