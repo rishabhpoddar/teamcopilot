@@ -81,7 +81,6 @@ This manifest defines what the workflow does and how it runs. The UI and executi
     "manual": true, // will always be true.
   },
   "runtime": {
-    "python_version": "3.11", // can be a different one as well depending on which version is installed in the system.
     "timeout_seconds": 300
   }
 }

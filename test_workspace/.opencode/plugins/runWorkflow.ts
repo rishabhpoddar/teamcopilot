@@ -19,7 +19,6 @@ interface WorkflowJson {
   inputs?: Record<string, WorkflowInput>
   triggers?: Record<string, unknown>
   runtime?: {
-    python_version?: string
     timeout_seconds?: number
   }
 }
