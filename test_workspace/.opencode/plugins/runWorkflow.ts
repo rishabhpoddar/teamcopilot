@@ -537,6 +537,8 @@ export const RunWorkflowPlugin: Plugin = async (_ctx) => {
           console.log(`[runWorkflow] Timeout: ${timeoutSeconds}s`)
           console.log(`[runWorkflow] Arguments: ${cmdArgs.join(" ")}\n`)
 
+          // TODO: Need to make sure this workflow is approved by an admin user.
+
           // Run the workflow
           const result = await runWithTimeout(
             workflowPath,
