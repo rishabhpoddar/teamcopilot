@@ -195,10 +195,11 @@ data/
 
 1. **Read the current files** — Understand existing logic before modifying
 2. **Re-check the workflow slug** — If you want to change what `run.py` does, you MUST ensure the workflow folder slug (the `workflows/<slug>/` name) is still apt for the workflow’s purpose. If it no longer fits, consider finding a more appropriate existing workflow or creating a new workflow with a better slug instead of overloading the old one.
-3. **Preserve the contract** — If changing inputs/outputs, update `workflow.json`
-4. **Keep `workflow.json` aligned with behavior** — If you modify `run.py`, you MUST also update the `intent_summary` in `workflow.json` to match the new/updated behavior.
-5. **Update documentation** — Keep `README.md` in sync with changes
-6. **Test locally if possible** — Run the workflow to verify changes
+3. **Modify the `run.py` file** to implement the desired functionality.
+4. **Preserve the contract** — If changing inputs/outputs, update `workflow.json`
+5. **Keep `workflow.json` aligned with behavior** — If you modify `run.py`, you MUST also update the `intent_summary` in `workflow.json` to match the new/updated behavior.
+6. **Update documentation** — Keep `README.md` in sync with changes
+7. **Test locally if possible** — Run the workflow to verify changes
 
 ### Running Workflows
 
