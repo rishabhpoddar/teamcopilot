@@ -50,8 +50,7 @@ workflows/<slug>/
 ├── .env.example           ← RECOMMENDED: documented template
 ├── .venv/                 ← REQUIRED: per-workflow virtualenv
 ├── requirements.lock.txt  ← REQUIRED: records installed versions for reference
-├── data/                  ← OPTIONAL: non-secret config/state files
-└── runs/                  ← REQUIRED: run outputs/logs (local artifacts)
+└── data/                  ← OPTIONAL: non-secret config/state files
 ```
 
 ---
@@ -150,22 +149,6 @@ pip freeze > requirements.lock.txt
 - Never edit this file manually
 - This ensures the lock file accurately reflects what's installed in the virtualenv
 
-### 5. `runs/` — Run Outputs
-
-This folder stores the output of workflow executions performed by the `runWorkflow` tool. It is automatically populated when workflows are run.
-
-**Contents:**
-- Console output (stdout/stderr) from each run
-- Any artifacts the workflow explicitly writes to this folder
-- Run metadata for inspection and debugging
-
-**Usage:**
-- Use this folder to inspect past run outputs if needed
-- Workflows can write additional artifacts here (e.g., generated reports, exported data)
-- Each run may create a subfolder or file with a timestamp or run ID
-
-**Note:** This folder is managed by the execution environment. You can read from it but typically don't need to write to it directly from workflow code (use stdout instead).
-
 ---
 
 ## Optional Files
@@ -206,7 +189,6 @@ data/
    - `.env` — Add runtime secrets (never commit)
    - `.venv/` — Create a per-workflow virtualenv
    - `requirements.lock.txt` — Record installed dependency versions
-   - `runs/` — Create empty folder for run outputs
 4. **Create `.env.example`** — Document all required secrets as a template
 5. **Optionally create `data/`** — If the workflow needs to persist state between runs (document structure in README)
 
@@ -238,8 +220,6 @@ data/
 
 - Write outputs to the console (stdout/stderr) — this is captured by the `runWorkflow` tool
 - Use structured formats (JSON) for machine-readable output when appropriate
-- The `runs/` folder stores execution outputs automatically
-- Workflows can write additional artifacts to `runs/` if file output is needed (e.g., reports, exports)
 
 ---
 
@@ -305,7 +285,6 @@ When asked to "Create a workflow that checks Stripe for failed payments":
    - `.env` — Add `STRIPE_API_KEY` (never commit)
    - `.env.example` — Template with `STRIPE_API_KEY=sk_test_...`
    - `.venv/` — Create virtualenv with `python -m venv .venv`
-   - `runs/` — Create empty folder for run outputs
    - `README.md` — Document usage and required secrets
 4. If unsure about Stripe API details, ask the user for help or search the web using your tools.
 5. **Do NOT run the workflow directly** — inform the user that the workflow needs admin approval before it can be executed via `runWorkflow`

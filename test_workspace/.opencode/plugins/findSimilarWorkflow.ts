@@ -1,20 +1,11 @@
 import { type Plugin, tool } from "@opencode-ai/plugin"
 import { pipeline } from "@huggingface/transformers"
-import * as fs from "fs/promises"
 import * as path from "path"
-
-interface WorkflowMatch {
-  path: string
-  similarity: number
-  summary: string
-}
-
-interface WorkflowJson {
-  intent_summary?: string
-  inputs?: Record<string, unknown>
-  triggers?: Record<string, unknown>
-  runtime?: Record<string, unknown>
-}
+import {
+  type WorkflowMatch,
+  readWorkflowJson,
+  getWorkflowDirs,
+} from "./shared"
 
 // Cache the extractor pipeline
 let extractor: Awaited<ReturnType<typeof pipeline>> | null = null
@@ -43,36 +34,6 @@ function cosineSimilarity(vecA: number[], vecB: number[]): number {
   const magnitudeA = Math.sqrt(vecA.reduce((sum, a) => sum + a * a, 0))
   const magnitudeB = Math.sqrt(vecB.reduce((sum, b) => sum + b * b, 0))
   return dotProduct / (magnitudeA * magnitudeB)
-}
-
-/**
- * Reads workflow.json from a workflow directory and extracts the summary.
- */
-async function readWorkflowJson(
-  workflowPath: string
-): Promise<WorkflowJson | null> {
-  const workflowJsonPath = path.join(workflowPath, "workflow.json")
-  try {
-    const content = await fs.readFile(workflowJsonPath, "utf-8")
-    return JSON.parse(content) as WorkflowJson
-  } catch {
-    return null
-  }
-}
-
-/**
- * Gets all workflow directories from the workflows/ folder.
- */
-async function getWorkflowDirs(workspaceDir: string): Promise<string[]> {
-  const workflowsDir = path.join(workspaceDir, "workflows")
-  try {
-    const entries = await fs.readdir(workflowsDir, { withFileTypes: true })
-    return entries
-      .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
-      .map((entry) => path.join(workflowsDir, entry.name))
-  } catch {
-    return []
-  }
 }
 
 export const FindSimilarWorkflowPlugin: Plugin = async (_ctx) => {
