@@ -195,9 +195,11 @@ data/
 ### Updating an Existing Workflow
 
 1. **Read the current files** — Understand existing logic before modifying
-2. **Preserve the contract** — If changing inputs/outputs, update `workflow.json`
-3. **Update documentation** — Keep `README.md` in sync with changes
-4. **Test locally if possible** — Run the workflow to verify changes
+2. **Re-check the workflow slug** — If you want to change what `run.py` does, you MUST ensure the workflow folder slug (the `workflows/<slug>/` name) is still apt for the workflow’s purpose. If it no longer fits, consider finding a more appropriate existing workflow or creating a new workflow with a better slug instead of overloading the old one.
+3. **Preserve the contract** — If changing inputs/outputs, update `workflow.json`
+4. **Keep `workflow.json` aligned with behavior** — If you modify `run.py`, you MUST also update the `intent_summary` in `workflow.json` to match the new/updated behavior.
+5. **Update documentation** — Keep `README.md` in sync with changes
+6. **Test locally if possible** — Run the workflow to verify changes
 
 ### Running Workflows
 
@@ -253,6 +255,8 @@ days_back = args.days_back
 7. **Be idempotent** — workflows may be retried; design for it
 8. **Respect rate limits** — add appropriate delays for API calls
 9. **Log meaningfully** — include context in log messages
+10. **Don’t outgrow the slug** — If you want to change `run.py` meaningfully, re-check that the workflow slug is still apt; otherwise choose/create a workflow whose slug matches the intent.
+11. **Keep the intent contract current** — Any change to `run.py` requires updating `workflow.json` `intent_summary` accordingly.
 
 ---
 
