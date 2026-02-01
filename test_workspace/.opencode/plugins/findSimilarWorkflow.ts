@@ -1,11 +1,65 @@
 import { type Plugin, tool } from "@opencode-ai/plugin"
 import { pipeline } from "@huggingface/transformers"
+import * as fs from "fs/promises"
 import * as path from "path"
-import {
-  type WorkflowMatch,
-  readWorkflowJson,
-  getWorkflowDirs,
-} from "./shared"
+
+// ============================================================================
+// Types
+// ============================================================================
+
+interface WorkflowJson {
+  intent_summary?: string
+  inputs?: Record<string, unknown>
+  triggers?: Record<string, unknown>
+  runtime?: {
+    python_version?: string
+    timeout_seconds?: number
+  }
+}
+
+interface WorkflowMatch {
+  path: string
+  similarity: number
+  summary: string
+}
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/**
+ * Reads and parses workflow.json from a workflow directory.
+ */
+async function readWorkflowJson(
+  workflowPath: string
+): Promise<WorkflowJson | null> {
+  const workflowJsonPath = path.join(workflowPath, "workflow.json")
+  try {
+    const content = await fs.readFile(workflowJsonPath, "utf-8")
+    return JSON.parse(content) as WorkflowJson
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Gets all workflow directories from the workflows/ folder.
+ */
+async function getWorkflowDirs(workspaceDir: string): Promise<string[]> {
+  const workflowsDir = path.join(workspaceDir, "workflows")
+  try {
+    const entries = await fs.readdir(workflowsDir, { withFileTypes: true })
+    return entries
+      .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
+      .map((entry) => path.join(workflowsDir, entry.name))
+  } catch {
+    return []
+  }
+}
+
+// ============================================================================
+// Embedding Functions
+// ============================================================================
 
 // Cache the extractor pipeline
 let extractor: Awaited<ReturnType<typeof pipeline>> | null = null
@@ -35,6 +89,10 @@ function cosineSimilarity(vecA: number[], vecB: number[]): number {
   const magnitudeB = Math.sqrt(vecB.reduce((sum, b) => sum + b * b, 0))
   return dotProduct / (magnitudeA * magnitudeB)
 }
+
+// ============================================================================
+// Plugin
+// ============================================================================
 
 export const FindSimilarWorkflowPlugin: Plugin = async (_ctx) => {
   return {

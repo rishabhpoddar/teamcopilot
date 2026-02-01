@@ -2,11 +2,27 @@ import { type Plugin, tool } from "@opencode-ai/plugin"
 import { spawn } from "child_process"
 import * as fs from "fs/promises"
 import * as path from "path"
-import {
-  type WorkflowInput,
-  readWorkflowJson,
-  venvExists,
-} from "./shared"
+
+// ============================================================================
+// Types
+// ============================================================================
+
+interface WorkflowInput {
+  type: "string" | "number" | "boolean" | "integer"
+  required?: boolean
+  default?: string | number | boolean
+  description?: string
+}
+
+interface WorkflowJson {
+  intent_summary?: string
+  inputs?: Record<string, WorkflowInput>
+  triggers?: Record<string, unknown>
+  runtime?: {
+    python_version?: string
+    timeout_seconds?: number
+  }
+}
 
 interface ValidationResult {
   valid: boolean
@@ -14,10 +30,14 @@ interface ValidationResult {
   processedInputs: Record<string, string | number | boolean>
 }
 
+type RunStatus = "success" | "error" | "timeout"
+
+// ============================================================================
+// Constants
+// ============================================================================
+
 const SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const MAX_OUTPUT_CHARS = 300_000
-
-type RunStatus = "success" | "error" | "timeout"
 
 // ============================================================================
 // Process cleanup coordination (avoid stacking global handlers per run)
@@ -55,8 +75,36 @@ function installGlobalCleanupHandlersOnce(): void {
 }
 
 // ============================================================================
-// Helpers
+// Helper Functions
 // ============================================================================
+
+/**
+ * Reads and parses workflow.json from a workflow directory.
+ */
+async function readWorkflowJson(
+  workflowPath: string
+): Promise<WorkflowJson | null> {
+  const workflowJsonPath = path.join(workflowPath, "workflow.json")
+  try {
+    const content = await fs.readFile(workflowJsonPath, "utf-8")
+    return JSON.parse(content) as WorkflowJson
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Checks if the workflow's .venv exists.
+ */
+async function venvExists(workflowPath: string): Promise<boolean> {
+  const venvPath = path.join(workflowPath, ".venv")
+  try {
+    const stats = await fs.stat(venvPath)
+    return stats.isDirectory()
+  } catch {
+    return false
+  }
+}
 
 async function pathExists(p: string): Promise<boolean> {
   try {
@@ -409,6 +457,10 @@ function runWithTimeout(
     })
   })
 }
+
+// ============================================================================
+// Plugin
+// ============================================================================
 
 export const RunWorkflowPlugin: Plugin = async (_ctx) => {
   return {
