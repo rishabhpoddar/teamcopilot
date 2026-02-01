@@ -306,7 +306,7 @@ Execute an approved workflow with the provided inputs. **This is the ONLY way th
 - `inputs` (object, optional): Key-value pairs matching the workflow's input schema from `workflow.json`
 
 **Behavior:**
-- Checks if the workflow has been approved by an admin user
+- Checks if the workflow has been approved by doing a **semantic comparison** with a version of that workflow (if one exists) that has already been approved by an admin. If the current workflow is semantically equivalent to an approved version, it is treated as approved; otherwise it must be explicitly approved.
 - If NOT approved: returns an error (the agent cannot run unapproved workflows)
 - If approved: executes the workflow and returns the output
 - Automatically converts the `inputs` object to command-line arguments for the workflow
@@ -481,7 +481,7 @@ FlowPal OSS provides guardrails, but **operators own the threat model** and must
 
 ### Executing a Workflow
 1. user triggers run manually from UI, OR the agent calls the `runWorkflow` plugin
-2. `runWorkflow` plugin (or backend) **checks if the workflow is approved by an admin user**
+2. `runWorkflow` plugin (or backend) **checks if the workflow is approved** by doing a semantic comparison with a version of that workflow (if it exists) that has already been approved
 3. if not approved: returns an error to the caller (agent or UI)
 4. if approved: backend starts a run session (RBAC enforced) and executes on the workspace host (local runner), optionally using a sandbox policy (Docker/gVisor/Firecracker depending on operator preference)
 5. console output (stdout/stderr) is captured; optional artifacts written to `runs/`
