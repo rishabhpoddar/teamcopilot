@@ -78,6 +78,7 @@ FlowPal OSS assumes:
 **User roles (suggested):**
 - **Admin**: manage instance settings, users, credentials policy, and **approve workflows for execution**
 - **User**: request workflows, trigger runs (for approved workflows only), view outputs subject to permissions
+- **Engineer**: approve workflows for execution + whatever User can do.
 
 > You can simplify further (single “owner” role) for early OSS releases; the rest of the doc still applies.
 
@@ -306,7 +307,7 @@ Execute an approved workflow with the provided inputs. **This is the ONLY way th
 - `inputs` (object, optional): Key-value pairs matching the workflow's input schema from `workflow.json`
 
 **Behavior:**
-- Checks if the workflow has been approved by doing a **semantic comparison** with a version of that workflow (if one exists) that has already been approved by an admin. If the current workflow is semantically equivalent to an approved version, it is treated as approved; otherwise it must be explicitly approved.
+- Checks if the workflow has been approved by doing a **semantic comparison** with a version of that workflow (if one exists) that has already been approved by an engineer. If the current workflow is semantically equivalent to an approved version, it is treated as approved; otherwise it must be explicitly approved.
 - If NOT approved: returns an error (the agent cannot run unapproved workflows)
 - If approved: executes the workflow and returns the output
 - Automatically converts the `inputs` object to command-line arguments for the workflow
@@ -336,7 +337,7 @@ Execute an approved workflow with the provided inputs. **This is the ONLY way th
 {
   "status": "error",
   "error": "workflow_not_approved",
-  "message": "The workflow 'failed-stripe-payments' has not been approved by an admin. Please wait for admin approval before running."
+  "message": "The workflow 'failed-stripe-payments' has not been approved by an engineer. Please wait for an engineer's approval before running."
 }
 ```
 

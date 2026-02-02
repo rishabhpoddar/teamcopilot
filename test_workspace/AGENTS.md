@@ -31,7 +31,7 @@ A **workflow** is a self-contained automation package that lives in `workflows/<
 - Has a unique slug (lowercase, hyphenated, e.g., `failed-stripe-payments`)
 - Is filesystem-first: the folder contents are the source of truth
 - Can be triggered manually via the `runWorkflow` tool (by you) or from the UI (by a human)
-- Must be **approved by an admin user** before it can be executed
+- Must be **approved by an engineer user** before it can be executed
 - Internally runs with `python run.py {optional args}` (but you must use `runWorkflow`, not shell commands)
 
 ---
@@ -295,7 +295,7 @@ When asked to "Create a workflow that checks Stripe for failed payments":
    - `.venv/` — Create virtualenv with `python -m venv .venv`
    - `README.md` — Document usage and required secrets
 4. If unsure about Stripe API details, ask the user for help or search the web using your tools.
-5. **Do NOT run the workflow directly** — inform the user that the workflow needs admin approval before it can be executed via `runWorkflow`
+5. **Do NOT run the workflow directly** — inform the user that the workflow needs an engineer's approval before it can be executed via `runWorkflow`
 
 ## Example: Running an Existing Workflow
 
@@ -303,5 +303,5 @@ When asked to "Run the failed-stripe-payments workflow for customer cus_123":
 
 1. **DO NOT** run `python run.py` or any shell command
 2. Use the `runWorkflow` tool.
-3. If the workflow is not approved, inform the user about the error and that they need to wait for admin approval
+3. If the workflow is not approved, inform the user about the error and that they need to wait for an engineer's approval
 4. If the workflow runs successfully, report the output to the user
