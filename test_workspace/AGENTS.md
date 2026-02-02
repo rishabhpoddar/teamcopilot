@@ -179,6 +179,8 @@ data/
 ### Creating a New Workflow
 
 1. **Check for similar workflows first** — Use the `findSimilarWorkflow` tool to avoid duplicating effort
+   - If you find a similar workflow, **learn from it**: take relevant business logic from it.
+   - If you find a similar workflow that can form a sub part of your new workflow, you may **reuse it directly**: consider calling the existing workflow from your new workflow (instead of duplicating logic) when the existing workflow already does most of what you need.
 2. **Create the folder** — `workflows/<slug>/`
 3. **Create all required files**:
    - `workflow.json` — Define the contract
@@ -248,6 +250,8 @@ days_back = args.days_back
 
 1. **Never run scripts directly** — Always use the `runWorkflow` tool to execute workflows
 2. **Always check for existing workflows** before creating new ones. Only create new ones if no existing workflow can fit the request. If needed, modify the existing workflow to fit the request WITHOUT losing older functionality.
+   - If you find a similar workflow, **study it and follow its business logic and conventions**.
+   - If an existing workflow can be reused as a sub part of your new workflow, call it directly as opposed to duplicating logic.
 3. **Ask the user for help** when unsure.
 4. **Keep workflows focused** — one workflow, one purpose
 5. **Document thoroughly** — future you (and others) will thank you
