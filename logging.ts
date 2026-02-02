@@ -5,7 +5,7 @@ const options = {
     level: 'debug', app: "flowpal-" + process.env.ENV!
 }
 
-export function logError({ err, apiPath, apiMethod, customMeta, shouldSendErrorToSlack }: { err: any, apiPath?: string, apiMethod?: string, customMeta?: Record<string, any>, shouldSendErrorToSlack?: boolean }) {
+export function logError({ err, apiPath, apiMethod, customMeta }: { err: any, apiPath?: string, apiMethod?: string, customMeta?: Record<string, any> }) {
     if (err instanceof AxiosError) {
         err = {
             message: JSON.stringify({
