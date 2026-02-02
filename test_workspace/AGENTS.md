@@ -8,12 +8,16 @@ This document is your operating manual for working within this directory (called
 
 **You must NEVER execute workflow scripts directly using shell commands.**
 
-All workflow execution **must** go through the `runWorkflow` tool. This is enforced because:
+All workflow execution performed by the agent **must** go through the `runWorkflow` tool. This is enforced because:
 - Only workflows that have been **approved by an admin user** can be executed
 - The `runWorkflow` tool checks approval status before execution
 - If a workflow is not approved, `runWorkflow` will return an error
 
-**Forbidden actions:**
+**However:** workflows must be written so that a **human** can run them directly with Python (without any agent tooling):
+- ✅ `python run.py ...` (run by a human, from the workflow directory)
+- ✅ The script must contain everything required to complete the workflow end-to-end (given correct deps + env)
+
+**Forbidden actions (for the agent):**
 - ❌ `python run.py`
 - ❌ `cd workflows/xxx && python run.py`
 - ❌ Any shell command that runs a workflow script
@@ -32,7 +36,9 @@ A **workflow** is a self-contained automation package that lives in `workflows/<
 - Is filesystem-first: the folder contents are the source of truth
 - Can be triggered manually via the `runWorkflow` tool (by you) or from the UI (by a human)
 - Must be **approved by an engineer user** before it can be executed
-- Internally runs with `python run.py {optional args}` (but you must use `runWorkflow`, not shell commands)
+- Internally runs with `python run.py {optional args}`
+  - **Agent execution**: must be invoked via `runWorkflow` (never via shell)
+  - **Human execution**: may be run directly via `python run.py ...`
 
 ---
 
@@ -98,7 +104,8 @@ Document:
 ### 3. `run.py` — Entrypoint Script
 
 The main script that executes the workflow logic. It must:
-- Be runnable via `python run.py`
+- Be runnable via `python run.py` (when run by a human, without any agent/tooling)
+- Be end-to-end self-contained: it should perform the full workflow (setup (if needed) + inputs → processing → outputs) in one invocation
 - Read inputs via args passed to the script.
 - Write outputs to to the console.
 - Handle errors gracefully
@@ -248,7 +255,7 @@ days_back = args.days_back
 
 ## Best Practices
 
-1. **Never run scripts directly** — Always use the `runWorkflow` tool to execute workflows
+1. **Agent: never run scripts directly** — Always use the `runWorkflow` tool to execute workflows (humans may run `python run.py ...` directly)
 2. **Always check for existing workflows** before creating new ones. Only create new ones if no existing workflow can fit the request. If needed, modify the existing workflow to fit the request WITHOUT losing older functionality.
    - If you find a similar workflow, **study it and follow its business logic and conventions**.
    - If an existing workflow can be reused as a sub part of your new workflow, call it directly as opposed to duplicating logic.
