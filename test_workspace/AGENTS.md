@@ -34,6 +34,7 @@ Violating this constraint bypasses safety checks and is not permitted.
 A **workflow** is a self-contained automation package that lives in `workflows/<slug>/`. Each workflow:
 - Has a unique slug (lowercase, hyphenated, e.g., `failed-stripe-payments`)
 - Is filesystem-first: the folder contents are the source of truth
+- Must be self-contained on disk: **any external additions** required by the workflow (e.g., cloned git repos, downloaded SDKs/assets, vendored scripts, fixtures) **must be placed inside** `workflows/<slug>/` and **must not** be created/checked out anywhere outside the workflow folder
 - Can be triggered manually via the `runWorkflow` tool (by you) or from the UI (by a human)
 - Must be **approved by an engineer user** before it can be executed
 - Internally runs with `python run.py {optional args}`
@@ -268,6 +269,7 @@ days_back = args.days_back
 9. **Log meaningfully** — include context in log messages
 10. **Don’t outgrow the slug** — If you want to change `run.py` meaningfully, re-check that the workflow slug is still apt; otherwise choose/create a workflow whose slug matches the intent.
 11. **Keep the intent contract current** — Any change to `run.py` requires updating `workflow.json` `intent_summary` accordingly.
+12. **Keep dependencies/artifacts inside the workflow folder** — If you must add external files (e.g., clone a repo, vendor code, download fixtures), put them under `workflows/<slug>/` and never outside it.
 
 ---
 
