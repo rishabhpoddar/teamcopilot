@@ -19,6 +19,7 @@ import axios from "axios";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import cookieParser from "cookie-parser";
+import path from 'path';
 const app = express();
 
 const JWT_SECRET = process.env.JWT_SECRET
@@ -55,16 +56,18 @@ app.use((req, res, next) => {
     next();
 });
 
-app.get("/", (req, res) => {
+const apiRouter = express.Router();
+
+apiRouter.get("/", (req, res) => {
     // for healthcheck
     res.send("Hello from the API!");
 });
 
-app.get('/auth/google', (req, res) => {
+apiRouter.get('/auth/google', (req, res) => {
     const redirectUri = 'https://accounts.google.com/o/oauth2/v2/auth?' +
         new URLSearchParams({
             client_id: process.env.GOOGLE_CLIENT_ID!,
-            redirect_uri: process.env.API_URL + "/auth/google/callback",
+            redirect_uri: process.env.API_URL + "/api/auth/google/callback",
             response_type: 'code',
             scope: 'email profile',
             state: crypto.randomBytes(16).toString('hex') // Add state parameter for security
@@ -73,7 +76,7 @@ app.get('/auth/google', (req, res) => {
     res.redirect(redirectUri);
 });
 
-app.get('/auth/google/callback', (async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+apiRouter.get('/auth/google/callback', (async (req: express.Request, res: express.Response, next: express.NextFunction) => {
     const code = req.query.code;
     const error = req.query.error;
 
@@ -86,7 +89,7 @@ app.get('/auth/google/callback', (async (req: express.Request, res: express.Resp
         const { data } = await axios.post('https://oauth2.googleapis.com/token', {
             code,
             client_id: process.env.GOOGLE_CLIENT_ID!,
-            redirect_uri: process.env.API_URL + "/auth/google/callback",
+            redirect_uri: process.env.API_URL + "/api/auth/google/callback",
             grant_type: 'authorization_code',
             client_secret: process.env.GOOGLE_CLIENT_SECRET!,
         }, {
@@ -133,7 +136,7 @@ app.get('/auth/google/callback', (async (req: express.Request, res: express.Resp
     }
 }) as express.RequestHandler);
 
-app.get("/:version/auth/me", apiHandler(async (req, res) => {
+apiRouter.get("/:version/auth/me", apiHandler(async (req, res) => {
     res.send({
         userId: req.userId,
         email: req.email,
@@ -142,9 +145,9 @@ app.get("/:version/auth/me", apiHandler(async (req, res) => {
 }, true, ["v1"]));
 
 
-app.use('/:version/user', userRouter);
+apiRouter.use('/:version/user', userRouter);
 
-app.get('/healthcheck', async (req, res) => {
+apiRouter.get('/healthcheck', async (req, res) => {
     try {
         let value = await prisma.key_value.findFirst({ where: { key: 'healthcheck' } });
         if (value === null) {
@@ -158,11 +161,14 @@ app.get('/healthcheck', async (req, res) => {
     }
 });
 
-app.use("*", (req, res, next) => {
-    next({
-        status: 404,
-        message: "Not found"
-    });
+app.use('/api', apiRouter);
+
+// Serve static assets (JS, CSS, etc.) with correct MIME types
+app.use(express.static(path.join(__dirname, "frontend", "dist")));
+
+// SPA fallback: serve index.html for non-API routes (client-side routing)
+app.get("*", (req, res) => {
+    res.sendFile(path.join(__dirname, "frontend", "dist", "index.html"));
 });
 
 app.use(async (err: any, req: express.Request, res: express.Response, _: express.NextFunction) => {
@@ -176,4 +182,4 @@ app.use(async (err: any, req: express.Request, res: express.Response, _: express
 
 startCronJobs();
 
-app.listen(3001);
+app.listen(3000);

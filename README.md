@@ -9,7 +9,7 @@ npm install
 npm run dev
 ```
 
-The server will run on port 3001.
+The server will run on port 3000.
 
 ## Managing prisma schema
 
