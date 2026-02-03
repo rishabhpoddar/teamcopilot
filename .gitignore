@@ -4,3 +4,7 @@ playground.ts
 dist/
 env.local
 env.prod
+*.db
+*.db-journal
+*.db-shm
+*.db-wal

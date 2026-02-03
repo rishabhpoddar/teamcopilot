@@ -2,7 +2,7 @@ import logdna from "@logdna/logger";
 import { AxiosError } from "axios";
 
 const options = {
-    level: 'debug', app: "flowpal-" + process.env.ENV!
+    level: 'debug', app: "flowpal"
 }
 
 export function logError({ err, apiPath, apiMethod, customMeta }: { err: any, apiPath?: string, apiMethod?: string, customMeta?: Record<string, any> }) {

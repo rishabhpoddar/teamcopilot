@@ -164,11 +164,11 @@ apiRouter.get('/healthcheck', async (req, res) => {
 app.use('/api', apiRouter);
 
 // Serve static assets (JS, CSS, etc.) with correct MIME types
-app.use(express.static(path.join(__dirname, "frontend", "dist")));
+app.use(express.static(path.join(__dirname, "..", "frontend", "dist")));
 
 // SPA fallback: serve index.html for non-API routes (client-side routing)
 app.get("*", (req, res) => {
-    res.sendFile(path.join(__dirname, "frontend", "dist", "index.html"));
+    res.sendFile(path.join(__dirname, "..", "frontend", "dist", "index.html"));
 });
 
 app.use(async (err: any, req: express.Request, res: express.Response, _: express.NextFunction) => {

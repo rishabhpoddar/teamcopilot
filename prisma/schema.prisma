@@ -3,15 +3,12 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
-/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
-
 model users {
-  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id             String @id @default(uuid())
   email          String @unique
   name           String
   created_at     BigInt
@@ -19,6 +16,6 @@ model users {
 }
 
 model key_value {
-  key   String @id @db.Text
-  value String @db.Text
+  key   String @id
+  value String
 }

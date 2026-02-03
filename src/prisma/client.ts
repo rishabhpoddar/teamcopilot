@@ -7,4 +7,7 @@ const prisma = new PrismaClient({
     },
 });
 
+// Enable WAL mode for better SQLite concurrency (allows reads during writes)
+prisma.$executeRawUnsafe('PRAGMA journal_mode = WAL;').catch(() => {});
+
 export default prisma;

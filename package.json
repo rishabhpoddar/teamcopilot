@@ -1,10 +1,11 @@
 {
   "name": "api",
   "version": "1.0.0",
-  "main": "index.ts",
+  "main": "dist/index.js",
   "scripts": {
-    "start": "ts-node index.ts",
-    "dev": "ts-node-dev index.ts"
+    "build": "tsc",
+    "start": "tsc && node dist/index.js",
+    "dev": "ts-node-dev src/index.ts"
   },
   "keywords": [],
   "author": "",
