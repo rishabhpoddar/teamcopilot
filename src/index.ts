@@ -51,7 +51,7 @@ app.use((req, res, next) => {
             userAgent: req.get('user-agent'),
             ip: req.ip
         };
-        await logInfo(`HTTP Request: ${req.method} ${req.path} ${res.statusCode}`, { meta: logData });
+        logInfo(`HTTP Request: ${req.method} ${req.path} ${res.statusCode}`, { meta: logData });
     });
     next();
 });
