@@ -15,35 +15,6 @@ npm run dev
 
 ---
 
-## Project Structure
-
-```
-flowpal/
-├── index.ts              # Main Express server
-├── utils.ts              # API handler and JWT utilities
-├── types.ts              # TypeScript type definitions
-├── logging.ts            # Logging utilities
-├── constants.ts          # Constants
-├── prisma/
-│   ├── schema.prisma     # Database schema
-│   ├── client.ts         # Prisma client config
-│   ├── migrations/       # Database migrations
-│   └── dev.db            # SQLite database (created on first run)
-├── frontend/
-│   ├── src/              # React source code
-│   └── dist/             # Built frontend (served by Express)
-├── user/                 # User API routes
-├── cronjob/              # Scheduled jobs
-├── sample_workspace/     # Example workflows
-│   └── workflows/        # Individual workflow packages
-├── .env                  # Environment configuration (not committed)
-├── .env.example          # Environment template
-├── Dockerfile
-└── package.json
-```
-
----
-
 ## Managing the Database
 
 ### View Database Contents

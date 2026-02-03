@@ -61,12 +61,10 @@ docker build -t flowpal .
 docker run -d \
   --name flowpal \
   -p 3000:3000 \
-  -v flowpal-data:/app/data \
-  -v flowpal-workspaces:/app/workspaces \
-  -e DATABASE_URL="file:../data/flowpal.db" \
-  -e API_URL="http://localhost:3000" \
-  -e WEBSITE_URL="http://localhost:3000" \
-  -e JWT_SECRET="change-me-in-production" \
+  -v db-data:/app/data \
+  -v my-workspaces:/app/workspaces \
+  -e SERVICE_URL="http://localhost:3000" \
+  -e JWT_SECRET="your-secret-key" \
   flowpal
 ```
 
@@ -76,8 +74,8 @@ The application will be available at **http://localhost:3000**
 
 | Volume | Container Path | Purpose |
 |--------|---------------|---------|
-| `flowpal-data` | `/app/data` | SQLite database file |
-| `flowpal-workspaces` | `/app/workspaces` | User workflow storage |
+| `db-data` | `/app/data` | SQLite database file |
+| `my-workspaces` | `/app/workspaces` | User workflow storage |
 
 Data is persisted in Docker named volumes. Even if you remove and recreate the container, your database and workspaces are retained.
 
@@ -87,14 +85,14 @@ Data is persisted in Docker named volumes. Even if you remove and recreate the c
 
 ### Environment Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `DATABASE_URL` | SQLite database path | `file:./dev.db` |
-| `API_URL` | Backend API URL | `http://localhost:3000` |
-| `WEBSITE_URL` | Frontend URL | `http://localhost:3000` |
-| `JWT_SECRET` | Secret for JWT tokens | (required) |
+| Variable | Description |
+|----------|-------------|
+| `SERVICE_URL` | URL where the service is accessible |
+| `JWT_SECRET` | Secret for JWT tokens |
+| `DATABASE_URL` | SQLite database path |
+| `WORKSPACE_DIR` | Path to workspace directory |
 
-> Note: `DATABASE_URL` is relative to the `prisma/` directory. For Docker, the default is overridden to `file:../data/flowpal.db` so the database lives in a separate mountable directory.
+> Note: `DATABASE_URL` is relative to the `prisma/` directory. For Docker, `DATABASE_URL` and `WORKSPACE_DIR` are set automatically in the image.
 
 ---
 

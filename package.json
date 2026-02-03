@@ -12,7 +12,6 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "@logdna/logger": "^2.6.11",
     "@prisma/client": "^6.0.1",
     "@slack/web-api": "^7.8.0",
     "@supabase/supabase-js": "^2.47.8",

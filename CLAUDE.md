@@ -57,7 +57,7 @@ All authenticated/versioned API routes use the `apiHandler` wrapper from `src/ut
 ```typescript
 apiRouter.get("/:version/endpoint", apiHandler(async (req, res) => {
     // req.version, req.userId, req.email, req.name available
-}, requireAuth, ["v1"]));
+}, true, ["v1"]));
 ```
 
 `apiHandler` handles: API version validation from the URL path, JWT token verification from `Authorization: Bearer` header, and user lookup from Prisma. The `CustomRequest` type extends Express Request with `version`, `userId`, `email`, and `name`.
@@ -78,11 +78,11 @@ Non-API `GET *` requests serve `frontend/dist/index.html` for client-side routin
 
 ### Database
 
-SQLite via Prisma ORM. Schema is at `prisma/schema.prisma` (also duplicated at `src/prisma/schema.prisma`). Currently two tables: `users` and `key_value`. SQLite uses WAL mode for concurrency (configured in `src/prisma/client.ts`).
+SQLite via Prisma ORM. Schema is at `prisma/schema.prisma`. Currently two tables: `users` and `key_value`. SQLite uses WAL mode for concurrency (configured in `src/prisma/client.ts`).
 
 ### Logging
 
-`src/logging.ts` provides `logInfo` and `logError`. Uses LogDNA when `LOGDNA_KEY` is set, otherwise falls back to console.
+`src/logging.ts` provides `logInfo` and `logError`. Both use `console.log` and `console.error` respectively.
 
 ### Cron Jobs
 
@@ -90,9 +90,9 @@ SQLite via Prisma ORM. Schema is at `prisma/schema.prisma` (also duplicated at `
 
 ## Environment Variables
 
-Required: `JWT_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
-URLs: `API_URL` (default `http://localhost:3000`), `WEBSITE_URL` (same), `DATABASE_URL` (default `file:./dev.db` relative to `prisma/`)
-Optional: `LOGDNA_KEY`, `SLACK_BOT_TOKEN`
+Required: `JWT_SECRET`, `SERVICE_URL` (default `http://localhost:3000`), `DATABASE_URL` (default `file:./dev.db` relative to `prisma/`)
+Google OAuth: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` (required for authentication to work)
+Optional: `WORKSPACE_DIR` (absolute path or relative to project root, default `./my-workspaces`)
 
 ## Design Direction
 

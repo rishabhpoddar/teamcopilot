@@ -31,7 +31,7 @@ if (!JWT_SECRET) {
 app.use(express.json());
 
 app.use(cors({
-    origin: process.env.WEBSITE_URL,
+    origin: process.env.SERVICE_URL,
     credentials: true
 }));
 
@@ -67,7 +67,7 @@ apiRouter.get('/auth/google', (req, res) => {
     const redirectUri = 'https://accounts.google.com/o/oauth2/v2/auth?' +
         new URLSearchParams({
             client_id: process.env.GOOGLE_CLIENT_ID!,
-            redirect_uri: process.env.API_URL + "/api/auth/google/callback",
+            redirect_uri: process.env.SERVICE_URL + "/api/auth/google/callback",
             response_type: 'code',
             scope: 'email profile',
             state: crypto.randomBytes(16).toString('hex') // Add state parameter for security
@@ -81,7 +81,7 @@ apiRouter.get('/auth/google/callback', (async (req: express.Request, res: expres
     const error = req.query.error;
 
     if (error) {
-        return res.redirect(`${process.env.WEBSITE_URL}/login`);
+        return res.redirect(`${process.env.SERVICE_URL}/login`);
     }
 
     try {
@@ -89,7 +89,7 @@ apiRouter.get('/auth/google/callback', (async (req: express.Request, res: expres
         const { data } = await axios.post('https://oauth2.googleapis.com/token', {
             code,
             client_id: process.env.GOOGLE_CLIENT_ID!,
-            redirect_uri: process.env.API_URL + "/api/auth/google/callback",
+            redirect_uri: process.env.SERVICE_URL + "/api/auth/google/callback",
             grant_type: 'authorization_code',
             client_secret: process.env.GOOGLE_CLIENT_SECRET!,
         }, {
@@ -130,7 +130,7 @@ apiRouter.get('/auth/google/callback', (async (req: express.Request, res: expres
         );
 
         // Redirect with the token
-        res.redirect(`${process.env.WEBSITE_URL}/auth-success?token=${token}`);
+        res.redirect(`${process.env.SERVICE_URL}/auth-success?token=${token}`);
     } catch (err) {
         next(err);
     }

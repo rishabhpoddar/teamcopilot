@@ -24,5 +24,9 @@ RUN cd frontend && npm run build
 # Database is stored in /app/data (separate from prisma/ so it can be volume-mounted independently)
 RUN mkdir -p /app/data
 
+# Default environment variables
+ENV DATABASE_URL="file:/app/data/data.db"
+ENV WORKSPACE_DIR="/app/workspaces"
+
 EXPOSE 3000
 CMD npx prisma migrate deploy && node dist/index.js

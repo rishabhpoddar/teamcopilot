@@ -1,0 +1,14 @@
+{
+    "name": "flowpal-opencode-plugins",
+    "version": "1.0.0",
+    "description": "OpenCode plugins for FlowPal workflow management",
+    "type": "module",
+    "dependencies": {
+        "@huggingface/transformers": "^3.0.0",
+        "@opencode-ai/plugin": "1.1.48"
+    },
+    "devDependencies": {
+        "@types/node": "^20.0.0",
+        "typescript": "^5.0.0"
+    }
+}
