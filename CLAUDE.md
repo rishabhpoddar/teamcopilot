@@ -64,11 +64,12 @@ apiRouter.get("/:version/endpoint", apiHandler(async (req, res) => {
 
 ### Authentication Flow
 
-Google OAuth 2.0 → JWT tokens (365-day expiry). The flow:
-1. `/api/auth/google` → redirects to Google consent
-2. `/api/auth/google/callback` → exchanges code, upserts user, creates JWT
-3. Redirects to `/auth-success?token={token}` on the frontend
-4. Frontend stores token and sends `Authorization: Bearer {token}` on subsequent requests
+Email/password auth → JWT tokens (365-day expiry). The flow:
+1. `POST /api/auth/signup` — creates user with bcrypt-hashed password, returns JWT
+2. `POST /api/auth/signin` — validates credentials, returns JWT
+3. Frontend stores token in localStorage and sends `Authorization: Bearer {token}` on subsequent requests
+4. Password reset via CLI: `npm run reset-password -- user@example.com` prints a reset URL
+5. `POST /api/auth/reset-password` — accepts `{ token, newPassword }` to complete the reset
 
 ### Route Structure
 
@@ -91,7 +92,6 @@ SQLite via Prisma ORM. Schema is at `prisma/schema.prisma`. Currently two tables
 ## Environment Variables
 
 Required: `JWT_SECRET`, `SERVICE_URL` (default `http://localhost:3000`), `DATABASE_URL` (default `file:./dev.db` relative to `prisma/`)
-Google OAuth: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` (required for authentication to work)
 Optional: `WORKSPACE_DIR` (absolute path or relative to project root, default `./my-workspaces`)
 
 ## Design Direction

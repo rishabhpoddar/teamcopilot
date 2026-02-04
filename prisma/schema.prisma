@@ -8,11 +8,13 @@ datasource db {
 }
 
 model users {
-  id             String @id @default(uuid())
-  email          String @unique
-  name           String
-  created_at     BigInt
-  google_user_id String @unique
+  id                     String  @id @default(uuid())
+  email                  String  @unique
+  name                   String
+  created_at             BigInt
+  password_hash          String
+  reset_token            String?
+  reset_token_expires_at BigInt?
 }
 
 model key_value {
