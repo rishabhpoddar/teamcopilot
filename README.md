@@ -96,10 +96,33 @@ Data is persisted in Docker named volumes. Even if you remove and recreate the c
 
 ---
 
+## User Management
+
+### Creating an Account
+
+Visit the application in your browser and click **Sign Up**. You'll need to provide a name, email, and password (minimum 8 characters).
+
+### Signing In
+
+Visit `/login` and enter your email and password.
+
+### Resetting a Password
+
+Password reset is done via a CLI command on the server. There is no email-based reset flow.
+
+1. Run the reset command with the user's email:
+   ```bash
+   npm run reset-password -- user@example.com
+   ```
+2. This prints a one-time reset link to the console (valid for 1 hour).
+3. Open the link in a browser and set a new password.
+
+---
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, project structure, and database management.
 
 ## License
 
-[Add your license here]
+MIT License
