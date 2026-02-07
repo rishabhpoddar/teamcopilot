@@ -13,7 +13,7 @@ interface AuthContextType {
     token: string | null;
     loading: boolean;
     login: (email: string, password: string) => Promise<void>;
-    signup: (email: string, name: string, password: string) => Promise<void>;
+    signup: (email: string, name: string, password: string, role: 'User' | 'Engineer') => Promise<void>;
     logout: () => void;
 }
 
@@ -29,7 +29,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!token) {
             return;
         }
-        fetch('/api/v1/auth/me', {
+        fetch('/api/auth/me', {
             headers: { Authorization: `Bearer ${token}` }
         })
             .then(res => {
@@ -56,11 +56,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setToken(data.token);
     };
 
-    const signup = async (email: string, name: string, password: string) => {
+    const signup = async (email: string, name: string, password: string, role: 'User' | 'Engineer') => {
         const res = await fetch('/api/auth/signup', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, name, password })
+            body: JSON.stringify({ email, name, password, role })
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Sign up failed');

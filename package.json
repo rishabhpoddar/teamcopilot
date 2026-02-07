@@ -3,9 +3,11 @@
   "version": "1.0.0",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc",
-    "start": "tsc && node dist/index.js",
-    "dev": "ts-node-dev src/index.ts",
+    "build": "cd frontend && npm run build && cd .. && tsc",
+    "start": "npm run build && node dist/index.js",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "ts-node-dev src/index.ts",
+    "dev:frontend": "cd frontend && npm run dev",
     "reset-password": "ts-node src/reset-password.ts"
   },
   "keywords": [],
@@ -37,5 +39,8 @@
     "twitter-api-v2": "^1.22.0",
     "typescript": "^5.7.2",
     "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
   }
 }

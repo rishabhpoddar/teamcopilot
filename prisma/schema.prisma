@@ -11,6 +11,7 @@ model users {
   id                     String  @id @default(uuid())
   email                  String  @unique
   name                   String
+  role                   String  // "User" or "Engineer"
   created_at             BigInt
   password_hash          String
   reset_token            String?

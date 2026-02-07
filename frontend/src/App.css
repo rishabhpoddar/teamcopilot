@@ -27,7 +27,8 @@
   font-size: 0.9rem;
 }
 
-.auth-form input {
+.auth-form input,
+.auth-form select {
   padding: 0.5rem 0.75rem;
   border-radius: 6px;
   border: 1px solid #444;
@@ -37,7 +38,8 @@
   font-family: inherit;
 }
 
-.auth-form input:focus {
+.auth-form input:focus,
+.auth-form select:focus {
   outline: 2px solid #646cff;
   border-color: transparent;
 }
@@ -59,7 +61,8 @@
 }
 
 @media (prefers-color-scheme: light) {
-  .auth-form input {
+  .auth-form input,
+  .auth-form select {
     border-color: #ccc;
   }
 }

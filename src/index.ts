@@ -12,19 +12,10 @@ import express from "express";
 import cors from "cors";
 import prisma from "./prisma/client";
 import { logError, logInfo } from "./logging";
-import userRouter from "./user";
+import authRouter from "./auth";
 import { startCronJobs } from "./cronjob";
-import { apiHandler } from './utils';
-import jwt from "jsonwebtoken";
-import bcrypt from "bcryptjs";
 import path from 'path';
 const app = express();
-
-const JWT_SECRET = process.env.JWT_SECRET
-
-if (!JWT_SECRET) {
-    throw new Error('JWT_SECRET is not set');
-}
 
 app.use(express.json());
 
@@ -58,116 +49,7 @@ apiRouter.get("/", (req, res) => {
     res.send("Hello from the API!");
 });
 
-apiRouter.post('/auth/signup', (async (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    try {
-        const { email, name, password } = req.body;
-
-        if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-            return res.status(400).json({ error: 'Invalid email address' });
-        }
-        if (!name || name.trim().length === 0) {
-            return res.status(400).json({ error: 'Name is required' });
-        }
-        if (!password || password.length < 8) {
-            return res.status(400).json({ error: 'Password must be at least 8 characters' });
-        }
-
-        const existing = await prisma.users.findUnique({ where: { email } });
-        if (existing) {
-            return res.status(409).json({ error: 'An account with this email already exists' });
-        }
-
-        const password_hash = await bcrypt.hash(password, 12);
-        const user = await prisma.users.create({
-            data: { email, name: name.trim(), password_hash, created_at: Date.now() }
-        });
-
-        const token = jwt.sign(
-            { sub: user.id, email: user.email, name: user.name },
-            JWT_SECRET,
-            { expiresIn: '365d' }
-        );
-
-        res.json({ token });
-    } catch (err) {
-        next(err);
-    }
-}) as express.RequestHandler);
-
-apiRouter.post('/auth/signin', (async (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    try {
-        const { email, password } = req.body;
-
-        if (!email || !password) {
-            return res.status(400).json({ error: 'Email and password are required' });
-        }
-
-        const user = await prisma.users.findUnique({ where: { email } });
-        if (!user) {
-            return res.status(401).json({ error: 'Invalid email or password' });
-        }
-
-        const valid = await bcrypt.compare(password, user.password_hash);
-        if (!valid) {
-            return res.status(401).json({ error: 'Invalid email or password' });
-        }
-
-        const token = jwt.sign(
-            { sub: user.id, email: user.email, name: user.name },
-            JWT_SECRET,
-            { expiresIn: '365d' }
-        );
-
-        res.json({ token });
-    } catch (err) {
-        next(err);
-    }
-}) as express.RequestHandler);
-
-apiRouter.post('/auth/reset-password', (async (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    try {
-        const { token, newPassword } = req.body;
-
-        if (!token || !newPassword) {
-            return res.status(400).json({ error: 'Token and new password are required' });
-        }
-        if (newPassword.length < 8) {
-            return res.status(400).json({ error: 'Password must be at least 8 characters' });
-        }
-
-        const user = await prisma.users.findFirst({
-            where: {
-                reset_token: token,
-                reset_token_expires_at: { gt: Date.now() }
-            }
-        });
-
-        if (!user) {
-            return res.status(400).json({ error: 'Invalid or expired reset token' });
-        }
-
-        const password_hash = await bcrypt.hash(newPassword, 12);
-        await prisma.users.update({
-            where: { id: user.id },
-            data: { password_hash, reset_token: null, reset_token_expires_at: null }
-        });
-
-        res.json({ message: 'Password reset successfully' });
-    } catch (err) {
-        next(err);
-    }
-}) as express.RequestHandler);
-
-apiRouter.get("/:version/auth/me", apiHandler(async (req, res) => {
-    res.send({
-        userId: req.userId,
-        email: req.email,
-        name: req.name
-    });
-}, true, ["v1"]));
-
-
-apiRouter.use('/:version/user', userRouter);
+apiRouter.use('/auth', authRouter);
 
 apiRouter.get('/healthcheck', async (req, res) => {
     try {

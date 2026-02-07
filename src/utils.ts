@@ -1,41 +1,16 @@
 import express from "express";
 import jwt from "jsonwebtoken";
 import prisma from "./prisma/client";
-function getAndAssertCorrectVersion(req: express.Request, allowedVersions: string[]): string {
-    const rawVersion = (req.params as any).version as unknown;
-    const version =
-        typeof rawVersion === "string"
-            ? rawVersion
-            : Array.isArray(rawVersion) && typeof rawVersion[0] === "string"
-                ? rawVersion[0]
-                : undefined;
-    if (!version) {
-        throw {
-            status: 400,
-            message: 'Missing version parameter in path'
-        };
-    }
-    if (!allowedVersions.includes(version)) {
-        throw {
-            status: 400,
-            message: 'version parameter must be one of the allowed versions: ' + allowedVersions.join(', ')
-        };
-    }
-    return version;
-}
 
 type CustomRequest = express.Request & {
-    version: string;
     userId?: string;
     email?: string;
     name?: string;
 }
 
-export function apiHandler(handler: (req: CustomRequest, res: express.Response, next: express.NextFunction) => Promise<void>, requireAuth: boolean, supportedVersions: string[]) {
+export function apiHandler(handler: (req: CustomRequest, res: express.Response, next: express.NextFunction) => Promise<void>, requireAuth: boolean) {
     return async (req: express.Request, res: express.Response, next: express.NextFunction) => {
         try {
-            let version = getAndAssertCorrectVersion(req, supportedVersions);
-            (req as CustomRequest).version = version;
             let authHeader = req.headers['authorization'];
             if (!authHeader && requireAuth) {
                 throw {

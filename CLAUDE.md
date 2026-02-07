@@ -55,9 +55,9 @@ cd frontend && npm run build && cd ..
 All authenticated/versioned API routes use the `apiHandler` wrapper from `src/utils.ts`:
 
 ```typescript
-apiRouter.get("/:version/endpoint", apiHandler(async (req, res) => {
-    // req.version, req.userId, req.email, req.name available
-}, true, ["v1"]));
+apiRouter.get("/endpoint", apiHandler(async (req, res) => {
+    // req.userId, req.email, req.name available
+}, true));
 ```
 
 `apiHandler` handles: API version validation from the URL path, JWT token verification from `Authorization: Bearer` header, and user lookup from Prisma. The `CustomRequest` type extends Express Request with `version`, `userId`, `email`, and `name`.
@@ -73,7 +73,7 @@ Email/password auth → JWT tokens (365-day expiry). The flow:
 
 ### Route Structure
 
-All API routes are mounted under `/api` via `apiRouter`. Versioned routes use `/:version/` prefix (currently `v1`). Sub-routers are mounted as `/:version/user`, etc.
+All API routes are mounted under `/api` via `apiRouter`.
 
 Non-API `GET *` requests serve `frontend/dist/index.html` for client-side routing.
 
