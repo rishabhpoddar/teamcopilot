@@ -5,13 +5,10 @@
 Follow the "Running Without Docker" steps in [README.md](README.md), then use development mode for hot-reloading:
 
 ```bash
-# Terminal 1: Backend with auto-reload
-npm run dev
-
-# Terminal 2: Frontend dev server (optional, for frontend changes)
-cd frontend
 npm run dev
 ```
+
+This starts both the backend (port 3000) and frontend Vite dev server (port 5173) concurrently. Open http://localhost:5173 for development - frontend changes will reflect instantly via HMR.
 
 ---
 
