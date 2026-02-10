@@ -13,6 +13,7 @@ import cors from "cors";
 import prisma from "./prisma/client";
 import { logError, logInfo } from "./logging";
 import authRouter from "./auth";
+import workflowsRouter from "./workflows";
 import { startCronJobs } from "./cronjob";
 import path from 'path';
 const app = express();
@@ -50,6 +51,7 @@ apiRouter.get("/", (req, res) => {
 });
 
 apiRouter.use('/auth', authRouter);
+apiRouter.use('/workflows', workflowsRouter);
 
 apiRouter.get('/healthcheck', async (req, res) => {
     try {

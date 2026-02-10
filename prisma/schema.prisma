@@ -16,6 +16,24 @@ model users {
   password_hash          String
   reset_token            String?
   reset_token_expires_at BigInt?
+
+  workflow_runs workflow_runs[]
+}
+
+model workflow_runs {
+  id             String  @id @default(uuid())
+  workflow_slug  String
+  workflow_name  String
+  user_id        String
+  status         String  // "running" | "success" | "failed"
+  started_at     BigInt
+  completed_at   BigInt?
+  args           String? // JSON string of input arguments passed to the workflow
+  error_message  String?
+
+  user users @relation(fields: [user_id], references: [id])
+
+  @@index([started_at])
 }
 
 model key_value {

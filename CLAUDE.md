@@ -92,7 +92,7 @@ SQLite via Prisma ORM. Schema is at `prisma/schema.prisma`. Currently two tables
 ## Environment Variables
 
 Required: `JWT_SECRET`, `SERVICE_URL` (default `http://localhost:3000`), `DATABASE_URL` (default `file:./dev.db` relative to `prisma/`)
-Optional: `WORKSPACE_DIR` (absolute path or relative to project root, default `./my-workspaces`)
+Optional: `WORKSPACE_DIR` (absolute path or relative to project root, default `./my_workspaces`)
 
 ## Design Direction
 
@@ -105,3 +105,5 @@ Per `plan-single-tenant.md`, FlowPal is evolving toward: a Next.js frontend, Pos
 When making network calls, use the `axios` library. Specifically, use the `axiosInstance` from the `./frontend/src/utils.ts` file. Make sure to always handle errors from the network call:
 - If it's a GET request, and it errors out, then show the error message to the user via the UI on the screen.
 - Otherwise, show it via a toast notification using the react-toastify library.
+
+Make sure that if the call requires auth, you pass in the access token as an Authorization bearer token in the headers. To get the access token, use the `useAuth` hook from the `./frontend/src/lib/auth.tsx` file.

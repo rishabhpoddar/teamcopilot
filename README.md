@@ -62,7 +62,7 @@ docker run -d \
   --name flowpal \
   -p 3000:3000 \
   -v db-data:/app/data \
-  -v my-workspaces:/app/workspaces \
+  -v my_workspaces:/app/workspaces \
   -e SERVICE_URL="http://localhost:3000" \
   -e JWT_SECRET="your-secret-key" \
   flowpal
@@ -75,7 +75,7 @@ The application will be available at **http://localhost:3000**
 | Volume | Container Path | Purpose |
 |--------|---------------|---------|
 | `db-data` | `/app/data` | SQLite database file |
-| `my-workspaces` | `/app/workspaces` | User workflow storage |
+| `my_workspaces` | `/app/workspaces` | User workflow storage |
 
 Data is persisted in Docker named volumes. Even if you remove and recreate the container, your database and workspaces are retained.
 
