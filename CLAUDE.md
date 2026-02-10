@@ -107,3 +107,20 @@ When making network calls, use the `axios` library. Specifically, use the `axios
 - Otherwise, show it via a toast notification using the react-toastify library.
 
 Make sure that if the call requires auth, you pass in the access token as an Authorization bearer token in the headers. To get the access token, use the `useAuth` hook from the `./frontend/src/lib/auth.tsx` file.
+
+### Backend
+#### Error responses
+Instead of doing something like:
+```
+res.status(400).json({ error: 'status must be "running", "success", or "failed"' });
+```
+
+Do this:
+```
+throw {
+    status: 400,
+    message: 'status must be "running", "success", or "failed"'
+};
+```
+- The error handler in `index.ts` will handle it in the correct way.
+- This is applicable for all status codes other than 200 ones.

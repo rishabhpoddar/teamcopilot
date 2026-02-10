@@ -3,6 +3,7 @@ import { useAuth } from '../lib/auth.tsx';
 import WorkflowsSection from '../components/dashboard/WorkflowsSection';
 import RunHistorySection from '../components/dashboard/RunHistorySection';
 import AIModeSection from '../components/dashboard/AIModeSection';
+import './Home.css';
 
 type Tab = 'workflows' | 'history' | 'ai';
 

@@ -1,0 +1,61 @@
+/* Workflow Cards Grid */
+.workflows-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.workflow-card {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.workflow-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.workflow-card-title {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.workflow-card-version {
+  font-size: 0.75rem;
+  color: #888;
+  background: #333;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+}
+
+.workflow-card-description {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #aaa;
+  flex-grow: 1;
+}
+
+.workflow-card-run-btn {
+  align-self: flex-start;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+}
+
+/* Light Mode Overrides */
+@media (prefers-color-scheme: light) {
+  .workflow-card {
+    background: #fff;
+    border-color: #ddd;
+  }
+
+  .workflow-card-version {
+    background: #f0f0f0;
+  }
+}

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { axiosInstance } from '../../utils';
 import { useAuth } from '../../lib/auth';
 import WorkflowCard from './WorkflowCard';
+import './WorkflowsSection.css';
 
 interface Workflow {
     slug: string;

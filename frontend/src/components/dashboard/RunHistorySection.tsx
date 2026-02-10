@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { axiosInstance } from '../../utils';
 import { useAuth } from '../../lib/auth';
+import './RunHistorySection.css';
 
 interface WorkflowRun {
     id: string;

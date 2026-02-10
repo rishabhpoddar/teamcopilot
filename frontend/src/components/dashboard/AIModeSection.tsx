@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import './AIModeSection.css';
 
 export default function AIModeSection() {
     const [message, setMessage] = useState('');

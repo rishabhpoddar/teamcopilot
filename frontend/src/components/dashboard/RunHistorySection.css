@@ -1,0 +1,70 @@
+/* Run History Table */
+.run-history-table-container {
+  overflow-x: auto;
+}
+
+.run-history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.run-history-table th,
+.run-history-table td {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  border-bottom: 1px solid #333;
+}
+
+.run-history-table th {
+  font-weight: 600;
+  color: #888;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.run-history-table tbody tr:hover {
+  background: #1a1a1a;
+}
+
+.workflow-name-cell {
+  font-weight: 500;
+}
+
+/* Status Badges */
+.status-badge {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  text-transform: capitalize;
+}
+
+.status-running {
+  background: #3b82f620;
+  color: #60a5fa;
+}
+
+.status-success {
+  background: #22c55e20;
+  color: #4ade80;
+}
+
+.status-failed {
+  background: #ef444420;
+  color: #f87171;
+}
+
+/* Light Mode Overrides */
+@media (prefers-color-scheme: light) {
+  .run-history-table th,
+  .run-history-table td {
+    border-bottom-color: #ddd;
+  }
+
+  .run-history-table tbody tr:hover {
+    background: #f5f5f5;
+  }
+}

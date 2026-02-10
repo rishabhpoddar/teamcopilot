@@ -85,8 +85,10 @@ router.post('/runs', apiHandler(async (req, res) => {
     const { workflow_slug, workflow_name, args } = req.body;
 
     if (!workflow_slug || !workflow_name) {
-        res.status(400).json({ error: 'workflow_slug and workflow_name are required' });
-        return;
+        throw {
+            status: 400,
+            message: 'workflow_slug and workflow_name are required'
+        };
     }
 
     const run = await prisma.workflow_runs.create({
@@ -109,14 +111,18 @@ router.patch('/runs/:id', apiHandler(async (req, res) => {
     const { status, error_message } = req.body;
 
     if (!status || !['running', 'success', 'failed'].includes(status)) {
-        res.status(400).json({ error: 'status must be "running", "success", or "failed"' });
-        return;
+        throw {
+            status: 400,
+            message: 'status must be "running", "success", or "failed"'
+        };
     }
 
     const existingRun = await prisma.workflow_runs.findUnique({ where: { id } });
     if (!existingRun) {
-        res.status(404).json({ error: 'Workflow run not found' });
-        return;
+        throw {
+            status: 404,
+            message: 'Workflow run not found'
+        };
     }
 
     const updateData: { status: string; completed_at?: bigint; error_message?: string } = { status };
