@@ -97,3 +97,11 @@ Optional: `WORKSPACE_DIR` (absolute path or relative to project root, default `.
 ## Design Direction
 
 Per `plan-single-tenant.md`, FlowPal is evolving toward: a Next.js frontend, PostgreSQL database, WebSocket/SSE for real-time agent communication, and integration with the `opencode` agent running on user machines. Workflows are filesystem-first folder packages with `workflow.json` manifests, `run.py` entrypoints, and per-workflow `.env` + `.venv`.
+
+## Code style
+
+### Frontend
+#### Network calls
+When making network calls, use the `axios` library. Specifically, use the `axiosInstance` from the `./frontend/src/utils.ts` file. Make sure to always handle errors from the network call:
+- If it's a GET request, and it errors out, then show the error message to the user via the UI on the screen.
+- Otherwise, show it via a toast notification using the react-toastify library.
