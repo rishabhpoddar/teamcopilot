@@ -116,7 +116,7 @@ router.post('/reset-password', (async (req: express.Request, res: express.Respon
 }) as express.RequestHandler);
 
 router.get('/me', apiHandler(async (req, res) => {
-    res.send({
+    res.json({
         userId: req.userId,
         email: req.email,
         name: req.name
