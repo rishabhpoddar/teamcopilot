@@ -12,24 +12,16 @@ After sign up/sign in, show a main dashboard with 3 sections:
 Add `workflow_runs`, `workflows`, and `ai_chat_sessions` tables to `prisma/schema.prisma`:
 
 ```prisma
-model workflows {
-  id                  String          @id @default(uuid())
-  slug                String          @unique
-  approved_by_user_id String?
-  workflow_runs       workflow_runs[]
-}
-
 model workflow_runs {
-  id             String     @id @default(uuid())
+  id             String  @id @default(uuid())
   ran_by_user_id String
   status         String // "running" | "success" | "failed"
   started_at     BigInt
   completed_at   BigInt?
   args           String? // JSON string of input arguments passed to the workflow
   error_message  String?
-  workflow_id    String
-  workflows      workflows? @relation(fields: [workflow_id], references: [id], onDelete: Cascade)
-  user           users      @relation(fields: [ran_by_user_id], references: [id], onDelete: Cascade)
+  workflow_slug  String
+  user           users   @relation(fields: [ran_by_user_id], references: [id], onDelete: Cascade)
 
   @@index([started_at])
 }
