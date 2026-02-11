@@ -5,7 +5,7 @@
   "type": "module",
   "dependencies": {
     "@huggingface/transformers": "^3.0.0",
-    "@opencode-ai/plugin": "1.1.56"
+    "@opencode-ai/plugin": "1.1.53"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

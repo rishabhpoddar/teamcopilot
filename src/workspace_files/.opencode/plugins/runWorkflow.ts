@@ -59,7 +59,7 @@ async function createWorkflowRun(
   args: Record<string, unknown>
 ): Promise<string | null> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/v1/workflows/runs`, {
+    const response = await fetch(`${API_BASE_URL}/api/workflows/runs`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -97,7 +97,7 @@ async function updateWorkflowRunStatus(
       body.error_message = errorMessage
     }
 
-    const response = await fetch(`${API_BASE_URL}/api/v1/workflows/runs/${runId}`, {
+    const response = await fetch(`${API_BASE_URL}/api/workflows/runs/${runId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
