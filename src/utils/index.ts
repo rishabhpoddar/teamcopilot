@@ -1,6 +1,6 @@
 import express from "express";
 import jwt from "jsonwebtoken";
-import prisma from "./prisma/client";
+import prisma from "../prisma/client";
 
 type CustomRequest = express.Request & {
     userId?: string;

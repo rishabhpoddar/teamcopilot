@@ -1,64 +1,30 @@
 import express from "express";
-import fs from "fs";
-import path from "path";
 import prisma from "../prisma/client";
-import { apiHandler } from "../utils";
+import { WorkflowSummary } from "../types/workflow";
+import { apiHandler } from "../utils/index";
+import {
+    listWorkflowSlugs,
+    readWorkflowManifest,
+    workflowExists,
+    approveWorkflow
+} from "../utils/workflow";
 
 const router = express.Router({ mergeParams: true });
 
-const WORKSPACE_DIR = process.env.WORKSPACE_DIR || "./my_workspaces";
-
-function getWorkspacePath(): string {
-    if (path.isAbsolute(WORKSPACE_DIR)) {
-        return WORKSPACE_DIR;
-    }
-    return path.join(process.cwd(), WORKSPACE_DIR);
-}
-
-interface WorkflowManifest {
-    name: string;
-    description?: string;
-    version?: string;
-}
-
-interface Workflow {
-    slug: string;
-    name: string;
-    description?: string;
-    version?: string;
-}
-
 // GET /api/workflows - List available workflows from filesystem
 router.get('/', apiHandler(async (req, res) => {
-    const workspacePath = getWorkspacePath();
-    const workflowsDir = path.join(workspacePath, "workflows");
+    const slugs = listWorkflowSlugs();
+    const workflows: WorkflowSummary[] = [];
 
-    if (!fs.existsSync(workflowsDir)) {
-        res.json({ workflows: [] });
-        return;
-    }
-
-    const workflows: Workflow[] = [];
-    const entries = fs.readdirSync(workflowsDir, { withFileTypes: true });
-
-    for (const entry of entries) {
-        if (!entry.isDirectory()) continue;
-
-        const manifestPath = path.join(workflowsDir, entry.name, "workflow.json");
-        if (!fs.existsSync(manifestPath)) continue;
-
-        try {
-            const manifestContent = fs.readFileSync(manifestPath, "utf-8");
-            const manifest: WorkflowManifest = JSON.parse(manifestContent);
+    for (const slug of slugs) {
+        const manifest = readWorkflowManifest(slug);
+        if (manifest) {
             workflows.push({
-                slug: entry.name,
-                name: manifest.name || entry.name,
-                description: manifest.description,
-                version: manifest.version
+                slug,
+                name: slug,
+                intent_summary: manifest.intent_summary,
+                approved_by_user_id: manifest.approved_by_user_id
             });
-        } catch {
-            // Skip invalid manifests
-            continue;
         }
     }
 
@@ -91,11 +57,32 @@ router.post('/runs', apiHandler(async (req, res) => {
         };
     }
 
+    if (!workflowExists(workflow_slug)) {
+        throw {
+            status: 404,
+            message: 'Workflow not found'
+        };
+    }
+
+    const manifest = readWorkflowManifest(workflow_slug);
+    if (!manifest) {
+        throw {
+            status: 500,
+            message: 'Failed to read workflow manifest'
+        };
+    }
+
+    if (manifest.approved_by_user_id === null || manifest.approved_by_user_id === undefined) {
+        throw {
+            status: 403,
+            message: 'Workflow is not approved yet'
+        };
+    }
+
     const run = await prisma.workflow_runs.create({
         data: {
-            workflow_slug,
-            workflow_name,
-            user_id: req.userId!,
+            workflow_slug: workflow_slug,
+            ran_by_user_id: req.userId!,
             status: 'running',
             started_at: Date.now(),
             args: args ? JSON.stringify(args) : null
@@ -141,6 +128,33 @@ router.patch('/runs/:id', apiHandler(async (req, res) => {
     });
 
     res.json({ run });
+}, true));
+
+// POST /api/workflows/:slug/approve - Approve a workflow
+router.post('/:slug/approve', apiHandler(async (req, res) => {
+    const slug = req.params.slug as string;
+
+    if (!workflowExists(slug)) {
+        throw {
+            status: 404,
+            message: 'Workflow not found on filesystem'
+        };
+    }
+
+    const updatedManifest = approveWorkflow(slug, req.userId!);
+    if (!updatedManifest) {
+        throw {
+            status: 500,
+            message: 'Failed to update workflow manifest'
+        };
+    }
+
+    res.json({
+        workflow: {
+            slug,
+            approved_by_user_id: req.userId!
+        }
+    });
 }, true));
 
 export default router;

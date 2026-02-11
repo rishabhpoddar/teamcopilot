@@ -2,7 +2,7 @@ import express from "express";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import prisma from "../prisma/client";
-import { apiHandler } from "../utils";
+import { apiHandler } from "../utils/index";
 
 const router = express.Router({ mergeParams: true });
 

@@ -1,15 +1,9 @@
 import { useEffect, useState } from 'react';
 import { axiosInstance } from '../../utils';
 import { useAuth } from '../../lib/auth';
+import { Workflow } from '../../types/workflow';
 import WorkflowCard from './WorkflowCard';
 import './WorkflowsSection.css';
-
-interface Workflow {
-    slug: string;
-    name: string;
-    description?: string;
-    version?: string;
-}
 
 export default function WorkflowsSection() {
     const { token } = useAuth();
@@ -60,10 +54,7 @@ export default function WorkflowsSection() {
             {workflows.map((workflow) => (
                 <WorkflowCard
                     key={workflow.slug}
-                    slug={workflow.slug}
-                    name={workflow.name}
-                    description={workflow.description}
-                    version={workflow.version}
+                    {...workflow}
                 />
             ))}
         </div>

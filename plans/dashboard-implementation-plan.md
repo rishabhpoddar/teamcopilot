@@ -13,34 +13,23 @@ Add `workflow_runs`, `workflows`, and `ai_chat_sessions` tables to `prisma/schem
 
 ```prisma
 model workflows {
-  id              String   @id @default(uuid())
-  slug            String   @unique
-  name            String
-  description     String?
-  version         String?
-  created_by_id   String
-  approved_by_id  String?
-  created_at      BigInt
-  approved_at     BigInt?
-
-  created_by  users  @relation("workflow_creator", fields: [created_by_id], references: [id])
-  approved_by users? @relation("workflow_approver", fields: [approved_by_id], references: [id])
-
-  workflow_runs workflow_runs[]
+  id                  String          @id @default(uuid())
+  slug                String          @unique
+  approved_by_user_id String?
+  workflow_runs       workflow_runs[]
 }
 
 model workflow_runs {
-  id              String  @id @default(uuid())
-  workflow_slug   String
-  workflow_name   String
-  user_id         String
-  status          String  // "running" | "success" | "failed"
-  started_at      BigInt
-  completed_at    BigInt?
-  args            String? // JSON string of input arguments passed to the workflow
-  error_message   String?
-
-  user users @relation(fields: [user_id], references: [id])
+  id             String     @id @default(uuid())
+  ran_by_user_id String
+  status         String // "running" | "success" | "failed"
+  started_at     BigInt
+  completed_at   BigInt?
+  args           String? // JSON string of input arguments passed to the workflow
+  error_message  String?
+  workflow_id    String
+  workflows      workflows? @relation(fields: [workflow_id], references: [id], onDelete: Cascade)
+  user           users      @relation(fields: [ran_by_user_id], references: [id], onDelete: Cascade)
 
   @@index([started_at])
 }
@@ -59,13 +48,7 @@ model ai_chat_sessions {
 }
 ```
 
-Add relations to the `users` model:
-- `workflow_runs workflow_runs[]`
-- `created_workflows workflows[] @relation("workflow_creator")`
-- `approved_workflows workflows[] @relation("workflow_approver")`
-- `ai_chat_sessions ai_chat_sessions[]`
 
-Run: `npx prisma migrate dev --name add_workflow_runs`
 
 ### 2. Backend API Endpoints
 

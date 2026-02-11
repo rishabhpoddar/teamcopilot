@@ -1,21 +1,8 @@
 import { useEffect, useState } from 'react';
 import { axiosInstance } from '../../utils';
 import { useAuth } from '../../lib/auth';
+import { WorkflowRun, WorkflowRunStatus } from '../../types/workflow';
 import './RunHistorySection.css';
-
-interface WorkflowRun {
-    id: string;
-    workflow_slug: string;
-    workflow_name: string;
-    status: 'running' | 'success' | 'failed';
-    started_at: number;
-    completed_at: number | null;
-    error_message: string | null;
-    user: {
-        name: string;
-        email: string;
-    };
-}
 
 function formatDate(timestamp: number): string {
     return new Date(timestamp).toLocaleString();
@@ -29,7 +16,7 @@ function formatDuration(startedAt: number, completedAt: number | null): string {
     return `${(durationMs / 60000).toFixed(1)}m`;
 }
 
-function StatusBadge({ status }: { status: 'running' | 'success' | 'failed' }) {
+function StatusBadge({ status }: { status: WorkflowRunStatus }) {
     return <span className={`status-badge status-${status}`}>{status}</span>;
 }
 
@@ -89,7 +76,7 @@ export default function RunHistorySection() {
                 <tbody>
                     {runs.map((run) => (
                         <tr key={run.id}>
-                            <td className="workflow-name-cell">{run.workflow_name}</td>
+                            <td className="workflow-name-cell">{run.workflow_slug}</td>
                             <td><StatusBadge status={run.status} /></td>
                             <td>{formatDate(run.started_at)}</td>
                             <td>{formatDuration(run.started_at, run.completed_at)}</td>

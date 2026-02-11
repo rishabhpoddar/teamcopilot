@@ -37,6 +37,84 @@ type RunStatus = "success" | "error" | "timeout"
 
 const SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const MAX_OUTPUT_CHARS = 300_000
+const API_BASE_URL = "http://localhost:3000"
+
+// ============================================================================
+// API Functions
+// ============================================================================
+
+interface WorkflowRunResponse {
+  run: {
+    id: string
+    workflow_slug: string
+    status: string
+  }
+}
+
+/**
+ * Creates a new workflow run entry in the database.
+ */
+async function createWorkflowRun(
+  slug: string,
+  args: Record<string, unknown>
+): Promise<string | null> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/v1/workflows/runs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        workflow_slug: slug,
+        workflow_name: slug,
+        args,
+      }),
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      console.error(`[runWorkflow] Failed to create run entry: ${error.message}`)
+      return null
+    }
+
+    const data = (await response.json()) as WorkflowRunResponse
+    return data.run.id
+  } catch (err) {
+    console.error(`[runWorkflow] Failed to create run entry: ${err}`)
+    return null
+  }
+}
+
+/**
+ * Updates the status of a workflow run in the database.
+ */
+async function updateWorkflowRunStatus(
+  runId: string,
+  status: "running" | "success" | "failed",
+  errorMessage?: string
+): Promise<boolean> {
+  try {
+    const body: { status: string; error_message?: string } = { status }
+    if (errorMessage) {
+      body.error_message = errorMessage
+    }
+
+    const response = await fetch(`${API_BASE_URL}/api/v1/workflows/runs/${runId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      console.error(`[runWorkflow] Failed to update run status: ${error.message}`)
+      return false
+    }
+
+    return true
+  } catch (err) {
+    console.error(`[runWorkflow] Failed to update run status: ${err}`)
+    return false
+  }
+}
 
 // ============================================================================
 // Process cleanup coordination (avoid stacking global handlers per run)
@@ -588,7 +666,17 @@ export const RunWorkflowPlugin: Plugin = async (_ctx) => {
           console.log(`[runWorkflow] Timeout: ${timeoutSeconds}s`)
           console.log(`[runWorkflow] Arguments: ${cmdArgs.join(" ")}\n`)
 
-          // TODO: Need to make sure this workflow is approved by an admin user.
+          // Create a run entry in the database (this also checks approval status)
+          const runId = await createWorkflowRun(slug, inputs as Record<string, unknown>)
+          if (!runId) {
+            return JSON.stringify({
+              status: "error",
+              error: "run_creation_failed",
+              message: "Failed to create workflow run entry. The workflow may not be approved yet.",
+            })
+          }
+
+          console.log(`[runWorkflow] Created run entry with ID: ${runId}`)
 
           // Run the workflow
           const result = await runWithTimeout(
@@ -597,11 +685,19 @@ export const RunWorkflowPlugin: Plugin = async (_ctx) => {
             timeoutSeconds
           )
 
+          // Update the run status in the database
+          const dbStatus = result.status === "success" ? "success" : "failed"
+          const errorMessage = result.status !== "success" ? result.output.slice(-1000) : undefined
+          await updateWorkflowRunStatus(runId, dbStatus, errorMessage)
+
+          console.log(`[runWorkflow] Updated run status to: ${dbStatus}`)
+
           return JSON.stringify({
             status: result.status,
             output: result.output,
             workflow: slug,
             timeout_seconds: timeoutSeconds,
+            run_id: runId,
           })
         },
       }),
