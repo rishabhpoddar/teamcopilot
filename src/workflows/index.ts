@@ -141,6 +141,21 @@ router.post('/:slug/approve', apiHandler(async (req, res) => {
         };
     }
 
+    let user = await prisma.users.findUnique({ where: { id: req.userId! } });
+    if (!user) {
+        throw {
+            status: 404,
+            message: 'User not found'
+        };
+    }
+
+    if (user.role !== 'Engineer') {
+        throw {
+            status: 403,
+            message: 'Only Engineers can approve workflows'
+        };
+    }
+
     const updatedManifest = approveWorkflow(slug, req.userId!);
     if (!updatedManifest) {
         throw {
