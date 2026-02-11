@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { axiosInstance } from '../../utils';
 import { useAuth } from '../../lib/auth';
-import { Workflow } from '../../types/workflow';
+import type { Workflow } from '../../types/workflow';
 import WorkflowCard from './WorkflowCard';
 import './WorkflowsSection.css';
 

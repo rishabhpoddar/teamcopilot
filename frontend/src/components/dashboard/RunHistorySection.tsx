@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { axiosInstance } from '../../utils';
 import { useAuth } from '../../lib/auth';
-import { WorkflowRun, WorkflowRunStatus } from '../../types/workflow';
+import type { WorkflowRun, WorkflowRunStatus } from '../../types/workflow';
 import './RunHistorySection.css';
 
 function formatDate(timestamp: number): string {
@@ -79,8 +79,8 @@ export default function RunHistorySection() {
                             <td className="workflow-name-cell">{run.workflow_slug}</td>
                             <td><StatusBadge status={run.status} /></td>
                             <td>{formatDate(run.started_at)}</td>
-                            <td>{formatDuration(run.started_at, run.completed_at)}</td>
-                            <td>{run.user.name}</td>
+                            <td>{formatDuration(run.started_at, run.completed_at ?? null)}</td>
+                            <td>{run.user?.name ?? 'Unknown User'}</td>
                         </tr>
                     ))}
                 </tbody>

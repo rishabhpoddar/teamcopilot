@@ -1,4 +1,4 @@
-import { Workflow } from '../../types/workflow';
+import type { Workflow } from '../../types/workflow';
 
 export default function WorkflowCard({ name, intent_summary }: Workflow) {
     return (
