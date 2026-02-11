@@ -6,7 +6,7 @@ import fs from "fs";
 import path from "path";
 import { WorkflowManifest } from "../types/workflow";
 
-const WORKSPACE_DIR = process.env.WORKSPACE_DIR || "./my_workspaces";
+const WORKSPACE_DIR = process.env.WORKSPACE_DIR!;
 
 /** Get the absolute path to the workspace directory */
 export function getWorkspacePath(): string {
