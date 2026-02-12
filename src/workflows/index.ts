@@ -95,7 +95,7 @@ router.post('/runs', apiHandler(async (req, res) => {
 // PATCH /api/workflows/runs/:id - Update run status
 router.patch('/runs/:id', apiHandler(async (req, res) => {
     const id = req.params.id as string;
-    const { status, error_message } = req.body;
+    const { status, error_message, output } = req.body;
 
     if (!status || !['running', 'success', 'failed'].includes(status)) {
         throw {
@@ -112,7 +112,7 @@ router.patch('/runs/:id', apiHandler(async (req, res) => {
         };
     }
 
-    const updateData: { status: string; completed_at?: bigint; error_message?: string } = { status };
+    const updateData: { status: string; completed_at?: bigint; error_message?: string; output?: string } = { status };
 
     if (status === 'success' || status === 'failed') {
         updateData.completed_at = BigInt(Date.now());
@@ -120,6 +120,10 @@ router.patch('/runs/:id', apiHandler(async (req, res) => {
 
     if (status === 'failed' && error_message) {
         updateData.error_message = error_message;
+    }
+
+    if (output) {
+        updateData.output = output;
     }
 
     const run = await prisma.workflow_runs.update({

@@ -121,12 +121,16 @@ async function createWorkflowRun(
 async function updateWorkflowRunStatus(
   runId: string,
   status: "running" | "success" | "failed",
-  errorMessage?: string
+  errorMessage?: string,
+  output?: string
 ): Promise<ApiResult<true>> {
   try {
-    const body: { status: string; error_message?: string } = { status }
+    const body: { status: string; error_message?: string; output?: string } = { status }
     if (errorMessage) {
       body.error_message = errorMessage
+    }
+    if (output) {
+      body.output = output
     }
 
     const response = await fetch(`${API_BASE_URL}/api/workflows/runs/${runId}`, {
@@ -724,7 +728,8 @@ export const RunWorkflowPlugin: Plugin = async (_ctx) => {
           const runUpdate = await updateWorkflowRunStatus(
             runId,
             dbStatus,
-            errorMessage
+            errorMessage,
+            result.output
           )
 
           const warningFields: Record<string, unknown> = isApiError(runUpdate)
