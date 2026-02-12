@@ -19,7 +19,7 @@ export default function WorkflowsSection() {
             });
             setWorkflows(response.data.workflows);
         } catch (err: unknown) {
-            const errorMessage = err instanceof AxiosError ? err.response?.data || err.message : 'Failed to load workflows';
+            const errorMessage = err instanceof AxiosError ? err.response?.data?.message || err.response?.data || err.message : 'Failed to load workflows';
             setError(errorMessage);
         } finally {
             setLoading(false);

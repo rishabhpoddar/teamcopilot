@@ -35,7 +35,7 @@ export default function RunHistorySection() {
                 });
                 setRuns(response.data.runs);
             } catch (err: unknown) {
-                const errorMessage = err instanceof AxiosError ? err.response?.data || err.message : 'Failed to load run history';
+                const errorMessage = err instanceof AxiosError ? err.response?.data?.message || err.response?.data || err.message : 'Failed to load run history';
                 setError(errorMessage);
             } finally {
                 setLoading(false);

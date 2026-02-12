@@ -31,7 +31,9 @@ export default function WorkflowCard({
             toast.success('Workflow approved successfully');
             onApproved();
         } catch (err: unknown) {
-            const errorMessage = err instanceof AxiosError ? err.response?.data || err.message : 'Failed to approve workflow';
+            const errorMessage = err instanceof AxiosError
+                ? err.response?.data?.message || err.response?.data?.message || err.response?.data || err.message
+                : 'Failed to approve workflow';
             toast.error(errorMessage);
         } finally {
             setApproving(false);

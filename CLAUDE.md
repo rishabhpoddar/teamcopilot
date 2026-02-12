@@ -113,7 +113,7 @@ try {
     });
     // handle success
 } catch (err: unknown) {
-    const errorMessage = err instanceof AxiosError ? err.response?.data || err.message : '<Some error message>';
+    const errorMessage = err instanceof AxiosError ? err.response?.data?.message || err.response?.data || err.message : '<Some error message>';
     setError(errorMessage);
 } finally {
     //....
@@ -127,7 +127,7 @@ try {
     });
     // handle success
 } catch (err: unknown) {
-    const errorMessage = err instanceof AxiosError ? err.response?.data || err.message : '<Some error message>';
+    const errorMessage = err instanceof AxiosError ? err.response?.data?.message || err.response?.data || err.message : '<Some error message>';
     toast.error(errorMessage);
 } finally {
     //....

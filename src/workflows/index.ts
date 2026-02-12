@@ -5,7 +5,6 @@ import { apiHandler } from "../utils/index";
 import {
     listWorkflowSlugs,
     readWorkflowManifest,
-    workflowExists,
     approveWorkflow
 } from "../utils/workflow";
 
@@ -57,22 +56,9 @@ router.post('/runs', apiHandler(async (req, res) => {
         };
     }
 
-    if (!workflowExists(workflow_slug)) {
-        throw {
-            status: 404,
-            message: 'Workflow not found'
-        };
-    }
-
     const manifest = readWorkflowManifest(workflow_slug);
-    if (!manifest) {
-        throw {
-            status: 500,
-            message: 'Failed to read workflow manifest'
-        };
-    }
 
-    if (manifest.approved_by_user_id === null || manifest.approved_by_user_id === undefined) {
+    if (manifest.approved_by_user_id === null) {
         throw {
             status: 403,
             message: 'Workflow is not approved yet'
@@ -112,6 +98,13 @@ router.patch('/runs/:id', apiHandler(async (req, res) => {
         };
     }
 
+    if (existingRun.status !== 'running') {
+        throw {
+            status: 400,
+            message: 'Can only update runs that are in running status'
+        };
+    }
+
     const updateData: { status: string; completed_at?: bigint; error_message?: string; output?: string } = { status };
 
     if (status === 'success' || status === 'failed') {
@@ -138,35 +131,7 @@ router.patch('/runs/:id', apiHandler(async (req, res) => {
 router.post('/:slug/approve', apiHandler(async (req, res) => {
     const slug = req.params.slug as string;
 
-    if (!workflowExists(slug)) {
-        throw {
-            status: 404,
-            message: 'Workflow not found on filesystem'
-        };
-    }
-
-    let user = await prisma.users.findUnique({ where: { id: req.userId! } });
-    if (!user) {
-        throw {
-            status: 404,
-            message: 'User not found'
-        };
-    }
-
-    if (user.role !== 'Engineer') {
-        throw {
-            status: 403,
-            message: 'Only Engineers can approve workflows'
-        };
-    }
-
-    const updatedManifest = approveWorkflow(slug, req.userId!);
-    if (!updatedManifest) {
-        throw {
-            status: 500,
-            message: 'Failed to update workflow manifest'
-        };
-    }
+    await approveWorkflow(slug, req.userId!);
 
     res.json({
         workflow: {

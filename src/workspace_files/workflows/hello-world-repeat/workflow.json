@@ -2,9 +2,8 @@
   "intent_summary": "Prints a hello world message a specified number of times based on user input",
   "inputs": {
     "count": {
-      "type": "integer",
-      "required": false,
-      "default": 3,
+      "type": "number",
+      "required": true,
       "description": "Number of times to print the hello world message"
     }
   },

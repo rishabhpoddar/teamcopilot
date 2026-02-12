@@ -78,7 +78,7 @@ This manifest defines what the workflow does and how it runs. The UI and executi
       "description": "The Stripe customer ID to check"
     },
     "days_back": {
-      "type": "integer",
+      "type": "number",
       "required": false,
       "default": 7,
       "description": "Number of days to look back for failed payments"
@@ -304,7 +304,7 @@ When asked to "Create a workflow that checks Stripe for failed payments":
      intent_summary: "Checks Stripe for failed payments for a given customer",
      inputs: {
        customer_id: { type: "string", required: true, description: "The Stripe customer ID" },
-       days_back: { type: "integer", required: false, default: 7, description: "Days to look back" }
+       days_back: { type: "number", required: false, default: 7, description: "Days to look back" }
      }
    })
    ```

@@ -5,7 +5,7 @@
 
 
 export interface WorkflowInput {
-    type: "string" | "integer" | "number" | "boolean"
+    type: "string" | "number" | "boolean"
     required?: boolean
     default?: string | number | boolean
     description?: string
@@ -13,24 +13,22 @@ export interface WorkflowInput {
 
 export interface WorkflowManifest {
     intent_summary: string
-    inputs?: Record<string, WorkflowInput>
-    triggers?: {
+    inputs: Record<string, WorkflowInput>
+    triggers: {
         manual?: boolean
     }
-    runtime?: {
-        timeout_seconds?: number
+    runtime: {
+        timeout_seconds: number
     }
-    approved_by_user_id?: string | null
+    approved_by_user_id: string | null
 }
 
 /** Workflow summary for API responses */
 export interface WorkflowSummary {
     slug: string;
     name: string;
-    intent_summary?: string;
-    description?: string;
-    version?: string;
-    approved_by_user_id?: string | null;
+    intent_summary: string;
+    approved_by_user_id: string | null;
 }
 
 /** Alias for frontend compatibility */
@@ -46,10 +44,10 @@ export interface WorkflowRun {
     ran_by_user_id: string;
     status: WorkflowRunStatus;
     started_at: number;
-    completed_at?: number | null;
-    args?: string | null;
-    error_message?: string | null;
-    user?: {
+    completed_at: number | null;
+    args: string | null;
+    error_message: string | null;
+    user: {
         name: string;
         email: string;
     };

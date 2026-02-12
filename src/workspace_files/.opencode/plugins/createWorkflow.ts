@@ -7,7 +7,7 @@ import * as path from "path"
 // ============================================================================
 
 interface WorkflowInput {
-  type: "string" | "integer" | "number" | "boolean"
+  type: "string" | "number" | "boolean"
   required?: boolean
   default?: string | number | boolean
   description?: string
@@ -75,7 +75,7 @@ export const CreateWorkflowPlugin: Plugin = async (_ctx) => {
             .record(
               tool.schema.string(),
               tool.schema.object({
-                type: tool.schema.enum(["string", "integer", "number", "boolean"]),
+                type: tool.schema.enum(["string", "number", "boolean"]),
                 required: tool.schema.boolean().optional(),
                 default: tool.schema.unknown().optional(),
                 description: tool.schema.string().optional(),

@@ -14,8 +14,8 @@ def main():
     parser.add_argument(
         "--count",
         type=int,
-        default=3,
-        help="Number of times to print the message (default: 3)"
+        required=True,
+        help="Number of times to print the message"
     )
     args = parser.parse_args()
     

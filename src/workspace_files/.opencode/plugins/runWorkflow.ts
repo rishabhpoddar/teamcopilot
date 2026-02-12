@@ -8,7 +8,7 @@ import * as path from "path"
 // ============================================================================
 
 interface WorkflowInput {
-  type: "string" | "number" | "boolean" | "integer"
+  type: "string" | "number" | "boolean"
   required?: boolean
   default?: string | number | boolean
   description?: string
@@ -277,20 +277,6 @@ function coerceNumber(value: unknown): number | null {
   return Number.isFinite(n) ? n : null
 }
 
-function coerceInteger(value: unknown): number | null {
-  if (
-    typeof value === "number" &&
-    Number.isInteger(value) &&
-    Number.isFinite(value)
-  )
-    return value
-  if (typeof value !== "string") return null
-  const trimmed = value.trim()
-  if (!/^[+-]?\d+$/.test(trimmed)) return null
-  const n = Number(trimmed)
-  return Number.isInteger(n) && Number.isFinite(n) ? n : null
-}
-
 /**
  * Validates inputs against the workflow.json schema.
  */
@@ -352,15 +338,6 @@ function validateInputs(
       case "number":
         {
           const coerced = coerceNumber(value)
-          if (coerced !== null) {
-            processedValue = coerced
-            isValid = true
-          }
-        }
-        break
-      case "integer":
-        {
-          const coerced = coerceInteger(value)
           if (coerced !== null) {
             processedValue = coerced
             isValid = true

@@ -5,6 +5,7 @@
 import fs from "fs";
 import path from "path";
 import { WorkflowManifest } from "../types/workflow";
+import prisma from "../prisma/client";
 
 const WORKSPACE_DIR = process.env.WORKSPACE_DIR!;
 
@@ -32,51 +33,35 @@ export function workflowExists(slug: string): boolean {
 }
 
 /** Read a workflow's manifest */
-export function readWorkflowManifest(slug: string): WorkflowManifest | null {
+export function readWorkflowManifest(slug: string): WorkflowManifest {
     const manifestPath = getWorkflowManifestPath(slug);
 
     if (!fs.existsSync(manifestPath)) {
-        return null;
+        throw {
+            status: 404,
+            message: `Workflow manifest not found for slug: ${slug}`
+        };
     }
 
-    try {
-        const content = fs.readFileSync(manifestPath, "utf-8");
-        return JSON.parse(content) as WorkflowManifest;
-    } catch {
-        return null;
-    }
+    const content = fs.readFileSync(manifestPath, "utf-8");
+    return JSON.parse(content) as WorkflowManifest;
 }
 
 /** Write a workflow's manifest */
-export function writeWorkflowManifest(slug: string, manifest: WorkflowManifest): boolean {
+export function writeWorkflowManifest(slug: string, manifest: WorkflowManifest): void {
     const manifestPath = getWorkflowManifestPath(slug);
-
-    try {
-        fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), "utf-8");
-        return true;
-    } catch {
-        return false;
-    }
+    fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), "utf-8");
 }
 
 /** Update specific fields in a workflow's manifest */
 export function updateWorkflowManifest(
     slug: string,
     updates: Partial<WorkflowManifest>
-): WorkflowManifest | null {
+): WorkflowManifest {
     const manifest = readWorkflowManifest(slug);
-
-    if (!manifest) {
-        return null;
-    }
-
     const updatedManifest = { ...manifest, ...updates };
-
-    if (writeWorkflowManifest(slug, updatedManifest)) {
-        return updatedManifest;
-    }
-
-    return null;
+    writeWorkflowManifest(slug, updatedManifest);
+    return updatedManifest;
 }
 
 /** Check if a workflow is approved */
@@ -86,7 +71,22 @@ export function isWorkflowApproved(slug: string): boolean {
 }
 
 /** Approve a workflow */
-export function approveWorkflow(slug: string, userId: string): WorkflowManifest | null {
+export async function approveWorkflow(slug: string, userId: string): Promise<WorkflowManifest> {
+    const user = await prisma.users.findUnique({ where: { id: userId } });
+    if (!user) {
+        throw {
+            status: 404,
+            message: 'User not found'
+        };
+    }
+
+    if (user.role !== 'Engineer') {
+        throw {
+            status: 403,
+            message: 'Only Engineers can approve workflows'
+        };
+    }
+
     return updateWorkflowManifest(slug, { approved_by_user_id: userId });
 }
 
