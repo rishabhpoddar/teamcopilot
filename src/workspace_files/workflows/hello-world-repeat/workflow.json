@@ -1,0 +1,18 @@
+{
+  "intent_summary": "Prints a hello world message a specified number of times based on user input",
+  "inputs": {
+    "count": {
+      "type": "integer",
+      "required": false,
+      "default": 3,
+      "description": "Number of times to print the hello world message"
+    }
+  },
+  "triggers": {
+    "manual": true
+  },
+  "runtime": {
+    "timeout_seconds": 30
+  },
+  "approved_by_user_id": "b0298453-554d-466c-9c6b-9a33ae697999"
+}
