@@ -105,6 +105,34 @@ Per `plan-single-tenant.md`, FlowPal is evolving toward: a Next.js frontend, Pos
 When making network calls, use the `axios` library. Specifically, use the `axiosInstance` from the `./frontend/src/utils.ts` file. Make sure to always handle errors from the network call:
 - If it's a GET request, and it errors out, then show the error message to the user via the UI on the screen.
 - Otherwise, show it via a toast notification using the react-toastify library.
+This is an example for GET:
+```
+try {
+    const response = await axiosInstance.get('/api/....', {
+        headers: { Authorization: `Bearer ${token}` }
+    });
+    // handle success
+} catch (err: unknown) {
+    const errorMessage = err instanceof AxiosError ? err.response?.data || err.message : '<Some error message>';
+    setError(errorMessage);
+} finally {
+    //....
+}
+```
+This is an example for NON-GET:
+```
+try {
+    const response = await axiosInstance.post('/api/....', {...}, {
+        headers: { Authorization: `Bearer ${token}` }
+    });
+    // handle success
+} catch (err: unknown) {
+    const errorMessage = err instanceof AxiosError ? err.response?.data || err.message : '<Some error message>';
+    toast.error(errorMessage);
+} finally {
+    //....
+}
+```
 
 Make sure that if the call requires auth, you pass in the access token as an Authorization bearer token in the headers. To get the access token, use the `useAuth` hook from the `./frontend/src/lib/auth.tsx` file.
 

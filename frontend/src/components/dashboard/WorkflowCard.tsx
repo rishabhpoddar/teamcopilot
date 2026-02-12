@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { toast } from 'react-toastify';
 import type { Workflow } from '../../types/workflow';
 import { axiosInstance } from '../../utils';
+import { AxiosError } from 'axios';
 
 interface WorkflowCardProps extends Workflow {
     userRole: 'User' | 'Engineer';
@@ -30,7 +31,7 @@ export default function WorkflowCard({
             toast.success('Workflow approved successfully');
             onApproved();
         } catch (err: unknown) {
-            const errorMessage = err instanceof Error ? err.message : 'Failed to approve workflow';
+            const errorMessage = err instanceof AxiosError ? err.response?.data || err.message : 'Failed to approve workflow';
             toast.error(errorMessage);
         } finally {
             setApproving(false);

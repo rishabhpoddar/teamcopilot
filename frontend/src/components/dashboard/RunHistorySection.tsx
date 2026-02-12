@@ -3,6 +3,7 @@ import { axiosInstance } from '../../utils';
 import { useAuth } from '../../lib/auth';
 import type { WorkflowRun, WorkflowRunStatus } from '../../types/workflow';
 import './RunHistorySection.css';
+import { AxiosError } from 'axios';
 
 function formatDate(timestamp: number): string {
     return new Date(timestamp).toLocaleString();
@@ -34,7 +35,7 @@ export default function RunHistorySection() {
                 });
                 setRuns(response.data.runs);
             } catch (err: unknown) {
-                const errorMessage = err instanceof Error ? err.message : 'Failed to load run history';
+                const errorMessage = err instanceof AxiosError ? err.response?.data || err.message : 'Failed to load run history';
                 setError(errorMessage);
             } finally {
                 setLoading(false);

@@ -4,6 +4,7 @@ import { useAuth } from '../../lib/auth';
 import type { Workflow } from '../../types/workflow';
 import WorkflowCard from './WorkflowCard';
 import './WorkflowsSection.css';
+import { AxiosError } from 'axios';
 
 export default function WorkflowsSection() {
     const { token, user } = useAuth();
@@ -18,7 +19,7 @@ export default function WorkflowsSection() {
             });
             setWorkflows(response.data.workflows);
         } catch (err: unknown) {
-            const errorMessage = err instanceof Error ? err.message : 'Failed to load workflows';
+            const errorMessage = err instanceof AxiosError ? err.response?.data || err.message : 'Failed to load workflows';
             setError(errorMessage);
         } finally {
             setLoading(false);

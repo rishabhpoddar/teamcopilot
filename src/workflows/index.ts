@@ -82,7 +82,7 @@ router.post('/runs', apiHandler(async (req, res) => {
     const run = await prisma.workflow_runs.create({
         data: {
             workflow_slug: workflow_slug,
-            ran_by_user_id: req.userId!,
+            ran_by_user_id: req.userId || "b0298453-554d-466c-9c6b-9a33ae697999", // TODO: remove this user id
             status: 'running',
             started_at: Date.now(),
             args: args ? JSON.stringify(args) : null
