@@ -1,4 +1,4 @@
-# Contributing to FlowPal
+# Contributing to LocalTool
 
 ## Development Setup
 

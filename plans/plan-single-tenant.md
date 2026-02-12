@@ -1,14 +1,14 @@
-# FlowPal (Open Source) — Single-Tenant Self-Hosted Architecture
+# LocalTool (Open Source) — Single-Tenant Self-Hosted Architecture
 
 ## Executive Summary
 
-FlowPal OSS is a **single-tenant, self-hosted** application that lets a team define and execute programmatic workflows using AI with a deliberately simple architecture.
+LocalTool OSS is a **single-tenant, self-hosted** application that lets a team define and execute programmatic workflows using AI with a deliberately simple architecture.
 
 Users run an instance of **opencode** on their machine inside their project/workspace directory. That workspace contains:
 - workflow folders (`workflows/<slug>/...`)
 - a workspace-root instruction document for the agent (`AGENTS.md`)
 
-FlowPal consists of just:
+LocalTool consists of just:
 - a **Next.js frontend**
 - a **Node.js backend**
 - a **PostgreSQL database**
@@ -24,7 +24,7 @@ This document describes the architecture and operational model for an **open-sou
 **Non-goals (for OSS single-tenant):**
 - Multi-tenant SaaS concerns (tenant isolation, billing, per-tenant namespaces)
 - Cross-customer data separation (each installation is one tenant)
-- Hosted ops/runbooks provided by FlowPal (operators own infra + security decisions)
+- Hosted ops/runbooks provided by LocalTool (operators own infra + security decisions)
 
 ---
 
@@ -33,7 +33,7 @@ This document describes the architecture and operational model for an **open-sou
 ```
                       (Self-hosted single-tenant instance)
      +---------------------------+        +---------------------------+
-     |   FlowPal Web (Next.js)   |<------>|     Node Backend API      |
+     |   LocalTool Web (Next.js)   |<------>|     Node Backend API      |
      |   UI + Admin Console      |        | (auth, chat, routing)     |
      +-------------+-------------+        +-------------+-------------+
                    |                                    |
@@ -55,7 +55,7 @@ This document describes the architecture and operational model for an **open-sou
      |  +----------------------+                                           |
      |  | opencode agent       |<----------- Node backend communicates ----|
      |  | (runs in workspace)  |            with agent (bi-directional)    |
-     |  | + FlowPal plugins:   |                                           |
+     |  | + LocalTool plugins:   |                                           |
      |  |   - findSimilarWorkflow                                          |
      |  |   - runWorkflow                                                  |                                             |
      |  +----------------------+                                           |
@@ -70,7 +70,7 @@ This document describes the architecture and operational model for an **open-sou
 
 ### 2.1 Single-Tenant Model
 
-FlowPal OSS assumes:
+LocalTool OSS assumes:
 - One installation belongs to one organization/team.
 - You may have **multiple users** inside the instance (RBAC), but they all share the same tenant and workspace.
 - All data is scoped to the instance; there is no tenant_id column requirement.
@@ -84,7 +84,7 @@ FlowPal OSS assumes:
 
 ### 2.2 Single-Agent Architecture (Local opencode, Workspace-First)
 
-FlowPal uses **one local agent** (opencode) that has:
+LocalTool uses **one local agent** (opencode) that has:
 - a **workspace filesystem** (your actual project directory; containing all workflows in folders)
 - the ability to run **shell commands** inside that workspace
 - a small set of **workspace-provided tool scripts** (see below)
@@ -129,7 +129,7 @@ All tools the agent uses are implemented as **opencode plugins**, not as workspa
 
 #### Workflow Lifecycle
 
-In v1, FlowPal does **not** implement workflow versioning or an approval gate.
+In v1, LocalTool does **not** implement workflow versioning or an approval gate.
 
 - A workflow is whatever is currently in `workflows/<slug>/`.
 - Changes are applied directly to the workflow folder (agent edits files in place).
@@ -157,7 +157,7 @@ Workspace
 
 #### Workflow Contract (How the System Knows What a Workflow Does)
 
-FlowPal does not attempt to parse arbitrary `run.py`. Instead, each workflow folder contains a small manifest in `workflow.json` that the UI and execution layer treat as the workflow's contract:
+LocalTool does not attempt to parse arbitrary `run.py`. Instead, each workflow folder contains a small manifest in `workflow.json` that the UI and execution layer treat as the workflow's contract:
 - **`intent_summary`**: human-readable "what it does" summary
 - **`inputs`**: required/optional inputs with types/defaults
 - **`triggers`**: trigger configuration (manual is always true)
@@ -173,13 +173,13 @@ To keep self-hosting predictable:
 
 ### 2.4 Credential & Knowledge Management
 
-FlowPal needs to handle two different “knowledge” categories:
+LocalTool needs to handle two different “knowledge” categories:
 - **Non-secret knowledge**: schemas, API docs, runbooks, internal URLs
 - **Secrets**: API keys, tokens, passwords, private keys
 
 **OSS default (simple):**
 - `.env` per workflow contains secrets.
-- FlowPal UI surfaces `.env.example` and instructions to operators.
+- LocalTool UI surfaces `.env.example` and instructions to operators.
 
 **Production recommendation:**
 - Secrets remain outside the workspace in your secret store.
@@ -188,7 +188,7 @@ FlowPal needs to handle two different “knowledge” categories:
 
 ### 2.5 Instance Context Model (Single Tenant)
 
-Instead of “tenant context”, FlowPal OSS maintains:
+Instead of “tenant context”, LocalTool OSS maintains:
 - **Instance settings**: base URL, auth settings, LLM provider config, outbound email/webhooks configuration
 - **Workspace config**: filesystem path/volume, retention policies, sandbox policy
 - **Integrations registry**: configured connections (Stripe, Slack, etc.) and how workflows should access them
@@ -263,9 +263,9 @@ Design workflows to be idempotent when possible. Document idempotency expectatio
 
 For self-hosting, operators should be able to configure which tools are enabled and their boundaries (e.g., allowed outbound domains, max runtime, filesystem allowlist).
 
-### 3.1 FlowPal opencode Plugins (Tool Definitions)
+### 3.1 LocalTool opencode Plugins (Tool Definitions)
 
-All FlowPal-specific tools are implemented as opencode plugins. The agent receives these tool definitions in its system prompt context.
+All LocalTool-specific tools are implemented as opencode plugins. The agent receives these tool definitions in its system prompt context.
 
 #### `findSimilarWorkflow`
 
@@ -431,7 +431,7 @@ Optional but recommended:
 
 ## 7. Security Model (Self-Hosted Responsibilities)
 
-FlowPal OSS provides guardrails, but **operators own the threat model** and must configure boundaries appropriately.
+LocalTool OSS provides guardrails, but **operators own the threat model** and must configure boundaries appropriately.
 
 ### Network Security
 - terminate TLS at a reverse proxy
@@ -570,7 +570,7 @@ Operators should validate:
 Backend:
 - `apps/api/` (Node API: auth, chat, workflows, runs)
 - `packages/db/` (schema + migrations)
-- `packages/opencode-plugins/` (FlowPal plugins: findSimilarWorkflow, runWorkflow)
+- `packages/opencode-plugins/` (LocalTool plugins: findSimilarWorkflow, runWorkflow)
 
 Frontend:
 - `apps/web/` (Next.js UI)

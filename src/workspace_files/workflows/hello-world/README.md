@@ -6,7 +6,7 @@ A simple workflow that prints "Hello, World!" to demonstrate the basic workflow 
 
 ## Purpose
 
-This workflow serves as a minimal example of how workflows are structured and executed in the FlowPal system.
+This workflow serves as a minimal example of how workflows are structured and executed in the LocalTool system.
 
 ## Inputs
 

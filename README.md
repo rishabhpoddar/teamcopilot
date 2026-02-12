@@ -1,6 +1,6 @@
-# FlowPal
+# LocalTool
 
-An open-source platform for running AI agent workflows on your local machine. FlowPal provides a web interface to create, manage, and execute automated workflows powered by AI agents.
+An open-source platform for running AI agent workflows on your local machine. LocalTool provides a web interface to create, manage, and execute automated workflows powered by AI agents.
 
 ## Features
 
@@ -21,8 +21,8 @@ An open-source platform for running AI agent workflows on your local machine. Fl
 ### Setup
 
 ```bash
-git clone https://github.com/rishabhpoddar/flowpal
-cd flowpal
+git clone https://github.com/rishabhpoddar/localtool
+cd localtool
 
 # Install dependencies
 npm install
@@ -51,21 +51,21 @@ The application will be available at **http://localhost:3000**
 ### Setup
 
 ```bash
-git clone https://github.com/rishabhpoddar/flowpal
-cd flowpal
+git clone https://github.com/rishabhpoddar/localtool
+cd localtool
 
 # Build the image
-docker build -t flowpal .
+docker build -t localtool .
 
 # Run the container
 docker run -d \
-  --name flowpal \
+  --name localtool \
   -p 3000:3000 \
   -v db-data:/app/data \
   -v my_workspaces:/app/workspaces \
   -e SERVICE_URL="http://localhost:3000" \
   -e JWT_SECRET="your-secret-key" \
-  flowpal
+  localtool
 ```
 
 The application will be available at **http://localhost:3000**

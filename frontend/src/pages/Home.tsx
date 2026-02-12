@@ -32,7 +32,7 @@ export default function Home() {
     return (
         <div className="dashboard">
             <header className="dashboard-header">
-                <h1>FlowPal</h1>
+                <h1>LocalTool</h1>
                 <div className="dashboard-user">
                     <span>{user?.name} ({user?.email})</span>
                     <button onClick={logout}>Sign Out</button>

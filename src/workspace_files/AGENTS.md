@@ -1,4 +1,4 @@
-# FlowPal Agent Instructions
+# LocalTool Agent Instructions
 
 This document is your operating manual for working within this directory (called workspace). Follow these conventions strictly when creating, updating, or running workflows.
 
