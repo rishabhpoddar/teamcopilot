@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth.tsx';
+import './Auth.css';
 
 export default function Login() {
     const [email, setEmail] = useState('');

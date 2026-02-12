@@ -9,7 +9,7 @@ This document is your operating manual for working within this directory (called
 **You must NEVER execute workflow scripts directly using shell commands.**
 
 All workflow execution performed by the agent **must** go through the `runWorkflow` tool. This is enforced because:
-- Only workflows that have been **approved by an admin user** can be executed
+- Only workflows that have been **approved by an engineer user** can be executed
 - The `runWorkflow` tool checks approval status before execution
 - If a workflow is not approved, `runWorkflow` will return an error
 
@@ -78,18 +78,19 @@ This manifest defines what the workflow does and how it runs. The UI and executi
       "description": "The Stripe customer ID to check"
     },
     "days_back": {
-      "type": "integer",
+      "type": "number",
       "required": false,
       "default": 7,
       "description": "Number of days to look back for failed payments"
     }
   },
   "triggers": {
-    "manual": true, // will always be true.
+    "manual": true // will always be true.
   },
   "runtime": {
     "timeout_seconds": 300
-  }
+  },
+  "approved_by_user_id": null
 }
 ```
 
@@ -189,17 +190,20 @@ data/
 1. **Check for similar workflows first** — Use the `findSimilarWorkflow` tool to avoid duplicating effort
    - If you find a similar workflow, **learn from it**: take relevant business logic from it.
    - If you find a similar workflow that can form a sub part of your new workflow, you may **reuse it directly**: consider calling the existing workflow from your new workflow (instead of duplicating logic) when the existing workflow already does most of what you need.
-2. **Create the folder** — `workflows/<slug>/`
-3. **Create all required files**:
-   - `workflow.json` — Define the contract
-   - `README.md` — Document the workflow
-   - `run.py` — Implement the logic
-   - `requirements.txt` — List dependencies
-   - `.env` — Add runtime secrets (never commit)
-   - `.venv/` — Create a per-workflow virtualenv
-   - `requirements.lock.txt` — Record installed dependency versions
-4. **Create `.env.example`** — Document all required secrets as a template
-5. **Optionally create `data/`** — If the workflow needs to persist state between runs (document structure in README)
+2. **Use the `createWorkflow` tool** — This creates the workflow folder with all required files:
+   - `slug`: The workflow name (lowercase, hyphens, e.g., `failed-stripe-payments`)
+   - `intent_summary`: Description of what the workflow does
+   - `inputs`: (optional) Input parameter schema
+   - `timeout_seconds`: (optional, default 300) Max execution time
+3. **Implement the workflow** — After the tool creates the skeleton:
+   - Edit `run.py` — Implement the logic with argparse for inputs
+   - Edit `requirements.txt` — Add Python dependencies (no version specifiers)
+   - Edit `.env` — Add runtime secrets
+   - Edit `.env.example` — Document required secrets as a template
+   - Edit `README.md` — Document the workflow
+   - Create `.venv/` — Create a per-workflow virtualenv
+   - Update `requirements.lock.txt` — Run `pip freeze > requirements.lock.txt` after installing deps
+4. **Optionally create `data/`** — If the workflow needs to persist state between runs (document structure in README)
 
 ### Updating an Existing Workflow
 
@@ -217,7 +221,7 @@ data/
 
 - Workflows are executed via the `runWorkflow` tool (NOT via shell commands)
 - The tool checks if the workflow is approved before execution
-- If not approved, the tool returns an error — you cannot bypass this
+- If not approved, the tool returns an error — you cannot bypass this.
 - Outputs are captured and returned by the tool
 - Each workflow has its own `.venv/` virtualenv (managed by the execution environment)
 - Dependencies are installed from `requirements.txt` (always latest versions) and recorded in `requirements.lock.txt`
@@ -293,16 +297,25 @@ days_back = args.days_back
 When asked to "Create a workflow that checks Stripe for failed payments":
 
 1. Use the `findSimilarWorkflow` tool to check for existing payment-related workflows
-2. If no match, create `workflows/failed-stripe-payments/`
-3. Create all required files:
-   - `workflow.json` — Define inputs (customer_id, days_back) and runtime config
-   - `run.py` — Implement Stripe API logic with argparse for inputs
-   - `requirements.txt` — Add `stripe` dependency (no version specifier)
-   - `requirements.lock.txt` — Record installed versions after installing
-   - `.env` — Add `STRIPE_API_KEY` (never commit)
-   - `.env.example` — Template with `STRIPE_API_KEY=sk_test_...`
-   - `.venv/` — Create virtualenv with `python -m venv .venv`
-   - `README.md` — Document usage and required secrets
+2. If no match, use the `createWorkflow` tool:
+   ```
+   createWorkflow({
+     slug: "failed-stripe-payments",
+     intent_summary: "Checks Stripe for failed payments for a given customer",
+     inputs: {
+       customer_id: { type: "string", required: true, description: "The Stripe customer ID" },
+       days_back: { type: "number", required: false, default: 7, description: "Days to look back" }
+     }
+   })
+   ```
+3. Implement the workflow files:
+   - Edit `run.py` — Implement Stripe API logic with argparse for inputs
+   - Edit `requirements.txt` — Add `stripe` dependency (no version specifier)
+   - Edit `.env` — Add `STRIPE_API_KEY` (never commit)
+   - Edit `.env.example` — Template with `STRIPE_API_KEY=sk_test_...`
+   - Create `.venv/` — Create virtualenv with `python -m venv .venv`
+   - Update `requirements.lock.txt` — Run `pip freeze > requirements.lock.txt` after installing
+   - Edit `README.md` — Document usage and required secrets
 4. If unsure about Stripe API details, ask the user for help or search the web using your tools.
 5. **Do NOT run the workflow directly** — inform the user that the workflow needs an engineer's approval before it can be executed via `runWorkflow`
 

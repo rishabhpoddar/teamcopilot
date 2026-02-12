@@ -1,11 +1,12 @@
 import express from "express";
 import jwt from "jsonwebtoken";
-import prisma from "./prisma/client";
+import prisma from "../prisma/client";
 
 type CustomRequest = express.Request & {
     userId?: string;
     email?: string;
     name?: string;
+    role?: string;
 }
 
 export function apiHandler(handler: (req: CustomRequest, res: express.Response, next: express.NextFunction) => Promise<void>, requireAuth: boolean) {
@@ -36,6 +37,7 @@ export function apiHandler(handler: (req: CustomRequest, res: express.Response, 
                     (req as CustomRequest).userId = user.id;
                     (req as CustomRequest).email = user.email;
                     (req as CustomRequest).name = user.name;
+                    (req as CustomRequest).role = user.role;
                 } catch (e) {
                     if (e instanceof jwt.JsonWebTokenError) {
                         throw {

@@ -2,7 +2,7 @@ import express from "express";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import prisma from "../prisma/client";
-import { apiHandler } from "../utils";
+import { apiHandler } from "../utils/index";
 
 const router = express.Router({ mergeParams: true });
 
@@ -116,10 +116,11 @@ router.post('/reset-password', (async (req: express.Request, res: express.Respon
 }) as express.RequestHandler);
 
 router.get('/me', apiHandler(async (req, res) => {
-    res.send({
+    res.json({
         userId: req.userId,
         email: req.email,
-        name: req.name
+        name: req.name,
+        role: req.role
     });
 }, true));
 

@@ -13,6 +13,7 @@ import cors from "cors";
 import prisma from "./prisma/client";
 import { logError, logInfo } from "./logging";
 import authRouter from "./auth";
+import workflowsRouter from "./workflows";
 import { startCronJobs } from "./cronjob";
 import path from 'path';
 const app = express();
@@ -50,20 +51,7 @@ apiRouter.get("/", (req, res) => {
 });
 
 apiRouter.use('/auth', authRouter);
-
-apiRouter.get('/healthcheck', async (req, res) => {
-    try {
-        let value = await prisma.key_value.findFirst({ where: { key: 'healthcheck' } });
-        if (value === null) {
-            await prisma.key_value.create({ data: { key: 'healthcheck', value: 'OK' } });
-        } else if (value.value !== 'OK') {
-            throw new Error('Value of healthcheck is not OK');
-        }
-        res.send('OK');
-    } catch (err) {
-        res.status(500).send('Internal server error: ' + (err instanceof Error ? err.message : 'Unknown error'));
-    }
-});
+apiRouter.use('/workflows', workflowsRouter);
 
 app.use('/api', apiRouter);
 
@@ -81,7 +69,7 @@ app.use(async (err: any, req: express.Request, res: express.Response, _: express
     if (status !== 404) {
         logError({ err, apiPath: req.path, apiMethod: req.method });
     }
-    res.status(status).send(clientMessage);
+    res.status(status).json({ message: clientMessage });
 })
 
 startCronJobs();

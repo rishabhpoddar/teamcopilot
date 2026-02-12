@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
+import './Auth.css';
 
 export default function ResetPassword() {
     const [searchParams] = useSearchParams();

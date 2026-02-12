@@ -8,14 +8,30 @@ datasource db {
 }
 
 model users {
-  id                     String  @id @default(uuid())
-  email                  String  @unique
+  id                     String          @id @default(uuid())
+  email                  String          @unique
   name                   String
-  role                   String  // "User" or "Engineer"
+  role                   String // "User" or "Engineer"
   created_at             BigInt
   password_hash          String
   reset_token            String?
   reset_token_expires_at BigInt?
+  workflowRuns           workflow_runs[]
+}
+
+model workflow_runs {
+  id             String  @id @default(uuid())
+  ran_by_user_id String
+  status         String // "running" | "success" | "failed"
+  started_at     BigInt
+  completed_at   BigInt?
+  args           String? // JSON string of input arguments passed to the workflow
+  error_message  String?
+  output         String? // Captured stdout/stderr from the workflow run
+  workflow_slug  String
+  user           users   @relation(fields: [ran_by_user_id], references: [id], onDelete: Cascade)
+
+  @@index([started_at])
 }
 
 model key_value {
