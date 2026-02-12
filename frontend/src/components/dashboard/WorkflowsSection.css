@@ -46,6 +46,7 @@
   align-self: flex-start;
   padding: 0.5rem 1rem;
   font-size: 0.9rem;
+  border: 1px solid #444;
 }
 
 .workflow-card-run-btn:disabled {
@@ -126,5 +127,9 @@
 
   .workflow-approval-message {
     color: #b45309;
+  }
+
+  .workflow-card-run-btn {
+    border-color: #ccc;
   }
 }

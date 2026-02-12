@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../lib/auth.tsx';
 import WorkflowsSection from '../components/dashboard/WorkflowsSection';
 import RunHistorySection from '../components/dashboard/RunHistorySection';
@@ -6,10 +6,17 @@ import AIModeSection from '../components/dashboard/AIModeSection';
 import './Home.css';
 
 type Tab = 'workflows' | 'history' | 'ai';
+const validTabs: Tab[] = ['workflows', 'history', 'ai'];
 
 export default function Home() {
     const { user, logout } = useAuth();
-    const [activeTab, setActiveTab] = useState<Tab>('workflows');
+    const [searchParams, setSearchParams] = useSearchParams();
+    const tabParam = searchParams.get('tab');
+    const activeTab: Tab = validTabs.includes(tabParam as Tab) ? (tabParam as Tab) : 'workflows';
+
+    const setActiveTab = (tab: Tab) => {
+        setSearchParams({ tab });
+    };
 
     const renderTabContent = () => {
         switch (activeTab) {
