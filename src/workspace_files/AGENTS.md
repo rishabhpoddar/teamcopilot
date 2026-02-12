@@ -9,7 +9,7 @@ This document is your operating manual for working within this directory (called
 **You must NEVER execute workflow scripts directly using shell commands.**
 
 All workflow execution performed by the agent **must** go through the `runWorkflow` tool. This is enforced because:
-- Only workflows that have been **approved by an admin user** can be executed
+- Only workflows that have been **approved by an engineer user** can be executed
 - The `runWorkflow` tool checks approval status before execution
 - If a workflow is not approved, `runWorkflow` will return an error
 
@@ -221,7 +221,7 @@ data/
 
 - Workflows are executed via the `runWorkflow` tool (NOT via shell commands)
 - The tool checks if the workflow is approved before execution
-- If not approved, the tool returns an error — you cannot bypass this
+- If not approved, the tool returns an error — you cannot bypass this.
 - Outputs are captured and returned by the tool
 - Each workflow has its own `.venv/` virtualenv (managed by the execution environment)
 - Dependencies are installed from `requirements.txt` (always latest versions) and recorded in `requirements.lock.txt`

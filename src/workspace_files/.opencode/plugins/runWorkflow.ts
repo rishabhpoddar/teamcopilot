@@ -51,13 +51,43 @@ interface WorkflowRunResponse {
   }
 }
 
+type ApiResult<T> = { ok: true; data: T } | { ok: false; message: string }
+
+function isApiError<T>(
+  result: ApiResult<T>
+): result is { ok: false; message: string } {
+  return result.ok === false
+}
+
+async function readErrorMessageFromResponse(
+  response: Response,
+  fallbackMessage: string
+): Promise<string> {
+  try {
+    const text = await response.text()
+    if (!text) return fallbackMessage
+    try {
+      const parsed: unknown = JSON.parse(text)
+      if (parsed && typeof parsed === "object" && "message" in parsed) {
+        const msg = (parsed as { message?: unknown }).message
+        if (typeof msg === "string" && msg.trim().length > 0) return msg
+      }
+    } catch {
+      // non-JSON error body, fall through to returning text (if useful)
+    }
+    return text.trim().length > 0 ? text : fallbackMessage
+  } catch {
+    return fallbackMessage
+  }
+}
+
 /**
  * Creates a new workflow run entry in the database.
  */
 async function createWorkflowRun(
   slug: string,
   args: Record<string, unknown>
-): Promise<string | null> {
+): Promise<ApiResult<string>> {
   try {
     const response = await fetch(`${API_BASE_URL}/api/workflows/runs`, {
       method: "POST",
@@ -70,16 +100,18 @@ async function createWorkflowRun(
     })
 
     if (!response.ok) {
-      const error = await response.json()
-      console.error(`[runWorkflow] Failed to create run entry: ${error.message}`)
-      return null
+      const message = await readErrorMessageFromResponse(
+        response,
+        `Failed to create run entry (HTTP ${response.status})`
+      )
+      return { ok: false, message }
     }
 
     const data = (await response.json()) as WorkflowRunResponse
-    return data.run.id
+    return { ok: true, data: data.run.id }
   } catch (err) {
-    console.error(`[runWorkflow] Failed to create run entry: ${err}`)
-    return null
+    const message = err instanceof Error ? err.message : String(err)
+    return { ok: false, message }
   }
 }
 
@@ -90,7 +122,7 @@ async function updateWorkflowRunStatus(
   runId: string,
   status: "running" | "success" | "failed",
   errorMessage?: string
-): Promise<boolean> {
+): Promise<ApiResult<true>> {
   try {
     const body: { status: string; error_message?: string } = { status }
     if (errorMessage) {
@@ -104,15 +136,17 @@ async function updateWorkflowRunStatus(
     })
 
     if (!response.ok) {
-      const error = await response.json()
-      console.error(`[runWorkflow] Failed to update run status: ${error.message}`)
-      return false
+      const message = await readErrorMessageFromResponse(
+        response,
+        `Failed to update run status (HTTP ${response.status})`
+      )
+      return { ok: false, message }
     }
 
-    return true
+    return { ok: true, data: true }
   } catch (err) {
-    console.error(`[runWorkflow] Failed to update run status: ${err}`)
-    return false
+    const message = err instanceof Error ? err.message : String(err)
+    return { ok: false, message }
   }
 }
 
@@ -662,21 +696,20 @@ export const RunWorkflowPlugin: Plugin = async (_ctx) => {
           // Convert inputs to command-line arguments
           const cmdArgs = inputsToArgs(validation.processedInputs)
 
-          console.log(`\n[runWorkflow] Starting workflow '${slug}'...`)
-          console.log(`[runWorkflow] Timeout: ${timeoutSeconds}s`)
-          console.log(`[runWorkflow] Arguments: ${cmdArgs.join(" ")}\n`)
-
           // Create a run entry in the database (this also checks approval status)
-          const runId = await createWorkflowRun(slug, inputs as Record<string, unknown>)
-          if (!runId) {
+          const runCreate = await createWorkflowRun(
+            slug,
+            inputs as Record<string, unknown>
+          )
+          if (isApiError(runCreate)) {
             return JSON.stringify({
               status: "error",
               error: "run_creation_failed",
-              message: "Failed to create workflow run entry. The workflow may not be approved yet.",
+              message: runCreate.message,
             })
           }
 
-          console.log(`[runWorkflow] Created run entry with ID: ${runId}`)
+          const runId = runCreate.data
 
           // Run the workflow
           const result = await runWithTimeout(
@@ -688,9 +721,18 @@ export const RunWorkflowPlugin: Plugin = async (_ctx) => {
           // Update the run status in the database
           const dbStatus = result.status === "success" ? "success" : "failed"
           const errorMessage = result.status !== "success" ? result.output.slice(-1000) : undefined
-          await updateWorkflowRunStatus(runId, dbStatus, errorMessage)
+          const runUpdate = await updateWorkflowRunStatus(
+            runId,
+            dbStatus,
+            errorMessage
+          )
 
-          console.log(`[runWorkflow] Updated run status to: ${dbStatus}`)
+          const warningFields: Record<string, unknown> = isApiError(runUpdate)
+            ? {
+              warning: "run_status_update_failed",
+              warning_message: runUpdate.message,
+            }
+            : {}
 
           return JSON.stringify({
             status: result.status,
@@ -698,6 +740,7 @@ export const RunWorkflowPlugin: Plugin = async (_ctx) => {
             workflow: slug,
             timeout_seconds: timeoutSeconds,
             run_id: runId,
+            ...warningFields,
           })
         },
       }),
