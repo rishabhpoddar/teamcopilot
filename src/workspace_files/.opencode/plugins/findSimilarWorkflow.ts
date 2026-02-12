@@ -98,7 +98,7 @@ export const FindSimilarWorkflowPlugin: Plugin = async (_ctx) => {
     tool: {
       findSimilarWorkflow: tool({
         description:
-          "Query for existing workflows before creating new ones. Returns up to N candidate workflows with paths and summaries based on semantic similarity to the provided description. Use this to avoid duplicate work and find workflows that can be reused or adapted.",
+          "Query for existing workflows before creating new ones or for searching for a workflow to run. Returns up to N candidate workflows with paths and summaries based on semantic similarity to the provided description. Use this to avoid duplicate work and find workflows that can be reused or adapted.",
         args: {
           description: tool.schema
             .string()

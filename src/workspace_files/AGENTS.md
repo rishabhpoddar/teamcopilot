@@ -187,9 +187,10 @@ data/
 
 ### Creating a New Workflow
 
-1. **Check for similar workflows first** — Use the `findSimilarWorkflow` tool to avoid duplicating effort
+1. **Check for similar workflows first** — You MUST use the `findSimilarWorkflow` tool to search for existing workflows; do NOT use shell or bash commands (for example `grep`, `rg`, or `find`) to search the repository for workflows.
    - If you find a similar workflow, **learn from it**: take relevant business logic from it.
-   - If you find a similar workflow that can form a sub part of your new workflow, you may **reuse it directly**: consider calling the existing workflow from your new workflow (instead of duplicating logic) when the existing workflow already does most of what you need.
+   - If you find a similar workflow, **learn from it**: take relevant business logic from it.
+   - If you only want to find an existing workflow to run (not create a new one), you MUST also use the `findSimilarWorkflow` tool rather than searching with shell commands.
 2. **Use the `createWorkflow` tool** — This creates the workflow folder with all required files:
    - `slug`: The workflow name (lowercase, hyphens, e.g., `failed-stripe-payments`)
    - `intent_summary`: Description of what the workflow does
@@ -216,6 +217,8 @@ data/
 7. **Test locally if possible** — Run the workflow to verify changes
 
 ### Running Workflows
+
+If you simply need to find an existing workflow to run (and are not creating a new workflow), use the `findSimilarWorkflow` tool to locate it; do NOT search using shell commands.
 
 **⚠️ CRITICAL: Never run workflows directly via shell commands. Always use the `runWorkflow` tool.**
 
@@ -261,9 +264,8 @@ days_back = args.days_back
 ## Best Practices
 
 1. **Agent: never run scripts directly** — Always use the `runWorkflow` tool to execute workflows (humans may run `python run.py ...` directly)
-2. **Always check for existing workflows** before creating new ones. Only create new ones if no existing workflow can fit the request. If needed, modify the existing workflow to fit the request WITHOUT losing older functionality.
+2. **Always check for existing workflows** before creating new ones — you MUST use the `findSimilarWorkflow` tool to do this. Only create new ones if no existing workflow can fit the request. If needed, modify the existing workflow to fit the request WITHOUT losing older functionality.
    - If you find a similar workflow, **study it and follow its business logic and conventions**.
-   - If an existing workflow can be reused as a sub part of your new workflow, call it directly as opposed to duplicating logic.
 3. **Ask the user for help** when unsure.
 4. **Keep workflows focused** — one workflow, one purpose
 5. **Document thoroughly** — future you (and others) will thank you
@@ -296,7 +298,7 @@ days_back = args.days_back
 
 When asked to "Create a workflow that checks Stripe for failed payments":
 
-1. Use the `findSimilarWorkflow` tool to check for existing payment-related workflows
+1. Use the `findSimilarWorkflow` tool to check for existing payment-related workflows — do NOT search using shell commands (e.g., `grep`, `rg`, `find`).
 2. If no match, use the `createWorkflow` tool:
    ```
    createWorkflow({
