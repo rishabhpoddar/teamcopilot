@@ -20,7 +20,7 @@ export default function WorkflowCard({
     onApproved
 }: WorkflowCardProps) {
     const [approving, setApproving] = useState(false);
-    const isApproved = approved_by_user_id !== null && approved_by_user_id !== undefined;
+    const isApproved = approved_by_user_id !== null;
 
     const handleApprove = async () => {
         setApproving(true);

@@ -80,8 +80,8 @@ export default function RunHistorySection() {
                             <td className="workflow-name-cell">{run.workflow_slug}</td>
                             <td><StatusBadge status={run.status} /></td>
                             <td>{formatDate(run.started_at)}</td>
-                            <td>{formatDuration(run.started_at, run.completed_at ?? null)}</td>
-                            <td>{run.user?.name ?? 'Unknown User'}</td>
+                            <td>{formatDuration(run.started_at, run.completed_at)}</td>
+                            <td>{run.user.name}</td>
                         </tr>
                     ))}
                 </tbody>
