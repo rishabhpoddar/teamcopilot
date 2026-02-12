@@ -48,12 +48,12 @@ router.get('/runs', apiHandler(async (req, res) => {
 
 // POST /api/workflows/runs - Create new workflow run record
 router.post('/runs', apiHandler(async (req, res) => {
-    const { workflow_slug, workflow_name, args } = req.body;
+    const { workflow_slug, args } = req.body;
 
-    if (!workflow_slug || !workflow_name) {
+    if (!workflow_slug) {
         throw {
             status: 400,
-            message: 'workflow_slug and workflow_name are required'
+            message: 'workflow_slug are required'
         };
     }
 

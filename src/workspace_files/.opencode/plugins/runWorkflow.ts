@@ -94,7 +94,6 @@ async function createWorkflowRun(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         workflow_slug: slug,
-        workflow_name: slug,
         args,
       }),
     })
