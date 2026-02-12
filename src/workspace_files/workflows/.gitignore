@@ -1,0 +1,8 @@
+# Ignore everything in this workflows folder
+*
+# Keep this .gitignore tracked
+!.gitignore
+
+# Allow the hello-world workflow and its contents
+!hello-world/
+!hello-world/**
