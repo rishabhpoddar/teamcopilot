@@ -152,3 +152,6 @@ throw {
 ```
 - The error handler in `index.ts` will handle it in the correct way.
 - This is applicable for all status codes other than 200 ones.
+
+### Error handling
+- Prefer throwing errors rather than silently handling them via return values like false or null.
