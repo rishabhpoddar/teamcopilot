@@ -48,6 +48,61 @@
   font-size: 0.9rem;
 }
 
+.workflow-card-run-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Approval Badge */
+.workflow-approval-badge {
+  font-size: 0.7rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.workflow-approval-badge.approved {
+  background: #1a4d1a;
+  color: #4ade80;
+}
+
+.workflow-approval-badge.pending {
+  background: #4d3a1a;
+  color: #fbbf24;
+}
+
+/* Approval Section */
+.workflow-approval-section {
+  margin-top: 0.25rem;
+}
+
+.workflow-approve-btn {
+  background: #2563eb;
+  color: white;
+  border: none;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.85rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.workflow-approve-btn:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.workflow-approve-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.workflow-approval-message {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #f59e0b;
+  font-style: italic;
+}
+
 /* Light Mode Overrides */
 @media (prefers-color-scheme: light) {
   .workflow-card {
@@ -57,5 +112,19 @@
 
   .workflow-card-version {
     background: #f0f0f0;
+  }
+
+  .workflow-approval-badge.approved {
+    background: #dcfce7;
+    color: #166534;
+  }
+
+  .workflow-approval-badge.pending {
+    background: #fef3c7;
+    color: #92400e;
+  }
+
+  .workflow-approval-message {
+    color: #b45309;
   }
 }

@@ -119,7 +119,8 @@ router.get('/me', apiHandler(async (req, res) => {
     res.json({
         userId: req.userId,
         email: req.email,
-        name: req.name
+        name: req.name,
+        role: req.role
     });
 }, true));
 

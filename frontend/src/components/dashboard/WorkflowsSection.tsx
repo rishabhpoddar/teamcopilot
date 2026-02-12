@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { axiosInstance } from '../../utils';
 import { useAuth } from '../../lib/auth';
 import type { Workflow } from '../../types/workflow';
@@ -6,28 +6,28 @@ import WorkflowCard from './WorkflowCard';
 import './WorkflowsSection.css';
 
 export default function WorkflowsSection() {
-    const { token } = useAuth();
+    const { token, user } = useAuth();
     const [workflows, setWorkflows] = useState<Workflow[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    useEffect(() => {
-        const fetchWorkflows = async () => {
-            try {
-                const response = await axiosInstance.get('/api/workflows', {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
-                setWorkflows(response.data.workflows);
-            } catch (err: unknown) {
-                const errorMessage = err instanceof Error ? err.message : 'Failed to load workflows';
-                setError(errorMessage);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchWorkflows();
+    const fetchWorkflows = useCallback(async () => {
+        try {
+            const response = await axiosInstance.get('/api/workflows', {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            setWorkflows(response.data.workflows);
+        } catch (err: unknown) {
+            const errorMessage = err instanceof Error ? err.message : 'Failed to load workflows';
+            setError(errorMessage);
+        } finally {
+            setLoading(false);
+        }
     }, [token]);
+
+    useEffect(() => {
+        fetchWorkflows();
+    }, [fetchWorkflows]);
 
     if (loading) {
         return <div className="section-loading">Loading workflows...</div>;
@@ -55,6 +55,9 @@ export default function WorkflowsSection() {
                 <WorkflowCard
                     key={workflow.slug}
                     {...workflow}
+                    userRole={user?.role ?? 'User'}
+                    token={token ?? ''}
+                    onApproved={fetchWorkflows}
                 />
             ))}
         </div>
