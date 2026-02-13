@@ -24,7 +24,7 @@ async function main() {
         data: { reset_token: resetToken, reset_token_expires_at: expiresAt }
     });
 
-    const serviceUrl = process.env.SERVICE_URL || 'http://localhost:3000';
+    const serviceUrl = process.env.EXTERNAL_SERVICE_URL || 'http://localhost:3000';
     console.log(`\nPassword reset link (expires in 1 hour):\n${serviceUrl}/reset-password?token=${resetToken}\n`);
 
     await prisma.$disconnect();

@@ -27,6 +27,8 @@ RUN mkdir -p /app/data
 # Default environment variables
 ENV DATABASE_URL="file:/app/data/data.db"
 ENV WORKSPACE_DIR="/app/workspaces"
+ENV OPENCODE_MODEL="claude-sonnet-4-5-20250929"
 
 EXPOSE 3000
-CMD npx prisma migrate deploy && node dist/index.js
+EXPOSE 4096
+CMD npx prisma migrate deploy && npx concurrently "node dist/index.js" "node dist/opencode-server.mjs"

@@ -4,10 +4,11 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "cd frontend && npm run build && cd .. && tsc",
-    "start": "npm run build && node dist/index.js",
-    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "start": "npm run build && concurrently \"node dist/index.js\" \"node dist/opencode-server.mjs\"",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\" \"npm run dev:opencode\"",
     "dev:backend": "ts-node-dev src/index.ts",
     "dev:frontend": "cd frontend && npm run dev",
+    "dev:opencode": "tsx watch src/opencode-server.mts",
     "reset-password": "ts-node src/reset-password.ts"
   },
   "keywords": [],
@@ -15,6 +16,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@opencode-ai/sdk": "^1.1.64",
     "@prisma/client": "^6.0.1",
     "@slack/web-api": "^7.8.0",
     "@supabase/supabase-js": "^2.47.8",
@@ -41,6 +43,7 @@
     "uuid": "^11.1.0"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1"
+    "concurrently": "^9.2.1",
+    "tsx": "^4.21.0"
   }
 }

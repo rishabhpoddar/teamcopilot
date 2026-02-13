@@ -21,7 +21,7 @@ const app = express();
 app.use(express.json());
 
 app.use(cors({
-    origin: process.env.SERVICE_URL,
+    origin: process.env.EXTERNAL_SERVICE_URL,
     credentials: true
 }));
 
@@ -74,4 +74,8 @@ app.use(async (err: any, req: express.Request, res: express.Response, _: express
 
 startCronJobs();
 
-app.listen(3000);
+const HOST = process.env.HOST || "0.0.0.0";
+const PORT = parseInt(process.env.PORT || "3000", 10);
+app.listen(PORT, HOST, () => {
+    console.log(`Server running at http://${HOST}:${PORT}`);
+});

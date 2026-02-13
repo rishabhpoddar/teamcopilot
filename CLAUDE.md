@@ -91,8 +91,16 @@ SQLite via Prisma ORM. Schema is at `prisma/schema.prisma`. Currently two tables
 
 ## Environment Variables
 
-Required: `JWT_SECRET`, `SERVICE_URL` (default `http://localhost:3000`), `DATABASE_URL` (default `file:./dev.db` relative to `prisma/`)
+Required: `JWT_SECRET`, `EXTERNAL_SERVICE_URL` (default `http://localhost:3000`), `DATABASE_URL` (default `file:./dev.db` relative to `prisma/`)
 Optional: `WORKSPACE_DIR` (absolute path or relative to project root, default `./my_workspaces`)
+
+### Server
+- `HOST` (default `0.0.0.0`) — Hostname for the main server
+- `PORT` (default `3000`) — Port for the main server
+
+### Opencode Server
+- `OPENCODE_PORT` (default `4096`) — Port for the Opencode server (always listens on localhost)
+- `OPENCODE_MODEL` (default `claude-sonnet-4-5-20250929`) — AI model to use
 
 ## Design Direction
 
