@@ -329,3 +329,12 @@ When asked to "Run the failed-stripe-payments workflow for customer cus_123":
 2. Use the `runWorkflow` tool.
 3. If the workflow is not approved, inform the user about the error and that they need to wait for an engineer's approval
 4. If the workflow runs successfully, report the output to the user
+
+## Example: Finding a workflow to run
+When the user does not specify a workflow to run, you MUST use the `findSimilarWorkflow` tool to find a workflow to run. For example, if the user asks "How many users do I have in my app?"
+
+1. **DO NOT** search using shell commands (for example `grep`, `rg`, or `find`) to search the repository for workflows.
+2. Use the `findSimilarWorkflow` tool with an argument like "Count number of users in the app", which will return a list of similar workflows based on semantic similarity to the query.
+3. Inspect each workflow's workflow.json and README.md to determine if it is the correct workflow to run. If unclear, ask the user for clarification.
+4. Once you have found the correct workflow, run it using the `runWorkflow` tool.
+5. If no relevant workflow found, then inform the user and ask them if you should create a new workflow to handle the request.
