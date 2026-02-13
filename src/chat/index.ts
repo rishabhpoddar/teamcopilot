@@ -14,7 +14,7 @@ function getErrorMessage(error: unknown): string {
 }
 
 function getWorkspaceDir(): string {
-    let workspaceDir = process.env.WORKSPACE_DIR || "./my_workspaces";
+    let workspaceDir = process.env.WORKSPACE_DIR!;
     if (!path.isAbsolute(workspaceDir)) {
         workspaceDir = path.resolve(process.cwd(), workspaceDir);
     }
