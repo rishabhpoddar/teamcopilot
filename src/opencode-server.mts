@@ -11,11 +11,14 @@ async function main() {
     const port = parseInt(process.env.OPENCODE_PORT || "4096", 10);
     const model = process.env.OPENCODE_MODEL || "claude-sonnet-4-5-20250929";
 
+    // Model format should be "provider/model", e.g., "anthropic/claude-sonnet-4-5-20250929"
+    const fullModel = model.includes('/') ? model : `anthropic/${model}`;
+
     server = await createOpencodeServer({
         hostname: "127.0.0.1", // fixed cause only the backend server should query it, and the backend server is running on the same machine
         port,
         config: {
-            model,
+            model: fullModel,
         },
     });
 

@@ -14,6 +14,7 @@ import prisma from "./prisma/client";
 import { logError, logInfo } from "./logging";
 import authRouter from "./auth";
 import workflowsRouter from "./workflows";
+import chatRouter from "./chat";
 import { startCronJobs } from "./cronjob";
 import path from 'path';
 const app = express();
@@ -52,6 +53,7 @@ apiRouter.get("/", (req, res) => {
 
 apiRouter.use('/auth', authRouter);
 apiRouter.use('/workflows', workflowsRouter);
+apiRouter.use('/chat', chatRouter);
 
 app.use('/api', apiRouter);
 
