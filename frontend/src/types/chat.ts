@@ -257,7 +257,14 @@ export interface SessionErrorEvent {
     };
 }
 
-export type SSEEvent = MessageUpdatedEvent | MessageRemovedEvent | MessagePartUpdatedEvent | MessagePartRemovedEvent | ErrorEvent | SessionStatusEvent | SessionErrorEvent;
+export interface SessionIdleEvent {
+    type: "session.idle";
+    properties: {
+        sessionID: string;
+    };
+}
+
+export type SSEEvent = MessageUpdatedEvent | MessageRemovedEvent | MessagePartUpdatedEvent | MessagePartRemovedEvent | ErrorEvent | SessionStatusEvent | SessionErrorEvent | SessionIdleEvent;
 
 // API response types
 export interface SessionsResponse {

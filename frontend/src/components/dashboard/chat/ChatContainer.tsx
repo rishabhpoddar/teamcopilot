@@ -77,13 +77,13 @@ export default function ChatContainer() {
 
             const data = response.data.messages;
             if (Array.isArray(data)) {
-                // The API returns an array of [message, parts[]] tuples
+                // The API returns an array of { info: Message, parts: Part[] } objects
                 const loadedMessages: Message[] = [];
                 const loadedParts: Part[] = [];
 
-                data.forEach((item: [Message, Part[]]) => {
-                    loadedMessages.push(item[0]);
-                    loadedParts.push(...item[1]);
+                data.forEach((item: { info: Message; parts: Part[] }) => {
+                    loadedMessages.push(item.info);
+                    loadedParts.push(...item.parts);
                 });
 
                 setMessages(loadedMessages);
@@ -244,9 +244,14 @@ export default function ChatContainer() {
                 const status = event.properties.status;
                 if (status.type === 'idle') {
                     setIsStreaming(false);
-                } else if (status.type === 'running' || status.type === 'waiting') {
+                } else if (status.type === 'busy' || status.type === 'retry') {
                     setIsStreaming(true);
                 }
+                break;
+            }
+
+            case 'session.idle': {
+                setIsStreaming(false);
                 break;
             }
         }
