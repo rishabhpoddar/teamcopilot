@@ -180,6 +180,12 @@ export default function ChatContainer() {
                     if (exists) {
                         return prev.map(m => m.id === info.id ? info : m);
                     }
+                    // When a new user message arrives, remove any temp messages
+                    // This handles the optimistic update replacement
+                    if (info.role === 'user') {
+                        const filtered = prev.filter(m => !m.id.startsWith('temp-'));
+                        return [...filtered, info];
+                    }
                     return [...prev, info];
                 });
 
@@ -208,7 +214,9 @@ export default function ChatContainer() {
                     if (exists) {
                         return prev.map(p => p.id === part.id ? part : p);
                     }
-                    return [...prev, part];
+                    // Remove temp parts when real parts arrive (handles optimistic updates)
+                    const filtered = prev.filter(p => !p.id.startsWith('temp-'));
+                    return [...filtered, part];
                 });
                 break;
             }
