@@ -30,5 +30,4 @@ ENV WORKSPACE_DIR="/app/workspaces"
 ENV OPENCODE_MODEL="claude-sonnet-4-5-20250929"
 
 EXPOSE 3000
-EXPOSE 4096
-CMD npx prisma migrate deploy && npx concurrently "node dist/index.js" "node dist/opencode-server.mjs"
+CMD npx prisma migrate deploy && node dist/index.js

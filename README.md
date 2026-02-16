@@ -61,7 +61,6 @@ docker build -t localtool .
 docker run -d \
   --name localtool \
   -p 3000:3000 \
-  -p 4096:4096 \
   -v db-data:/app/data \
   -v my_workspaces:/app/workspaces \
   -e EXTERNAL_SERVICE_URL="http://localhost:3000" \
@@ -97,7 +96,7 @@ Data is persisted in Docker named volumes. Even if you remove and recreate the c
 | `OPENCODE_PORT` | Port for the Opencode server | `4096` |
 | `OPENCODE_MODEL` | AI model for Opencode | `claude-sonnet-4-5-20250929` |
 
-> Note: `DATABASE_URL` is relative to the `prisma/` directory. For Docker, `DATABASE_URL` and `WORKSPACE_DIR` are set automatically in the image. `HOST`, `PORT`, and `OPENCODE_PORT` are not used in Docker — the container uses default ports and you can remap them with `-p` flags.
+> Note: `DATABASE_URL` is relative to the `prisma/` directory. For Docker, `DATABASE_URL` and `WORKSPACE_DIR` are set automatically in the image. `HOST` and `PORT` control the main HTTP server. `OPENCODE_PORT` is used internally by the backend process and normally does not need to be exposed with a Docker `-p` flag.
 
 ---
 

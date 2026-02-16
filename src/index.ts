@@ -16,7 +16,9 @@ import authRouter from "./auth";
 import workflowsRouter from "./workflows";
 import chatRouter from "./chat";
 import { startCronJobs } from "./cronjob";
+import { startOpencodeServer, stopOpencodeServer } from "./opencode-server";
 import path from 'path';
+import { Server } from "http";
 const app = express();
 
 app.use(express.json());
@@ -74,10 +76,56 @@ app.use(async (err: any, req: express.Request, res: express.Response, _: express
     res.status(status).json({ message: clientMessage });
 })
 
-startCronJobs();
+let httpServer: Server | null = null;
+let isShuttingDown = false;
 
-const HOST = process.env.HOST || "0.0.0.0";
-const PORT = parseInt(process.env.PORT || "3000", 10);
-app.listen(PORT, HOST, () => {
-    console.log(`Server running at http://${HOST}:${PORT}`);
+async function shutdown(exitCode: number) {
+    if (isShuttingDown) {
+        return;
+    }
+    isShuttingDown = true;
+
+    stopOpencodeServer();
+
+    if (httpServer) {
+        await new Promise<void>((resolve) => {
+            httpServer!.close(() => resolve());
+        });
+    }
+
+    process.exit(exitCode);
+}
+
+async function bootstrap() {
+    await startOpencodeServer();
+    startCronJobs();
+
+    const HOST = process.env.HOST || "0.0.0.0";
+    const PORT = parseInt(process.env.PORT || "3000", 10);
+    httpServer = app.listen(PORT, HOST, () => {
+        console.log(`Server running at http://${HOST}:${PORT}`);
+    });
+}
+
+process.on("SIGINT", () => {
+    void shutdown(0);
+});
+
+process.on("SIGTERM", () => {
+    void shutdown(0);
+});
+
+process.on("uncaughtException", (err) => {
+    console.error("Uncaught exception:", err);
+    void shutdown(1);
+});
+
+process.on("unhandledRejection", (reason) => {
+    console.error("Unhandled rejection:", reason);
+    void shutdown(1);
+});
+
+void bootstrap().catch((err) => {
+    console.error("Failed to start server:", err);
+    process.exit(1);
 });
