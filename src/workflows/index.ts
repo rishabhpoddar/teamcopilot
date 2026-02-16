@@ -68,7 +68,7 @@ router.post('/runs', apiHandler(async (req, res) => {
     const run = await prisma.workflow_runs.create({
         data: {
             workflow_slug: workflow_slug,
-            ran_by_user_id: req.userId || "b0298453-554d-466c-9c6b-9a33ae697999", // TODO: remove this user id
+            ran_by_user_id: req.userId!,
             status: 'running',
             started_at: Date.now(),
             args: args ? JSON.stringify(args) : null
@@ -76,7 +76,7 @@ router.post('/runs', apiHandler(async (req, res) => {
     });
 
     res.json({ run });
-}, false)); // TODO: Need auth for AI agent.
+}, true));
 
 // PATCH /api/workflows/runs/:id - Update run status
 router.patch('/runs/:id', apiHandler(async (req, res) => {
@@ -125,7 +125,7 @@ router.patch('/runs/:id', apiHandler(async (req, res) => {
     });
 
     res.json({ run });
-}, false)); // TODO: Need auth for AI agent.
+}, true));
 
 // POST /api/workflows/:slug/approve - Approve a workflow
 router.post('/:slug/approve', apiHandler(async (req, res) => {

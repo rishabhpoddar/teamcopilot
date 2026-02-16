@@ -86,12 +86,16 @@ async function readErrorMessageFromResponse(
  */
 async function createWorkflowRun(
   slug: string,
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  sessionID: string
 ): Promise<ApiResult<string>> {
   try {
     const response = await fetch(`${API_BASE_URL}/api/workflows/runs`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${sessionID}`,
+      },
       body: JSON.stringify({
         workflow_slug: slug,
         args,
@@ -120,6 +124,7 @@ async function createWorkflowRun(
 async function updateWorkflowRunStatus(
   runId: string,
   status: "running" | "success" | "failed",
+  sessionID: string,
   errorMessage?: string,
   output?: string
 ): Promise<ApiResult<true>> {
@@ -134,7 +139,10 @@ async function updateWorkflowRunStatus(
 
     const response = await fetch(`${API_BASE_URL}/api/workflows/runs/${runId}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${sessionID}`,
+      },
       body: JSON.stringify(body),
     })
 
@@ -574,7 +582,7 @@ export const RunWorkflowPlugin: Plugin = async (_ctx) => {
             ),
         },
         async execute(args, context) {
-          const { directory } = context
+          const { directory, sessionID } = context
           const { slug, inputs = {} } = args
 
           if (!SLUG_REGEX.test(slug)) {
@@ -679,7 +687,8 @@ export const RunWorkflowPlugin: Plugin = async (_ctx) => {
           // Create a run entry in the database (this also checks approval status)
           const runCreate = await createWorkflowRun(
             slug,
-            inputs as Record<string, unknown>
+            inputs as Record<string, unknown>,
+            sessionID
           )
           if (isApiError(runCreate)) {
             return JSON.stringify({
@@ -704,6 +713,7 @@ export const RunWorkflowPlugin: Plugin = async (_ctx) => {
           const runUpdate = await updateWorkflowRunStatus(
             runId,
             dbStatus,
+            sessionID,
             errorMessage,
             result.output
           )
