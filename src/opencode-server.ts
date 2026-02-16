@@ -1,3 +1,8 @@
+import { exec } from "child_process";
+import { promisify } from "util";
+
+const execAsync = promisify(exec);
+
 type OpencodeServerInstance = {
     url: string;
     close(): void;
@@ -10,6 +15,21 @@ async function loadCreateOpencodeServer() {
     return sdk.createOpencodeServer;
 }
 
+async function killProcessOnPort(port: number): Promise<void> {
+    try {
+        const { stdout } = await execAsync(`lsof -ti:${port}`);
+        const pids = stdout.trim().split("\n").filter(Boolean);
+        for (const pid of pids) {
+            console.log(`Killing process ${pid} on port ${port}`);
+            await execAsync(`kill -9 ${pid}`);
+        }
+        // Give the OS a moment to release the port
+        await new Promise((resolve) => setTimeout(resolve, 500));
+    } catch {
+        // No process found on port, or kill failed - that's fine
+    }
+}
+
 export async function startOpencodeServer() {
     if (server) {
         return server;
@@ -20,14 +40,24 @@ export async function startOpencodeServer() {
     const model = process.env.OPENCODE_MODEL || "claude-sonnet-4-5-20250929";
     const fullModel = model.includes("/") ? model : `anthropic/${model}`;
 
-    server = await createOpencodeServer({
-        hostname: "127.0.0.1",
-        port,
-        config: {
-            model: fullModel,
-            autoupdate: false,
-        },
-    });
+    const startServer = async () => {
+        return await createOpencodeServer({
+            hostname: "127.0.0.1",
+            port,
+            config: {
+                model: fullModel,
+                autoupdate: false,
+            },
+        });
+    };
+
+    try {
+        server = await startServer();
+    } catch (err) {
+        console.log(`Failed to start opencode server on port ${port}, attempting to kill existing process and retry...`);
+        await killProcessOnPort(port);
+        server = await startServer();
+    }
 
     console.log(`Opencode server running at ${server.url}`);
     return server;

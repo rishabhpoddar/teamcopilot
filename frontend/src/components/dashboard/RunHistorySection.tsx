@@ -22,12 +22,16 @@ function StatusBadge({ status }: { status: WorkflowRunStatus }) {
 }
 
 export default function RunHistorySection() {
-    const { token } = useAuth();
+    const auth = useAuth();
     const [runs, setRuns] = useState<WorkflowRun[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
+    const token = auth.loading ? null : auth.token;
+
     useEffect(() => {
+        if (!token) return;
+
         const fetchRuns = async () => {
             try {
                 const response = await axiosInstance.get('/api/workflows/runs', {
@@ -44,6 +48,8 @@ export default function RunHistorySection() {
 
         fetchRuns();
     }, [token]);
+
+    if (auth.loading) return null;
 
     if (loading) {
         return <div className="section-loading">Loading run history...</div>;

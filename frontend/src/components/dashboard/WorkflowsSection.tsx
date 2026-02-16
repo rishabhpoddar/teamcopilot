@@ -7,12 +7,16 @@ import './WorkflowsSection.css';
 import { AxiosError } from 'axios';
 
 export default function WorkflowsSection() {
-    const { token, user } = useAuth();
+    const auth = useAuth();
     const [workflows, setWorkflows] = useState<Workflow[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
+    const token = auth.loading ? null : auth.token;
+    const user = auth.loading ? null : auth.user;
+
     const fetchWorkflows = useCallback(async () => {
+        if (!token) return;
         try {
             const response = await axiosInstance.get('/api/workflows', {
                 headers: { Authorization: `Bearer ${token}` }
@@ -29,6 +33,8 @@ export default function WorkflowsSection() {
     useEffect(() => {
         fetchWorkflows();
     }, [fetchWorkflows]);
+
+    if (auth.loading) return null;
 
     if (loading) {
         return <div className="section-loading">Loading workflows...</div>;

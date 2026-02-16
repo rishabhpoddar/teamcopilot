@@ -15,7 +15,7 @@ import ChatInput from './ChatInput';
 import './Chat.css';
 
 export default function ChatContainer() {
-    const { token } = useAuth();
+    const auth = useAuth();
     const [sessions, setSessions] = useState<ChatSession[]>([]);
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
     const [messages, setMessages] = useState<Message[]>([]);
@@ -27,8 +27,11 @@ export default function ChatContainer() {
     const abortControllerRef = useRef<AbortController | null>(null);
     const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
 
+    const token = auth.loading ? null : auth.token;
+
     // Load sessions on mount
     useEffect(() => {
+        if (!token) return;
         loadSessions();
     }, [token]);
 
@@ -353,6 +356,8 @@ export default function ChatContainer() {
             toast.error(errorMessage);
         }
     };
+
+    if (auth.loading) return null;
 
     if (error && sessions.length === 0) {
         return (

@@ -9,8 +9,11 @@ type Tab = 'workflows' | 'history' | 'ai';
 const validTabs: Tab[] = ['workflows', 'history', 'ai'];
 
 export default function Home() {
-    const { user, logout } = useAuth();
+    const auth = useAuth();
     const [searchParams, setSearchParams] = useSearchParams();
+
+    if (auth.loading) return null;
+    const { user, logout } = auth;
     const tabParam = searchParams.get('tab');
     const activeTab: Tab = validTabs.includes(tabParam as Tab) ? (tabParam as Tab) : 'workflows';
 

@@ -7,16 +7,16 @@ import Home from './pages/Home.tsx'
 import './App.css'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth()
-  if (loading) return null
-  if (!user) return <Navigate to="/login" replace />
+  const auth = useAuth()
+  if (auth.loading) return null
+  if (!auth.user) return <Navigate to="/login" replace />
   return <>{children}</>
 }
 
 function GuestRoute({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth()
-  if (loading) return null
-  if (user) return <Navigate to="/" replace />
+  const auth = useAuth()
+  if (auth.loading) return null
+  if (auth.user) return <Navigate to="/" replace />
   return <>{children}</>
 }
 
