@@ -43,7 +43,7 @@ router.get('/sessions', apiHandler(async (req, res) => {
         };
     }
 
-    const opencodeSessionIds = new Set((opencodeSessionsResult.data || []).map((session) => session.id));
+    const opencodeSessionIds = new Set((opencodeSessionsResult.data || []).map((session: any) => session.id));
     const staleSessionIds = sessions
         .filter((session) => !opencodeSessionIds.has(session.opencode_session_id))
         .map((session) => session.id);
