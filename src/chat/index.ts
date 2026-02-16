@@ -28,7 +28,37 @@ router.get('/sessions', apiHandler(async (req, res) => {
         orderBy: { updated_at: 'desc' }
     });
 
-    res.json({ sessions });
+    if (sessions.length === 0) {
+        res.json({ sessions });
+        return;
+    }
+
+    const client = await getOpencodeClient();
+    const opencodeSessionsResult = await client.session.list();
+
+    if (opencodeSessionsResult.error) {
+        throw {
+            status: 500,
+            message: getErrorMessage(opencodeSessionsResult.error) || 'Failed to list sessions from opencode'
+        };
+    }
+
+    const opencodeSessionIds = new Set((opencodeSessionsResult.data || []).map((session) => session.id));
+    const staleSessionIds = sessions
+        .filter((session) => !opencodeSessionIds.has(session.opencode_session_id))
+        .map((session) => session.id);
+
+    if (staleSessionIds.length > 0) {
+        await prisma.chat_sessions.deleteMany({
+            where: {
+                id: { in: staleSessionIds },
+                user_id: req.userId!
+            }
+        });
+    }
+
+    const validSessions = sessions.filter((session) => opencodeSessionIds.has(session.opencode_session_id));
+    res.json({ sessions: validSessions });
 }, true));
 
 // POST /api/chat/sessions - Create new session
