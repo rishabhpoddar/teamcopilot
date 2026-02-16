@@ -25,6 +25,7 @@ export async function startOpencodeServer() {
         port,
         config: {
             model: fullModel,
+            autoupdate: false,
         },
     });
 
