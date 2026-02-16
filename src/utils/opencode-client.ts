@@ -1,30 +1,29 @@
-// Use dynamic import for ESM-only SDK.
-// The published SDK types in this repo's setup don't currently expose `createOpencodeClient`,
-// so we keep the runtime import but type it loosely.
-let sdkPromise: Promise<any> | null = null;
-let opencodeClientPromise: Promise<any> | null = null;
+import path from "path";
 
-async function loadSdk(): Promise<any> {
-    if (!sdkPromise) {
-        sdkPromise = import("@opencode-ai/sdk") as Promise<any>;
+// Use dynamic import for ESM-only SDK
+let _createOpencodeClient: typeof import("@opencode-ai/sdk").createOpencodeClient | null = null;
+
+async function loadSdk() {
+    if (!_createOpencodeClient) {
+        const sdk = await import("@opencode-ai/sdk");
+        _createOpencodeClient = sdk.createOpencodeClient;
     }
-    return sdkPromise;
+    return _createOpencodeClient;
 }
 
 export async function getOpencodeClient() {
-    if (!opencodeClientPromise) {
-        opencodeClientPromise = (async () => {
-            const { createOpencodeClient } = await loadSdk();
+    const createOpencodeClient = await loadSdk();
 
-            const port = parseInt(process.env.OPENCODE_PORT || "4096", 10);
-            const workspaceDir = process.cwd();
+    const port = parseInt(process.env.OPENCODE_PORT || "4096", 10);
 
-            return createOpencodeClient({
-                baseUrl: `http://localhost:${port}`,
-                directory: workspaceDir,
-            });
-        })();
+    // Get workspace directory from env, resolve relative paths to absolute
+    let workspaceDir = process.env.WORKSPACE_DIR!;
+    if (!path.isAbsolute(workspaceDir)) {
+        workspaceDir = path.resolve(process.cwd(), workspaceDir);
     }
 
-    return opencodeClientPromise;
+    return createOpencodeClient({
+        baseUrl: `http://localhost:${port}`,
+        directory: workspaceDir
+    });
 }
