@@ -26,6 +26,7 @@ export default function ChatContainer() {
 
     const abortControllerRef = useRef<AbortController | null>(null);
     const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
+    const lastEscapePressRef = useRef<number>(0);
 
     const token = auth.loading ? null : auth.token;
 
@@ -337,7 +338,7 @@ export default function ChatContainer() {
         }
     };
 
-    const abortResponse = async () => {
+    const abortResponse = useCallback(async () => {
         if (!token || !activeSessionId) return;
 
         try {
@@ -353,7 +354,25 @@ export default function ChatContainer() {
                 : 'Failed to abort response';
             toast.error(errorMessage);
         }
-    };
+    }, [token, activeSessionId]);
+
+    // Double-escape to abort
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape' && isStreaming) {
+                const now = Date.now();
+                if (now - lastEscapePressRef.current < 500) {
+                    abortResponse();
+                    lastEscapePressRef.current = 0;
+                } else {
+                    lastEscapePressRef.current = now;
+                }
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isStreaming, abortResponse]);
 
     if (auth.loading) return null;
 
