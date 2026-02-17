@@ -6,9 +6,11 @@ interface MessageListProps {
     messages: Message[];
     parts: Part[];
     isStreaming: boolean;
+    isWaitingForInput?: boolean;
+    onAnswer?: (answer: string) => void;
 }
 
-export default function MessageList({ messages, parts, isStreaming }: MessageListProps) {
+export default function MessageList({ messages, parts, isStreaming, isWaitingForInput = false, onAnswer }: MessageListProps) {
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -31,9 +33,10 @@ export default function MessageList({ messages, parts, isStreaming }: MessageLis
                     key={message.id}
                     message={message}
                     parts={parts}
+                    onAnswer={onAnswer}
                 />
             ))}
-            {isStreaming && (
+            {isStreaming && !isWaitingForInput && (
                 <div className="typing-indicator">
                     <span></span>
                     <span></span>

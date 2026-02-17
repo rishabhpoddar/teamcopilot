@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { toast } from 'react-toastify';
 import { AxiosError } from 'axios';
 import { axiosInstance } from '../../../utils';
@@ -7,7 +7,8 @@ import type {
     ChatSession,
     Message,
     Part,
-    SSEEvent
+    SSEEvent,
+    ToolPart
 } from '../../../types/chat';
 import SessionSidebar from './SessionSidebar';
 import MessageList from './MessageList';
@@ -30,6 +31,15 @@ export default function ChatContainer() {
     const currentSessionInfoRef = useRef<{ id: string; isEmpty: boolean } | null>(null);
 
     const token = auth.loading ? null : auth.token;
+
+    // Detect if there's a question tool waiting for user input
+    const isWaitingForInput = useMemo(() => {
+        const toolParts = parts.filter((p): p is ToolPart => p.type === 'tool');
+        return toolParts.some(part =>
+            part.tool === 'question' &&
+            (part.state.status === 'running' || part.state.status === 'pending')
+        );
+    }, [parts]);
 
     const stopSSE = useCallback(() => {
         if (readerRef.current) {
@@ -459,6 +469,8 @@ export default function ChatContainer() {
                             messages={messages}
                             parts={parts}
                             isStreaming={isStreaming}
+                            isWaitingForInput={isWaitingForInput}
+                            onAnswer={sendMessage}
                         />
                         <ChatInput
                             onSend={sendMessage}

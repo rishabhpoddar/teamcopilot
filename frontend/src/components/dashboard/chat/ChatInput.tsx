@@ -12,14 +12,14 @@ export default function ChatInput({ onSend, onAbort, disabled, isStreaming }: Ch
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
     useEffect(() => {
-        if (!disabled && textareaRef.current) {
+        if (!disabled && !isStreaming && textareaRef.current) {
             textareaRef.current.focus();
         }
-    }, [disabled]);
+    }, [disabled, isStreaming]);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (input.trim() && !disabled) {
+        if (input.trim() && !disabled && !isStreaming) {
             onSend(input.trim());
             setInput('');
         }

@@ -5,9 +5,10 @@ import MessagePart from './MessagePart';
 interface MessageItemProps {
     message: Message;
     parts: Part[];
+    onAnswer?: (answer: string) => void;
 }
 
-export default function MessageItem({ message, parts }: MessageItemProps) {
+export default function MessageItem({ message, parts, onAnswer }: MessageItemProps) {
     const isUser = isUserMessage(message);
     const isAssistant = isAssistantMessage(message);
 
@@ -32,7 +33,7 @@ export default function MessageItem({ message, parts }: MessageItemProps) {
                 {parts
                     .filter(part => part.messageID === message.id)
                     .map(part => (
-                        <MessagePart key={part.id} part={part} />
+                        <MessagePart key={part.id} part={part} onAnswer={onAnswer} />
                     ))}
             </div>
             {isAssistant && message.error && (

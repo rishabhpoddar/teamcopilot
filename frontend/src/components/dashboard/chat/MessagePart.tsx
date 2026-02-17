@@ -3,12 +3,14 @@ import remarkGfm from 'remark-gfm';
 import type { Part } from '../../../types/chat';
 import { isTextPart, isToolPart, isReasoningPart, isFilePart } from '../../../types/chat';
 import ToolCallDisplay from './ToolCallDisplay';
+import QuestionToolDisplay from './QuestionToolDisplay';
 
 interface MessagePartProps {
     part: Part;
+    onAnswer?: (answer: string) => void;
 }
 
-export default function MessagePart({ part }: MessagePartProps) {
+export default function MessagePart({ part, onAnswer }: MessagePartProps) {
     if (isTextPart(part)) {
         return (
             <div className="markdown-content">
@@ -20,6 +22,10 @@ export default function MessagePart({ part }: MessagePartProps) {
     }
 
     if (isToolPart(part)) {
+        // Use special display for question tool
+        if (part.tool === 'question' && onAnswer) {
+            return <QuestionToolDisplay part={part} onAnswer={onAnswer} />;
+        }
         return <ToolCallDisplay part={part} />;
     }
 
