@@ -247,7 +247,7 @@ export default function ChatContainer() {
 
     // Load messages when active session changes
     useEffect(() => {
-        if (activeSessionId) {
+        if (activeSessionId && activeSessionId !== 'pending') {
             loadMessages(activeSessionId);
             startSSE(activeSessionId);
         } else {
@@ -281,29 +281,14 @@ export default function ChatContainer() {
         setActiveSessionId(newSessionId);
     }, [deleteSessionSilently]);
 
-    const createSession = async () => {
-        if (!token) return;
-
-        // If current session is empty, don't create a new one
-        if (activeSessionId && messages.length === 0) {
+    const createSession = () => {
+        // If already in pending new chat mode, do nothing
+        if (activeSessionId === 'pending') {
             return;
         }
 
-        try {
-            const response = await axiosInstance.post('/api/chat/sessions', {}, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-
-            const newSession = response.data.session;
-            setSessions(prev => [newSession, ...prev]);
-            // Use switchSession to clean up any previous empty session
-            switchSession(newSession.id);
-        } catch (err: unknown) {
-            const errorMessage = err instanceof AxiosError
-                ? err.response?.data?.message || err.response?.data || err.message
-                : 'Failed to create session';
-            toast.error(errorMessage);
-        }
+        // Switch to pending mode - session will be created when first message is sent
+        switchSession('pending');
     };
 
     const deleteSession = async (sessionId: string) => {
@@ -327,9 +312,9 @@ export default function ChatContainer() {
         }
     };
 
-    // Track whether current session is empty
+    // Track whether current session is empty (skip for pending)
     useEffect(() => {
-        if (activeSessionId) {
+        if (activeSessionId && activeSessionId !== 'pending') {
             currentSessionInfoRef.current = {
                 id: activeSessionId,
                 isEmpty: messages.length === 0
@@ -342,16 +327,18 @@ export default function ChatContainer() {
     const sendMessage = async (content: string) => {
         if (!token || !activeSessionId) return;
 
+        const isPending = activeSessionId === 'pending';
+
         // Optimistically add user message to UI
         const tempUserMessage: Message = {
             id: `temp-${Date.now()}`,
-            sessionID: activeSessionId,
+            sessionID: 'temp',
             role: 'user',
             time: { created: Date.now() }
         };
         const tempTextPart: Part = {
             id: `temp-part-${Date.now()}`,
-            sessionID: activeSessionId,
+            sessionID: 'temp',
             messageID: tempUserMessage.id,
             type: 'text',
             text: content
@@ -361,8 +348,25 @@ export default function ChatContainer() {
 
         try {
             setIsStreaming(true);
+
+            let sessionId = activeSessionId;
+
+            // If pending, create the session first
+            if (isPending) {
+                const createResponse = await axiosInstance.post('/api/chat/sessions', {}, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                const newSession = createResponse.data.session;
+                setSessions(prev => [newSession, ...prev]);
+                setActiveSessionId(newSession.id);
+                sessionId = newSession.id;
+                // Start SSE for the new session
+                startSSE(newSession.id);
+            }
+
+            // Send the message
             await axiosInstance.post(
-                `/api/chat/sessions/${activeSessionId}/messages`,
+                `/api/chat/sessions/${sessionId}/messages`,
                 { content },
                 { headers: { Authorization: `Bearer ${token}` } }
             );
@@ -376,11 +380,15 @@ export default function ChatContainer() {
             // Remove temp message on error
             setMessages(prev => prev.filter(m => m.id !== tempUserMessage.id));
             setParts(prev => prev.filter(p => p.id !== tempTextPart.id));
+            // If we were pending, go back to pending state
+            if (isPending) {
+                setActiveSessionId('pending');
+            }
         }
     };
 
     const abortResponse = useCallback(async () => {
-        if (!token || !activeSessionId) return;
+        if (!token || !activeSessionId || activeSessionId === 'pending') return;
 
         try {
             await axiosInstance.post(
