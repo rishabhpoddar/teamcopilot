@@ -29,141 +29,7 @@ export default function ChatContainer() {
 
     const token = auth.loading ? null : auth.token;
 
-    // Load sessions on mount
-    useEffect(() => {
-        if (!token) return;
-        loadSessions();
-    }, [token]);
-
-    // Load messages when active session changes
-    useEffect(() => {
-        if (activeSessionId) {
-            loadMessages(activeSessionId);
-            startSSE(activeSessionId);
-        } else {
-            setMessages([]);
-            setParts([]);
-        }
-
-        return () => {
-            stopSSE();
-        };
-    }, [activeSessionId]);
-
-    const loadSessions = async () => {
-        if (!token) return;
-
-        try {
-            setLoading(true);
-            const response = await axiosInstance.get('/api/chat/sessions', {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            setSessions(response.data.sessions);
-            setError(null);
-        } catch (err: unknown) {
-            const errorMessage = err instanceof AxiosError
-                ? err.response?.data?.message || err.response?.data || err.message
-                : 'Failed to load sessions';
-            setError(errorMessage);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const loadMessages = async (sessionId: string) => {
-        if (!token) return;
-
-        try {
-            const response = await axiosInstance.get(`/api/chat/sessions/${sessionId}/messages`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-
-            const data = response.data.messages;
-            if (Array.isArray(data)) {
-                // The API returns an array of { info: Message, parts: Part[] } objects
-                const loadedMessages: Message[] = [];
-                const loadedParts: Part[] = [];
-
-                data.forEach((item: { info: Message; parts: Part[] }) => {
-                    loadedMessages.push(item.info);
-                    loadedParts.push(...item.parts);
-                });
-
-                setMessages(loadedMessages);
-                setParts(loadedParts);
-            }
-        } catch (err: unknown) {
-            const errorMessage = err instanceof AxiosError
-                ? err.response?.data?.message || err.response?.data || err.message
-                : 'Failed to load messages';
-            toast.error(errorMessage);
-        }
-    };
-
-    const startSSE = useCallback((sessionId: string) => {
-        if (!token) return;
-
-        // Stop any existing connection
-        stopSSE();
-
-        const controller = new AbortController();
-        abortControllerRef.current = controller;
-
-        const connectSSE = async () => {
-            try {
-                const response = await fetch(`/api/chat/sessions/${sessionId}/events`, {
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Accept': 'text/event-stream'
-                    },
-                    signal: controller.signal
-                });
-
-                if (!response.ok || !response.body) {
-                    console.error('Failed to connect to SSE');
-                    return;
-                }
-
-                const reader = response.body.getReader();
-                readerRef.current = reader;
-                const decoder = new TextDecoder();
-                let buffer = '';
-
-                while (true) {
-                    const { done, value } = await reader.read();
-
-                    if (done) {
-                        break;
-                    }
-
-                    buffer += decoder.decode(value, { stream: true });
-                    const lines = buffer.split('\n');
-                    buffer = lines.pop() || '';
-
-                    for (const line of lines) {
-                        if (line.startsWith('data:')) {
-                            const data = line.slice(5).trim();
-                            if (data) {
-                                try {
-                                    const event: SSEEvent = JSON.parse(data);
-                                    handleSSEEvent(event);
-                                } catch {
-                                    // Skip malformed JSON
-                                }
-                            }
-                        }
-                    }
-                }
-            } catch (err: unknown) {
-                // Ignore abort errors (expected when disconnecting)
-                if ((err as Error).name === 'AbortError') return;
-            }
-        };
-
-        connectSSE();
-    }, [token]);
-
-    const stopSSE = () => {
+    const stopSSE = useCallback(() => {
         if (readerRef.current) {
             readerRef.current.cancel();
             readerRef.current = null;
@@ -172,9 +38,9 @@ export default function ChatContainer() {
             abortControllerRef.current.abort();
             abortControllerRef.current = null;
         }
-    };
+    }, []);
 
-    const handleSSEEvent = (event: SSEEvent) => {
+    const handleSSEEvent = useCallback((event: SSEEvent) => {
         switch (event.type) {
             case 'message.updated': {
                 const { info } = event.properties;
@@ -258,7 +124,141 @@ export default function ChatContainer() {
                 break;
             }
         }
-    };
+    }, []);
+
+    const startSSE = useCallback((sessionId: string) => {
+        if (!token) return;
+
+        // Stop any existing connection
+        stopSSE();
+
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+
+        const connectSSE = async () => {
+            try {
+                const response = await fetch(`/api/chat/sessions/${sessionId}/events`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Accept': 'text/event-stream'
+                    },
+                    signal: controller.signal
+                });
+
+                if (!response.ok || !response.body) {
+                    console.error('Failed to connect to SSE');
+                    return;
+                }
+
+                const reader = response.body.getReader();
+                readerRef.current = reader;
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+
+                    if (done) {
+                        break;
+                    }
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || '';
+
+                    for (const line of lines) {
+                        if (line.startsWith('data:')) {
+                            const data = line.slice(5).trim();
+                            if (data) {
+                                try {
+                                    const event: SSEEvent = JSON.parse(data);
+                                    handleSSEEvent(event);
+                                } catch {
+                                    // Skip malformed JSON
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (err: unknown) {
+                // Ignore abort errors (expected when disconnecting)
+                if ((err as Error).name === 'AbortError') return;
+            }
+        };
+
+        connectSSE();
+    }, [token, stopSSE, handleSSEEvent]);
+
+    const loadSessions = useCallback(async () => {
+        if (!token) return;
+
+        try {
+            setLoading(true);
+            const response = await axiosInstance.get('/api/chat/sessions', {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            setSessions(response.data.sessions);
+            setError(null);
+        } catch (err: unknown) {
+            const errorMessage = err instanceof AxiosError
+                ? err.response?.data?.message || err.response?.data || err.message
+                : 'Failed to load sessions';
+            setError(errorMessage);
+        } finally {
+            setLoading(false);
+        }
+    }, [token]);
+
+    const loadMessages = useCallback(async (sessionId: string) => {
+        if (!token) return;
+
+        try {
+            const response = await axiosInstance.get(`/api/chat/sessions/${sessionId}/messages`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+
+            const data = response.data.messages;
+            if (Array.isArray(data)) {
+                // The API returns an array of { info: Message, parts: Part[] } objects
+                const loadedMessages: Message[] = [];
+                const loadedParts: Part[] = [];
+
+                data.forEach((item: { info: Message; parts: Part[] }) => {
+                    loadedMessages.push(item.info);
+                    loadedParts.push(...item.parts);
+                });
+
+                setMessages(loadedMessages);
+                setParts(loadedParts);
+            }
+        } catch (err: unknown) {
+            const errorMessage = err instanceof AxiosError
+                ? err.response?.data?.message || err.response?.data || err.message
+                : 'Failed to load messages';
+            toast.error(errorMessage);
+        }
+    }, [token]);
+
+    // Load sessions on mount
+    useEffect(() => {
+        if (!token) return;
+        loadSessions();
+    }, [token, loadSessions]);
+
+    // Load messages when active session changes
+    useEffect(() => {
+        if (activeSessionId) {
+            loadMessages(activeSessionId);
+            startSSE(activeSessionId);
+        } else {
+            setMessages([]);
+            setParts([]);
+        }
+
+        return () => {
+            stopSSE();
+        };
+    }, [activeSessionId, loadMessages, startSSE, stopSSE]);
 
     const createSession = async () => {
         if (!token) return;
