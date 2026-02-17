@@ -41,7 +41,7 @@ export default function ChatInput({ onSend, onAbort, disabled, isStreaming }: Ch
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}
-                    placeholder="Type a message... (Press Enter to send, Shift+Enter for new line)"
+                    placeholder="Type a message..."
                     disabled={disabled || isStreaming}
                     rows={1}
                 />
@@ -63,6 +63,9 @@ export default function ChatInput({ onSend, onAbort, disabled, isStreaming }: Ch
                     </button>
                 )}
             </form>
+            <div className="chat-input-hints">
+                Enter to send · Shift+Enter for new line · Esc×2 to stop
+            </div>
         </div>
     );
 }

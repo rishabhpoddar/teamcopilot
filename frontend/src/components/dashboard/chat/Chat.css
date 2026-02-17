@@ -429,6 +429,7 @@
 
 .chat-send-btn {
     padding: 0.75rem 1.5rem;
+    border: 1px solid #444;
 }
 
 .chat-abort-btn {
@@ -438,6 +439,13 @@
 
 .chat-abort-btn:hover {
     background: #cc4444;
+}
+
+.chat-input-hints {
+    margin-top: 0.5rem;
+    font-size: 0.75rem;
+    color: #666;
+    text-align: center;
 }
 
 /* Loading States */
