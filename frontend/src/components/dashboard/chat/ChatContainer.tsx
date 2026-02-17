@@ -27,6 +27,7 @@ export default function ChatContainer() {
     const abortControllerRef = useRef<AbortController | null>(null);
     const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
     const lastEscapePressRef = useRef<number>(0);
+    const currentSessionInfoRef = useRef<{ id: string; isEmpty: boolean } | null>(null);
 
     const token = auth.loading ? null : auth.token;
 
@@ -259,8 +260,34 @@ export default function ChatContainer() {
         };
     }, [activeSessionId, loadMessages, startSSE, stopSSE]);
 
+    const deleteSessionSilently = useCallback(async (sessionId: string) => {
+        if (!token) return;
+        try {
+            await axiosInstance.delete(`/api/chat/sessions/${sessionId}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            setSessions(prev => prev.filter(s => s.id !== sessionId));
+        } catch {
+            // Silently fail - this is cleanup
+        }
+    }, [token]);
+
+    const switchSession = useCallback((newSessionId: string | null) => {
+        // Clean up previous empty session
+        const prev = currentSessionInfoRef.current;
+        if (prev && prev.isEmpty && prev.id !== newSessionId) {
+            deleteSessionSilently(prev.id);
+        }
+        setActiveSessionId(newSessionId);
+    }, [deleteSessionSilently]);
+
     const createSession = async () => {
         if (!token) return;
+
+        // If current session is empty, don't create a new one
+        if (activeSessionId && messages.length === 0) {
+            return;
+        }
 
         try {
             const response = await axiosInstance.post('/api/chat/sessions', {}, {
@@ -269,7 +296,8 @@ export default function ChatContainer() {
 
             const newSession = response.data.session;
             setSessions(prev => [newSession, ...prev]);
-            setActiveSessionId(newSession.id);
+            // Use switchSession to clean up any previous empty session
+            switchSession(newSession.id);
         } catch (err: unknown) {
             const errorMessage = err instanceof AxiosError
                 ? err.response?.data?.message || err.response?.data || err.message
@@ -288,6 +316,7 @@ export default function ChatContainer() {
 
             setSessions(prev => prev.filter(s => s.id !== sessionId));
             if (activeSessionId === sessionId) {
+                currentSessionInfoRef.current = null;
                 setActiveSessionId(null);
             }
         } catch (err: unknown) {
@@ -297,6 +326,18 @@ export default function ChatContainer() {
             toast.error(errorMessage);
         }
     };
+
+    // Track whether current session is empty
+    useEffect(() => {
+        if (activeSessionId) {
+            currentSessionInfoRef.current = {
+                id: activeSessionId,
+                isEmpty: messages.length === 0
+            };
+        } else {
+            currentSessionInfoRef.current = null;
+        }
+    }, [activeSessionId, messages.length]);
 
     const sendMessage = async (content: string) => {
         if (!token || !activeSessionId) return;
@@ -395,7 +436,7 @@ export default function ChatContainer() {
             <SessionSidebar
                 sessions={sessions}
                 activeSessionId={activeSessionId}
-                onSelectSession={setActiveSessionId}
+                onSelectSession={switchSession}
                 onNewSession={createSession}
                 onDeleteSession={deleteSession}
                 loading={loading}
