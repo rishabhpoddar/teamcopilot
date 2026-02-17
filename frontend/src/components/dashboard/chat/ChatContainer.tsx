@@ -247,6 +247,9 @@ export default function ChatContainer() {
 
     // Load messages when active session changes
     useEffect(() => {
+        // Reset streaming state when switching sessions
+        setIsStreaming(false);
+
         if (activeSessionId && activeSessionId !== 'pending') {
             loadMessages(activeSessionId);
             startSSE(activeSessionId);
