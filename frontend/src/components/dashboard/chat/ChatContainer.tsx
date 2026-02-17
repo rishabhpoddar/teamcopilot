@@ -103,8 +103,6 @@ export default function ChatContainer() {
             }
 
             case 'session.error': {
-                const errorMsg = event.properties.error.data.message || event.properties.error.name;
-                toast.error(`AI Error: ${errorMsg}`);
                 setIsStreaming(false);
                 break;
             }
