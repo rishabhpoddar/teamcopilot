@@ -42,6 +42,12 @@
   flex-grow: 1;
 }
 
+.workflow-card-meta {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #888;
+}
+
 .workflow-card-run-btn {
   align-self: flex-start;
   padding: 0.5rem 1rem;

@@ -90,9 +90,12 @@ This manifest defines what the workflow does and how it runs. The UI and executi
   "runtime": {
     "timeout_seconds": 300
   },
+  "created_by_user_id": null,
   "approved_by_user_id": null
 }
 ```
+
+`created_by_user_id` is set automatically by the system when `createWorkflow` is used, based on the authenticated user that invoked the tool.
 
 ### 2. `README.md` — Documentation
 
@@ -305,6 +308,7 @@ These rules exist to prevent data loss, secret leakage, and unsafe behavior. Vio
 
 - Never attempt to bypass workflow approval requirements.
 - Do not “self-approve” workflows by editing `workflow.json` fields like `approved_by_user_id`; approvals must happen via the product’s intended UX/authorization flow.
+- Do not manually set `created_by_user_id`; it must be set via the system API tied to the authenticated creator.
 
 ### Secrets & sensitive data handling
 

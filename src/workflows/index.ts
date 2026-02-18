@@ -5,7 +5,8 @@ import { apiHandler } from "../utils/index";
 import {
     listWorkflowSlugs,
     readWorkflowManifest,
-    approveWorkflow
+    approveWorkflow,
+    setWorkflowCreator
 } from "../utils/workflow";
 
 const router = express.Router({ mergeParams: true });
@@ -14,17 +15,37 @@ const router = express.Router({ mergeParams: true });
 router.get('/', apiHandler(async (req, res) => {
     const slugs = listWorkflowSlugs();
     const workflows: WorkflowSummary[] = [];
+    const creatorIds = new Set<string>();
+    const manifests = new Map<string, ReturnType<typeof readWorkflowManifest>>();
 
     for (const slug of slugs) {
         const manifest = readWorkflowManifest(slug);
-        if (manifest) {
-            workflows.push({
-                slug,
-                name: slug,
-                intent_summary: manifest.intent_summary,
-                approved_by_user_id: manifest.approved_by_user_id
-            });
+        manifests.set(slug, manifest);
+        if (manifest?.created_by_user_id) {
+            creatorIds.add(manifest.created_by_user_id);
         }
+    }
+
+    const creators = creatorIds.size > 0
+        ? await prisma.users.findMany({
+            where: { id: { in: Array.from(creatorIds) } },
+            select: { id: true, email: true }
+        })
+        : [];
+    const creatorEmailById = new Map(creators.map((creator) => [creator.id, creator.email]));
+
+    for (const slug of slugs) {
+        const manifest = manifests.get(slug);
+        if (!manifest) continue;
+        const createdByUserId = manifest.created_by_user_id ?? null;
+        workflows.push({
+            slug,
+            name: slug,
+            intent_summary: manifest.intent_summary,
+            created_by_user_id: createdByUserId,
+            created_by_user_email: createdByUserId ? (creatorEmailById.get(createdByUserId) ?? null) : null,
+            approved_by_user_id: manifest.approved_by_user_id ?? null
+        });
     }
 
     res.json({ workflows });
@@ -137,6 +158,57 @@ router.post('/:slug/approve', apiHandler(async (req, res) => {
         workflow: {
             slug,
             approved_by_user_id: req.userId!
+        }
+    });
+}, true));
+
+// POST /api/workflows/:slug/creator - Set the creator user id for a workflow
+router.post('/:slug/creator', apiHandler(async (req, res) => {
+    const slug = req.params.slug as string;
+    const manifest = readWorkflowManifest(slug);
+    const existingCreator = manifest.created_by_user_id ?? null;
+
+    if (existingCreator && existingCreator !== req.userId!) {
+        throw {
+            status: 409,
+            message: 'Workflow creator is already set and cannot be changed'
+        };
+    }
+
+    const updatedManifest = existingCreator
+        ? manifest
+        : setWorkflowCreator(slug, req.userId!);
+
+    res.json({
+        workflow: {
+            slug,
+            created_by_user_id: updatedManifest.created_by_user_id
+        }
+    });
+}, true));
+
+// GET /api/workflows/:slug - Get workflow details from filesystem
+router.get('/:slug', apiHandler(async (req, res) => {
+    const slug = req.params.slug as string;
+    const manifest = readWorkflowManifest(slug);
+
+    const createdByUserId = manifest.created_by_user_id ?? null;
+    const creator = createdByUserId
+        ? await prisma.users.findUnique({
+            where: { id: createdByUserId },
+            select: { id: true, email: true }
+        })
+        : null;
+
+    res.json({
+        workflow: {
+            slug,
+            name: slug,
+            intent_summary: manifest.intent_summary,
+            created_by_user_id: createdByUserId,
+            created_by_user_email: creator?.email ?? null,
+            approved_by_user_id: manifest.approved_by_user_id ?? null,
+            manifest
         }
     });
 }, true));
