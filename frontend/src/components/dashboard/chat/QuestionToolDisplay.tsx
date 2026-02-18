@@ -19,7 +19,7 @@ interface QuestionToolDisplayProps {
 
 export default function QuestionToolDisplay({ part, onAnswer }: QuestionToolDisplayProps) {
     const [customInput, setCustomInput] = useState('');
-    const [selectedOption, setSelectedOption] = useState<number | null>(null);
+    const [selectedOptions, setSelectedOptions] = useState<Record<number, number>>({});
 
     const isWaiting = part.state.status === 'running' || part.state.status === 'pending';
 
@@ -42,47 +42,88 @@ export default function QuestionToolDisplay({ part, onAnswer }: QuestionToolDisp
         setCustomInput('');
     };
 
+    const getAnswerForQuestion = (questionIndex: number): string | null => {
+        if (part.state.status !== 'completed') {
+            return null;
+        }
+
+        const answers = (part.state.metadata as { answers?: unknown })?.answers;
+        if (!Array.isArray(answers) || questionIndex >= answers.length) {
+            return null;
+        }
+
+        const answerEntry = answers[questionIndex];
+        if (typeof answerEntry === 'string') {
+            return answerEntry;
+        }
+
+        if (Array.isArray(answerEntry)) {
+            const firstString = answerEntry.find((item): item is string => typeof item === 'string');
+            return firstString ?? null;
+        }
+
+        return null;
+    };
+
+    const normalize = (value: string): string => value.trim().toLowerCase();
+
     return (
         <div className="question-tool">
             {questions.map((q, qIndex) => (
-                <div key={qIndex} className="question-block">
-                    <div className="question-header">{q.header}</div>
-                    <div className="question-text">{q.question}</div>
-                    <div className="question-options">
-                        {q.options.map((option, oIndex) => (
-                            <button
-                                key={oIndex}
-                                className={`question-option ${selectedOption === oIndex ? 'selected' : ''} ${!isWaiting ? 'disabled' : ''}`}
-                                onClick={() => {
-                                    setSelectedOption(oIndex);
-                                    handleOptionClick(option.label);
-                                }}
-                                disabled={!isWaiting}
-                            >
-                                <span className="option-label">{option.label}</span>
-                                <span className="option-description">{option.description}</span>
-                            </button>
-                        ))}
-                    </div>
-                    {isWaiting && (
-                        <form className="question-custom" onSubmit={handleCustomSubmit}>
-                            <input
-                                type="text"
-                                className="question-custom-input"
-                                placeholder="Or type a custom response..."
-                                value={customInput}
-                                onChange={(e) => setCustomInput(e.target.value)}
-                            />
-                            <button
-                                type="submit"
-                                className="question-custom-submit"
-                                disabled={!customInput.trim()}
-                            >
-                                Send
-                            </button>
-                        </form>
-                    )}
-                </div>
+                (() => {
+                    const answerText = getAnswerForQuestion(qIndex);
+                    const matchedOptionIndex = answerText
+                        ? q.options.findIndex(option => normalize(option.label) === normalize(answerText))
+                        : -1;
+                    const selectedOption = isWaiting ? selectedOptions[qIndex] : matchedOptionIndex;
+
+                    return (
+                        <div key={qIndex} className="question-block">
+                            <div className="question-header">{q.header}</div>
+                            <div className="question-text">{q.question}</div>
+                            <div className="question-options">
+                                {q.options.map((option, oIndex) => (
+                                    <button
+                                        key={oIndex}
+                                        className={`question-option ${selectedOption === oIndex ? 'selected' : ''} ${!isWaiting ? 'disabled' : ''}`}
+                                        onClick={() => {
+                                            setSelectedOptions(prev => ({ ...prev, [qIndex]: oIndex }));
+                                            handleOptionClick(option.label);
+                                        }}
+                                        disabled={!isWaiting}
+                                    >
+                                        <span className="option-label">{option.label}</span>
+                                        <span className="option-description">{option.description}</span>
+                                    </button>
+                                ))}
+                            </div>
+                            {isWaiting && (
+                                <form className="question-custom" onSubmit={handleCustomSubmit}>
+                                    <input
+                                        type="text"
+                                        className="question-custom-input"
+                                        placeholder="Or type a custom response..."
+                                        value={customInput}
+                                        onChange={(e) => setCustomInput(e.target.value)}
+                                    />
+                                    <button
+                                        type="submit"
+                                        className="question-custom-submit"
+                                        disabled={!customInput.trim()}
+                                    >
+                                        Send
+                                    </button>
+                                </form>
+                            )}
+                            {!isWaiting && answerText && (
+                                <div className="question-answer-display">
+                                    <span className="answer-label">Your answer:</span>
+                                    <span className="answer-value">{answerText}</span>
+                                </div>
+                            )}
+                        </div>
+                    );
+                })()
             ))}
         </div>
     );

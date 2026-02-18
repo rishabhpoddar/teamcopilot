@@ -614,6 +614,27 @@
     cursor: not-allowed;
 }
 
+.question-answer-display {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid #3a4a5a;
+    display: flex;
+    gap: 0.5rem;
+    align-items: baseline;
+    flex-wrap: wrap;
+}
+
+.question-answer-display .answer-label {
+    font-size: 0.8125rem;
+    color: #aaa;
+}
+
+.question-answer-display .answer-value {
+    font-size: 0.875rem;
+    color: #fff;
+    font-weight: 600;
+}
+
 /* Reasoning Part */
 .reasoning-part {
     font-style: italic;
@@ -753,5 +774,17 @@
 
     .question-custom-input:focus {
         border-color: #0066cc;
+    }
+
+    .question-answer-display {
+        border-top-color: #ddd;
+    }
+
+    .question-answer-display .answer-label {
+        color: #666;
+    }
+
+    .question-answer-display .answer-value {
+        color: #333;
     }
 }
