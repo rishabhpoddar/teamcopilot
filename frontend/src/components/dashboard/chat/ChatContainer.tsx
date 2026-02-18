@@ -342,22 +342,31 @@ export default function ChatContainer() {
 
         const isPending = activeSessionId === 'pending';
 
-        // Optimistically add user message to UI
-        const tempUserMessage: Message = {
-            id: `temp-${Date.now()}`,
-            sessionID: 'temp',
-            role: 'user',
-            time: { created: Date.now() }
-        };
-        const tempTextPart: Part = {
-            id: `temp-part-${Date.now()}`,
-            sessionID: 'temp',
-            messageID: tempUserMessage.id,
-            type: 'text',
-            text: content
-        };
-        setMessages(prev => [...prev, tempUserMessage]);
-        setParts(prev => [...prev, tempTextPart]);
+        // Don't create temp message when answering a question - the answer
+        // is shown in the question tool UI, no need for a separate bubble
+        const skipTempMessage = isWaitingForInput;
+
+        let tempUserMessage: Message | null = null;
+        let tempTextPart: Part | null = null;
+
+        if (!skipTempMessage) {
+            // Optimistically add user message to UI
+            tempUserMessage = {
+                id: `temp-${Date.now()}`,
+                sessionID: 'temp',
+                role: 'user',
+                time: { created: Date.now() }
+            };
+            tempTextPart = {
+                id: `temp-part-${Date.now()}`,
+                sessionID: 'temp',
+                messageID: tempUserMessage.id,
+                type: 'text',
+                text: content
+            };
+            setMessages(prev => [...prev, tempUserMessage!]);
+            setParts(prev => [...prev, tempTextPart!]);
+        }
 
         try {
             setIsStreaming(true);
@@ -390,9 +399,11 @@ export default function ChatContainer() {
                 : 'Failed to send message';
             toast.error(errorMessage);
             setIsStreaming(false);
-            // Remove temp message on error
-            setMessages(prev => prev.filter(m => m.id !== tempUserMessage.id));
-            setParts(prev => prev.filter(p => p.id !== tempTextPart.id));
+            // Remove temp message on error (if we created one)
+            if (tempUserMessage && tempTextPart) {
+                setMessages(prev => prev.filter(m => m.id !== tempUserMessage!.id));
+                setParts(prev => prev.filter(p => p.id !== tempTextPart!.id));
+            }
             // If we were pending, go back to pending state
             if (isPending) {
                 setActiveSessionId('pending');

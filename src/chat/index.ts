@@ -2,7 +2,7 @@ import express from "express";
 import path from "path";
 import prisma from "../prisma/client";
 import { apiHandler } from "../utils/index";
-import { getOpencodeClient } from "../utils/opencode-client";
+import { getOpencodeClient, getPendingQuestionForSession, getWorkspaceDir, getOpencodePort, replyToPendingQuestion } from "../utils/opencode-client";
 
 const router = express.Router({ mergeParams: true });
 
@@ -10,15 +10,10 @@ function getErrorMessage(error: unknown): string {
     if (error && typeof error === 'object' && 'detail' in error) {
         return String((error as { detail: unknown }).detail);
     }
-    return 'Unknown error';
-}
-
-function getWorkspaceDir(): string {
-    let workspaceDir = process.env.WORKSPACE_DIR!;
-    if (!path.isAbsolute(workspaceDir)) {
-        workspaceDir = path.resolve(process.cwd(), workspaceDir);
+    if (error instanceof Error) {
+        return error.message;
     }
-    return workspaceDir;
+    return 'Unknown error';
 }
 
 // GET /api/chat/sessions - List user's sessions
@@ -233,19 +228,31 @@ router.post('/sessions/:id/messages', apiHandler(async (req, res) => {
         };
     }
 
-    const client = await getOpencodeClient();
+    const pendingQuestion = await getPendingQuestionForSession(session.opencode_session_id);
+    if (pendingQuestion) {
+        // For custom/manual text replies, treat the input as the answer for the first question.
+        // Additional questions can still be answered via follow-up prompts.
+        const answers = pendingQuestion.questions.map((_, index) => index === 0 ? [content] : []);
+        try {
+            await replyToPendingQuestion(pendingQuestion.id, answers);
+        } catch (err: unknown) {
+            throw new Error(getErrorMessage(err) || 'Failed to reply to pending question')
+        }
+    } else {
+        const client = await getOpencodeClient();
 
-    // Use promptAsync to send message and return immediately
-    const result = await client.session.promptAsync({
-        path: { id: session.opencode_session_id },
-        body: { parts: [{ type: "text", text: content }] }
-    });
+        // Use promptAsync to send message and return immediately
+        const result = await client.session.promptAsync({
+            path: { id: session.opencode_session_id },
+            body: { parts: [{ type: "text", text: content }] }
+        });
 
-    if (result.error) {
-        throw {
-            status: 500,
-            message: getErrorMessage(result.error) || 'Failed to send message to opencode'
-        };
+        if (result.error) {
+            throw {
+                status: 500,
+                message: getErrorMessage(result.error) || 'Failed to send message to opencode'
+            };
+        }
     }
 
     // Update session timestamp
@@ -315,7 +322,7 @@ router.get('/sessions/:id/events', apiHandler(async (req, res) => {
     res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders();
 
-    const port = parseInt(process.env.OPENCODE_PORT || "4096", 10);
+    const port = getOpencodePort();
     const workspaceDir = getWorkspaceDir();
 
     // Create an abort controller for cleanup
