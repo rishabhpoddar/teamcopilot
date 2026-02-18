@@ -230,32 +230,81 @@ router.post('/sessions/:id/messages', apiHandler(async (req, res) => {
 
     const pendingQuestion = await getPendingQuestionForSession(session.opencode_session_id);
     if (pendingQuestion) {
-        // For custom/manual text replies, treat the input as the answer for the first question.
-        // Additional questions can still be answered via follow-up prompts.
-        const answers = pendingQuestion.questions.map((_, index) => index === 0 ? [content] : []);
-        try {
-            await replyToPendingQuestion(pendingQuestion.id, answers);
-        } catch (err: unknown) {
-            throw new Error(getErrorMessage(err) || 'Failed to reply to pending question')
-        }
-    } else {
-        const client = await getOpencodeClient();
+        throw {
+            status: 409,
+            message: 'A tool is waiting for input. Reply through the tool-answer endpoint.'
+        };
+    }
 
-        // Use promptAsync to send message and return immediately
-        const result = await client.session.promptAsync({
-            path: { id: session.opencode_session_id },
-            body: { parts: [{ type: "text", text: content }] }
-        });
+    const client = await getOpencodeClient();
 
-        if (result.error) {
-            throw {
-                status: 500,
-                message: getErrorMessage(result.error) || 'Failed to send message to opencode'
-            };
-        }
+    // Use promptAsync to send message and return immediately
+    const result = await client.session.promptAsync({
+        path: { id: session.opencode_session_id },
+        body: { parts: [{ type: "text", text: content }] }
+    });
+
+    if (result.error) {
+        throw {
+            status: 500,
+            message: getErrorMessage(result.error) || 'Failed to send message to opencode'
+        };
     }
 
     // Update session timestamp
+    await prisma.chat_sessions.update({
+        where: { id },
+        data: { updated_at: Date.now() }
+    });
+
+    res.json({ success: true });
+}, true));
+
+// POST /api/chat/sessions/:id/tool-answer - Reply to a pending tool question
+router.post('/sessions/:id/tool-answer', apiHandler(async (req, res) => {
+    const id = req.params.id as string;
+    const { content } = req.body;
+
+    if (!content || typeof content !== 'string') {
+        throw {
+            status: 400,
+            message: 'content is required and must be a string'
+        };
+    }
+
+    const session = await prisma.chat_sessions.findFirst({
+        where: {
+            id,
+            user_id: req.userId!
+        }
+    });
+
+    if (!session) {
+        throw {
+            status: 404,
+            message: 'Session not found'
+        };
+    }
+
+    const pendingQuestion = await getPendingQuestionForSession(session.opencode_session_id);
+    if (!pendingQuestion) {
+        throw {
+            status: 409,
+            message: 'No pending tool question for this session'
+        };
+    }
+
+    // Current UI replies with a single string; map it to the first question.
+    const answers = pendingQuestion.questions.map((_, index) => index === 0 ? [content] : []);
+    try {
+        await replyToPendingQuestion(pendingQuestion.id, answers);
+    } catch (err: unknown) {
+        throw {
+            status: 500,
+            message: getErrorMessage(err) || 'Failed to reply to pending question'
+        };
+    }
+
     await prisma.chat_sessions.update({
         where: { id },
         data: { updated_at: Date.now() }

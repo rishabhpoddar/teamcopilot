@@ -341,32 +341,25 @@ export default function ChatContainer() {
         if (!token || !activeSessionId) return;
 
         const isPending = activeSessionId === 'pending';
-
-        // Don't create temp message when answering a question - the answer
-        // is shown in the question tool UI, no need for a separate bubble
-        const skipTempMessage = isWaitingForInput;
-
         let tempUserMessage: Message | null = null;
         let tempTextPart: Part | null = null;
 
-        if (!skipTempMessage) {
-            // Optimistically add user message to UI
-            tempUserMessage = {
-                id: `temp-${Date.now()}`,
-                sessionID: 'temp',
-                role: 'user',
-                time: { created: Date.now() }
-            };
-            tempTextPart = {
-                id: `temp-part-${Date.now()}`,
-                sessionID: 'temp',
-                messageID: tempUserMessage.id,
-                type: 'text',
-                text: content
-            };
-            setMessages(prev => [...prev, tempUserMessage!]);
-            setParts(prev => [...prev, tempTextPart!]);
-        }
+        // Optimistically add user message to UI
+        tempUserMessage = {
+            id: `temp-${Date.now()}`,
+            sessionID: 'temp',
+            role: 'user',
+            time: { created: Date.now() }
+        };
+        tempTextPart = {
+            id: `temp-part-${Date.now()}`,
+            sessionID: 'temp',
+            messageID: tempUserMessage.id,
+            type: 'text',
+            text: content
+        };
+        setMessages(prev => [...prev, tempUserMessage!]);
+        setParts(prev => [...prev, tempTextPart!]);
 
         try {
             setIsStreaming(true);
@@ -399,15 +392,33 @@ export default function ChatContainer() {
                 : 'Failed to send message';
             toast.error(errorMessage);
             setIsStreaming(false);
-            // Remove temp message on error (if we created one)
-            if (tempUserMessage && tempTextPart) {
-                setMessages(prev => prev.filter(m => m.id !== tempUserMessage!.id));
-                setParts(prev => prev.filter(p => p.id !== tempTextPart!.id));
-            }
+            // Remove temp message on error
+            setMessages(prev => prev.filter(m => m.id !== tempUserMessage!.id));
+            setParts(prev => prev.filter(p => p.id !== tempTextPart!.id));
             // If we were pending, go back to pending state
             if (isPending) {
                 setActiveSessionId('pending');
             }
+        }
+    };
+
+    const sendToolAnswer = async (content: string) => {
+        if (!token || !activeSessionId || activeSessionId === 'pending') return;
+
+        try {
+            setIsStreaming(true);
+            await axiosInstance.post(
+                `/api/chat/sessions/${activeSessionId}/tool-answer`,
+                { content },
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+            // Tool status and subsequent assistant output arrive via SSE.
+        } catch (err: unknown) {
+            const errorMessage = err instanceof AxiosError
+                ? err.response?.data?.message || err.response?.data || err.message
+                : 'Failed to send tool answer';
+            toast.error(errorMessage);
+            setIsStreaming(false);
         }
     };
 
@@ -481,7 +492,7 @@ export default function ChatContainer() {
                             parts={parts}
                             isStreaming={isStreaming}
                             isWaitingForInput={isWaitingForInput}
-                            onAnswer={sendMessage}
+                            onAnswer={sendToolAnswer}
                         />
                         <ChatInput
                             onSend={sendMessage}
