@@ -41,6 +41,22 @@ npm start
 
 The application will be available at **http://localhost:3000**
 
+### OpenCode Setup (Install + API Key)
+
+LocalTool uses OpenCode. `npm install` in this repo already installs OpenCode locally via project dependencies, so you can use `npx opencode` directly.
+
+1. Start OpenCode:
+   ```bash
+   npx opencode
+   ```
+2. In the OpenCode prompt, run:
+   ```text
+   /connect
+   ```
+3. Select your provider (or `opencode`), then create/copy your API key and paste it when prompted.
+
+For provider-specific details, see the official docs: https://opencode.ai/docs
+
 ---
 
 ## Running With Docker
