@@ -16,6 +16,69 @@ function getErrorMessage(error: unknown): string {
     return 'Unknown error';
 }
 
+function shouldAutoGenerateTitle(title: string | null): boolean {
+    if (!title) return true;
+    const normalized = title.trim().toLowerCase();
+    if (!normalized) return true;
+
+    const genericPatterns = [
+        /^new chat$/,
+        /^new session(?:\s*-\s*.*)?$/,
+        /^session(?:\s*-\s*.*)?$/,
+        /^chat(?:\s*-\s*.*)?$/
+    ];
+
+    return genericPatterns.some((pattern) => pattern.test(normalized));
+}
+
+function generateTitleFromUserMessage(content: string): string {
+    const maxChars = 60;
+    const maxWords = 9;
+
+    let text = content
+        .replace(/\s+/g, " ")
+        .replace(/[`*_#>\[\]()]/g, "")
+        .trim();
+
+    text = text.split(/[.!?\n]/)[0]?.trim() || text;
+
+    const leadingPhrases = [
+        "can you ",
+        "could you ",
+        "please ",
+        "help me ",
+        "i want to ",
+        "i need to ",
+        "let's ",
+        "lets "
+    ];
+
+    let lowered = text.toLowerCase();
+    for (const phrase of leadingPhrases) {
+        if (lowered.startsWith(phrase)) {
+            text = text.slice(phrase.length).trim();
+            lowered = text.toLowerCase();
+            break;
+        }
+    }
+
+    const words = text.split(/\s+/).filter(Boolean).slice(0, maxWords);
+    let candidate = words.join(" ").trim();
+
+    if (!candidate) {
+        return "New Chat";
+    }
+
+    if (candidate.length > maxChars) {
+        candidate = candidate.slice(0, maxChars).trim();
+        if (!/[.!?]$/.test(candidate)) {
+            candidate = `${candidate}...`;
+        }
+    }
+
+    return candidate;
+}
+
 // GET /api/chat/sessions - List user's sessions
 router.get('/sessions', apiHandler(async (req, res) => {
     const sessions = await prisma.chat_sessions.findMany({
@@ -251,13 +314,27 @@ router.post('/sessions/:id/messages', apiHandler(async (req, res) => {
         };
     }
 
-    // Update session timestamp
-    await prisma.chat_sessions.update({
+    const data: { updated_at: number; title?: string } = {
+        updated_at: Date.now()
+    };
+
+    if (shouldAutoGenerateTitle(session.title)) {
+        data.title = generateTitleFromUserMessage(content);
+    }
+
+    const updatedSession = await prisma.chat_sessions.update({
         where: { id },
-        data: { updated_at: Date.now() }
+        data
     });
 
-    res.json({ success: true });
+    res.json({
+        success: true,
+        session: {
+            id: updatedSession.id,
+            title: updatedSession.title,
+            updated_at: updatedSession.updated_at
+        }
+    });
 }, true));
 
 // POST /api/chat/sessions/:id/tool-answer - Reply to a pending tool question

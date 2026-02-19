@@ -380,11 +380,23 @@ export default function ChatContainer() {
             }
 
             // Send the message
-            await axiosInstance.post(
+            const sendResponse = await axiosInstance.post(
                 `/api/chat/sessions/${sessionId}/messages`,
                 { content },
                 { headers: { Authorization: `Bearer ${token}` } }
             );
+
+            const updatedSession = sendResponse.data?.session as { id: string; title: string | null; updated_at: number } | undefined;
+            if (updatedSession) {
+                setSessions(prev =>
+                    prev
+                        .map(s => s.id === updatedSession.id
+                            ? { ...s, title: updatedSession.title, updated_at: updatedSession.updated_at }
+                            : s
+                        )
+                        .sort((a, b) => Number(b.updated_at) - Number(a.updated_at))
+                );
+            }
             // The real message will appear through SSE events and replace our temp one
         } catch (err: unknown) {
             const errorMessage = err instanceof AxiosError

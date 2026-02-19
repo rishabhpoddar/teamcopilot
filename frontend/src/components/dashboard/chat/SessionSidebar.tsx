@@ -53,15 +53,17 @@ export default function SessionSidebar({
                         {loading ? 'Loading...' : 'No sessions yet'}
                     </div>
                 ) : (
-                    sessions.map(session => (
+                    sessions.map(session => {
+                        const displayTitle = session.title || 'New Chat';
+                        return (
                         <div
                             key={session.id}
                             className={`session-item ${session.id === activeSessionId ? 'active' : ''}`}
                             onClick={() => onSelectSession(session.id)}
                         >
-                            <div className="session-title">
-                                {session.title || 'New Chat'}
-                                <span style={{ fontSize: '0.75rem', color: '#666', marginLeft: '0.5rem' }}>
+                            <div className="session-title" data-full-title={displayTitle}>
+                                <span className="session-title-text">{displayTitle}</span>
+                                <span className="session-updated-at">
                                     {formatDate(Number(session.updated_at))}
                                 </span>
                             </div>
@@ -72,7 +74,8 @@ export default function SessionSidebar({
                                 ✕
                             </button>
                         </div>
-                    ))
+                        );
+                    })
                 )}
             </div>
         </div>
