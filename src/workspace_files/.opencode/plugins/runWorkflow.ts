@@ -1,6 +1,7 @@
 import { type Plugin, tool } from "@opencode-ai/plugin"
 import { spawn } from "child_process"
-import * as fs from "fs/promises"
+import { createWriteStream } from "fs"
+import * as fsp from "fs/promises"
 import * as path from "path"
 
 // ============================================================================
@@ -208,7 +209,7 @@ async function readWorkflowJson(
 ): Promise<WorkflowJson | null> {
   const workflowJsonPath = path.join(workflowPath, "workflow.json")
   try {
-    const content = await fs.readFile(workflowJsonPath, "utf-8")
+    const content = await fsp.readFile(workflowJsonPath, "utf-8")
     return JSON.parse(content) as WorkflowJson
   } catch {
     return null
@@ -221,7 +222,7 @@ async function readWorkflowJson(
 async function venvExists(workflowPath: string): Promise<boolean> {
   const venvPath = path.join(workflowPath, ".venv")
   try {
-    const stats = await fs.stat(venvPath)
+    const stats = await fsp.stat(venvPath)
     return stats.isDirectory()
   } catch {
     return false
@@ -230,7 +231,7 @@ async function venvExists(workflowPath: string): Promise<boolean> {
 
 async function pathExists(p: string): Promise<boolean> {
   try {
-    await fs.access(p)
+    await fsp.access(p)
     return true
   } catch {
     return false
@@ -239,7 +240,7 @@ async function pathExists(p: string): Promise<boolean> {
 
 async function isDirectory(p: string): Promise<boolean> {
   try {
-    const stats = await fs.stat(p)
+    const stats = await fsp.stat(p)
     return stats.isDirectory()
   } catch {
     return false
@@ -430,14 +431,35 @@ function killProcessGroup(pid: number, signal: NodeJS.Signals = "SIGTERM"): void
   }
 }
 
+function sanitizeFilenamePart(value: string): string {
+  return value.replace(/[^a-zA-Z0-9._-]/g, "_")
+}
+
+function extractMessageId(context: unknown): string | null {
+  if (!context || typeof context !== "object") {
+    return null
+  }
+
+  const candidate = (context as { messageID?: unknown; messageId?: unknown; message_id?: unknown })
+  const raw = candidate.messageID ?? candidate.messageId ?? candidate.message_id
+  if (typeof raw === "string" && raw.trim().length > 0) {
+    return raw
+  }
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    return String(raw)
+  }
+  return null
+}
+
 /**
- * Runs the workflow with timeout, piping stdout/stderr.
+ * Runs the workflow with timeout, piping stdout/stderr and streaming to output file.
  * Spawns in a new process group so the entire tree can be killed if needed.
  */
 function runWithTimeout(
   workflowPath: string,
   args: string[],
-  timeoutSeconds: number
+  timeoutSeconds: number,
+  outputFilePath: string
 ): Promise<{ status: RunStatus; output: string }> {
   return new Promise((resolve) => {
     installGlobalCleanupHandlersOnce()
@@ -449,6 +471,17 @@ function runWithTimeout(
     let output = ""
     let resolved = false
     let outputTruncated = false
+    const outputFileStream = createWriteStream(outputFilePath, {
+      flags: "a",
+      encoding: "utf-8",
+    })
+    let outputFileErrored = false
+
+    outputFileStream.on("error", (err) => {
+      if (outputFileErrored) return
+      outputFileErrored = true
+      process.stderr.write(`\n[WARN] Failed writing workflow output file: ${err.message}\n`)
+    })
 
     const appendOutput = (text: string) => {
       if (resolved) return
@@ -466,6 +499,11 @@ function runWithTimeout(
       output += text.slice(0, remaining)
       outputTruncated = true
       output += `\n[WARN] Output truncated after ${MAX_OUTPUT_CHARS} characters\n`
+    }
+
+    const appendFileOutput = (text: string) => {
+      if (resolved || outputFileErrored) return
+      outputFileStream.write(text)
     }
 
     // Spawn the process in a new process group (detached)
@@ -504,6 +542,7 @@ function runWithTimeout(
         resolved = true
         activeCleanups.delete(cleanup)
         removeStreamListeners()
+        outputFileStream.end()
         resolve(result)
       }
     }
@@ -512,6 +551,7 @@ function runWithTimeout(
     child.stdout?.on("data", (data: Buffer) => {
       const text = data.toString()
       appendOutput(text)
+      appendFileOutput(text)
       process.stdout.write(text)
     })
 
@@ -519,6 +559,7 @@ function runWithTimeout(
     child.stderr?.on("data", (data: Buffer) => {
       const text = data.toString()
       appendOutput(text)
+      appendFileOutput(text)
       process.stderr.write(text)
     })
 
@@ -528,6 +569,9 @@ function runWithTimeout(
       // Give it a moment to terminate gracefully
       setTimeout(() => cleanup("SIGKILL"), 1000)
       appendOutput(
+        `\n[ERROR] Workflow execution timed out after ${timeoutSeconds} seconds\n`
+      )
+      appendFileOutput(
         `\n[ERROR] Workflow execution timed out after ${timeoutSeconds} seconds\n`
       )
       process.stderr.write(
@@ -551,6 +595,7 @@ function runWithTimeout(
     child.on("error", (err) => {
       clearTimeout(timeoutId)
       appendOutput(`\n[ERROR] Failed to start process: ${err.message}\n`)
+      appendFileOutput(`\n[ERROR] Failed to start process: ${err.message}\n`)
       process.stderr.write(`\n[ERROR] Failed to start process: ${err.message}\n`)
       safeResolve({ status: "error", output })
     })
@@ -584,6 +629,15 @@ export const RunWorkflowPlugin: Plugin = async (_ctx) => {
         async execute(args, context) {
           const { directory, sessionID } = context
           const { slug, inputs = {} } = args
+          const messageId = extractMessageId(context)
+
+          if (!messageId) {
+            return JSON.stringify({
+              status: "error",
+              error: "missing_message_id",
+              message: "Could not determine message id from tool context.",
+            })
+          }
 
           if (!SLUG_REGEX.test(slug)) {
             return JSON.stringify({
@@ -699,12 +753,20 @@ export const RunWorkflowPlugin: Plugin = async (_ctx) => {
           }
 
           const runId = runCreate.data
+          const workflowRunsDir = path.join(directory, "workflow-runs")
+          await fsp.mkdir(workflowRunsDir, { recursive: true })
+          const outputFilePath = path.join(
+            workflowRunsDir,
+            `${sanitizeFilenamePart(sessionID)}-${sanitizeFilenamePart(messageId)}.txt`
+          )
+          await fsp.writeFile(outputFilePath, "", "utf-8")
 
           // Run the workflow
           const result = await runWithTimeout(
             workflowPath,
             cmdArgs,
-            timeoutSeconds
+            timeoutSeconds,
+            outputFilePath
           )
 
           // Update the run status in the database
