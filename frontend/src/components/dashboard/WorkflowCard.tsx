@@ -14,6 +14,8 @@ export default function WorkflowCard({
     slug,
     name,
     intent_summary,
+    created_by_user_name,
+    created_by_user_email,
     approved_by_user_id,
     userRole,
     token,
@@ -49,6 +51,9 @@ export default function WorkflowCard({
                 </span>
             </div>
             {intent_summary && <p className="workflow-card-description">{intent_summary}</p>}
+            <p className="workflow-card-meta">
+                Created by: {created_by_user_name ?? created_by_user_email ?? 'Unknown User'}
+            </p>
 
             {!isApproved && (
                 <div className="workflow-approval-section">

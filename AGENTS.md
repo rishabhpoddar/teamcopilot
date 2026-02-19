@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to the agent when working with code in this repository.
 
 ## Project Overview
 
@@ -163,3 +163,7 @@ throw {
 
 ### Error handling
 - Prefer throwing errors rather than silently handling them via return values like false or null.
+
+## Communication
+
+- When asking the user questions (especially for clarification), ask **just one question at a time**.

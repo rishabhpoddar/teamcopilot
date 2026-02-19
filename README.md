@@ -41,6 +41,22 @@ npm start
 
 The application will be available at **http://localhost:3000**
 
+### OpenCode Setup (Install + API Key)
+
+LocalTool uses OpenCode. `npm install` in this repo already installs OpenCode locally via project dependencies, so you can use `npx opencode` directly.
+
+1. Start OpenCode:
+   ```bash
+   npx opencode
+   ```
+2. In the OpenCode prompt, run:
+   ```text
+   /connect
+   ```
+3. Select your provider (or `opencode`), then create/copy your API key and paste it when prompted.
+
+For provider-specific details, see the official docs: https://opencode.ai/docs
+
 ---
 
 ## Running With Docker
@@ -63,7 +79,7 @@ docker run -d \
   -p 3000:3000 \
   -v db-data:/app/data \
   -v my_workspaces:/app/workspaces \
-  -e SERVICE_URL="http://localhost:3000" \
+  -e EXTERNAL_SERVICE_URL="http://localhost:3000" \
   -e JWT_SECRET="your-secret-key" \
   localtool
 ```
@@ -85,14 +101,18 @@ Data is persisted in Docker named volumes. Even if you remove and recreate the c
 
 ### Environment Variables
 
-| Variable | Description |
-|----------|-------------|
-| `SERVICE_URL` | URL where the service is accessible |
-| `JWT_SECRET` | Secret for JWT tokens |
-| `DATABASE_URL` | SQLite database path |
-| `WORKSPACE_DIR` | Path to workspace directory |
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `EXTERNAL_SERVICE_URL` | URL where the service is accessible | `http://localhost:3000` |
+| `JWT_SECRET` | Secret for JWT tokens | - |
+| `DATABASE_URL` | SQLite database path | `file:./dev.db` |
+| `WORKSPACE_DIR` | Path to workspace directory | `./my_workspaces` |
+| `HOST` | Hostname for the main server | `0.0.0.0` |
+| `PORT` | Port for the main server | `3000` |
+| `OPENCODE_PORT` | Port for the Opencode server | `4096` |
+| `OPENCODE_MODEL` | AI model for Opencode | `claude-sonnet-4-5-20250929` |
 
-> Note: `DATABASE_URL` is relative to the `prisma/` directory. For Docker, `DATABASE_URL` and `WORKSPACE_DIR` are set automatically in the image.
+> Note: `DATABASE_URL` is relative to the `prisma/` directory. For Docker, `DATABASE_URL` and `WORKSPACE_DIR` are set automatically in the image. `HOST` and `PORT` control the main HTTP server. `OPENCODE_PORT` is used internally by the backend process and normally does not need to be exposed with a Docker `-p` flag.
 
 ---
 

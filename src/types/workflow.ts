@@ -20,6 +20,7 @@ export interface WorkflowManifest {
     runtime: {
         timeout_seconds: number
     }
+    created_by_user_id: string | null
     approved_by_user_id: string | null
 }
 
@@ -28,6 +29,9 @@ export interface WorkflowSummary {
     slug: string;
     name: string;
     intent_summary: string;
+    created_by_user_id: string | null;
+    created_by_user_name: string | null;
+    created_by_user_email: string | null;
     approved_by_user_id: string | null;
 }
 

@@ -12,7 +12,7 @@ type CustomRequest = express.Request & {
 export function apiHandler(handler: (req: CustomRequest, res: express.Response, next: express.NextFunction) => Promise<void>, requireAuth: boolean) {
     return async (req: express.Request, res: express.Response, next: express.NextFunction) => {
         try {
-            let authHeader = req.headers['authorization'];
+            const authHeader = req.headers['authorization'];
             if (!authHeader && requireAuth) {
                 throw {
                     status: 401,
@@ -20,14 +20,15 @@ export function apiHandler(handler: (req: CustomRequest, res: express.Response, 
                 };
             }
             if (authHeader) {
+                const rawToken = authHeader.split(' ')[1];
                 try {
-                    const token = authHeader.split(' ')[1];
-                    const decoded = jwt.verify(token, process.env.JWT_SECRET!);
-                    let user = await prisma.users.findUnique({
+                    const decoded = jwt.verify(rawToken, process.env.JWT_SECRET!);
+                    const user = await prisma.users.findUnique({
                         where: {
                             id: (decoded as { sub: string }).sub
                         }
                     });
+
                     if (!user) {
                         throw {
                             status: 401,
@@ -39,14 +40,31 @@ export function apiHandler(handler: (req: CustomRequest, res: express.Response, 
                     (req as CustomRequest).name = user.name;
                     (req as CustomRequest).role = user.role;
                 } catch (e) {
-                    if (e instanceof jwt.JsonWebTokenError) {
-                        throw {
-                            status: 401,
-                            message: 'Invalid authorization token. Please pass a valid authorization bearer token in the header.'
-                        };
+                    if (e instanceof jwt.JsonWebTokenError || e instanceof jwt.TokenExpiredError) {
+                        const session = await prisma.chat_sessions.findFirst({
+                            where: { opencode_session_id: rawToken },
+                            include: {
+                                user: true
+                            }
+                        });
+
+                        if (session) {
+                            (req as CustomRequest).userId = session.user.id;
+                            (req as CustomRequest).email = session.user.email;
+                            (req as CustomRequest).name = session.user.name;
+                            (req as CustomRequest).role = session.user.role;
+                        }
+                    } else {
+                        throw e;
                     }
-                    throw e;
                 }
+            }
+
+            if (requireAuth && !(req as CustomRequest).userId) {
+                throw {
+                    status: 401,
+                    message: 'Invalid authorization token. Please pass a valid authorization bearer token in the header.'
+                };
             }
             await handler(req as CustomRequest, res, next);
         } catch (e) {

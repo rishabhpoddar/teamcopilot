@@ -90,9 +90,12 @@ This manifest defines what the workflow does and how it runs. The UI and executi
   "runtime": {
     "timeout_seconds": 300
   },
+  "created_by_user_id": null,
   "approved_by_user_id": null
 }
 ```
+
+`created_by_user_id` is set automatically by the system when `createWorkflow` is used, based on the authenticated user that invoked the tool.
 
 ### 2. `README.md` — Documentation
 
@@ -231,7 +234,7 @@ If you simply need to find an existing workflow to run (and are not creating a n
 
 ### Credential Handling
 
-- Store secrets in `.env
+- Store secrets in `.env`
 - Always provide `.env.example` with placeholder values
 - Document which secrets are required in `README.md`
 
@@ -267,6 +270,7 @@ days_back = args.days_back
 2. **Always check for existing workflows** before creating new ones — you MUST use the `findSimilarWorkflow` tool to do this. Only create new ones if no existing workflow can fit the request. If needed, modify the existing workflow to fit the request WITHOUT losing older functionality.
    - If you find a similar workflow, **study it and follow its business logic and conventions**.
 3. **Ask the user for help** when unsure.
+   - When asking the user questions, ask **just one question at a time**.
 4. **Keep workflows focused** — one workflow, one purpose
 5. **Document thoroughly** — future you (and others) will thank you
 6. **Handle errors gracefully** — workflows should fail cleanly
@@ -286,11 +290,45 @@ days_back = args.days_back
 
 ---
 
-## Security Notes
+## Security & Scope Restrictions (MUST FOLLOW)
 
-- The agent has access to workspace files, including `.env` files
-- Be cautious with secrets
-- Never log or print secrets
+These rules exist to prevent data loss, secret leakage, and unsafe behavior. Violations are not permitted.
+
+### Scope limitation (workflow-only)
+
+- Keep the conversation strictly restricted to **creating, managing, and running workflows** in this workspace.
+- Do **not** entertain requests outside that scope (including general programming help, unrelated code changes, infrastructure actions, or any other non-workflow task).
+
+### Never delete workflows
+
+- You must **NEVER delete a workflow** (folders or files under `workflows/<slug>/`).
+- Workflow deletions are only supposed to happen via the **UI**.
+- If cleanup is requested, prefer **deprecating** (e.g., update README/status/intent) rather than deleting anything.
+
+### Approval & execution integrity
+
+- Never attempt to bypass workflow approval requirements.
+- Do not “self-approve” workflows by editing `workflow.json` fields like `approved_by_user_id`; approvals must happen via the product’s intended UX/authorization flow.
+- Do not manually set `created_by_user_id`; it must be set via the system API tied to the authenticated creator.
+
+### Secrets & sensitive data handling
+
+- Assume the agent can access sensitive files (including workflow `.env` files).
+- Never print, log, or exfiltrate secrets or credentials.
+- Do not copy `.env` contents into chat output; redact secrets in any logs/output you produce.
+- Do not ask users to paste secrets into chat; instruct them to set secrets in the workflow’s `.env` (and document them in `.env.example`).
+- Only store secrets in `.env`. Never store secrets in `README.md`, `workflow.json`, `requirements.txt`, `requirements.lock.txt`, or `data/`.
+
+### Filesystem safety boundaries
+
+- Never read/write/create files outside the workflow directory unless explicitly required for workflow management.
+- Do not perform or suggest path traversal patterns (e.g., `../`) that escape `workflows/<slug>/`.
+- Keep any cloned repos, downloaded assets, fixtures, or vendored code **inside** `workflows/<slug>/` only.
+
+### No destructive shell actions
+
+- Do not run destructive commands that could delete or corrupt workflows or workspace state (for example `rm`, `rm -rf`, or scripted deletions).
+- When changes are needed, prefer additive edits; avoid irreversible operations.
 
 ---
 

@@ -22,6 +22,7 @@ interface WorkflowManifest {
   runtime?: {
     timeout_seconds?: number
   }
+  created_by_user_id?: string | null
   approved_by_user_id?: string | null
 }
 
@@ -30,6 +31,7 @@ interface WorkflowManifest {
 // ============================================================================
 
 const SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+const API_BASE_URL = "http://localhost:3000"
 
 // ============================================================================
 // Helper Functions
@@ -48,6 +50,28 @@ function isPathInside(childPath: string, parentPath: string): boolean {
   const parent = path.resolve(parentPath) + path.sep
   const child = path.resolve(childPath) + path.sep
   return child.startsWith(parent)
+}
+
+async function readErrorMessageFromResponse(
+  response: Response,
+  fallbackMessage: string
+): Promise<string> {
+  try {
+    const text = await response.text()
+    if (!text) return fallbackMessage
+    try {
+      const parsed: unknown = JSON.parse(text)
+      if (parsed && typeof parsed === "object" && "message" in parsed) {
+        const msg = (parsed as { message?: unknown }).message
+        if (typeof msg === "string" && msg.trim().length > 0) return msg
+      }
+    } catch {
+      // Non-JSON body, fall back to plain text below.
+    }
+    return text.trim().length > 0 ? text : fallbackMessage
+  } catch {
+    return fallbackMessage
+  }
 }
 
 // ============================================================================
@@ -95,7 +119,7 @@ export const CreateWorkflowPlugin: Plugin = async (_ctx) => {
             ),
         },
         async execute(args, context) {
-          const { directory } = context
+          const { directory, sessionID } = context
           const { slug, intent_summary, inputs = {}, timeout_seconds = 300 } = args
 
           // Validate slug format
@@ -149,6 +173,7 @@ export const CreateWorkflowPlugin: Plugin = async (_ctx) => {
             inputs: inputs as Record<string, WorkflowInput>,
             triggers: { manual: true },
             runtime: { timeout_seconds },
+            created_by_user_id: null,
             approved_by_user_id: null,
           }
           await fs.writeFile(
@@ -164,6 +189,30 @@ export const CreateWorkflowPlugin: Plugin = async (_ctx) => {
           await fs.writeFile(path.join(workflowDir, ".env"), "", "utf-8")
           await fs.writeFile(path.join(workflowDir, ".env.example"), "", "utf-8")
           await fs.writeFile(path.join(workflowDir, "README.md"), "", "utf-8")
+
+          const creatorResponse = await fetch(
+            `${API_BASE_URL}/api/workflows/${encodeURIComponent(slug)}/creator`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${sessionID}`,
+              },
+            }
+          )
+
+          if (!creatorResponse.ok) {
+            const message = await readErrorMessageFromResponse(
+              creatorResponse,
+              `Failed to set workflow creator (HTTP ${creatorResponse.status})`
+            )
+            return JSON.stringify({
+              success: false,
+              error: "workflow_creator_set_failed",
+              message: `Workflow "${slug}" was created, but saving creator metadata failed: ${message}`,
+              workflow_path: path.relative(directory, workflowDir),
+            })
+          }
 
           return JSON.stringify({
             success: true,

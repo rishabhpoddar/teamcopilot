@@ -90,6 +90,11 @@ export async function approveWorkflow(slug: string, userId: string): Promise<Wor
     return updateWorkflowManifest(slug, { approved_by_user_id: userId });
 }
 
+/** Set workflow creator on workflow.json */
+export function setWorkflowCreator(slug: string, userId: string): WorkflowManifest {
+    return updateWorkflowManifest(slug, { created_by_user_id: userId });
+}
+
 /** Get the timeout for a workflow (defaults to 300 seconds) */
 export function getWorkflowTimeout(slug: string): number {
     const manifest = readWorkflowManifest(slug);

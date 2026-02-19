@@ -15,6 +15,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@opencode-ai/sdk": "1.1.65",
     "@prisma/client": "^6.0.1",
     "@slack/web-api": "^7.8.0",
     "@supabase/supabase-js": "^2.47.8",
@@ -33,6 +34,7 @@
     "jsonwebtoken": "^9.0.2",
     "node-cron": "^3.0.3",
     "openai": "^4.95.1",
+    "opencode-ai": "1.1.65",
     "prisma": "^6.0.1",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",

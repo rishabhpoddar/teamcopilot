@@ -17,6 +17,7 @@ model users {
   reset_token            String?
   reset_token_expires_at BigInt?
   workflowRuns           workflow_runs[]
+  chatSessions           chat_sessions[]
 }
 
 model workflow_runs {
@@ -37,4 +38,14 @@ model workflow_runs {
 model key_value {
   key   String @id
   value String
+}
+
+model chat_sessions {
+  id                  String @id @default(uuid())
+  user_id             String
+  opencode_session_id String @unique
+  title               String
+  created_at          BigInt
+  updated_at          BigInt
+  user                users  @relation(fields: [user_id], references: [id], onDelete: Cascade)
 }

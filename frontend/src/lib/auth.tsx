@@ -9,14 +9,21 @@ interface User {
     role: 'User' | 'Engineer';
 }
 
-interface AuthContextType {
-    user: User | null;
-    token: string | null;
-    loading: boolean;
-    login: (email: string, password: string) => Promise<void>;
-    signup: (email: string, name: string, password: string, role: 'User' | 'Engineer') => Promise<void>;
-    logout: () => void;
-}
+type AuthContextType =
+    | {
+        loading: true;
+        login: (email: string, password: string) => Promise<void>;
+        signup: (email: string, name: string, password: string, role: 'User' | 'Engineer') => Promise<void>;
+        logout: () => void;
+    }
+    | {
+        loading: false;
+        user: User | null;
+        token: string | null;
+        login: (email: string, password: string) => Promise<void>;
+        signup: (email: string, name: string, password: string, role: 'User' | 'Engineer') => Promise<void>;
+        logout: () => void;
+    };
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
@@ -30,19 +37,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!token) {
             return;
         }
-        fetch('/api/auth/me', {
-            headers: { Authorization: `Bearer ${token}` }
-        })
-            .then(res => {
-                if (!res.ok) throw new Error('Unauthorized');
-                return res.json();
-            })
-            .then(data => setUser(data))
-            .catch(() => {
-                localStorage.removeItem('token');
-                setToken(null);
-            })
-            .finally(() => setLoading(false));
+        (async () => {
+            try {
+                const res = await fetch('/api/auth/me', {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+
+                if (res.status === 401) {
+                    localStorage.removeItem('token');
+                    setToken(null);
+                    setLoading(false);
+                    return;
+                }
+
+                if (!res.ok) {
+                    // Non-401 error: keep loading true
+                    return;
+                }
+
+                const data = await res.json();
+                setUser(data);
+                setLoading(false);
+            } catch {
+                // Network error: keep loading true
+            }
+        })();
     }, [token]);
 
     const login = async (email: string, password: string) => {
@@ -75,8 +94,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(null);
     };
 
+    const value: AuthContextType = loading
+        ? { loading: true, login, signup, logout }
+        : { loading: false, user, token, login, signup, logout };
+
     return (
-        <AuthContext.Provider value={{ user, token, loading, login, signup, logout }}>
+        <AuthContext.Provider value={value}>
             {children}
         </AuthContext.Provider>
     );
