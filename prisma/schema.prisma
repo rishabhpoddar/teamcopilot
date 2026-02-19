@@ -41,11 +41,11 @@ model key_value {
 }
 
 model chat_sessions {
-  id                  String  @id @default(uuid())
+  id                  String @id @default(uuid())
   user_id             String
-  opencode_session_id String  @unique
-  title               String?
+  opencode_session_id String @unique
+  title               String
   created_at          BigInt
   updated_at          BigInt
-  user                users   @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  user                users  @relation(fields: [user_id], references: [id], onDelete: Cascade)
 }
