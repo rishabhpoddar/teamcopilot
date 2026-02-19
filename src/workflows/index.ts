@@ -29,9 +29,10 @@ router.get('/', apiHandler(async (req, res) => {
     const creators = creatorIds.size > 0
         ? await prisma.users.findMany({
             where: { id: { in: Array.from(creatorIds) } },
-            select: { id: true, email: true }
+            select: { id: true, name: true, email: true }
         })
         : [];
+    const creatorNameById = new Map(creators.map((creator) => [creator.id, creator.name]));
     const creatorEmailById = new Map(creators.map((creator) => [creator.id, creator.email]));
 
     for (const slug of slugs) {
@@ -43,6 +44,7 @@ router.get('/', apiHandler(async (req, res) => {
             name: slug,
             intent_summary: manifest.intent_summary,
             created_by_user_id: createdByUserId,
+            created_by_user_name: createdByUserId ? (creatorNameById.get(createdByUserId) ?? null) : null,
             created_by_user_email: createdByUserId ? (creatorEmailById.get(createdByUserId) ?? null) : null,
             approved_by_user_id: manifest.approved_by_user_id ?? null
         });
@@ -196,7 +198,7 @@ router.get('/:slug', apiHandler(async (req, res) => {
     const creator = createdByUserId
         ? await prisma.users.findUnique({
             where: { id: createdByUserId },
-            select: { id: true, email: true }
+            select: { id: true, name: true, email: true }
         })
         : null;
 
@@ -206,6 +208,7 @@ router.get('/:slug', apiHandler(async (req, res) => {
             name: slug,
             intent_summary: manifest.intent_summary,
             created_by_user_id: createdByUserId,
+            created_by_user_name: creator?.name ?? null,
             created_by_user_email: creator?.email ?? null,
             approved_by_user_id: manifest.approved_by_user_id ?? null,
             manifest
