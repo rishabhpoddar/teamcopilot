@@ -270,6 +270,7 @@ days_back = args.days_back
 2. **Always check for existing workflows** before creating new ones — you MUST use the `findSimilarWorkflow` tool to do this. Only create new ones if no existing workflow can fit the request. If needed, modify the existing workflow to fit the request WITHOUT losing older functionality.
    - If you find a similar workflow, **study it and follow its business logic and conventions**.
 3. **Ask the user for help** when unsure.
+   - When asking the user questions, ask **just one question at a time**.
 4. **Keep workflows focused** — one workflow, one purpose
 5. **Document thoroughly** — future you (and others) will thank you
 6. **Handle errors gracefully** — workflows should fail cleanly

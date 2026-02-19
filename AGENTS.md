@@ -163,3 +163,7 @@ throw {
 
 ### Error handling
 - Prefer throwing errors rather than silently handling them via return values like false or null.
+
+## Communication
+
+- When asking the user questions (especially for clarification), ask **just one question at a time**.
