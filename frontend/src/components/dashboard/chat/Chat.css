@@ -1,6 +1,9 @@
 /* Chat Container Layout */
 .chat-layout {
     display: flex;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     height: 600px;
     border: 1px solid #333;
     border-radius: 8px;
@@ -9,7 +12,10 @@
 
 /* Session Sidebar */
 .chat-sidebar {
+    flex: 0 0 250px;
     width: 250px;
+    min-width: 250px;
+    max-width: 250px;
     border-right: 1px solid #333;
     display: flex;
     flex-direction: column;
@@ -95,15 +101,18 @@
 
 /* Chat Main Area */
 .chat-main {
-    flex: 1;
+    flex: 1 1 auto;
     display: flex;
     flex-direction: column;
+    min-width: 0;
+    overflow: hidden;
 }
 
 .chat-messages {
     flex: 1;
     overflow-y: auto;
     padding: 1rem;
+    min-width: 0;
 }
 
 .chat-empty {
