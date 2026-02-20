@@ -30,7 +30,7 @@ interface ValidationResult {
   processedInputs: Record<string, string | number | boolean>
 }
 
-type RunStatus = "success" | "error" | "timeout"
+type RunStatus = "success" | "error" | "timeout" | "aborted"
 
 // ============================================================================
 // Constants
@@ -39,6 +39,8 @@ type RunStatus = "success" | "error" | "timeout"
 const SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const MAX_OUTPUT_CHARS = 300_000
 const API_BASE_URL = "http://localhost:3000"
+const OPENCODE_PORT = Number.parseInt(process.env.OPENCODE_PORT ?? "4096", 10)
+const OPENCODE_BASE_URL = `http://localhost:${Number.isFinite(OPENCODE_PORT) ? OPENCODE_PORT : 4096}`
 
 // ============================================================================
 // API Functions
@@ -451,6 +453,86 @@ function extractMessageId(context: unknown): string | null {
   return null
 }
 
+function isAbortSignalLike(value: unknown): value is AbortSignal {
+  if (!value || typeof value !== "object") return false
+  const candidate = value as {
+    aborted?: unknown
+    addEventListener?: unknown
+    removeEventListener?: unknown
+  }
+  return (
+    typeof candidate.aborted === "boolean" &&
+    typeof candidate.addEventListener === "function" &&
+    typeof candidate.removeEventListener === "function"
+  )
+}
+
+function extractAbortSignal(context: unknown): AbortSignal | null {
+  if (!context || typeof context !== "object") return null
+  const candidate = context as {
+    signal?: unknown
+    abortSignal?: unknown
+    abort_signal?: unknown
+  }
+
+  if (isAbortSignalLike(candidate.signal)) return candidate.signal
+  if (isAbortSignalLike(candidate.abortSignal)) return candidate.abortSignal
+  if (isAbortSignalLike(candidate.abort_signal)) return candidate.abort_signal
+  return null
+}
+
+async function isMessageOrSessionAborted(
+  sessionID: string,
+  _messageID: string,
+  directory: string
+): Promise<{ aborted: boolean; debugLine: string }> {
+  const query = `directory=${encodeURIComponent(directory)}`
+  const timestamp = new Date().toISOString()
+  let sessionStatus = "skipped"
+  let sessionType: string | null = null
+  let sessionHint = ""
+
+  // Single source of truth: session status endpoint.
+  // If this session is not actively busy, stop the workflow process.
+  try {
+    const statusRes = await fetch(`${OPENCODE_BASE_URL}/session/status?${query}`)
+    sessionStatus = String(statusRes.status)
+    if (!statusRes.ok) {
+      const body = (await statusRes.text()).slice(0, 800).replace(/\s+/g, " ")
+      sessionHint = `non_ok_body=${JSON.stringify(body)}`
+      return {
+        aborted: false,
+        debugLine: `${timestamp} aborted=false source=session.status.non_ok session_status=${sessionStatus} session_type=${sessionType} session_hint=${sessionHint}\n`,
+      }
+    }
+    const statuses = (await statusRes.json()) as Record<string, { type?: string }>
+    const state = statuses[sessionID] ?? null
+    sessionType = typeof state?.type === "string" ? state.type : null
+    sessionHint = JSON.stringify({ state }).slice(0, 500)
+
+    // Important: status endpoint may drop the session key after abort/interrupt.
+    // If the session is not actively busy anymore, this tool should stop.
+    if (sessionType !== "busy") {
+      return {
+        aborted: true,
+        debugLine: `${timestamp} aborted=true source=session.not_busy session_status=${sessionStatus} session_type=${sessionType} session_hint=${sessionHint}\n`,
+      }
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    sessionHint = `fetch_error=${JSON.stringify(msg)}`
+    return {
+      aborted: false,
+      debugLine: `${timestamp} aborted=false source=session.status.error session_status=${sessionStatus} session_type=${sessionType} session_hint=${sessionHint}\n`,
+    }
+  }
+
+  return {
+    aborted: false,
+    debugLine: `${timestamp} aborted=false source=session.busy session_status=${sessionStatus} session_type=${sessionType} session_hint=${sessionHint}\n`,
+  }
+}
+
 /**
  * Runs the workflow with timeout, piping stdout/stderr and streaming to output file.
  * Spawns in a new process group so the entire tree can be killed if needed.
@@ -459,7 +541,14 @@ function runWithTimeout(
   workflowPath: string,
   args: string[],
   timeoutSeconds: number,
-  outputFilePath: string
+  outputFilePath: string,
+  abortSignal?: AbortSignal | null,
+  cancellationProbe?: {
+    sessionID: string
+    messageID: string
+    directory: string
+    debugFilePath?: string
+  }
 ): Promise<{ status: RunStatus; output: string }> {
   return new Promise((resolve) => {
     installGlobalCleanupHandlersOnce()
@@ -537,14 +626,81 @@ function runWithTimeout(
       child.stderr?.removeAllListeners("data")
     }
 
+    let timeoutId: NodeJS.Timeout | null = null
+    let cancellationPollId: NodeJS.Timeout | null = null
+    const onAbort = () => {
+      if (resolved) return
+      cleanup("SIGTERM")
+      setTimeout(() => cleanup("SIGKILL"), 1000)
+      appendOutput("\n[ERROR] Workflow execution was aborted\n")
+      appendFileOutput("\n[ERROR] Workflow execution was aborted\n")
+      process.stderr.write("\n[ERROR] Workflow execution was aborted\n")
+      safeResolve({ status: "aborted", output })
+    }
+
     const safeResolve = (result: { status: RunStatus; output: string }) => {
       if (!resolved) {
         resolved = true
         activeCleanups.delete(cleanup)
+        if (timeoutId) {
+          clearTimeout(timeoutId)
+          timeoutId = null
+        }
+        if (abortSignal) {
+          abortSignal.removeEventListener("abort", onAbort)
+        }
+        if (cancellationPollId) {
+          clearInterval(cancellationPollId)
+          cancellationPollId = null
+        }
         removeStreamListeners()
         outputFileStream.end()
         resolve(result)
       }
+    }
+
+    if (abortSignal) {
+      if (abortSignal.aborted) {
+        onAbort()
+        return
+      }
+      abortSignal.addEventListener("abort", onAbort, { once: true })
+    }
+
+    if (cancellationProbe) {
+      let pollInFlight = false
+      cancellationPollId = setInterval(async () => {
+        if (resolved || pollInFlight) return
+        pollInFlight = true
+        try {
+          const pollResult = await isMessageOrSessionAborted(
+            cancellationProbe.sessionID,
+            cancellationProbe.messageID,
+            cancellationProbe.directory
+          )
+          if (cancellationProbe.debugFilePath) {
+            await fsp.appendFile(cancellationProbe.debugFilePath, pollResult.debugLine, "utf-8")
+          }
+          if (!pollResult.aborted || resolved) return
+          cleanup("SIGTERM")
+          setTimeout(() => cleanup("SIGKILL"), 1000)
+          appendOutput("\n[ERROR] Workflow execution was aborted\n")
+          appendFileOutput("\n[ERROR] Workflow execution was aborted\n")
+          process.stderr.write("\n[ERROR] Workflow execution was aborted\n")
+          safeResolve({ status: "aborted", output })
+        } catch (err) {
+          if (cancellationProbe.debugFilePath) {
+            const message = err instanceof Error ? err.message : String(err)
+            await fsp.appendFile(
+              cancellationProbe.debugFilePath,
+              `${new Date().toISOString()} aborted=false source=poll.exception error=${JSON.stringify(message)}\n`,
+              "utf-8"
+            )
+          }
+        } finally {
+          pollInFlight = false
+        }
+      }, 500)
     }
 
     // Pipe stdout
@@ -564,7 +720,7 @@ function runWithTimeout(
     })
 
     // Set up timeout
-    const timeoutId = setTimeout(() => {
+    timeoutId = setTimeout(() => {
       cleanup("SIGTERM")
       // Give it a moment to terminate gracefully
       setTimeout(() => cleanup("SIGKILL"), 1000)
@@ -582,7 +738,6 @@ function runWithTimeout(
 
     // Handle process exit
     child.on("close", (code) => {
-      clearTimeout(timeoutId)
       if (code === 0) {
         safeResolve({ status: "success", output })
       } else if (code !== null) {
@@ -593,7 +748,6 @@ function runWithTimeout(
     })
 
     child.on("error", (err) => {
-      clearTimeout(timeoutId)
       appendOutput(`\n[ERROR] Failed to start process: ${err.message}\n`)
       appendFileOutput(`\n[ERROR] Failed to start process: ${err.message}\n`)
       process.stderr.write(`\n[ERROR] Failed to start process: ${err.message}\n`)
@@ -627,9 +781,10 @@ export const RunWorkflowPlugin: Plugin = async (_ctx) => {
             ),
         },
         async execute(args, context) {
-          const { directory, sessionID } = context
+          const { directory, sessionID, messageID } = context
           const { slug, inputs = {} } = args
           const messageId = extractMessageId(context)
+          const abortSignal = extractAbortSignal(context)
 
           if (!messageId) {
             return JSON.stringify({
@@ -760,13 +915,29 @@ export const RunWorkflowPlugin: Plugin = async (_ctx) => {
             `${sanitizeFilenamePart(sessionID)}-${sanitizeFilenamePart(messageId)}.txt`
           )
           await fsp.writeFile(outputFilePath, "", "utf-8")
+          const pollDebugFilePath = path.join(
+            workflowRunsDir,
+            `${sanitizeFilenamePart(sessionID)}-${sanitizeFilenamePart(messageId)}-poll-debug.txt`
+          )
+          await fsp.writeFile(
+            pollDebugFilePath,
+            `polling_debug session=${sessionID} message=${messageId} base_url=${OPENCODE_BASE_URL}\n`,
+            "utf-8"
+          )
 
           // Run the workflow
           const result = await runWithTimeout(
             workflowPath,
             cmdArgs,
             timeoutSeconds,
-            outputFilePath
+            outputFilePath,
+            abortSignal,
+            {
+              sessionID,
+              messageID: messageId,
+              directory,
+              debugFilePath: pollDebugFilePath,
+            }
           )
 
           // Update the run status in the database
