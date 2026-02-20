@@ -20,6 +20,7 @@ import {
     type SessionStatusType
 } from "../utils/chat-session";
 import { assertCondition } from "../utils/assert";
+import { sanitizeForClient } from "../utils/redact";
 
 const router = express.Router({ mergeParams: true });
 
@@ -658,7 +659,7 @@ router.get('/sessions/:id/events', apiHandler(async (req, res) => {
 
                             // Filter events to only include ones for this session
                             if (eventSessionId === session.opencode_session_id) {
-                                res.write(`data: ${JSON.stringify(event)}\n\n`);
+                                res.write(`data: ${JSON.stringify(sanitizeForClient(event))}\n\n`);
                             }
                         } catch {
                             // Skip malformed JSON

@@ -20,6 +20,7 @@ import { startOpencodeServer, stopOpencodeServer } from "./opencode-server";
 import path from 'path';
 import { Server } from "http";
 import { assertEnv, parseIntStrict } from "./utils/assert";
+import { sanitizeForClient, sanitizeStringContent } from "./utils/redact";
 const app = express();
 
 app.use(express.json());
@@ -48,6 +49,27 @@ app.use(cors({
 // });
 
 const apiRouter = express.Router();
+
+apiRouter.use((req, res, next) => {
+    const originalJson = res.json.bind(res);
+    const originalSend = res.send.bind(res);
+
+    res.json = ((body: unknown) => {
+        return originalJson(sanitizeForClient(body));
+    }) as typeof res.json;
+
+    res.send = ((body?: unknown) => {
+        if (typeof body === "string") {
+            return originalSend(sanitizeStringContent(body));
+        }
+        if (Buffer.isBuffer(body)) {
+            return originalSend(Buffer.from(sanitizeStringContent(body.toString("utf-8")), "utf-8"));
+        }
+        return originalSend(sanitizeForClient(body));
+    }) as typeof res.send;
+
+    next();
+});
 
 apiRouter.get("/", (req, res) => {
     // for healthcheck
