@@ -483,53 +483,26 @@ function extractAbortSignal(context: unknown): AbortSignal | null {
 
 async function isMessageOrSessionAborted(
   sessionID: string,
-  _messageID: string,
   directory: string
-): Promise<{ aborted: boolean; debugLine: string }> {
+): Promise<boolean> {
   const query = `directory=${encodeURIComponent(directory)}`
-  const timestamp = new Date().toISOString()
-  let sessionStatus = "skipped"
-  let sessionType: string | null = null
-  let sessionHint = ""
 
   // Single source of truth: session status endpoint.
   // If this session is not actively busy, stop the workflow process.
   try {
     const statusRes = await fetch(`${OPENCODE_BASE_URL}/session/status?${query}`)
-    sessionStatus = String(statusRes.status)
     if (!statusRes.ok) {
-      const body = (await statusRes.text()).slice(0, 800).replace(/\s+/g, " ")
-      sessionHint = `non_ok_body=${JSON.stringify(body)}`
-      return {
-        aborted: false,
-        debugLine: `${timestamp} aborted=false source=session.status.non_ok session_status=${sessionStatus} session_type=${sessionType} session_hint=${sessionHint}\n`,
-      }
+      return false
     }
     const statuses = (await statusRes.json()) as Record<string, { type?: string }>
     const state = statuses[sessionID] ?? null
-    sessionType = typeof state?.type === "string" ? state.type : null
-    sessionHint = JSON.stringify({ state }).slice(0, 500)
+    const sessionType = typeof state?.type === "string" ? state.type : null
 
     // Important: status endpoint may drop the session key after abort/interrupt.
     // If the session is not actively busy anymore, this tool should stop.
-    if (sessionType !== "busy") {
-      return {
-        aborted: true,
-        debugLine: `${timestamp} aborted=true source=session.not_busy session_status=${sessionStatus} session_type=${sessionType} session_hint=${sessionHint}\n`,
-      }
-    }
+    return sessionType !== "busy"
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    sessionHint = `fetch_error=${JSON.stringify(msg)}`
-    return {
-      aborted: false,
-      debugLine: `${timestamp} aborted=false source=session.status.error session_status=${sessionStatus} session_type=${sessionType} session_hint=${sessionHint}\n`,
-    }
-  }
-
-  return {
-    aborted: false,
-    debugLine: `${timestamp} aborted=false source=session.busy session_status=${sessionStatus} session_type=${sessionType} session_hint=${sessionHint}\n`,
+    return false
   }
 }
 
@@ -542,12 +515,10 @@ function runWithTimeout(
   args: string[],
   timeoutSeconds: number,
   outputFilePath: string,
-  abortSignal?: AbortSignal | null,
-  cancellationProbe?: {
+  abortSignal: AbortSignal | null,
+  cancellationProbe: {
     sessionID: string
-    messageID: string
     directory: string
-    debugFilePath?: string
   }
 ): Promise<{ status: RunStatus; output: string }> {
   return new Promise((resolve) => {
@@ -628,7 +599,7 @@ function runWithTimeout(
 
     let timeoutId: NodeJS.Timeout | null = null
     let cancellationPollId: NodeJS.Timeout | null = null
-    const onAbort = () => {
+    const abortWorkflow = () => {
       if (resolved) return
       cleanup("SIGTERM")
       setTimeout(() => cleanup("SIGKILL"), 1000)
@@ -646,9 +617,7 @@ function runWithTimeout(
           clearTimeout(timeoutId)
           timeoutId = null
         }
-        if (abortSignal) {
-          abortSignal.removeEventListener("abort", onAbort)
-        }
+        abortSignal?.removeEventListener("abort", abortWorkflow)
         if (cancellationPollId) {
           clearInterval(cancellationPollId)
           cancellationPollId = null
@@ -661,47 +630,24 @@ function runWithTimeout(
 
     if (abortSignal) {
       if (abortSignal.aborted) {
-        onAbort()
+        abortWorkflow()
         return
       }
-      abortSignal.addEventListener("abort", onAbort, { once: true })
+      abortSignal.addEventListener("abort", abortWorkflow, { once: true })
     }
 
-    if (cancellationProbe) {
-      let pollInFlight = false
-      cancellationPollId = setInterval(async () => {
-        if (resolved || pollInFlight) return
-        pollInFlight = true
-        try {
-          const pollResult = await isMessageOrSessionAborted(
-            cancellationProbe.sessionID,
-            cancellationProbe.messageID,
-            cancellationProbe.directory
-          )
-          if (cancellationProbe.debugFilePath) {
-            await fsp.appendFile(cancellationProbe.debugFilePath, pollResult.debugLine, "utf-8")
-          }
-          if (!pollResult.aborted || resolved) return
-          cleanup("SIGTERM")
-          setTimeout(() => cleanup("SIGKILL"), 1000)
-          appendOutput("\n[ERROR] Workflow execution was aborted\n")
-          appendFileOutput("\n[ERROR] Workflow execution was aborted\n")
-          process.stderr.write("\n[ERROR] Workflow execution was aborted\n")
-          safeResolve({ status: "aborted", output })
-        } catch (err) {
-          if (cancellationProbe.debugFilePath) {
-            const message = err instanceof Error ? err.message : String(err)
-            await fsp.appendFile(
-              cancellationProbe.debugFilePath,
-              `${new Date().toISOString()} aborted=false source=poll.exception error=${JSON.stringify(message)}\n`,
-              "utf-8"
-            )
-          }
-        } finally {
-          pollInFlight = false
-        }
-      }, 500)
-    }
+    let pollInFlight = false
+    cancellationPollId = setInterval(async () => {
+      if (resolved || pollInFlight) return
+      pollInFlight = true
+      const aborted = await isMessageOrSessionAborted(
+        cancellationProbe.sessionID,
+        cancellationProbe.directory
+      )
+      pollInFlight = false
+      if (!aborted || resolved) return
+      abortWorkflow()
+    }, 500)
 
     // Pipe stdout
     child.stdout?.on("data", (data: Buffer) => {
@@ -781,7 +727,7 @@ export const RunWorkflowPlugin: Plugin = async (_ctx) => {
             ),
         },
         async execute(args, context) {
-          const { directory, sessionID, messageID } = context
+          const { directory, sessionID } = context
           const { slug, inputs = {} } = args
           const messageId = extractMessageId(context)
           const abortSignal = extractAbortSignal(context)
@@ -915,15 +861,6 @@ export const RunWorkflowPlugin: Plugin = async (_ctx) => {
             `${sanitizeFilenamePart(sessionID)}-${sanitizeFilenamePart(messageId)}.txt`
           )
           await fsp.writeFile(outputFilePath, "", "utf-8")
-          const pollDebugFilePath = path.join(
-            workflowRunsDir,
-            `${sanitizeFilenamePart(sessionID)}-${sanitizeFilenamePart(messageId)}-poll-debug.txt`
-          )
-          await fsp.writeFile(
-            pollDebugFilePath,
-            `polling_debug session=${sessionID} message=${messageId} base_url=${OPENCODE_BASE_URL}\n`,
-            "utf-8"
-          )
 
           // Run the workflow
           const result = await runWithTimeout(
@@ -934,9 +871,7 @@ export const RunWorkflowPlugin: Plugin = async (_ctx) => {
             abortSignal,
             {
               sessionID,
-              messageID: messageId,
               directory,
-              debugFilePath: pollDebugFilePath,
             }
           )
 
