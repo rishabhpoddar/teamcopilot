@@ -19,7 +19,7 @@ export function sanitizeStringContent(input: string): string {
     // Redact sensitive env-style assignments anywhere in text, including multiple
     // assignments per line and text prefixes.
     text = text.replace(
-        /(^|[:\s,;|([{])((?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*(?:=|:|\s+)\s*)(?:"([^"\n]*)"|'([^'\n]*)'|([^\s#;,)\]}]+))/gm,
+        /(^|[^A-Za-z0-9_-])((?:export\s+)?([A-Za-z_][A-Za-z0-9_-]*)\s*(?:=|:|\s+)\s*)(?:"([^"\n]*)"|'([^'\n]*)'|([^\s#;,)\]}]+))/gm,
         (
             full: string,
             lead: string,
@@ -47,12 +47,6 @@ export function sanitizeStringContent(input: string): string {
             }
             return `${lead}${assignmentPrefix}${masked}`;
         }
-    );
-
-    // Redact sensitive key-value patterns in plain text and JSON-like text.
-    text = text.replace(
-        /((?:token|secret|password|passwd|api[_-]?key|authorization|credential)s?\s*[:=]\s*)(["']?)([A-Za-z0-9._~+/=-]+)(\2)/gi,
-        (_full, prefix: string, quote: string, value: string) => `${prefix}${quote}${maskValue(value)}${quote}`
     );
 
     // Redact common bearer and provider token forms.
