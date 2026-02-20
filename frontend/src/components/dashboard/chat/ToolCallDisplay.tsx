@@ -128,6 +128,23 @@ export default function ToolCallDisplay({ part }: ToolCallDisplayProps) {
 
     const formatOutput = () => {
         if (state.status === 'completed') {
+            if (isRunWorkflowTool) {
+                try {
+                    const parsed = JSON.parse(state.output) as unknown;
+                    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                        const sanitized = { ...(parsed as Record<string, unknown>) };
+                        delete sanitized.output;
+
+                        if (Object.keys(sanitized).length === 0) {
+                            return null;
+                        }
+
+                        return JSON.stringify(sanitized, null, 2);
+                    }
+                } catch {
+                    // Keep original output if it's not JSON
+                }
+            }
             return state.output;
         }
         if (state.status === 'error') {
