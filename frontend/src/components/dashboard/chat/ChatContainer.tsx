@@ -8,7 +8,8 @@ import type {
     Message,
     Part,
     SSEEvent,
-    ToolPart
+    ToolPart,
+    PermissionRequest
 } from '../../../types/chat';
 import SessionSidebar from './SessionSidebar';
 import MessageList from './MessageList';
@@ -32,6 +33,8 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
     const [isStreaming, setIsStreaming] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [draftMessagesBySessionId, setDraftMessagesBySessionId] = useState<Record<string, string>>({});
+    const [pendingPermission, setPendingPermission] = useState<PermissionRequest | null>(null);
+    const [isRespondingToPermission, setIsRespondingToPermission] = useState(false);
 
     const abortControllerRef = useRef<AbortController | null>(null);
     const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
@@ -140,6 +143,29 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
 
             case 'session.idle': {
                 setIsStreaming(false);
+                break;
+            }
+
+            case 'permission.asked': {
+                console.log('[permission.event]', {
+                    type: event.type,
+                    payload: event.properties
+                });
+                setPendingPermission((prev) => prev?.id === event.properties.id ? prev : event.properties);
+                break;
+            }
+
+            case 'permission.replied': {
+                console.log('[permission.event]', {
+                    type: event.type,
+                    payload: event.properties
+                });
+                setPendingPermission((prev) => {
+                    if (!prev) return prev;
+                    if (event.properties.sessionID !== prev.sessionID) return prev;
+                    if (event.properties.requestID !== prev.id) return prev;
+                    return null;
+                });
                 break;
             }
         }
@@ -269,6 +295,27 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
         }
     }, [token]);
 
+    const loadPendingPermission = useCallback(async (sessionId: string) => {
+        if (!token) return;
+
+        try {
+            const response = await axiosInstance.get(`/api/chat/sessions/${sessionId}/pending-permission`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            const permission = (response.data?.permission ?? null) as PermissionRequest | null;
+            if (permission) {
+                console.log('[permission.poll]', permission);
+            }
+            setPendingPermission((prev) => {
+                if (!prev && !permission) return prev;
+                if (prev && permission && prev.id === permission.id) return prev;
+                return permission;
+            });
+        } catch {
+            // Best-effort background check.
+        }
+    }, [token]);
+
     // Load sessions on mount
     useEffect(() => {
         if (!token) return;
@@ -282,16 +329,18 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
 
         if (activeSessionId && activeSessionId !== PENDING_SESSION_ID) {
             loadMessages(activeSessionId);
+            loadPendingPermission(activeSessionId);
             startSSE(activeSessionId);
         } else {
             setMessages([]);
             setParts([]);
+            setPendingPermission(null);
         }
 
         return () => {
             stopSSE();
         };
-    }, [activeSessionId, loadMessages, startSSE, stopSSE]);
+    }, [activeSessionId, loadMessages, loadPendingPermission, startSSE, stopSSE]);
 
     const deleteSessionSilently = useCallback(async (sessionId: string) => {
         if (!token) return;
@@ -505,6 +554,45 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
         }
     }, [token, activeSessionId]);
 
+    const sendPermissionResponse = async (response: "once" | "always" | "reject") => {
+        if (!token || !activeSessionId || activeSessionId === PENDING_SESSION_ID || !pendingPermission) return;
+
+        try {
+            setIsRespondingToPermission(true);
+            console.log('[permission.reply.request]', {
+                sessionId: activeSessionId,
+                permissionId: pendingPermission.id,
+                response
+            });
+            await axiosInstance.post(
+                `/api/chat/sessions/${activeSessionId}/permission-response`,
+                { response },
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+            setPendingPermission(null);
+            void loadMessages(activeSessionId);
+        } catch (err: unknown) {
+            const errorMessage = err instanceof AxiosError
+                ? err.response?.data?.message || err.response?.data || err.message
+                : 'Failed to send permission response';
+            toast.error(errorMessage);
+        } finally {
+            setIsRespondingToPermission(false);
+        }
+    };
+
+    useEffect(() => {
+        if (!activeSessionId || activeSessionId === PENDING_SESSION_ID || !isStreaming || pendingPermission) {
+            return;
+        }
+
+        const intervalId = window.setInterval(() => {
+            void loadPendingPermission(activeSessionId);
+        }, 1000);
+
+        return () => window.clearInterval(intervalId);
+    }, [activeSessionId, isStreaming, pendingPermission, loadPendingPermission]);
+
     const activeDraftMessage = activeSessionId ? (draftMessagesBySessionId[activeSessionId] ?? '') : '';
 
     // Double-escape to abort
@@ -558,8 +646,11 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                             messages={messages}
                             parts={parts}
                             isStreaming={isStreaming}
-                            isWaitingForInput={isWaitingForInput}
+                            isWaitingForInput={isWaitingForInput || Boolean(pendingPermission)}
                             onAnswer={sendToolAnswer}
+                            pendingPermission={pendingPermission}
+                            onPermissionRespond={sendPermissionResponse}
+                            isRespondingToPermission={isRespondingToPermission}
                         />
                         <ChatInput
                             onSend={sendMessage}

@@ -1,16 +1,28 @@
 import { useEffect, useRef } from 'react';
-import type { Message, Part } from '../../../types/chat';
+import type { Message, Part, PermissionRequest } from '../../../types/chat';
 import MessageItem from './MessageItem';
 
 interface MessageListProps {
     messages: Message[];
     parts: Part[];
     isStreaming: boolean;
-    isWaitingForInput?: boolean;
+    isWaitingForInput: boolean;
     onAnswer?: (answer: string) => void;
+    pendingPermission: PermissionRequest | null;
+    onPermissionRespond?: (response: "once" | "always" | "reject") => void;
+    isRespondingToPermission: boolean;
 }
 
-export default function MessageList({ messages, parts, isStreaming, isWaitingForInput = false, onAnswer }: MessageListProps) {
+export default function MessageList({
+    messages,
+    parts,
+    isStreaming,
+    isWaitingForInput,
+    onAnswer,
+    pendingPermission,
+    onPermissionRespond,
+    isRespondingToPermission
+}: MessageListProps) {
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -34,6 +46,9 @@ export default function MessageList({ messages, parts, isStreaming, isWaitingFor
                     message={message}
                     parts={parts}
                     onAnswer={onAnswer}
+                    pendingPermission={pendingPermission}
+                    onPermissionRespond={onPermissionRespond}
+                    isRespondingToPermission={isRespondingToPermission}
                 />
             ))}
             {isStreaming && !isWaitingForInput && (

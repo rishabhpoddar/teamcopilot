@@ -1,14 +1,23 @@
 import { useEffect, useRef, useState } from 'react';
 import { AxiosError } from 'axios';
-import type { ToolPart } from '../../../types/chat';
+import type { ToolPart, PermissionRequest } from '../../../types/chat';
 import { useAuth } from '../../../lib/auth';
 import { axiosInstance } from '../../../utils';
+import PermissionPrompt from './PermissionPrompt';
 
 interface ToolCallDisplayProps {
     part: ToolPart;
+    pendingPermission: PermissionRequest | null;
+    onPermissionRespond?: (response: "once" | "always" | "reject") => void;
+    isRespondingToPermission: boolean;
 }
 
-export default function ToolCallDisplay({ part }: ToolCallDisplayProps) {
+export default function ToolCallDisplay({
+    part,
+    pendingPermission,
+    onPermissionRespond,
+    isRespondingToPermission
+}: ToolCallDisplayProps) {
     const auth = useAuth();
     const [expanded, setExpanded] = useState(false);
     const [logs, setLogs] = useState<string | null>(null);
@@ -19,6 +28,14 @@ export default function ToolCallDisplay({ part }: ToolCallDisplayProps) {
     const { state } = part;
     const token = auth.loading ? null : auth.token;
     const isRunWorkflowTool = part.tool === 'runWorkflow';
+    const permissionMessageId = pendingPermission?.tool?.messageID;
+    const permissionCallId = pendingPermission?.tool?.callID;
+    const isPermissionForThisTool = Boolean(
+        pendingPermission &&
+        pendingPermission.sessionID === part.sessionID &&
+        ((permissionCallId && permissionCallId === part.callID) ||
+            (permissionMessageId && permissionMessageId === part.messageID))
+    );
 
     useEffect(() => {
         setLogs(null);
@@ -32,6 +49,12 @@ export default function ToolCallDisplay({ part }: ToolCallDisplayProps) {
             setExpanded(true);
         }
     }, [isRunWorkflowTool, state.status]);
+
+    useEffect(() => {
+        if (isPermissionForThisTool) {
+            setExpanded(true);
+        }
+    }, [isPermissionForThisTool]);
 
     useEffect(() => {
         if (!expanded || !isRunWorkflowTool || !logsContainerRef.current) {
@@ -186,6 +209,13 @@ export default function ToolCallDisplay({ part }: ToolCallDisplayProps) {
                                 {logsError ? logsError : (isLogsLoading && !logs ? 'Loading logs...' : (logs ?? '<No logs available>'))}
                             </pre>
                         </div>
+                    )}
+                    {isPermissionForThisTool && onPermissionRespond && pendingPermission && (
+                        <PermissionPrompt
+                            permission={pendingPermission}
+                            submitting={isRespondingToPermission}
+                            onRespond={onPermissionRespond}
+                        />
                     )}
                 </div>
             )}

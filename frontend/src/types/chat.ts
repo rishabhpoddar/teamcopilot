@@ -264,7 +264,44 @@ export interface SessionIdleEvent {
     };
 }
 
-export type SSEEvent = MessageUpdatedEvent | MessageRemovedEvent | MessagePartUpdatedEvent | MessagePartRemovedEvent | ErrorEvent | SessionStatusEvent | SessionErrorEvent | SessionIdleEvent;
+export interface PermissionRequest {
+    id: string;
+    sessionID: string;
+    permission: string;
+    patterns: string[];
+    metadata: Record<string, unknown>;
+    always: string[];
+    tool?: {
+        messageID: string;
+        callID: string;
+    };
+}
+
+export interface PermissionAskedEvent {
+    type: "permission.asked";
+    properties: PermissionRequest;
+}
+
+export interface PermissionRepliedEvent {
+    type: "permission.replied";
+    properties: {
+        sessionID: string;
+        requestID: string;
+        reply: "once" | "always" | "reject";
+    };
+}
+
+export type SSEEvent =
+    MessageUpdatedEvent |
+    MessageRemovedEvent |
+    MessagePartUpdatedEvent |
+    MessagePartRemovedEvent |
+    ErrorEvent |
+    SessionStatusEvent |
+    SessionErrorEvent |
+    SessionIdleEvent |
+    PermissionAskedEvent |
+    PermissionRepliedEvent;
 
 // API response types
 export interface SessionsResponse {

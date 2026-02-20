@@ -1,5 +1,6 @@
 import path from "path";
 import { assertCondition, assertEnv, parseIntStrict } from "./assert";
+import { logInfo } from "../logging";
 
 // Use dynamic import for ESM-only SDK
 let _createOpencodeClient: typeof import("@opencode-ai/sdk").createOpencodeClient | null = null;
@@ -43,6 +44,19 @@ export interface PendingQuestion {
     questions: Array<unknown>;
 }
 
+export interface PendingPermission {
+    id: string;
+    sessionID: string;
+    permission: string;
+    patterns: string[];
+    metadata: Record<string, unknown>;
+    always: string[];
+    tool?: {
+        messageID: string;
+        callID: string;
+    };
+}
+
 export function getWorkspaceDir(): string {
     let workspaceDir = assertEnv("WORKSPACE_DIR");
     if (!path.isAbsolute(workspaceDir)) {
@@ -69,6 +83,29 @@ export async function getPendingQuestionForSession(opencodeSessionId: string): P
     return match ?? null;
 }
 
+export async function getPendingPermissionForSession(opencodeSessionId: string): Promise<PendingPermission | null> {
+    const workspaceDir = getWorkspaceDir();
+    const response = await fetch(
+        `${getOpencodeBaseUrl()}/permission?directory=${encodeURIComponent(workspaceDir)}`
+    );
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to list pending permissions: ${errorText}`);
+    }
+
+    const permissions = await response.json() as PendingPermission[];
+    assertCondition(Array.isArray(permissions), "Pending permission response is not an array");
+    logInfo("Fetched pending permissions", {
+        opencodeSessionId,
+        count: permissions.length,
+        firstPermission: permissions[0] ?? null
+    });
+
+    const match = permissions.find((permission) => permission.sessionID === opencodeSessionId);
+    return match ?? null;
+}
+
 export async function replyToPendingQuestion(questionId: string, answers: Array<Array<string>>): Promise<void> {
     const workspaceDir = getWorkspaceDir();
     const response = await fetch(
@@ -86,4 +123,34 @@ export async function replyToPendingQuestion(questionId: string, answers: Array<
         const errorText = await response.text();
         throw new Error(`Failed to reply to pending question: ${errorText}`);
     }
+}
+
+export async function replyToPendingPermission(
+    _opencodeSessionId: string,
+    permissionId: string,
+    response: "once" | "always" | "reject"
+): Promise<void> {
+    const workspaceDir = getWorkspaceDir();
+    const replyResponse = await fetch(
+        `${getOpencodeBaseUrl()}/permission/${encodeURIComponent(permissionId)}/reply?directory=${encodeURIComponent(workspaceDir)}`,
+        {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                reply: response,
+                message: response === "reject" ? "User rejected permission request" : "User approved permission request"
+            })
+        }
+    );
+    if (!replyResponse.ok) {
+        const errorText = await replyResponse.text();
+        throw new Error(`Failed to reply to pending permission: ${errorText}`);
+    }
+    logInfo("Permission replied", {
+        opencodeSessionId: _opencodeSessionId,
+        permissionId,
+        response
+    });
 }

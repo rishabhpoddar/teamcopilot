@@ -3,7 +3,15 @@ import fs from "fs/promises";
 import path from "path";
 import prisma from "../prisma/client";
 import { apiHandler } from "../utils/index";
-import { getOpencodeClient, getPendingQuestionForSession, getWorkspaceDir, getOpencodePort, replyToPendingQuestion } from "../utils/opencode-client";
+import {
+    getOpencodeClient,
+    getPendingQuestionForSession,
+    getPendingPermissionForSession,
+    getWorkspaceDir,
+    getOpencodePort,
+    replyToPendingQuestion,
+    replyToPendingPermission
+} from "../utils/opencode-client";
 import {
     getSessionStatusTypeForSession,
     normalizeStaleRunningTools,
@@ -12,6 +20,7 @@ import {
     type SessionStatusType
 } from "../utils/chat-session";
 import { assertCondition } from "../utils/assert";
+import { logInfo } from "../logging";
 
 const router = express.Router({ mergeParams: true });
 
@@ -361,6 +370,13 @@ router.post('/sessions/:id/messages', apiHandler(async (req, res) => {
             message: 'A tool is waiting for input. Reply through the tool-answer endpoint.'
         };
     }
+    const pendingPermission = await getPendingPermissionForSession(session.opencode_session_id);
+    if (pendingPermission) {
+        throw {
+            status: 409,
+            message: 'A permission request is waiting for input. Reply through the permission-response endpoint.'
+        };
+    }
 
     const client = await getOpencodeClient();
 
@@ -395,6 +411,33 @@ router.post('/sessions/:id/messages', apiHandler(async (req, res) => {
             updated_at: updatedSession.updated_at
         }
     });
+}, true));
+
+// GET /api/chat/sessions/:id/pending-permission - Get pending permission for session
+router.get('/sessions/:id/pending-permission', apiHandler(async (req, res) => {
+    const id = req.params.id as string;
+
+    const session = await prisma.chat_sessions.findFirst({
+        where: {
+            id,
+            user_id: req.userId!
+        }
+    });
+
+    if (!session) {
+        throw {
+            status: 404,
+            message: 'Session not found'
+        };
+    }
+
+    const pendingPermission = await getPendingPermissionForSession(session.opencode_session_id);
+    logInfo("Pending permission endpoint response", {
+        chatSessionId: id,
+        opencodeSessionId: session.opencode_session_id,
+        pendingPermission
+    });
+    res.json({ permission: pendingPermission });
 }, true));
 
 // POST /api/chat/sessions/:id/tool-answer - Reply to a pending tool question
@@ -443,6 +486,56 @@ router.post('/sessions/:id/tool-answer', apiHandler(async (req, res) => {
     res.json({ success: true });
 }, true));
 
+// POST /api/chat/sessions/:id/permission-response - Reply to a pending permission request
+router.post('/sessions/:id/permission-response', apiHandler(async (req, res) => {
+    const id = req.params.id as string;
+    const { response } = req.body as { response: unknown };
+
+    if (response !== 'once' && response !== 'always' && response !== 'reject') {
+        throw {
+            status: 400,
+            message: 'response is required and must be one of: once, always, reject'
+        };
+    }
+
+    const session = await prisma.chat_sessions.findFirst({
+        where: {
+            id,
+            user_id: req.userId!
+        }
+    });
+
+    if (!session) {
+        throw {
+            status: 404,
+            message: 'Session not found'
+        };
+    }
+
+    const pendingPermission = await getPendingPermissionForSession(session.opencode_session_id);
+    if (!pendingPermission) {
+        throw {
+            status: 409,
+            message: 'No pending permission request for this session'
+        };
+    }
+
+    logInfo("Permission response requested", {
+        chatSessionId: id,
+        opencodeSessionId: session.opencode_session_id,
+        pendingPermission,
+        response
+    });
+    await replyToPendingPermission(session.opencode_session_id, pendingPermission.id, response);
+
+    await prisma.chat_sessions.update({
+        where: { id },
+        data: { updated_at: Date.now() }
+    });
+
+    res.json({ success: true });
+}, true));
+
 // POST /api/chat/sessions/:id/abort - Abort AI response
 router.post('/sessions/:id/abort', apiHandler(async (req, res) => {
     const id = req.params.id as string;
@@ -466,6 +559,10 @@ router.post('/sessions/:id/abort', apiHandler(async (req, res) => {
         const abortAnswer = "User aborted";
         const answers = pendingQuestion.questions.map(() => [abortAnswer]);
         await replyToPendingQuestion(pendingQuestion.id, answers);
+    }
+    const pendingPermission = await getPendingPermissionForSession(session.opencode_session_id);
+    if (pendingPermission) {
+        await replyToPendingPermission(session.opencode_session_id, pendingPermission.id, "reject");
     }
 
     const client = await getOpencodeClient();
@@ -566,11 +663,21 @@ router.get('/sessions/:id/events', apiHandler(async (req, res) => {
                             const event = JSON.parse(data);
                             // Check all possible locations for sessionID
                             const eventSessionId = event.properties?.sessionID ||
+                                event.sessionID ||
                                 event.properties?.info?.sessionID ||
-                                event.properties?.part?.sessionID;
+                                event.properties?.part?.sessionID ||
+                                event.properties?.permission?.sessionID;
 
                             // Filter events to only include ones for this session
                             if (eventSessionId === session.opencode_session_id) {
+                                if (event.type === 'permission.updated' || event.type === 'permission.asked' || event.type === 'permission.replied') {
+                                    logInfo("Forwarding permission event", {
+                                        chatSessionId: id,
+                                        opencodeSessionId: session.opencode_session_id,
+                                        eventType: event.type,
+                                        eventProperties: event.properties
+                                    });
+                                }
                                 res.write(`data: ${JSON.stringify(event)}\n\n`);
                             }
                         } catch {
