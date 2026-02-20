@@ -2,13 +2,21 @@ import { useState, useRef, useEffect } from 'react';
 
 interface ChatInputProps {
     onSend: (content: string) => void;
+    onDraftChange: (content: string) => void;
     onAbort: () => void;
     disabled: boolean;
     isStreaming: boolean;
     draftMessage: string;
 }
 
-export default function ChatInput({ onSend, onAbort, disabled, isStreaming, draftMessage }: ChatInputProps) {
+export default function ChatInput({
+    onSend,
+    onDraftChange,
+    onAbort,
+    disabled,
+    isStreaming,
+    draftMessage
+}: ChatInputProps) {
     const [input, setInput] = useState('');
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const MAX_VISIBLE_LINES = 4;
@@ -51,6 +59,7 @@ export default function ChatInput({ onSend, onAbort, disabled, isStreaming, draf
         if (input.trim() && !disabled && !isStreaming) {
             onSend(input.trim());
             setInput('');
+            onDraftChange('');
         }
     };
 
@@ -68,7 +77,11 @@ export default function ChatInput({ onSend, onAbort, disabled, isStreaming, draf
                     ref={textareaRef}
                     className="chat-input"
                     value={input}
-                    onChange={(e) => setInput(e.target.value)}
+                    onChange={(e) => {
+                        const nextValue = e.target.value;
+                        setInput(nextValue);
+                        onDraftChange(nextValue);
+                    }}
                     onKeyDown={handleKeyDown}
                     placeholder="Type a message..."
                     disabled={disabled || isStreaming}

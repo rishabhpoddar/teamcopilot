@@ -22,6 +22,7 @@ interface ChatContainerProps {
 }
 
 export default function ChatContainer({ initialDraftMessage, forceNewChat, onDraftHandled }: ChatContainerProps) {
+    const PENDING_SESSION_ID = 'pending';
     const auth = useAuth();
     const [sessions, setSessions] = useState<ChatSession[]>([]);
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -30,7 +31,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
     const [loading, setLoading] = useState(true);
     const [isStreaming, setIsStreaming] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [draftMessage, setDraftMessage] = useState('');
+    const [draftMessagesBySessionId, setDraftMessagesBySessionId] = useState<Record<string, string>>({});
 
     const abortControllerRef = useRef<AbortController | null>(null);
     const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
@@ -275,7 +276,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
         // Reset streaming state when switching sessions
         setIsStreaming(false);
 
-        if (activeSessionId && activeSessionId !== 'pending') {
+        if (activeSessionId && activeSessionId !== PENDING_SESSION_ID) {
             loadMessages(activeSessionId);
             startSSE(activeSessionId);
         } else {
@@ -311,12 +312,12 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
 
     const createSession = () => {
         // If already in pending new chat mode, do nothing
-        if (activeSessionId === 'pending') {
+        if (activeSessionId === PENDING_SESSION_ID) {
             return;
         }
 
         // Switch to pending mode - session will be created when first message is sent
-        switchSession('pending');
+        switchSession(PENDING_SESSION_ID);
     };
 
     useEffect(() => {
@@ -329,14 +330,18 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
         }
         handledComposeKeyRef.current = composeKey;
 
+        const targetSessionId = forceNewChat ? PENDING_SESSION_ID : activeSessionId;
         if (forceNewChat) {
             createSession();
         }
-        if (initialDraftMessage) {
-            setDraftMessage(initialDraftMessage);
+        if (initialDraftMessage && targetSessionId) {
+            setDraftMessagesBySessionId(prev => ({
+                ...prev,
+                [targetSessionId]: initialDraftMessage
+            }));
         }
         onDraftHandled();
-    }, [forceNewChat, initialDraftMessage, onDraftHandled]);
+    }, [forceNewChat, initialDraftMessage, activeSessionId, onDraftHandled]);
 
     const deleteSession = async (sessionId: string) => {
         if (!token) return;
@@ -347,6 +352,11 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
             });
 
             setSessions(prev => prev.filter(s => s.id !== sessionId));
+            setDraftMessagesBySessionId(prev => {
+                const next = { ...prev };
+                delete next[sessionId];
+                return next;
+            });
             if (activeSessionId === sessionId) {
                 currentSessionInfoRef.current = null;
                 setActiveSessionId(null);
@@ -361,7 +371,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
 
     // Track whether current session is empty (skip for pending)
     useEffect(() => {
-        if (activeSessionId && activeSessionId !== 'pending') {
+        if (activeSessionId && activeSessionId !== PENDING_SESSION_ID) {
             currentSessionInfoRef.current = {
                 id: activeSessionId,
                 isEmpty: messages.length === 0
@@ -374,7 +384,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
     const sendMessage = async (content: string) => {
         if (!token || !activeSessionId) return;
 
-        const isPending = activeSessionId === 'pending';
+        const isPending = activeSessionId === PENDING_SESSION_ID;
         let tempUserMessage: Message | null = null;
         let tempTextPart: Part | null = null;
 
@@ -408,6 +418,11 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                 const newSession = createResponse.data.session;
                 setSessions(prev => [newSession, ...prev]);
                 setActiveSessionId(newSession.id);
+                setDraftMessagesBySessionId(prev => {
+                    const next = { ...prev };
+                    delete next[PENDING_SESSION_ID];
+                    return next;
+                });
                 sessionId = newSession.id;
                 // Start SSE for the new session
                 startSSE(newSession.id);
@@ -443,13 +458,13 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
             setParts(prev => prev.filter(p => p.id !== tempTextPart!.id));
             // If we were pending, go back to pending state
             if (isPending) {
-                setActiveSessionId('pending');
+                setActiveSessionId(PENDING_SESSION_ID);
             }
         }
     };
 
     const sendToolAnswer = async (content: string) => {
-        if (!token || !activeSessionId || activeSessionId === 'pending') return;
+        if (!token || !activeSessionId || activeSessionId === PENDING_SESSION_ID) return;
 
         try {
             setIsStreaming(true);
@@ -469,7 +484,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
     };
 
     const abortResponse = useCallback(async () => {
-        if (!token || !activeSessionId || activeSessionId === 'pending') return;
+        if (!token || !activeSessionId || activeSessionId === PENDING_SESSION_ID) return;
 
         try {
             await axiosInstance.post(
@@ -485,6 +500,8 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
             toast.error(errorMessage);
         }
     }, [token, activeSessionId]);
+
+    const activeDraftMessage = activeSessionId ? (draftMessagesBySessionId[activeSessionId] ?? '') : '';
 
     // Double-escape to abort
     useEffect(() => {
@@ -542,10 +559,19 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                         />
                         <ChatInput
                             onSend={sendMessage}
+                            onDraftChange={(content: string) => {
+                                if (!activeSessionId) {
+                                    return;
+                                }
+                                setDraftMessagesBySessionId(prev => ({
+                                    ...prev,
+                                    [activeSessionId]: content
+                                }));
+                            }}
                             onAbort={abortResponse}
                             disabled={!activeSessionId}
                             isStreaming={isStreaming}
-                            draftMessage={draftMessage}
+                            draftMessage={activeDraftMessage}
                         />
                     </>
                 ) : (
