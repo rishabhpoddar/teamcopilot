@@ -13,42 +13,41 @@ function isLikelySensitiveKey(key: string): boolean {
     return SENSITIVE_KEY_PATTERN.test(key);
 }
 
-function sanitizeEnvAssignmentLine(line: string): string {
-    const match = line.match(/^(\s*(?:\d+\s*[:|]\s*)?(?:export\s+)?[A-Za-z_][A-Za-z0-9_]*\s*=\s*)(.*)$/);
-    if (!match) {
-        return line;
-    }
-
-    const prefix = match[1];
-    const lineRemainder = (match[2] || "").trim();
-    const commentIndex = lineRemainder.indexOf(" #");
-    const rawValue = commentIndex >= 0 ? lineRemainder.slice(0, commentIndex).trim() : lineRemainder;
-    const trailingComment = commentIndex >= 0 ? lineRemainder.slice(commentIndex) : "";
-    if (!rawValue || rawValue.startsWith("#")) {
-        return line;
-    }
-
-    if ((rawValue.startsWith('"') && rawValue.endsWith('"')) || (rawValue.startsWith("'") && rawValue.endsWith("'"))) {
-        const quote = rawValue[0];
-        const inner = rawValue.slice(1, -1);
-        return `${prefix}${quote}${maskValue(inner)}${quote}${trailingComment}`;
-    }
-
-    const trailingPunctuationMatch = rawValue.match(/([:;,\])}>]+)$/);
-    const trailingPunctuation = trailingPunctuationMatch ? trailingPunctuationMatch[1] : "";
-    const coreValue = trailingPunctuation ? rawValue.slice(0, -trailingPunctuation.length) : rawValue;
-
-    return `${prefix}${maskValue(coreValue)}${trailingPunctuation}${trailingComment}`;
-}
-
 export function sanitizeStringContent(input: string): string {
     let text = input;
 
-    // Redact dotenv-like assignments (KEY=value).
-    text = text
-        .split("\n")
-        .map(sanitizeEnvAssignmentLine)
-        .join("\n");
+    // Redact sensitive env-style assignments anywhere in text, including multiple
+    // assignments per line and text prefixes.
+    text = text.replace(
+        /(^|[:\s,;|([{])((?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*(?:=|:|\s+)\s*)(?:"([^"\n]*)"|'([^'\n]*)'|([^\s#;,)\]}]+))/gm,
+        (
+            full: string,
+            lead: string,
+            assignmentPrefix: string,
+            key: string,
+            doubleQuoted: string | undefined,
+            singleQuoted: string | undefined,
+            bare: string | undefined
+        ) => {
+            if (!isLikelySensitiveKey(key)) {
+                return full;
+            }
+
+            const rawValue = doubleQuoted ?? singleQuoted ?? bare ?? "";
+            if (!rawValue) {
+                return full;
+            }
+
+            const masked = maskValue(rawValue);
+            if (doubleQuoted !== undefined) {
+                return `${lead}${assignmentPrefix}"${masked}"`;
+            }
+            if (singleQuoted !== undefined) {
+                return `${lead}${assignmentPrefix}'${masked}'`;
+            }
+            return `${lead}${assignmentPrefix}${masked}`;
+        }
+    );
 
     // Redact sensitive key-value patterns in plain text and JSON-like text.
     text = text.replace(
