@@ -5,12 +5,17 @@ interface ChatInputProps {
     onAbort: () => void;
     disabled: boolean;
     isStreaming: boolean;
+    draftMessage: string;
 }
 
-export default function ChatInput({ onSend, onAbort, disabled, isStreaming }: ChatInputProps) {
+export default function ChatInput({ onSend, onAbort, disabled, isStreaming, draftMessage }: ChatInputProps) {
     const [input, setInput] = useState('');
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const MAX_VISIBLE_LINES = 4;
+
+    useEffect(() => {
+        setInput(draftMessage);
+    }, [draftMessage]);
 
     useEffect(() => {
         if (!disabled && !isStreaming && textareaRef.current) {

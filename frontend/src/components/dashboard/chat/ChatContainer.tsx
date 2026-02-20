@@ -15,7 +15,13 @@ import MessageList from './MessageList';
 import ChatInput from './ChatInput';
 import './Chat.css';
 
-export default function ChatContainer() {
+interface ChatContainerProps {
+    initialDraftMessage: string | null;
+    forceNewChat: boolean;
+    onDraftHandled: () => void;
+}
+
+export default function ChatContainer({ initialDraftMessage, forceNewChat, onDraftHandled }: ChatContainerProps) {
     const auth = useAuth();
     const [sessions, setSessions] = useState<ChatSession[]>([]);
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -24,11 +30,13 @@ export default function ChatContainer() {
     const [loading, setLoading] = useState(true);
     const [isStreaming, setIsStreaming] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [draftMessage, setDraftMessage] = useState('');
 
     const abortControllerRef = useRef<AbortController | null>(null);
     const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
     const lastEscapePressRef = useRef<number>(0);
     const currentSessionInfoRef = useRef<{ id: string; isEmpty: boolean } | null>(null);
+    const handledComposeKeyRef = useRef<string | null>(null);
 
     const token = auth.loading ? null : auth.token;
 
@@ -311,6 +319,25 @@ export default function ChatContainer() {
         switchSession('pending');
     };
 
+    useEffect(() => {
+        const composeKey = `${forceNewChat ? '1' : '0'}::${initialDraftMessage ?? ''}`;
+        if (composeKey === '0::') {
+            return;
+        }
+        if (handledComposeKeyRef.current === composeKey) {
+            return;
+        }
+        handledComposeKeyRef.current = composeKey;
+
+        if (forceNewChat) {
+            createSession();
+        }
+        if (initialDraftMessage) {
+            setDraftMessage(initialDraftMessage);
+        }
+        onDraftHandled();
+    }, [forceNewChat, initialDraftMessage, onDraftHandled]);
+
     const deleteSession = async (sessionId: string) => {
         if (!token) return;
 
@@ -518,6 +545,7 @@ export default function ChatContainer() {
                             onAbort={abortResponse}
                             disabled={!activeSessionId}
                             isStreaming={isStreaming}
+                            draftMessage={draftMessage}
                         />
                     </>
                 ) : (

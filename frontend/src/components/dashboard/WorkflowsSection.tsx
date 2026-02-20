@@ -6,7 +6,11 @@ import WorkflowCard from './WorkflowCard';
 import './WorkflowsSection.css';
 import { AxiosError } from 'axios';
 
-export default function WorkflowsSection() {
+interface WorkflowsSectionProps {
+    onRunWorkflow: (workflowName: string) => void;
+}
+
+export default function WorkflowsSection({ onRunWorkflow }: WorkflowsSectionProps) {
     const auth = useAuth();
     const [workflows, setWorkflows] = useState<Workflow[]>([]);
     const [loading, setLoading] = useState(true);
@@ -65,6 +69,7 @@ export default function WorkflowsSection() {
                     userRole={user?.role ?? 'User'}
                     token={token ?? ''}
                     onApproved={fetchWorkflows}
+                    onRunWorkflow={onRunWorkflow}
                 />
             ))}
         </div>

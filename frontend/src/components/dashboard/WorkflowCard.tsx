@@ -8,6 +8,7 @@ interface WorkflowCardProps extends Workflow {
     userRole: 'User' | 'Engineer';
     token: string;
     onApproved: () => void;
+    onRunWorkflow: (workflowName: string) => void;
 }
 
 export default function WorkflowCard({
@@ -19,7 +20,8 @@ export default function WorkflowCard({
     approved_by_user_id,
     userRole,
     token,
-    onApproved
+    onApproved,
+    onRunWorkflow
 }: WorkflowCardProps) {
     const [approving, setApproving] = useState(false);
     const isApproved = approved_by_user_id !== null;
@@ -73,7 +75,11 @@ export default function WorkflowCard({
                 </div>
             )}
 
-            <button className="workflow-card-run-btn" disabled={!isApproved}>
+            <button
+                className="workflow-card-run-btn"
+                disabled={!isApproved}
+                onClick={() => onRunWorkflow(name || slug)}
+            >
                 Run Workflow
             </button>
         </div>

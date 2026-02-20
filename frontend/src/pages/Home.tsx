@@ -6,7 +6,7 @@ import AIModeSection from '../components/dashboard/AIModeSection';
 import './Home.css';
 
 type Tab = 'workflows' | 'history' | 'ai';
-const validTabs: Tab[] = ['workflows', 'history', 'ai'];
+const validTabs: Tab[] = ['ai', 'workflows', 'history'];
 
 export default function Home() {
     const auth = useAuth();
@@ -15,20 +15,48 @@ export default function Home() {
     if (auth.loading) return null;
     const { user, logout } = auth;
     const tabParam = searchParams.get('tab');
-    const activeTab: Tab = validTabs.includes(tabParam as Tab) ? (tabParam as Tab) : 'workflows';
+    const activeTab: Tab = validTabs.includes(tabParam as Tab) ? (tabParam as Tab) : 'ai';
+    const composeDraft = searchParams.get('draft');
+    const composeNewChat = searchParams.get('newChat') === '1';
 
     const setActiveTab = (tab: Tab) => {
         setSearchParams({ tab });
     };
 
+    const handleRunWorkflow = (workflowName: string) => {
+        setSearchParams({
+            tab: 'ai',
+            newChat: '1',
+            draft: `Run ${workflowName} workflow`
+        });
+    };
+
+    const clearComposeParams = () => {
+        setSearchParams(prev => {
+            const next = new URLSearchParams(prev);
+            next.delete('newChat');
+            next.delete('draft');
+            if (!next.get('tab')) {
+                next.set('tab', 'ai');
+            }
+            return next;
+        }, { replace: true });
+    };
+
     const renderTabContent = () => {
         switch (activeTab) {
             case 'workflows':
-                return <WorkflowsSection />;
+                return <WorkflowsSection onRunWorkflow={handleRunWorkflow} />;
             case 'history':
                 return <RunHistorySection />;
             case 'ai':
-                return <AIModeSection />;
+                return (
+                    <AIModeSection
+                        initialDraftMessage={composeDraft}
+                        forceNewChat={composeNewChat}
+                        onDraftHandled={clearComposeParams}
+                    />
+                );
         }
     };
 
@@ -44,22 +72,22 @@ export default function Home() {
 
             <nav className="dashboard-tabs">
                 <button
+                    className={`tab-btn ${activeTab === 'ai' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('ai')}
+                >
+                    AI chat
+                </button>
+                <button
                     className={`tab-btn ${activeTab === 'workflows' ? 'active' : ''}`}
                     onClick={() => setActiveTab('workflows')}
                 >
-                    Workflows
+                    Browse workflows
                 </button>
                 <button
                     className={`tab-btn ${activeTab === 'history' ? 'active' : ''}`}
                     onClick={() => setActiveTab('history')}
                 >
-                    Run History
-                </button>
-                <button
-                    className={`tab-btn ${activeTab === 'ai' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('ai')}
-                >
-                    AI Mode
+                    Run history
                 </button>
             </nav>
 
