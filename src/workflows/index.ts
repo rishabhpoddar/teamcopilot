@@ -21,7 +21,7 @@ router.get('/', apiHandler(async (req, res) => {
     for (const slug of slugs) {
         const manifest = readWorkflowManifest(slug);
         manifests.set(slug, manifest);
-        if (manifest?.created_by_user_id) {
+        if (manifest.created_by_user_id) {
             creatorIds.add(manifest.created_by_user_id);
         }
     }

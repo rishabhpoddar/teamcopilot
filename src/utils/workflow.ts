@@ -6,8 +6,9 @@ import fs from "fs";
 import path from "path";
 import { WorkflowManifest } from "../types/workflow";
 import prisma from "../prisma/client";
+import { assertEnv } from "./assert";
 
-const WORKSPACE_DIR = process.env.WORKSPACE_DIR!;
+const WORKSPACE_DIR = assertEnv("WORKSPACE_DIR");
 
 /** Get the absolute path to the workspace directory */
 export function getWorkspacePath(): string {
@@ -67,7 +68,7 @@ export function updateWorkflowManifest(
 /** Check if a workflow is approved */
 export function isWorkflowApproved(slug: string): boolean {
     const manifest = readWorkflowManifest(slug);
-    return manifest?.approved_by_user_id != null;
+    return manifest.approved_by_user_id != null;
 }
 
 /** Approve a workflow */
@@ -98,7 +99,7 @@ export function setWorkflowCreator(slug: string, userId: string): WorkflowManife
 /** Get the timeout for a workflow (defaults to 300 seconds) */
 export function getWorkflowTimeout(slug: string): number {
     const manifest = readWorkflowManifest(slug);
-    return manifest?.runtime?.timeout_seconds ?? 300;
+    return manifest.runtime.timeout_seconds;
 }
 
 /** List all workflow slugs */

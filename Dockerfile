@@ -27,6 +27,9 @@ RUN mkdir -p /app/data
 # Default environment variables
 ENV DATABASE_URL="file:/app/data/data.db"
 ENV WORKSPACE_DIR="/app/workspaces"
+ENV HOST="0.0.0.0"
+ENV PORT="3000"
+ENV OPENCODE_PORT="4096"
 ENV OPENCODE_MODEL="claude-sonnet-4-5-20250929"
 
 EXPOSE 3000

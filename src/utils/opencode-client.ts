@@ -1,4 +1,5 @@
 import path from "path";
+import { assertCondition, assertEnv, parseIntStrict } from "./assert";
 
 // Use dynamic import for ESM-only SDK
 let _createOpencodeClient: typeof import("@opencode-ai/sdk").createOpencodeClient | null = null;
@@ -14,10 +15,10 @@ async function loadSdk() {
 export async function getOpencodeClient() {
     const createOpencodeClient = await loadSdk();
 
-    const port = parseInt(process.env.OPENCODE_PORT || "4096", 10);
+    const port = parseIntStrict(assertEnv("OPENCODE_PORT"), "OPENCODE_PORT");
 
     // Get workspace directory from env, resolve relative paths to absolute
-    let workspaceDir = process.env.WORKSPACE_DIR!;
+    let workspaceDir = assertEnv("WORKSPACE_DIR");
     if (!path.isAbsolute(workspaceDir)) {
         workspaceDir = path.resolve(process.cwd(), workspaceDir);
     }
@@ -29,7 +30,7 @@ export async function getOpencodeClient() {
 }
 
 export function getOpencodePort(): number {
-    return parseInt(process.env.OPENCODE_PORT || "4096", 10);
+    return parseIntStrict(assertEnv("OPENCODE_PORT"), "OPENCODE_PORT");
 }
 
 export function getOpencodeBaseUrl(): string {
@@ -43,7 +44,7 @@ export interface PendingQuestion {
 }
 
 export function getWorkspaceDir(): string {
-    let workspaceDir = process.env.WORKSPACE_DIR!;
+    let workspaceDir = assertEnv("WORKSPACE_DIR");
     if (!path.isAbsolute(workspaceDir)) {
         workspaceDir = path.resolve(process.cwd(), workspaceDir);
     }
@@ -61,19 +62,11 @@ export async function getPendingQuestionForSession(opencodeSessionId: string): P
         throw new Error(`Failed to list pending questions: ${errorText}`);
     }
 
-    const questions = await response.json();
-    if (!Array.isArray(questions)) {
-        return null;
-    }
+    const questions = await response.json() as PendingQuestion[];
+    assertCondition(Array.isArray(questions), "Pending question response is not an array");
 
-    const match = questions.find((question: unknown) => {
-        if (!question || typeof question !== 'object') {
-            return false;
-        }
-        return (question as { sessionID?: string }).sessionID === opencodeSessionId;
-    });
-
-    return (match as PendingQuestion | undefined) || null;
+    const match = questions.find((question) => question.sessionID === opencodeSessionId);
+    return match ?? null;
 }
 
 export async function replyToPendingQuestion(questionId: string, answers: Array<Array<string>>): Promise<void> {

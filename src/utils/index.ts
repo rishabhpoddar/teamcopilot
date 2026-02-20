@@ -1,6 +1,7 @@
 import express from "express";
 import jwt from "jsonwebtoken";
 import prisma from "../prisma/client";
+import { assertCondition, assertEnv } from "./assert";
 
 type CustomRequest = express.Request & {
     userId?: string;
@@ -21,8 +22,9 @@ export function apiHandler(handler: (req: CustomRequest, res: express.Response, 
             }
             if (authHeader) {
                 const rawToken = authHeader.split(' ')[1];
+                assertCondition(rawToken, 'Missing authorization bearer token');
                 try {
-                    const decoded = jwt.verify(rawToken, process.env.JWT_SECRET!);
+                    const decoded = jwt.verify(rawToken, assertEnv("JWT_SECRET"));
                     const user = await prisma.users.findUnique({
                         where: {
                             id: (decoded as { sub: string }).sub
