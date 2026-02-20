@@ -240,6 +240,13 @@ export default function ChatContainer() {
 
                 setMessages(loadedMessages);
                 setParts(loadedParts);
+                const hasActiveAssistantMessage = loadedMessages.some(
+                    (message) => message.role === 'assistant' && !message.time.completed
+                );
+                const hasRunningTool = loadedParts.some(
+                    (part) => part.type === 'tool' && (part.state.status === 'running' || part.state.status === 'pending')
+                );
+                setIsStreaming(hasActiveAssistantMessage || hasRunningTool);
             }
         } catch (err: unknown) {
             const errorMessage = err instanceof AxiosError
