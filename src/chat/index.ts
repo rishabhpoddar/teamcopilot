@@ -5,13 +5,13 @@ import prisma from "../prisma/client";
 import { apiHandler } from "../utils/index";
 import { getOpencodeClient, getPendingQuestionForSession, getWorkspaceDir, getOpencodePort, replyToPendingQuestion } from "../utils/opencode-client";
 import {
-    assertCondition,
     getSessionStatusTypeForSession,
     normalizeStaleRunningTools,
     type SessionMessageWire,
     type SessionStatusMap,
     type SessionStatusType
 } from "../utils/chat-session";
+import { assertCondition } from "../utils/assert";
 
 const router = express.Router({ mergeParams: true });
 

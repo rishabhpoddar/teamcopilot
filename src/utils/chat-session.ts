@@ -1,3 +1,4 @@
+import { assertCondition } from "./assert";
 export type SessionStatusType = 'busy' | 'retry' | 'idle';
 export type SessionStatusMap = Record<string, { type: 'busy' | 'retry' | 'idle' }>;
 
@@ -34,15 +35,6 @@ export type SessionMessageWire = {
     };
     parts: MessagePartWire[];
 };
-
-export function assertCondition(condition: unknown, message: string): asserts condition {
-    if (!condition) {
-        throw {
-            status: 500,
-            message
-        };
-    }
-}
 
 export function getSessionStatusTypeForSession(
     statusMap: SessionStatusMap,
