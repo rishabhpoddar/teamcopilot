@@ -1,6 +1,5 @@
 import path from "path";
 import { assertCondition, assertEnv, parseIntStrict } from "./assert";
-import { logInfo } from "../logging";
 
 // Use dynamic import for ESM-only SDK
 let _createOpencodeClient: typeof import("@opencode-ai/sdk").createOpencodeClient | null = null;
@@ -96,11 +95,6 @@ export async function getPendingPermissionForSession(opencodeSessionId: string):
 
     const permissions = await response.json() as PendingPermission[];
     assertCondition(Array.isArray(permissions), "Pending permission response is not an array");
-    logInfo("Fetched pending permissions", {
-        opencodeSessionId,
-        count: permissions.length,
-        firstPermission: permissions[0] ?? null
-    });
 
     const match = permissions.find((permission) => permission.sessionID === opencodeSessionId);
     return match ?? null;
@@ -148,9 +142,4 @@ export async function replyToPendingPermission(
         const errorText = await replyResponse.text();
         throw new Error(`Failed to reply to pending permission: ${errorText}`);
     }
-    logInfo("Permission replied", {
-        opencodeSessionId: _opencodeSessionId,
-        permissionId,
-        response
-    });
 }

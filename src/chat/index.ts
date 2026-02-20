@@ -20,7 +20,6 @@ import {
     type SessionStatusType
 } from "../utils/chat-session";
 import { assertCondition } from "../utils/assert";
-import { logInfo } from "../logging";
 
 const router = express.Router({ mergeParams: true });
 
@@ -432,11 +431,6 @@ router.get('/sessions/:id/pending-permission', apiHandler(async (req, res) => {
     }
 
     const pendingPermission = await getPendingPermissionForSession(session.opencode_session_id);
-    logInfo("Pending permission endpoint response", {
-        chatSessionId: id,
-        opencodeSessionId: session.opencode_session_id,
-        pendingPermission
-    });
     res.json({ permission: pendingPermission });
 }, true));
 
@@ -520,12 +514,6 @@ router.post('/sessions/:id/permission-response', apiHandler(async (req, res) => 
         };
     }
 
-    logInfo("Permission response requested", {
-        chatSessionId: id,
-        opencodeSessionId: session.opencode_session_id,
-        pendingPermission,
-        response
-    });
     await replyToPendingPermission(session.opencode_session_id, pendingPermission.id, response);
 
     await prisma.chat_sessions.update({
@@ -670,14 +658,6 @@ router.get('/sessions/:id/events', apiHandler(async (req, res) => {
 
                             // Filter events to only include ones for this session
                             if (eventSessionId === session.opencode_session_id) {
-                                if (event.type === 'permission.updated' || event.type === 'permission.asked' || event.type === 'permission.replied') {
-                                    logInfo("Forwarding permission event", {
-                                        chatSessionId: id,
-                                        opencodeSessionId: session.opencode_session_id,
-                                        eventType: event.type,
-                                        eventProperties: event.properties
-                                    });
-                                }
                                 res.write(`data: ${JSON.stringify(event)}\n\n`);
                             }
                         } catch {

@@ -147,19 +147,11 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
             }
 
             case 'permission.asked': {
-                console.log('[permission.event]', {
-                    type: event.type,
-                    payload: event.properties
-                });
                 setPendingPermission((prev) => prev?.id === event.properties.id ? prev : event.properties);
                 break;
             }
 
             case 'permission.replied': {
-                console.log('[permission.event]', {
-                    type: event.type,
-                    payload: event.properties
-                });
                 setPendingPermission((prev) => {
                     if (!prev) return prev;
                     if (event.properties.sessionID !== prev.sessionID) return prev;
@@ -303,9 +295,6 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                 headers: { Authorization: `Bearer ${token}` }
             });
             const permission = (response.data?.permission ?? null) as PermissionRequest | null;
-            if (permission) {
-                console.log('[permission.poll]', permission);
-            }
             setPendingPermission((prev) => {
                 if (!prev && !permission) return prev;
                 if (prev && permission && prev.id === permission.id) return prev;
@@ -559,11 +548,6 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
 
         try {
             setIsRespondingToPermission(true);
-            console.log('[permission.reply.request]', {
-                sessionId: activeSessionId,
-                permissionId: pendingPermission.id,
-                response
-            });
             await axiosInstance.post(
                 `/api/chat/sessions/${activeSessionId}/permission-response`,
                 { response },
