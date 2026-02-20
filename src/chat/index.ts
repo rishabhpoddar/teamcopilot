@@ -114,10 +114,7 @@ router.get('/sessions', apiHandler(async (req, res) => {
     const opencodeSessionsResult = await client.session.list();
 
     if (opencodeSessionsResult.error) {
-        throw {
-            status: 500,
-            message: getErrorMessage(opencodeSessionsResult.error) || 'Failed to list sessions from opencode'
-        };
+        throw new Error(getErrorMessage(opencodeSessionsResult.error) || 'Failed to list sessions from opencode');
     }
 
     const opencodeSessionIds = new Set((opencodeSessionsResult.data || []).map((session: any) => session.id));
@@ -146,10 +143,7 @@ router.post('/sessions', apiHandler(async (req, res) => {
     const result = await client.session.create();
 
     if (result.error) {
-        throw {
-            status: 500,
-            message: getErrorMessage(result.error) || 'Failed to create opencode session'
-        };
+        throw new Error(getErrorMessage(result.error) || 'Failed to create opencode session');
     }
 
     const opencodeSession = result.data!;
@@ -201,10 +195,7 @@ router.get('/sessions/:id', apiHandler(async (req, res) => {
     });
 
     if (result.error) {
-        throw {
-            status: 500,
-            message: getErrorMessage(result.error) || 'Failed to get session from opencode'
-        };
+        throw new Error(getErrorMessage(result.error) || 'Failed to get session from opencode');
     }
 
     res.json({
@@ -275,10 +266,7 @@ router.get('/sessions/:id/messages', apiHandler(async (req, res) => {
     });
 
     if (result.error) {
-        throw {
-            status: 500,
-            message: getErrorMessage(result.error) || 'Failed to get messages from opencode'
-        };
+        throw new Error(getErrorMessage(result.error) || 'Failed to get messages from opencode');
     }
 
     const statusResult = await client.session.status();
@@ -383,10 +371,7 @@ router.post('/sessions/:id/messages', apiHandler(async (req, res) => {
     });
 
     if (result.error) {
-        throw {
-            status: 500,
-            message: getErrorMessage(result.error) || 'Failed to send message to opencode'
-        };
+        throw new Error(getErrorMessage(result.error) || 'Failed to send message to opencode');
     }
 
     const data: { updated_at: number; title?: string } = {
@@ -448,14 +433,7 @@ router.post('/sessions/:id/tool-answer', apiHandler(async (req, res) => {
 
     // Current UI replies with a single string; map it to the first question.
     const answers = pendingQuestion.questions.map((_, index) => index === 0 ? [content] : []);
-    try {
-        await replyToPendingQuestion(pendingQuestion.id, answers);
-    } catch (err: unknown) {
-        throw {
-            status: 500,
-            message: getErrorMessage(err) || 'Failed to reply to pending question'
-        };
-    }
+    await replyToPendingQuestion(pendingQuestion.id, answers);
 
     await prisma.chat_sessions.update({
         where: { id },
@@ -481,6 +459,13 @@ router.post('/sessions/:id/abort', apiHandler(async (req, res) => {
             status: 404,
             message: 'Session not found'
         };
+    }
+
+    const pendingQuestion = await getPendingQuestionForSession(session.opencode_session_id);
+    if (pendingQuestion) {
+        const abortAnswer = "User aborted";
+        const answers = pendingQuestion.questions.map(() => [abortAnswer]);
+        await replyToPendingQuestion(pendingQuestion.id, answers);
     }
 
     const client = await getOpencodeClient();
