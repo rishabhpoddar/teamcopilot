@@ -108,6 +108,10 @@ Per `plan-single-tenant.md`, LocalTool is evolving toward: a Next.js frontend, P
 
 ## Code style
 
+### General
+- Avoid too many conditional types. Be sure of the types before implementing. For example, if something cannot be undefined / null, then don't make it optional and don't use `| undefined` or `| null` in the type.
+
+
 ### Frontend
 #### Network calls
 When making network calls, use the `axios` library. Specifically, use the `axiosInstance` from the `./frontend/src/utils.ts` file. Make sure to always handle errors from the network call:
