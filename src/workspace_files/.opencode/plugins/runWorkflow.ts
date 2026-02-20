@@ -568,10 +568,11 @@ function runWithTimeout(
 
     // Spawn the process in a new process group (detached)
     // This allows us to kill the entire process tree
-    const child = spawn(venvPython, [runScript, ...args], {
+    const child = spawn(venvPython, ["-u", runScript, ...args], {
       cwd: workflowPath,
       env: {
         ...process.env,
+        PYTHONUNBUFFERED: "1",
         VIRTUAL_ENV: path.join(workflowPath, ".venv"),
         PATH: [venvBinDir, process.env.PATH ?? ""]
           .filter(Boolean)
