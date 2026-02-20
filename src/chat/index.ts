@@ -4,6 +4,14 @@ import path from "path";
 import prisma from "../prisma/client";
 import { apiHandler } from "../utils/index";
 import { getOpencodeClient, getPendingQuestionForSession, getWorkspaceDir, getOpencodePort, replyToPendingQuestion } from "../utils/opencode-client";
+import {
+    assertCondition,
+    getSessionStatusTypeForSession,
+    normalizeStaleRunningTools,
+    type SessionMessageWire,
+    type SessionStatusMap,
+    type SessionStatusType
+} from "../utils/chat-session";
 
 const router = express.Router({ mergeParams: true });
 
@@ -273,7 +281,18 @@ router.get('/sessions/:id/messages', apiHandler(async (req, res) => {
         };
     }
 
-    res.json({ messages: result.data });
+    const statusResult = await client.session.status();
+    assertCondition(!statusResult.error, getErrorMessage(statusResult.error));
+    const sessionStatusType: SessionStatusType = getSessionStatusTypeForSession(
+        statusResult.data as SessionStatusMap,
+        session.opencode_session_id
+    );
+    const normalizedMessages = normalizeStaleRunningTools(result.data as SessionMessageWire[], sessionStatusType);
+
+    res.json({
+        messages: normalizedMessages,
+        session_status: sessionStatusType
+    });
 }, true));
 
 // GET /api/chat/workflow-runs/:sessionId/:messageId/logs - Get runWorkflow log file
@@ -465,18 +484,25 @@ router.post('/sessions/:id/abort', apiHandler(async (req, res) => {
     }
 
     const client = await getOpencodeClient();
-    const result = await client.session.abort({
-        path: { id: session.opencode_session_id }
+
+    // First send an explicit interrupt command (used by opencode session controls),
+    // then call abort as a secondary stop signal.
+    await client.session.command({
+        path: { id: session.opencode_session_id },
+        body: {
+            command: 'session.interrupt',
+            arguments: ''
+        }
     });
 
-    if (result.error) {
-        throw {
-            status: 500,
-            message: getErrorMessage(result.error) || 'Failed to abort session'
-        };
-    }
+    const abortResult = await client.session.abort({
+        path: { id: session.opencode_session_id }
+    });
+    assertCondition(!abortResult.error, getErrorMessage(abortResult.error));
 
-    res.json({ success: true });
+    res.json({
+        success: true
+    });
 }, true));
 
 // GET /api/chat/sessions/:id/events - SSE stream for real-time updates

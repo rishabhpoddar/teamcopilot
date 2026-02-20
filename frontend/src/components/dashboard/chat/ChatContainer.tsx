@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { toast } from 'react-toastify';
 import { AxiosError } from 'axios';
-import { axiosInstance } from '../../../utils';
+import { axiosInstance, assertMessagesPayload, assertSessionStatus } from '../../../utils';
 import { useAuth } from '../../../lib/auth';
 import type {
     ChatSession,
@@ -236,19 +236,23 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                 headers: { Authorization: `Bearer ${token}` }
             });
 
-            const data = response.data.messages;
-            if (Array.isArray(data)) {
-                // The API returns an array of { info: Message, parts: Part[] } objects
-                const loadedMessages: Message[] = [];
-                const loadedParts: Part[] = [];
+            const data = assertMessagesPayload(response.data.messages);
+            const sessionStatus = assertSessionStatus(response.data.session_status);
+            // The API returns an array of { info: Message, parts: Part[] } objects
+            const loadedMessages: Message[] = [];
+            const loadedParts: Part[] = [];
 
-                data.forEach((item: { info: Message; parts: Part[] }) => {
-                    loadedMessages.push(item.info);
-                    loadedParts.push(...item.parts);
-                });
+            data.forEach((item) => {
+                loadedMessages.push(item.info);
+                loadedParts.push(...item.parts);
+            });
 
-                setMessages(loadedMessages);
-                setParts(loadedParts);
+            setMessages(loadedMessages);
+            setParts(loadedParts);
+            const isSessionBusy = sessionStatus === 'busy' || sessionStatus === 'retry';
+            if (!isSessionBusy) {
+                setIsStreaming(false);
+            } else {
                 const hasActiveAssistantMessage = loadedMessages.some(
                     (message) => message.role === 'assistant' && !message.time.completed
                 );
