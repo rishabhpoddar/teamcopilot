@@ -419,6 +419,19 @@
     margin-bottom: 0.5rem;
 }
 
+.tool-call-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.tool-call-field {
+    border: 1px solid #333;
+    border-radius: 6px;
+    padding: 0.5rem;
+    background: #1f1f1f;
+}
+
 .tool-call-label {
     font-weight: 600;
     color: #888;

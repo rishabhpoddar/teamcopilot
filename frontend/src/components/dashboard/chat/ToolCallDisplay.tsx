@@ -12,6 +12,11 @@ interface ToolCallDisplayProps {
     isRespondingToPermission: boolean;
 }
 
+type ToolDisplaySection = {
+    key: string;
+    content: string;
+};
+
 export default function ToolCallDisplay({
     part,
     pendingPermission,
@@ -141,15 +146,101 @@ export default function ToolCallDisplay({
         }
     };
 
-    const formatInput = () => {
+    const renderEscapedWhitespace = (value: string): string => {
+        const escapedNewlineCount = (value.match(/\\n/g) || []).length;
+        if (escapedNewlineCount < 2) {
+            return value;
+        }
+
+        return value
+            .replace(/\\r\\n/g, '\n')
+            .replace(/\\n/g, '\n');
+    };
+
+    const formatValueForDisplay = (value: unknown): string => {
+        if (typeof value === 'string') {
+            try {
+                const parsed = JSON.parse(value) as unknown;
+                if (parsed !== null && typeof parsed === 'object') {
+                    return renderEscapedWhitespace(JSON.stringify(parsed, null, 2));
+                }
+            } catch {
+                // Keep original string if it's not JSON
+            }
+            return renderEscapedWhitespace(value);
+        }
+
         try {
-            return JSON.stringify(state.input, null, 2);
+            return renderEscapedWhitespace(JSON.stringify(value, null, 2));
         } catch {
-            return String(state.input);
+            return renderEscapedWhitespace(String(value));
         }
     };
 
-    const formatOutput = () => {
+    const parseJsonIfString = (value: unknown): unknown => {
+        if (typeof value !== 'string') {
+            return value;
+        }
+        try {
+            return JSON.parse(value) as unknown;
+        } catch {
+            return value;
+        }
+    };
+
+    const parseXmlSections = (value: string): ToolDisplaySection[] | null => {
+        const tagPattern = /<([A-Za-z0-9_-]+)>([\s\S]*?)<\/\1>/g;
+        const sections: ToolDisplaySection[] = [];
+        let match: RegExpExecArray | null;
+        let consumed = '';
+
+        while ((match = tagPattern.exec(value)) !== null) {
+            const fullMatch = match[0];
+            const key = match[1];
+            const content = match[2];
+            sections.push({
+                key,
+                content: formatValueForDisplay(content.trim())
+            });
+            consumed += fullMatch;
+        }
+
+        if (sections.length === 0) {
+            return null;
+        }
+
+        const normalizedOriginal = value.replace(/\s+/g, '');
+        const normalizedConsumed = consumed.replace(/\s+/g, '');
+        if (normalizedOriginal !== normalizedConsumed) {
+            return null;
+        }
+
+        return sections;
+    };
+
+    const toDisplaySections = (value: unknown): ToolDisplaySection[] | null => {
+        if (typeof value === 'string') {
+            const xmlSections = parseXmlSections(value);
+            if (xmlSections) {
+                return xmlSections;
+            }
+            return null;
+        }
+
+        if (!value || typeof value !== 'object' || Array.isArray(value)) {
+            return null;
+        }
+        const entries = Object.entries(value as Record<string, unknown>);
+        if (entries.length === 0) {
+            return null;
+        }
+        return entries.map(([key, sectionValue]) => ({
+            key,
+            content: formatValueForDisplay(sectionValue)
+        }));
+    };
+
+    const getOutputValue = (): unknown | null => {
         if (state.status === 'completed') {
             if (isRunWorkflowTool) {
                 try {
@@ -162,7 +253,7 @@ export default function ToolCallDisplay({
                             return null;
                         }
 
-                        return JSON.stringify(sanitized, null, 2);
+                        return sanitized;
                     }
                 } catch {
                     // Keep original output if it's not JSON
@@ -175,6 +266,12 @@ export default function ToolCallDisplay({
         }
         return null;
     };
+
+    const inputValue = parseJsonIfString(state.input);
+    const inputSections = toDisplaySections(inputValue);
+    const outputValue = getOutputValue();
+    const parsedOutputValue = outputValue === null ? null : parseJsonIfString(outputValue);
+    const outputSections = parsedOutputValue === null ? null : toDisplaySections(parsedOutputValue);
 
     return (
         <div className="tool-call">
@@ -192,14 +289,36 @@ export default function ToolCallDisplay({
                 <div className="tool-call-body">
                     <div className="tool-call-input">
                         <div className="tool-call-label">Input</div>
-                        <pre className="tool-call-content">{formatInput()}</pre>
+                        {inputSections ? (
+                            <div className="tool-call-fields">
+                                {inputSections.map((section) => (
+                                    <div key={section.key} className="tool-call-field">
+                                        <div className="tool-call-label">{section.key}</div>
+                                        <pre className="tool-call-content">{section.content}</pre>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <pre className="tool-call-content">{formatValueForDisplay(inputValue)}</pre>
+                        )}
                     </div>
-                    {formatOutput() && (
+                    {parsedOutputValue !== null && (
                         <div className="tool-call-output">
                             <div className="tool-call-label">
                                 {state.status === 'error' ? 'Error' : 'Output'}
                             </div>
-                            <pre className="tool-call-content">{formatOutput()}</pre>
+                            {outputSections ? (
+                                <div className="tool-call-fields">
+                                    {outputSections.map((section) => (
+                                        <div key={section.key} className="tool-call-field">
+                                            <div className="tool-call-label">{section.key}</div>
+                                            <pre className="tool-call-content">{section.content}</pre>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <pre className="tool-call-content">{formatValueForDisplay(parsedOutputValue)}</pre>
+                            )}
                         </div>
                     )}
                     {isRunWorkflowTool && (
