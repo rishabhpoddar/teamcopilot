@@ -300,8 +300,11 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                 if (prev && permission && prev.id === permission.id) return prev;
                 return permission;
             });
-        } catch {
-            // Best-effort background check.
+        } catch (err: unknown) {
+            const errorMessage = err instanceof AxiosError
+                ? err.response?.data?.message || err.response?.data || err.message
+                : 'Failed to load permission state';
+            setError(`${errorMessage}. Please reload the page.`);
         }
     }, [token]);
 
