@@ -8,7 +8,7 @@ import PermissionPrompt from './PermissionPrompt';
 interface ToolCallDisplayProps {
     part: ToolPart;
     pendingPermission: PermissionRequest | null;
-    onPermissionRespond?: (response: "once" | "always" | "reject") => void;
+    onPermissionRespond: (response: "once" | "always" | "reject") => void;
     isRespondingToPermission: boolean;
 }
 
@@ -440,7 +440,7 @@ export default function ToolCallDisplay({
                             </pre>
                         </div>
                     )}
-                    {isPermissionForThisTool && onPermissionRespond && pendingPermission && (
+                    {isPermissionForThisTool && pendingPermission && (
                         <PermissionPrompt
                             permission={pendingPermission}
                             submitting={isRespondingToPermission}

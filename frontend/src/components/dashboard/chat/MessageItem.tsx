@@ -7,7 +7,7 @@ interface MessageItemProps {
     parts: Part[];
     onAnswer?: (answer: string) => void;
     pendingPermission: PermissionRequest | null;
-    onPermissionRespond?: (response: "once" | "always" | "reject") => void;
+    onPermissionRespond: (response: "once" | "always" | "reject") => void;
     isRespondingToPermission: boolean;
 }
 
