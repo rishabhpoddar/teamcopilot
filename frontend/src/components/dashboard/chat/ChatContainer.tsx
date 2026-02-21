@@ -1,14 +1,15 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { toast } from 'react-toastify';
 import { AxiosError } from 'axios';
-import { axiosInstance } from '../../../utils';
+import { axiosInstance, assertMessagesPayload, assertSessionStatus } from '../../../utils';
 import { useAuth } from '../../../lib/auth';
 import type {
     ChatSession,
     Message,
     Part,
     SSEEvent,
-    ToolPart
+    ToolPart,
+    PermissionRequest
 } from '../../../types/chat';
 import SessionSidebar from './SessionSidebar';
 import MessageList from './MessageList';
@@ -32,6 +33,8 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
     const [isStreaming, setIsStreaming] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [draftMessagesBySessionId, setDraftMessagesBySessionId] = useState<Record<string, string>>({});
+    const [pendingPermission, setPendingPermission] = useState<PermissionRequest | null>(null);
+    const [isRespondingToPermission, setIsRespondingToPermission] = useState(false);
 
     const abortControllerRef = useRef<AbortController | null>(null);
     const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
@@ -142,6 +145,21 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                 setIsStreaming(false);
                 break;
             }
+
+            case 'permission.asked': {
+                setPendingPermission((prev) => prev?.id === event.properties.id ? prev : event.properties);
+                break;
+            }
+
+            case 'permission.replied': {
+                setPendingPermission((prev) => {
+                    if (!prev) return prev;
+                    if (event.properties.sessionID !== prev.sessionID) return prev;
+                    if (event.properties.requestID !== prev.id) return prev;
+                    return null;
+                });
+                break;
+            }
         }
     }, []);
 
@@ -236,19 +254,23 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                 headers: { Authorization: `Bearer ${token}` }
             });
 
-            const data = response.data.messages;
-            if (Array.isArray(data)) {
-                // The API returns an array of { info: Message, parts: Part[] } objects
-                const loadedMessages: Message[] = [];
-                const loadedParts: Part[] = [];
+            const data = assertMessagesPayload(response.data.messages);
+            const sessionStatus = assertSessionStatus(response.data.session_status);
+            // The API returns an array of { info: Message, parts: Part[] } objects
+            const loadedMessages: Message[] = [];
+            const loadedParts: Part[] = [];
 
-                data.forEach((item: { info: Message; parts: Part[] }) => {
-                    loadedMessages.push(item.info);
-                    loadedParts.push(...item.parts);
-                });
+            data.forEach((item) => {
+                loadedMessages.push(item.info);
+                loadedParts.push(...item.parts);
+            });
 
-                setMessages(loadedMessages);
-                setParts(loadedParts);
+            setMessages(loadedMessages);
+            setParts(loadedParts);
+            const isSessionBusy = sessionStatus === 'busy' || sessionStatus === 'retry';
+            if (!isSessionBusy) {
+                setIsStreaming(false);
+            } else {
                 const hasActiveAssistantMessage = loadedMessages.some(
                     (message) => message.role === 'assistant' && !message.time.completed
                 );
@@ -265,6 +287,27 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
         }
     }, [token]);
 
+    const loadPendingPermission = useCallback(async (sessionId: string) => {
+        if (!token) return;
+
+        try {
+            const response = await axiosInstance.get(`/api/chat/sessions/${sessionId}/pending-permission`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            const permission = (response.data?.permission ?? null) as PermissionRequest | null;
+            setPendingPermission((prev) => {
+                if (!prev && !permission) return prev;
+                if (prev && permission && prev.id === permission.id) return prev;
+                return permission;
+            });
+        } catch (err: unknown) {
+            const errorMessage = err instanceof AxiosError
+                ? err.response?.data?.message || err.response?.data || err.message
+                : 'Failed to load permission state';
+            setError(`${errorMessage}. Please reload the page.`);
+        }
+    }, [token]);
+
     // Load sessions on mount
     useEffect(() => {
         if (!token) return;
@@ -278,16 +321,18 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
 
         if (activeSessionId && activeSessionId !== PENDING_SESSION_ID) {
             loadMessages(activeSessionId);
+            loadPendingPermission(activeSessionId);
             startSSE(activeSessionId);
         } else {
             setMessages([]);
             setParts([]);
+            setPendingPermission(null);
         }
 
         return () => {
             stopSSE();
         };
-    }, [activeSessionId, loadMessages, startSSE, stopSSE]);
+    }, [activeSessionId, loadMessages, loadPendingPermission, startSSE, stopSSE]);
 
     const deleteSessionSilently = useCallback(async (sessionId: string) => {
         if (!token) return;
@@ -501,6 +546,40 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
         }
     }, [token, activeSessionId]);
 
+    const sendPermissionResponse = async (response: "once" | "always" | "reject") => {
+        if (!token || !activeSessionId || activeSessionId === PENDING_SESSION_ID || !pendingPermission) return;
+
+        try {
+            setIsRespondingToPermission(true);
+            await axiosInstance.post(
+                `/api/chat/sessions/${activeSessionId}/permission-response`,
+                { response },
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+            setPendingPermission(null);
+            void loadMessages(activeSessionId);
+        } catch (err: unknown) {
+            const errorMessage = err instanceof AxiosError
+                ? err.response?.data?.message || err.response?.data || err.message
+                : 'Failed to send permission response';
+            toast.error(errorMessage);
+        } finally {
+            setIsRespondingToPermission(false);
+        }
+    };
+
+    useEffect(() => {
+        if (!activeSessionId || activeSessionId === PENDING_SESSION_ID || !isStreaming || pendingPermission) {
+            return;
+        }
+
+        const intervalId = window.setInterval(() => {
+            void loadPendingPermission(activeSessionId);
+        }, 1000);
+
+        return () => window.clearInterval(intervalId);
+    }, [activeSessionId, isStreaming, pendingPermission, loadPendingPermission]);
+
     const activeDraftMessage = activeSessionId ? (draftMessagesBySessionId[activeSessionId] ?? '') : '';
 
     // Double-escape to abort
@@ -554,8 +633,11 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                             messages={messages}
                             parts={parts}
                             isStreaming={isStreaming}
-                            isWaitingForInput={isWaitingForInput}
+                            isWaitingForInput={isWaitingForInput || Boolean(pendingPermission)}
                             onAnswer={sendToolAnswer}
+                            pendingPermission={pendingPermission}
+                            onPermissionRespond={sendPermissionResponse}
+                            isRespondingToPermission={isRespondingToPermission}
                         />
                         <ChatInput
                             onSend={sendMessage}

@@ -1,14 +1,24 @@
-import type { Message, Part } from '../../../types/chat';
+import type { Message, Part, PermissionRequest } from '../../../types/chat';
 import { isUserMessage, isAssistantMessage } from '../../../types/chat';
 import MessagePart from './MessagePart';
 
 interface MessageItemProps {
     message: Message;
     parts: Part[];
-    onAnswer?: (answer: string) => void;
+    onAnswer: (answer: string) => void;
+    pendingPermission: PermissionRequest | null;
+    onPermissionRespond: (response: "once" | "always" | "reject") => void;
+    isRespondingToPermission: boolean;
 }
 
-export default function MessageItem({ message, parts, onAnswer }: MessageItemProps) {
+export default function MessageItem({
+    message,
+    parts,
+    onAnswer,
+    pendingPermission,
+    onPermissionRespond,
+    isRespondingToPermission
+}: MessageItemProps) {
     const isUser = isUserMessage(message);
     const isAssistant = isAssistantMessage(message);
 
@@ -33,7 +43,14 @@ export default function MessageItem({ message, parts, onAnswer }: MessageItemPro
                 {parts
                     .filter(part => part.messageID === message.id)
                     .map(part => (
-                        <MessagePart key={part.id} part={part} onAnswer={onAnswer} />
+                        <MessagePart
+                            key={part.id}
+                            part={part}
+                            onAnswer={onAnswer}
+                            pendingPermission={pendingPermission}
+                            onPermissionRespond={onPermissionRespond}
+                            isRespondingToPermission={isRespondingToPermission}
+                        />
                     ))}
             </div>
             {isAssistant && message.error && (

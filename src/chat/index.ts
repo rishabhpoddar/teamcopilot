@@ -3,7 +3,24 @@ import fs from "fs/promises";
 import path from "path";
 import prisma from "../prisma/client";
 import { apiHandler } from "../utils/index";
-import { getOpencodeClient, getPendingQuestionForSession, getWorkspaceDir, getOpencodePort, replyToPendingQuestion } from "../utils/opencode-client";
+import {
+    getOpencodeClient,
+    getPendingQuestionForSession,
+    getPendingPermissionForSession,
+    getWorkspaceDir,
+    getOpencodePort,
+    replyToPendingQuestion,
+    replyToPendingPermission
+} from "../utils/opencode-client";
+import {
+    getSessionStatusTypeForSession,
+    normalizeStaleRunningTools,
+    type SessionMessageWire,
+    type SessionStatusMap,
+    type SessionStatusType
+} from "../utils/chat-session";
+import { assertCondition } from "../utils/assert";
+import { sanitizeForClient } from "../utils/redact";
 
 const router = express.Router({ mergeParams: true });
 
@@ -106,10 +123,7 @@ router.get('/sessions', apiHandler(async (req, res) => {
     const opencodeSessionsResult = await client.session.list();
 
     if (opencodeSessionsResult.error) {
-        throw {
-            status: 500,
-            message: getErrorMessage(opencodeSessionsResult.error) || 'Failed to list sessions from opencode'
-        };
+        throw new Error(getErrorMessage(opencodeSessionsResult.error) || 'Failed to list sessions from opencode');
     }
 
     const opencodeSessionIds = new Set((opencodeSessionsResult.data || []).map((session: any) => session.id));
@@ -138,10 +152,7 @@ router.post('/sessions', apiHandler(async (req, res) => {
     const result = await client.session.create();
 
     if (result.error) {
-        throw {
-            status: 500,
-            message: getErrorMessage(result.error) || 'Failed to create opencode session'
-        };
+        throw new Error(getErrorMessage(result.error) || 'Failed to create opencode session');
     }
 
     const opencodeSession = result.data!;
@@ -193,10 +204,7 @@ router.get('/sessions/:id', apiHandler(async (req, res) => {
     });
 
     if (result.error) {
-        throw {
-            status: 500,
-            message: getErrorMessage(result.error) || 'Failed to get session from opencode'
-        };
+        throw new Error(getErrorMessage(result.error) || 'Failed to get session from opencode');
     }
 
     res.json({
@@ -267,13 +275,21 @@ router.get('/sessions/:id/messages', apiHandler(async (req, res) => {
     });
 
     if (result.error) {
-        throw {
-            status: 500,
-            message: getErrorMessage(result.error) || 'Failed to get messages from opencode'
-        };
+        throw new Error(getErrorMessage(result.error) || 'Failed to get messages from opencode');
     }
 
-    res.json({ messages: result.data });
+    const statusResult = await client.session.status();
+    assertCondition(!statusResult.error, getErrorMessage(statusResult.error));
+    const sessionStatusType: SessionStatusType = getSessionStatusTypeForSession(
+        statusResult.data as SessionStatusMap,
+        session.opencode_session_id
+    );
+    const normalizedMessages = normalizeStaleRunningTools(result.data as SessionMessageWire[], sessionStatusType);
+
+    res.json({
+        messages: normalizedMessages,
+        session_status: sessionStatusType
+    });
 }, true));
 
 // GET /api/chat/workflow-runs/:sessionId/:messageId/logs - Get runWorkflow log file
@@ -354,6 +370,13 @@ router.post('/sessions/:id/messages', apiHandler(async (req, res) => {
             message: 'A tool is waiting for input. Reply through the tool-answer endpoint.'
         };
     }
+    const pendingPermission = await getPendingPermissionForSession(session.opencode_session_id);
+    if (pendingPermission) {
+        throw {
+            status: 409,
+            message: 'A permission request is waiting for input. Reply through the permission-response endpoint.'
+        };
+    }
 
     const client = await getOpencodeClient();
 
@@ -364,10 +387,7 @@ router.post('/sessions/:id/messages', apiHandler(async (req, res) => {
     });
 
     if (result.error) {
-        throw {
-            status: 500,
-            message: getErrorMessage(result.error) || 'Failed to send message to opencode'
-        };
+        throw new Error(getErrorMessage(result.error) || 'Failed to send message to opencode');
     }
 
     const data: { updated_at: number; title?: string } = {
@@ -391,6 +411,28 @@ router.post('/sessions/:id/messages', apiHandler(async (req, res) => {
             updated_at: updatedSession.updated_at
         }
     });
+}, true));
+
+// GET /api/chat/sessions/:id/pending-permission - Get pending permission for session
+router.get('/sessions/:id/pending-permission', apiHandler(async (req, res) => {
+    const id = req.params.id as string;
+
+    const session = await prisma.chat_sessions.findFirst({
+        where: {
+            id,
+            user_id: req.userId!
+        }
+    });
+
+    if (!session) {
+        throw {
+            status: 404,
+            message: 'Session not found'
+        };
+    }
+
+    const pendingPermission = await getPendingPermissionForSession(session.opencode_session_id);
+    res.json({ permission: pendingPermission });
 }, true));
 
 // POST /api/chat/sessions/:id/tool-answer - Reply to a pending tool question
@@ -429,14 +471,51 @@ router.post('/sessions/:id/tool-answer', apiHandler(async (req, res) => {
 
     // Current UI replies with a single string; map it to the first question.
     const answers = pendingQuestion.questions.map((_, index) => index === 0 ? [content] : []);
-    try {
-        await replyToPendingQuestion(pendingQuestion.id, answers);
-    } catch (err: unknown) {
+    await replyToPendingQuestion(pendingQuestion.id, answers);
+
+    await prisma.chat_sessions.update({
+        where: { id },
+        data: { updated_at: Date.now() }
+    });
+
+    res.json({ success: true });
+}, true));
+
+// POST /api/chat/sessions/:id/permission-response - Reply to a pending permission request
+router.post('/sessions/:id/permission-response', apiHandler(async (req, res) => {
+    const id = req.params.id as string;
+    const { response } = req.body as { response: unknown };
+
+    if (response !== 'once' && response !== 'always' && response !== 'reject') {
         throw {
-            status: 500,
-            message: getErrorMessage(err) || 'Failed to reply to pending question'
+            status: 400,
+            message: 'response is required and must be one of: once, always, reject'
         };
     }
+
+    const session = await prisma.chat_sessions.findFirst({
+        where: {
+            id,
+            user_id: req.userId!
+        }
+    });
+
+    if (!session) {
+        throw {
+            status: 404,
+            message: 'Session not found'
+        };
+    }
+
+    const pendingPermission = await getPendingPermissionForSession(session.opencode_session_id);
+    if (!pendingPermission) {
+        throw {
+            status: 409,
+            message: 'No pending permission request for this session'
+        };
+    }
+
+    await replyToPendingPermission(session.opencode_session_id, pendingPermission.id, response);
 
     await prisma.chat_sessions.update({
         where: { id },
@@ -464,19 +543,37 @@ router.post('/sessions/:id/abort', apiHandler(async (req, res) => {
         };
     }
 
-    const client = await getOpencodeClient();
-    const result = await client.session.abort({
-        path: { id: session.opencode_session_id }
-    });
-
-    if (result.error) {
-        throw {
-            status: 500,
-            message: getErrorMessage(result.error) || 'Failed to abort session'
-        };
+    const pendingQuestion = await getPendingQuestionForSession(session.opencode_session_id);
+    if (pendingQuestion) {
+        const abortAnswer = "User aborted";
+        const answers = pendingQuestion.questions.map(() => [abortAnswer]);
+        await replyToPendingQuestion(pendingQuestion.id, answers);
+    }
+    const pendingPermission = await getPendingPermissionForSession(session.opencode_session_id);
+    if (pendingPermission) {
+        await replyToPendingPermission(session.opencode_session_id, pendingPermission.id, "reject");
     }
 
-    res.json({ success: true });
+    const client = await getOpencodeClient();
+
+    // First send an explicit interrupt command (used by opencode session controls),
+    // then call abort as a secondary stop signal.
+    await client.session.command({
+        path: { id: session.opencode_session_id },
+        body: {
+            command: 'session.interrupt',
+            arguments: ''
+        }
+    });
+
+    const abortResult = await client.session.abort({
+        path: { id: session.opencode_session_id }
+    });
+    assertCondition(!abortResult.error, getErrorMessage(abortResult.error));
+
+    res.json({
+        success: true
+    });
 }, true));
 
 // GET /api/chat/sessions/:id/events - SSE stream for real-time updates
@@ -555,12 +652,14 @@ router.get('/sessions/:id/events', apiHandler(async (req, res) => {
                             const event = JSON.parse(data);
                             // Check all possible locations for sessionID
                             const eventSessionId = event.properties?.sessionID ||
+                                event.sessionID ||
                                 event.properties?.info?.sessionID ||
-                                event.properties?.part?.sessionID;
+                                event.properties?.part?.sessionID ||
+                                event.properties?.permission?.sessionID;
 
                             // Filter events to only include ones for this session
                             if (eventSessionId === session.opencode_session_id) {
-                                res.write(`data: ${JSON.stringify(event)}\n\n`);
+                                res.write(`data: ${JSON.stringify(sanitizeForClient(event))}\n\n`);
                             }
                         } catch {
                             // Skip malformed JSON

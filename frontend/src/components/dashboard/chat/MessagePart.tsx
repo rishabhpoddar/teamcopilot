@@ -1,16 +1,25 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import type { Part } from '../../../types/chat';
+import type { Part, PermissionRequest } from '../../../types/chat';
 import { isTextPart, isToolPart, isReasoningPart, isFilePart } from '../../../types/chat';
 import ToolCallDisplay from './ToolCallDisplay';
 import QuestionToolDisplay from './QuestionToolDisplay';
 
 interface MessagePartProps {
     part: Part;
-    onAnswer?: (answer: string) => void;
+    onAnswer: (answer: string) => void;
+    pendingPermission: PermissionRequest | null;
+    onPermissionRespond: (response: "once" | "always" | "reject") => void;
+    isRespondingToPermission: boolean;
 }
 
-export default function MessagePart({ part, onAnswer }: MessagePartProps) {
+export default function MessagePart({
+    part,
+    onAnswer,
+    pendingPermission,
+    onPermissionRespond,
+    isRespondingToPermission
+}: MessagePartProps) {
     if (isTextPart(part)) {
         return (
             <div className="markdown-content">
@@ -23,10 +32,17 @@ export default function MessagePart({ part, onAnswer }: MessagePartProps) {
 
     if (isToolPart(part)) {
         // Use special display for question tool
-        if (part.tool === 'question' && onAnswer) {
+        if (part.tool === 'question') {
             return <QuestionToolDisplay part={part} onAnswer={onAnswer} />;
         }
-        return <ToolCallDisplay part={part} />;
+        return (
+            <ToolCallDisplay
+                part={part}
+                pendingPermission={pendingPermission}
+                onPermissionRespond={onPermissionRespond}
+                isRespondingToPermission={isRespondingToPermission}
+            />
+        );
     }
 
     if (isReasoningPart(part)) {

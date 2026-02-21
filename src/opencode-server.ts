@@ -1,5 +1,6 @@
 import { exec } from "child_process";
 import { promisify } from "util";
+import { assertEnv, assertCondition, parseIntStrict } from "./utils/assert";
 
 const execAsync = promisify(exec);
 
@@ -36,8 +37,8 @@ export async function startOpencodeServer() {
     }
 
     const createOpencodeServer = await loadCreateOpencodeServer();
-    const port = parseInt(process.env.OPENCODE_PORT || "4096", 10);
-    const model = process.env.OPENCODE_MODEL || "claude-sonnet-4-5-20250929";
+    const port = parseIntStrict(assertEnv("OPENCODE_PORT"), "OPENCODE_PORT");
+    const model = assertEnv("OPENCODE_MODEL");
     const fullModel = model.includes("/") ? model : `anthropic/${model}`;
 
     const startServer = async () => {
@@ -58,6 +59,7 @@ export async function startOpencodeServer() {
         await killProcessOnPort(port);
         server = await startServer();
     }
+    assertCondition(server, "Failed to initialize opencode server");
 
     console.log(`Opencode server running at ${server.url}`);
     return server;
