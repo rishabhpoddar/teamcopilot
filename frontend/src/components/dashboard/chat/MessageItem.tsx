@@ -5,7 +5,7 @@ import MessagePart from './MessagePart';
 interface MessageItemProps {
     message: Message;
     parts: Part[];
-    onAnswer?: (answer: string) => void;
+    onAnswer: (answer: string) => void;
     pendingPermission: PermissionRequest | null;
     onPermissionRespond: (response: "once" | "always" | "reject") => void;
     isRespondingToPermission: boolean;

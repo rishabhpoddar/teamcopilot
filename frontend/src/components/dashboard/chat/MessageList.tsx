@@ -7,7 +7,7 @@ interface MessageListProps {
     parts: Part[];
     isStreaming: boolean;
     isWaitingForInput: boolean;
-    onAnswer?: (answer: string) => void;
+    onAnswer: (answer: string) => void;
     pendingPermission: PermissionRequest | null;
     onPermissionRespond: (response: "once" | "always" | "reject") => void;
     isRespondingToPermission: boolean;

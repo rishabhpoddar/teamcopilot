@@ -7,7 +7,7 @@ import QuestionToolDisplay from './QuestionToolDisplay';
 
 interface MessagePartProps {
     part: Part;
-    onAnswer?: (answer: string) => void;
+    onAnswer: (answer: string) => void;
     pendingPermission: PermissionRequest | null;
     onPermissionRespond: (response: "once" | "always" | "reject") => void;
     isRespondingToPermission: boolean;
@@ -32,7 +32,7 @@ export default function MessagePart({
 
     if (isToolPart(part)) {
         // Use special display for question tool
-        if (part.tool === 'question' && onAnswer) {
+        if (part.tool === 'question') {
             return <QuestionToolDisplay part={part} onAnswer={onAnswer} />;
         }
         return (
