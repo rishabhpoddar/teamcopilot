@@ -452,6 +452,40 @@
     overflow-y: auto;
 }
 
+.tool-call-diff-content {
+    white-space: pre;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0;
+}
+
+.tool-call-diff-line {
+    font-family: 'Monaco', 'Menlo', monospace;
+    display: block;
+    width: max-content;
+    min-width: calc(100% + 1rem);
+    box-sizing: border-box;
+    margin: 0 -0.5rem 0.125rem;
+    padding: 0 0.5rem;
+    white-space: pre;
+}
+
+.tool-call-diff-line.context {
+    color: #d0d0d0;
+    background: transparent;
+}
+
+.tool-call-diff-line.removed {
+    color: #ffb3b3;
+    background: rgba(180, 45, 45, 0.25);
+}
+
+.tool-call-diff-line.added {
+    color: #b6f3b6;
+    background: rgba(48, 135, 48, 0.25);
+}
+
 /* Chat Input */
 .chat-input-area {
     padding: 1rem;

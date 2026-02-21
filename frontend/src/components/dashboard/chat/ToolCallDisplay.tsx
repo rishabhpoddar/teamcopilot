@@ -17,6 +17,11 @@ type ToolDisplaySection = {
     content: string;
 };
 
+type DiffLine = {
+    type: 'context' | 'removed' | 'added';
+    text: string;
+};
+
 export default function ToolCallDisplay({
     part,
     pendingPermission,
@@ -240,6 +245,64 @@ export default function ToolCallDisplay({
         }));
     };
 
+    const findKeyCaseInsensitive = (obj: Record<string, unknown>, candidates: string[]): string | null => {
+        const candidateSet = new Set(candidates.map((candidate) => candidate.toLowerCase()));
+        for (const key of Object.keys(obj)) {
+            if (candidateSet.has(key.toLowerCase())) {
+                return key;
+            }
+        }
+        return null;
+    };
+
+    const computeLineDiff = (oldText: string, newText: string): DiffLine[] => {
+        const oldLines = oldText === '' ? [] : oldText.split('\n');
+        const newLines = newText === '' ? [] : newText.split('\n');
+        const oldLength = oldLines.length;
+        const newLength = newLines.length;
+        const lcs: number[][] = Array.from({ length: oldLength + 1 }, () => Array<number>(newLength + 1).fill(0));
+
+        for (let i = oldLength - 1; i >= 0; i -= 1) {
+            for (let j = newLength - 1; j >= 0; j -= 1) {
+                if (oldLines[i] === newLines[j]) {
+                    lcs[i][j] = lcs[i + 1][j + 1] + 1;
+                } else {
+                    lcs[i][j] = Math.max(lcs[i + 1][j], lcs[i][j + 1]);
+                }
+            }
+        }
+
+        const diff: DiffLine[] = [];
+        let i = 0;
+        let j = 0;
+
+        while (i < oldLength && j < newLength) {
+            if (oldLines[i] === newLines[j]) {
+                diff.push({ type: 'context', text: oldLines[i] });
+                i += 1;
+                j += 1;
+            } else if (lcs[i + 1][j] >= lcs[i][j + 1]) {
+                diff.push({ type: 'removed', text: oldLines[i] });
+                i += 1;
+            } else {
+                diff.push({ type: 'added', text: newLines[j] });
+                j += 1;
+            }
+        }
+
+        while (i < oldLength) {
+            diff.push({ type: 'removed', text: oldLines[i] });
+            i += 1;
+        }
+
+        while (j < newLength) {
+            diff.push({ type: 'added', text: newLines[j] });
+            j += 1;
+        }
+
+        return diff;
+    };
+
     const getOutputValue = (): unknown | null => {
         if (state.status === 'completed') {
             if (isRunWorkflowTool) {
@@ -269,6 +332,37 @@ export default function ToolCallDisplay({
 
     const inputValue = parseJsonIfString(state.input);
     const inputSections = toDisplaySections(inputValue);
+    const isEditTool = part.tool.toLowerCase() === 'edit';
+    let editDiff: { oldKey: string; newKey: string; lines: DiffLine[] } | null = null;
+    let remainingInputSections = inputSections;
+
+    if (
+        isEditTool &&
+        inputValue &&
+        typeof inputValue === 'object' &&
+        !Array.isArray(inputValue)
+    ) {
+        const inputObject = inputValue as Record<string, unknown>;
+        const oldKey = findKeyCaseInsensitive(inputObject, ['oldString', 'oldstring', 'old_text', 'oldText']);
+        const newKey = findKeyCaseInsensitive(inputObject, ['newString', 'newstring', 'new_text', 'newText']);
+        const oldValue = oldKey ? inputObject[oldKey] : null;
+        const newValue = newKey ? inputObject[newKey] : null;
+
+        if (oldKey && newKey && typeof oldValue === 'string' && typeof newValue === 'string') {
+            editDiff = {
+                oldKey,
+                newKey,
+                lines: computeLineDiff(renderEscapedWhitespace(oldValue), renderEscapedWhitespace(newValue))
+            };
+            if (inputSections) {
+                const filteredSections = inputSections.filter(
+                    (section) => section.key !== oldKey && section.key !== newKey
+                );
+                remainingInputSections = filteredSections.length > 0 ? filteredSections : null;
+            }
+        }
+    }
+
     const outputValue = getOutputValue();
     const parsedOutputValue = outputValue === null ? null : parseJsonIfString(outputValue);
     const outputSections = parsedOutputValue === null ? null : toDisplaySections(parsedOutputValue);
@@ -289,9 +383,26 @@ export default function ToolCallDisplay({
                 <div className="tool-call-body">
                     <div className="tool-call-input">
                         <div className="tool-call-label">Input</div>
-                        {inputSections ? (
+                        {editDiff && (
+                            <div className="tool-call-field">
+                                <div className="tool-call-label">{editDiff.oldKey}{' -> '}{editDiff.newKey} (Diff)</div>
+                                <div className="tool-call-content tool-call-diff-content">
+                                    {editDiff.lines.length > 0 ? editDiff.lines.map((line, index) => {
+                                        const prefix = line.type === 'added' ? '+' : line.type === 'removed' ? '-' : ' ';
+                                        return (
+                                            <div key={`${line.type}-${index}`} className={`tool-call-diff-line ${line.type}`}>
+                                                {prefix} {line.text}
+                                            </div>
+                                        );
+                                    }) : (
+                                        <div className="tool-call-diff-line context">  (No changes)</div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                        {remainingInputSections ? (
                             <div className="tool-call-fields">
-                                {inputSections.map((section) => (
+                                {remainingInputSections.map((section) => (
                                     <div key={section.key} className="tool-call-field">
                                         <div className="tool-call-label">{section.key}</div>
                                         <pre className="tool-call-content">{section.content}</pre>
