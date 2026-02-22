@@ -41,11 +41,8 @@ async function pathExists(p: string): Promise<boolean> {
   try {
     await fs.access(p)
     return true
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-      return false
-    }
-    throw err
+  } catch {
+    return false;
   }
 }
 
