@@ -951,18 +951,7 @@ export const RunWorkflowPlugin: Plugin = async (_ctx) => {
             }
             : {}
 
-          if (result.status !== "success") {
-            throw new Error("Workflow execution failed: " + JSON.stringify({
-              status: result.status,
-              output: result.output,
-              workflow: slug,
-              timeout_seconds: timeoutSeconds,
-              run_id: runId,
-              ...warningFields,
-            }))
-          }
-
-          return JSON.stringify({
+          const finalOutput = JSON.stringify({
             status: result.status,
             output: result.output,
             workflow: slug,
@@ -970,6 +959,12 @@ export const RunWorkflowPlugin: Plugin = async (_ctx) => {
             run_id: runId,
             ...warningFields,
           })
+
+          if (result.status !== "success") {
+            throw new Error("Workflow execution failed: " + finalOutput)
+          }
+
+          return finalOutput
         },
       }),
     },
