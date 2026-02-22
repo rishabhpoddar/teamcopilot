@@ -453,6 +453,19 @@ function extractMessageId(context: unknown): string | null {
   return null
 }
 
+function extractCallId(context: unknown): string | null {
+  if (!context || typeof context !== "object") {
+    return null
+  }
+
+  const candidate = (context as { callID?: unknown; callId?: unknown; call_id?: unknown })
+  const raw = candidate.callID ?? candidate.callId ?? candidate.call_id
+  if (typeof raw === "string" && raw.trim().length > 0) {
+    return raw
+  }
+  return null
+}
+
 function isAbortSignalLike(value: unknown): value is AbortSignal {
   if (!value || typeof value !== "object") return false
   const candidate = value as {
@@ -704,6 +717,100 @@ function runWithTimeout(
 }
 
 // ============================================================================
+// Permission Request Function
+// ============================================================================
+
+interface PermissionResponse {
+  approved: boolean
+}
+
+async function rejectWorkflowPermission(
+  sessionID: string,
+  permissionId: string
+): Promise<void> {
+  await fetch(`${API_BASE_URL}/api/workflows/permission-reject/${permissionId}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${sessionID}`,
+    },
+  })
+}
+
+/**
+ * Requests permission from user to run a workflow.
+ * Creates a permission request and waits for user response.
+ */
+async function requestWorkflowPermission(
+  sessionID: string,
+  messageID: string,
+  callID: string
+): Promise<void> {
+  // Create permission request via backend API
+  const response = await fetch(`${API_BASE_URL}/api/workflows/request-permission`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${sessionID}`,
+    },
+    body: JSON.stringify({
+      opencode_session_id: sessionID,
+      message_id: messageID,
+      call_id: callID,
+    }),
+  })
+
+  if (!response.ok) {
+    const message = await readErrorMessageFromResponse(
+      response,
+      `Failed to request permission (HTTP ${response.status})`
+    )
+    throw new Error(message)
+  }
+
+  const data = (await response.json()) as { permission_id: string }
+  const permissionId = data.permission_id
+
+  // Poll for permission response (max 5 minutes)
+  const maxAttempts = 300 // 5 minutes with 1s intervals
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 1000))
+
+    const statusResponse = await fetch(
+      `${API_BASE_URL}/api/workflows/permission-status/${permissionId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${sessionID}`,
+        },
+      }
+    )
+
+    if (!statusResponse.ok) {
+      continue
+    }
+
+    const statusData = (await statusResponse.json()) as PermissionResponse & {
+      status: string
+    }
+
+    if (statusData.status === "approved") {
+      return
+    }
+    if (statusData.status === "rejected") {
+      throw new Error("User denied permission to run this workflow.")
+    }
+    // If status is still "pending", continue polling
+  }
+
+  // Timeout - permission not granted in time
+  try {
+    await rejectWorkflowPermission(sessionID, permissionId)
+  } catch {
+    // Best-effort cleanup only; preserve the timeout error below.
+  }
+  throw new Error("Permission request timed out")
+}
+
+// ============================================================================
 // Plugin
 // ============================================================================
 
@@ -731,6 +838,7 @@ export const RunWorkflowPlugin: Plugin = async (_ctx) => {
           const { directory, sessionID } = context
           const { slug, inputs = {} } = args
           const messageId = extractMessageId(context)
+          const callId = extractCallId(context)
           const abortSignal = extractAbortSignal(context)
 
           if (!messageId) {
@@ -738,6 +846,14 @@ export const RunWorkflowPlugin: Plugin = async (_ctx) => {
               status: "error",
               error: "missing_message_id",
               message: "Could not determine message id from tool context.",
+            })
+          }
+
+          if (!callId) {
+            return JSON.stringify({
+              status: "error",
+              error: "missing_call_id",
+              message: "Could not determine call id from tool context.",
             })
           }
 
@@ -779,6 +895,13 @@ export const RunWorkflowPlugin: Plugin = async (_ctx) => {
               message: `Missing required file 'run.py' for workflow '${slug}'`,
             })
           }
+
+          // Request permission after basic workflow existence checks pass.
+          await requestWorkflowPermission(
+            sessionID,
+            messageId,
+            callId
+          )
 
           // Read workflow.json
           const workflowJson = await readWorkflowJson(workflowPath)

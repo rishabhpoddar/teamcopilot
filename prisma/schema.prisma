@@ -49,3 +49,16 @@ model chat_sessions {
   updated_at          BigInt
   user                users  @relation(fields: [user_id], references: [id], onDelete: Cascade)
 }
+
+model tool_execution_permissions {
+  id                  String  @id @default(uuid())
+  opencode_session_id String
+  message_id          String
+  call_id             String
+  status              String  // "pending" | "approved" | "rejected"
+  created_at          BigInt
+  responded_at        BigInt?
+
+  @@unique([opencode_session_id, message_id, call_id])
+  @@index([opencode_session_id, status])
+}

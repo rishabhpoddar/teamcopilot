@@ -216,4 +216,101 @@ router.get('/:slug', apiHandler(async (req, res) => {
     });
 }, true));
 
+// POST /api/workflows/request-permission - Create a tool execution permission request
+router.post('/request-permission', apiHandler(async (req, res) => {
+    const { message_id, call_id } = req.body;
+
+    if (!message_id || !call_id) {
+        throw {
+            status: 400,
+            message: 'opencode_session_id, message_id, and call_id are required'
+        };
+    }
+
+    // Create or update permission request in database
+    const permission = await prisma.tool_execution_permissions.upsert({
+        where: {
+            opencode_session_id_message_id_call_id: {
+                opencode_session_id: req.opencode_session_id!,
+                message_id,
+                call_id
+            }
+        },
+        create: {
+            opencode_session_id: req.opencode_session_id!,
+            message_id,
+            call_id,
+            status: 'pending',
+            created_at: BigInt(Date.now())
+        },
+        update: {
+            status: 'pending',
+            responded_at: null
+        }
+    });
+
+    res.json({ permission_id: permission.id });
+}, true)); // Plugin authenticates with opencode session token
+
+// GET /api/workflows/permission-status/:id - Check permission status
+router.get('/permission-status/:id', apiHandler(async (req, res) => {
+    const id = req.params.id as string;
+
+    const permission = await prisma.tool_execution_permissions.findUnique({
+        where: { id }
+    });
+
+    if (!permission) {
+        throw {
+            status: 404,
+            message: 'Permission request not found'
+        };
+    }
+    if (req.opencode_session_id! !== permission.opencode_session_id) {
+        throw {
+            status: 403,
+            message: 'Authorization token does not match permission session'
+        };
+    }
+
+    res.json({
+        status: permission.status,
+        approved: permission.status === 'approved'
+    });
+}, true)); // Plugin authenticates with opencode session token
+
+// POST /api/workflows/permission-reject/:id - Reject a pending permission request (plugin cleanup)
+router.post('/permission-reject/:id', apiHandler(async (req, res) => {
+    const id = req.params.id as string;
+
+    const permission = await prisma.tool_execution_permissions.findUnique({
+        where: { id }
+    });
+
+    if (!permission) {
+        throw {
+            status: 404,
+            message: 'Permission request not found'
+        };
+    }
+    if (req.opencode_session_id! !== permission.opencode_session_id) {
+        throw {
+            status: 403,
+            message: 'Authorization token does not match permission session'
+        };
+    }
+
+    if (permission.status === 'pending') {
+        await prisma.tool_execution_permissions.update({
+            where: { id },
+            data: {
+                status: 'rejected',
+                responded_at: BigInt(Date.now())
+            }
+        });
+    }
+
+    res.json({ success: true });
+}, true)); // Plugin authenticates with opencode session token
+
 export default router;
