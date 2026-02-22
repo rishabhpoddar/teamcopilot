@@ -8,7 +8,7 @@ import * as path from "path"
 // ============================================================================
 
 interface WorkflowJson {
-  intent_summary?: string
+  intent_summary: string
   inputs?: Record<string, unknown>
   triggers?: Record<string, unknown>
   runtime?: {
@@ -31,14 +31,10 @@ interface WorkflowMatch {
  */
 async function readWorkflowJson(
   workflowPath: string
-): Promise<WorkflowJson | null> {
+): Promise<WorkflowJson> {
   const workflowJsonPath = path.join(workflowPath, "workflow.json")
-  try {
-    const content = await fs.readFile(workflowJsonPath, "utf-8")
-    return JSON.parse(content) as WorkflowJson
-  } catch {
-    return null
-  }
+  const content = await fs.readFile(workflowJsonPath, "utf-8")
+  return JSON.parse(content) as WorkflowJson
 }
 
 /**
@@ -46,14 +42,10 @@ async function readWorkflowJson(
  */
 async function getWorkflowDirs(workspaceDir: string): Promise<string[]> {
   const workflowsDir = path.join(workspaceDir, "workflows")
-  try {
-    const entries = await fs.readdir(workflowsDir, { withFileTypes: true })
-    return entries
-      .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
-      .map((entry) => path.join(workflowsDir, entry.name))
-  } catch {
-    return []
-  }
+  const entries = await fs.readdir(workflowsDir, { withFileTypes: true })
+  return entries
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
+    .map((entry) => path.join(workflowsDir, entry.name))
 }
 
 // ============================================================================
@@ -131,11 +123,6 @@ export const FindSimilarWorkflowPlugin: Plugin = async (_ctx) => {
 
           for (const workflowPath of workflowDirs) {
             const workflowJson = await readWorkflowJson(workflowPath)
-
-            // Only include workflows that have an intent_summary
-            if (!workflowJson?.intent_summary) {
-              continue
-            }
 
             const summary = workflowJson.intent_summary
 
