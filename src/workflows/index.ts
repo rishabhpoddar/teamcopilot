@@ -274,46 +274,4 @@ router.get('/permission-status/:id', apiHandler(async (req, res) => {
     });
 }, false)); // No auth required - called from plugin
 
-// POST /api/workflows/permission-respond/:id - Respond to a permission request
-router.post('/permission-respond/:id', apiHandler(async (req, res) => {
-    const id = req.params.id as string;
-    const { response } = req.body as { response: unknown };
-
-    if (response !== 'once' && response !== 'always' && response !== 'reject') {
-        throw {
-            status: 400,
-            message: 'response must be "once", "always", or "reject"'
-        };
-    }
-
-    const permission = await prisma.tool_execution_permissions.findUnique({
-        where: { id }
-    });
-
-    if (!permission) {
-        throw {
-            status: 404,
-            message: 'Permission request not found'
-        };
-    }
-
-    if (permission.status !== 'pending') {
-        throw {
-            status: 400,
-            message: 'Permission request has already been responded to'
-        };
-    }
-
-    // Update permission status
-    await prisma.tool_execution_permissions.update({
-        where: { id },
-        data: {
-            status: response === 'reject' ? 'rejected' : 'approved',
-            responded_at: BigInt(Date.now())
-        }
-    });
-
-    res.json({ success: true });
-}, true));
-
 export default router;

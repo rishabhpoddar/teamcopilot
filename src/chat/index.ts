@@ -658,6 +658,16 @@ router.post('/sessions/:id/abort', apiHandler(async (req, res) => {
     if (pendingPermission) {
         await replyToPendingPermission(session.opencode_session_id, pendingPermission.id, "reject");
     }
+    await prisma.tool_execution_permissions.updateMany({
+        where: {
+            opencode_session_id: session.opencode_session_id,
+            status: 'pending'
+        },
+        data: {
+            status: 'rejected',
+            responded_at: BigInt(Date.now())
+        }
+    });
 
     const client = await getOpencodeClient();
 
