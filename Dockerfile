@@ -30,7 +30,7 @@ ENV WORKSPACE_DIR="/app/workspaces"
 ENV HOST="0.0.0.0"
 ENV PORT="3000"
 ENV OPENCODE_PORT="4096"
-ENV OPENCODE_MODEL="claude-sonnet-4-5-20250929"
+ENV OPENCODE_MODEL="anthropic/claude-sonnet-4-5-20250929"
 
 EXPOSE 3000
 CMD npx prisma migrate deploy && node dist/index.js

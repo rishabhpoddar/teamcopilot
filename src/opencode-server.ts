@@ -39,7 +39,10 @@ export async function startOpencodeServer() {
     const createOpencodeServer = await loadCreateOpencodeServer();
     const port = parseIntStrict(assertEnv("OPENCODE_PORT"), "OPENCODE_PORT");
     const model = assertEnv("OPENCODE_MODEL");
-    const fullModel = model.includes("/") ? model : `anthropic/${model}`;
+    if (!model.includes("/")) {
+        throw new Error("OPENCODE_MODEL must be in the format of <model_owner>/<model_name>");
+    }
+    const fullModel = model;
 
     const startServer = async () => {
         return await createOpencodeServer({

@@ -110,7 +110,7 @@ Data is persisted in Docker named volumes. Even if you remove and recreate the c
 | `HOST` | Hostname for the main server | `0.0.0.0` |
 | `PORT` | Port for the main server | `3000` |
 | `OPENCODE_PORT` | Port for the Opencode server | `4096` |
-| `OPENCODE_MODEL` | AI model for Opencode | `claude-sonnet-4-5-20250929` |
+| `OPENCODE_MODEL` | AI model for Opencode | `anthropic/claude-sonnet-4-5-20250929` |
 
 > Note: `DATABASE_URL` is relative to the `prisma/` directory. For Docker, `DATABASE_URL` and `WORKSPACE_DIR` are set automatically in the image. `HOST` and `PORT` control the main HTTP server. `OPENCODE_PORT` is used internally by the backend process and normally does not need to be exposed with a Docker `-p` flag.
 
