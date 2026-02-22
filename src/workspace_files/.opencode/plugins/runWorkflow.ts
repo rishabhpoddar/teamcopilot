@@ -724,6 +724,18 @@ interface PermissionResponse {
   approved: boolean
 }
 
+async function rejectWorkflowPermission(
+  sessionID: string,
+  permissionId: string
+): Promise<void> {
+  await fetch(`${API_BASE_URL}/api/workflows/permission-reject/${permissionId}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${sessionID}`,
+    },
+  })
+}
+
 /**
  * Requests permission from user to run a workflow.
  * Creates a permission request and waits for user response.
@@ -790,6 +802,11 @@ async function requestWorkflowPermission(
   }
 
   // Timeout - permission not granted in time
+  try {
+    await rejectWorkflowPermission(sessionID, permissionId)
+  } catch {
+    // Best-effort cleanup only; preserve the timeout error below.
+  }
   throw new Error("Permission request timed out")
 }
 
@@ -840,13 +857,6 @@ export const RunWorkflowPlugin: Plugin = async (_ctx) => {
             })
           }
 
-          // Request permission before executing workflow
-          await requestWorkflowPermission(
-            sessionID,
-            messageId,
-            callId
-          )
-
           if (!SLUG_REGEX.test(slug)) {
             return JSON.stringify({
               status: "error",
@@ -885,6 +895,13 @@ export const RunWorkflowPlugin: Plugin = async (_ctx) => {
               message: `Missing required file 'run.py' for workflow '${slug}'`,
             })
           }
+
+          // Request permission after basic workflow existence checks pass.
+          await requestWorkflowPermission(
+            sessionID,
+            messageId,
+            callId
+          )
 
           // Read workflow.json
           const workflowJson = await readWorkflowJson(workflowPath)

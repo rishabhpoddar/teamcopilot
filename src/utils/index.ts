@@ -8,6 +8,7 @@ type CustomRequest = express.Request & {
     email?: string;
     name?: string;
     role?: string;
+    opencode_session_id?: string;
 }
 
 export function apiHandler(handler: (req: CustomRequest, res: express.Response, next: express.NextFunction) => Promise<void>, requireAuth: boolean) {
@@ -41,6 +42,7 @@ export function apiHandler(handler: (req: CustomRequest, res: express.Response, 
                     (req as CustomRequest).email = user.email;
                     (req as CustomRequest).name = user.name;
                     (req as CustomRequest).role = user.role;
+                    (req as CustomRequest).opencode_session_id = undefined;
                 } catch (e) {
                     if (e instanceof jwt.JsonWebTokenError || e instanceof jwt.TokenExpiredError) {
                         const session = await prisma.chat_sessions.findFirst({
@@ -55,6 +57,7 @@ export function apiHandler(handler: (req: CustomRequest, res: express.Response, 
                             (req as CustomRequest).email = session.user.email;
                             (req as CustomRequest).name = session.user.name;
                             (req as CustomRequest).role = session.user.role;
+                            (req as CustomRequest).opencode_session_id = session.opencode_session_id;
                         }
                     } else {
                         throw e;
