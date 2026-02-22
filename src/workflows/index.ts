@@ -8,6 +8,7 @@ import {
     approveWorkflow,
     setWorkflowCreator
 } from "../utils/workflow";
+import { getOpencodeBaseUrl, getWorkspaceDir } from "../utils/opencode-client";
 
 const router = express.Router({ mergeParams: true });
 
@@ -214,6 +215,105 @@ router.get('/:slug', apiHandler(async (req, res) => {
             manifest
         }
     });
+}, true));
+
+// POST /api/workflows/request-permission - Create a tool execution permission request
+router.post('/request-permission', apiHandler(async (req, res) => {
+    const { opencode_session_id, message_id, call_id } = req.body;
+
+    if (!opencode_session_id || !message_id || !call_id) {
+        throw {
+            status: 400,
+            message: 'opencode_session_id, message_id, and call_id are required'
+        };
+    }
+
+    // Create or update permission request in database
+    const permission = await prisma.tool_execution_permissions.upsert({
+        where: {
+            opencode_session_id_message_id_call_id: {
+                opencode_session_id,
+                message_id,
+                call_id
+            }
+        },
+        create: {
+            opencode_session_id,
+            message_id,
+            call_id,
+            status: 'pending',
+            created_at: BigInt(Date.now())
+        },
+        update: {
+            status: 'pending',
+            responded_at: null
+        }
+    });
+
+    res.json({ permission_id: permission.id });
+}, false)); // No auth required - called from plugin with sessionID as token
+
+// GET /api/workflows/permission-status/:id - Check permission status
+router.get('/permission-status/:id', apiHandler(async (req, res) => {
+    const id = req.params.id as string;
+
+    const permission = await prisma.tool_execution_permissions.findUnique({
+        where: { id }
+    });
+
+    if (!permission) {
+        throw {
+            status: 404,
+            message: 'Permission request not found'
+        };
+    }
+
+    res.json({
+        status: permission.status,
+        approved: permission.status === 'approved'
+    });
+}, false)); // No auth required - called from plugin
+
+// POST /api/workflows/permission-respond/:id - Respond to a permission request
+router.post('/permission-respond/:id', apiHandler(async (req, res) => {
+    const id = req.params.id as string;
+    const { response } = req.body as { response: unknown };
+
+    if (response !== 'once' && response !== 'always' && response !== 'reject') {
+        throw {
+            status: 400,
+            message: 'response must be "once", "always", or "reject"'
+        };
+    }
+
+    const permission = await prisma.tool_execution_permissions.findUnique({
+        where: { id }
+    });
+
+    if (!permission) {
+        throw {
+            status: 404,
+            message: 'Permission request not found'
+        };
+    }
+
+    if (permission.status !== 'pending') {
+        throw {
+            status: 400,
+            message: 'Permission request has already been responded to'
+        };
+    }
+
+    // Update permission status
+    await prisma.tool_execution_permissions.update({
+        where: { id },
+        data: {
+            status: response === 'reject' ? 'rejected' : 'approved',
+            responded_at: BigInt(Date.now())
+        }
+    });
+
+    res.json({ success: true });
 }, true));
 
 export default router;
