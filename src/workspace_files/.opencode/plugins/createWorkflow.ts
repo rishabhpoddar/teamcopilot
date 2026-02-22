@@ -42,7 +42,7 @@ async function pathExists(p: string): Promise<boolean> {
     await fs.access(p)
     return true
   } catch {
-    return false
+    return false;
   }
 }
 
@@ -124,20 +124,16 @@ export const CreateWorkflowPlugin: Plugin = async (_ctx) => {
 
           // Validate slug format
           if (!SLUG_REGEX.test(slug)) {
-            return JSON.stringify({
-              success: false,
-              error: "invalid_slug",
-              message: `Invalid slug format: "${slug}". Slug must be lowercase, alphanumeric with hyphens (e.g., "my-workflow-name").`,
-            })
+            throw new Error(
+              `Invalid slug format: "${slug}". Slug must be lowercase, alphanumeric with hyphens (e.g., "my-workflow-name").`
+            )
           }
 
           // Validate timeout
           if (timeout_seconds < 1 || timeout_seconds > 86400) {
-            return JSON.stringify({
-              success: false,
-              error: "invalid_timeout",
-              message: `Invalid timeout: ${timeout_seconds}. Must be between 1 and 86400 seconds.`,
-            })
+            throw new Error(
+              `Invalid timeout: ${timeout_seconds}. Must be between 1 and 86400 seconds.`
+            )
           }
 
           // Path traversal protection
@@ -145,20 +141,12 @@ export const CreateWorkflowPlugin: Plugin = async (_ctx) => {
           const workflowDir = path.join(workflowsDir, slug)
 
           if (!isPathInside(workflowDir, workflowsDir)) {
-            return JSON.stringify({
-              success: false,
-              error: "invalid_slug",
-              message: "Path traversal detected. Invalid slug.",
-            })
+            throw new Error("Path traversal detected. Invalid slug.")
           }
 
           // Check if workflow already exists
           if (await pathExists(workflowDir)) {
-            return JSON.stringify({
-              success: false,
-              error: "workflow_exists",
-              message: `Workflow "${slug}" already exists at ${workflowDir}`,
-            })
+            throw new Error(`Workflow "${slug}" already exists at ${workflowDir}`)
           }
 
           // Ensure workflows directory exists
@@ -206,12 +194,9 @@ export const CreateWorkflowPlugin: Plugin = async (_ctx) => {
               creatorResponse,
               `Failed to set workflow creator (HTTP ${creatorResponse.status})`
             )
-            return JSON.stringify({
-              success: false,
-              error: "workflow_creator_set_failed",
-              message: `Workflow "${slug}" was created, but saving creator metadata failed: ${message}`,
-              workflow_path: path.relative(directory, workflowDir),
-            })
+            throw new Error(
+              `Workflow "${slug}" was created, but saving creator metadata failed: ${message}`
+            )
           }
 
           return JSON.stringify({

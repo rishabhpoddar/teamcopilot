@@ -208,44 +208,31 @@ function installGlobalCleanupHandlersOnce(): void {
  */
 async function readWorkflowJson(
   workflowPath: string
-): Promise<WorkflowJson | null> {
+): Promise<WorkflowJson> {
   const workflowJsonPath = path.join(workflowPath, "workflow.json")
-  try {
-    const content = await fsp.readFile(workflowJsonPath, "utf-8")
-    return JSON.parse(content) as WorkflowJson
-  } catch {
-    return null
-  }
+  const content = await fsp.readFile(workflowJsonPath, "utf-8")
+  return JSON.parse(content) as WorkflowJson
 }
 
 /**
  * Checks if the workflow's .venv exists.
  */
-async function venvExists(workflowPath: string): Promise<boolean> {
+async function assertVenvExists(workflowPath: string): Promise<void> {
   const venvPath = path.join(workflowPath, ".venv")
-  try {
-    const stats = await fsp.stat(venvPath)
-    return stats.isDirectory()
-  } catch {
-    return false
+  const stats = await fsp.stat(venvPath)
+  if (!stats.isDirectory()) {
+    throw new Error(`Virtual environment path is not a directory: ${venvPath}`)
   }
 }
 
-async function pathExists(p: string): Promise<boolean> {
-  try {
-    await fsp.access(p)
-    return true
-  } catch {
-    return false
-  }
+async function assertPathExists(p: string): Promise<void> {
+  await fsp.access(p)
 }
 
-async function isDirectory(p: string): Promise<boolean> {
-  try {
-    const stats = await fsp.stat(p)
-    return stats.isDirectory()
-  } catch {
-    return false
+async function assertDirectory(p: string): Promise<void> {
+  const stats = await fsp.stat(p)
+  if (!stats.isDirectory()) {
+    throw new Error(`Expected directory at ${p}`)
   }
 }
 
@@ -502,21 +489,17 @@ async function isMessageOrSessionAborted(
 
   // Single source of truth: session status endpoint.
   // If this session is not actively busy, stop the workflow process.
-  try {
-    const statusRes = await fetch(`${OPENCODE_BASE_URL}/session/status?${query}`)
-    if (!statusRes.ok) {
-      return false
-    }
-    const statuses = (await statusRes.json()) as Record<string, { type?: string }>
-    const state = statuses[sessionID] ?? null
-    const sessionType = typeof state?.type === "string" ? state.type : null
-
-    // Important: status endpoint may drop the session key after abort/interrupt.
-    // If the session is not actively busy anymore, this tool should stop.
-    return sessionType !== "busy"
-  } catch (err) {
+  const statusRes = await fetch(`${OPENCODE_BASE_URL}/session/status?${query}`)
+  if (!statusRes.ok) {
     return false
   }
+  const statuses = (await statusRes.json()) as Record<string, { type?: string }>
+  const state = statuses[sessionID] ?? null
+  const sessionType = typeof state?.type === "string" ? state.type : null
+
+  // Important: status endpoint may drop the session key after abort/interrupt.
+  // If the session is not actively busy anymore, this tool should stop.
+  return sessionType !== "busy"
 }
 
 /**
@@ -654,11 +637,17 @@ function runWithTimeout(
     cancellationPollId = setInterval(async () => {
       if (resolved || pollInFlight) return
       pollInFlight = true
-      const aborted = await isMessageOrSessionAborted(
-        cancellationProbe.sessionID,
-        cancellationProbe.directory
-      )
-      pollInFlight = false
+      let aborted = false
+      try {
+        aborted = await isMessageOrSessionAborted(
+          cancellationProbe.sessionID,
+          cancellationProbe.directory
+        )
+      } catch {
+        aborted = false
+      } finally {
+        pollInFlight = false
+      }
       if (!aborted || resolved) return
       abortWorkflow()
     }, 500)
@@ -842,59 +831,32 @@ export const RunWorkflowPlugin: Plugin = async (_ctx) => {
           const abortSignal = extractAbortSignal(context)
 
           if (!messageId) {
-            return JSON.stringify({
-              status: "error",
-              error: "missing_message_id",
-              message: "Could not determine message id from tool context.",
-            })
+            throw new Error("Could not determine message id from tool context.")
           }
 
           if (!callId) {
-            return JSON.stringify({
-              status: "error",
-              error: "missing_call_id",
-              message: "Could not determine call id from tool context.",
-            })
+            throw new Error("Could not determine call id from tool context.")
           }
 
           if (!SLUG_REGEX.test(slug)) {
-            return JSON.stringify({
-              status: "error",
-              error: "invalid_slug",
-              message:
-                "Invalid workflow slug. Expected lowercase letters/numbers with optional hyphens (e.g. 'failed-stripe-payments').",
-            })
+            throw new Error(
+              "Invalid workflow slug. Expected lowercase letters/numbers with optional hyphens (e.g. 'failed-stripe-payments')."
+            )
           }
 
           const workflowsRoot = path.join(directory, "workflows")
           const workflowPath = path.join(workflowsRoot, slug)
 
           if (!isPathInside(workflowPath, workflowsRoot)) {
-            return JSON.stringify({
-              status: "error",
-              error: "invalid_slug",
-              message: "Invalid workflow path (must be inside workflows/).",
-            })
+            throw new Error("Invalid workflow path (must be inside workflows/).")
           }
 
           // Check if workflow exists (and is a directory)
-          if (!(await isDirectory(workflowPath))) {
-            return JSON.stringify({
-              status: "error",
-              error: "workflow_not_found",
-              message: `Workflow '${slug}' not found at ${workflowPath}`,
-            })
-          }
+          await assertDirectory(workflowPath)
 
           // Validate required files exist early for clearer errors
           const runScript = path.join(workflowPath, "run.py")
-          if (!(await pathExists(runScript))) {
-            return JSON.stringify({
-              status: "error",
-              error: "invalid_workflow",
-              message: `Missing required file 'run.py' for workflow '${slug}'`,
-            })
-          }
+          await assertPathExists(runScript)
 
           // Request permission after basic workflow existence checks pass.
           await requestWorkflowPermission(
@@ -905,32 +867,13 @@ export const RunWorkflowPlugin: Plugin = async (_ctx) => {
 
           // Read workflow.json
           const workflowJson = await readWorkflowJson(workflowPath)
-          if (!workflowJson) {
-            return JSON.stringify({
-              status: "error",
-              error: "invalid_workflow",
-              message: `Could not read workflow.json for '${slug}'`,
-            })
-          }
 
           // Check if .venv exists
-          if (!(await venvExists(workflowPath))) {
-            return JSON.stringify({
-              status: "error",
-              error: "venv_not_found",
-              message: `Virtual environment (.venv) not found for workflow '${slug}'. Please create it first.`,
-            })
-          }
+          await assertVenvExists(workflowPath)
 
           // Check venv python exists (more specific than just .venv/)
           const venvPython = getVenvPythonPath(workflowPath)
-          if (!(await pathExists(venvPython))) {
-            return JSON.stringify({
-              status: "error",
-              error: "venv_python_not_found",
-              message: `Virtual environment python not found at ${venvPython}`,
-            })
-          }
+          await assertPathExists(venvPython)
 
           // Validate inputs against schema
           const inputSchema = workflowJson.inputs || {}
@@ -940,12 +883,9 @@ export const RunWorkflowPlugin: Plugin = async (_ctx) => {
           )
 
           if (!validation.valid) {
-            return JSON.stringify({
-              status: "error",
-              error: "invalid_inputs",
-              message: "Input validation failed",
-              errors: validation.errors,
-            })
+            throw new Error(
+              `Input validation failed: ${JSON.stringify(validation.errors)}`
+            )
           }
 
           // Get timeout from workflow.json (default to 60 seconds).
@@ -953,11 +893,9 @@ export const RunWorkflowPlugin: Plugin = async (_ctx) => {
             parseTimeoutSeconds(workflowJson.runtime?.timeout_seconds)
 
           if (!timeoutSeconds) {
-            return JSON.stringify({
-              status: "error",
-              error: "invalid_workflow",
-              message: `Could not read runtime.timeout_seconds from workflow.json for '${slug}'`,
-            })
+            throw new Error(
+              `Could not read runtime.timeout_seconds from workflow.json for '${slug}'`
+            )
           }
 
           // Convert inputs to command-line arguments
@@ -970,11 +908,7 @@ export const RunWorkflowPlugin: Plugin = async (_ctx) => {
             sessionID
           )
           if (isApiError(runCreate)) {
-            return JSON.stringify({
-              status: "error",
-              error: "run_creation_failed",
-              message: runCreate.message,
-            })
+            throw new Error(runCreate.message)
           }
 
           const runId = runCreate.data
@@ -1017,7 +951,7 @@ export const RunWorkflowPlugin: Plugin = async (_ctx) => {
             }
             : {}
 
-          return JSON.stringify({
+          const finalOutput = JSON.stringify({
             status: result.status,
             output: result.output,
             workflow: slug,
@@ -1025,6 +959,12 @@ export const RunWorkflowPlugin: Plugin = async (_ctx) => {
             run_id: runId,
             ...warningFields,
           })
+
+          if (result.status !== "success") {
+            throw new Error("Workflow execution failed: " + finalOutput)
+          }
+
+          return finalOutput
         },
       }),
     },
