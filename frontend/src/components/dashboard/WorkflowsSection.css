@@ -11,12 +11,9 @@
   flex-wrap: wrap;
   align-items: end;
   padding: 0.9rem;
-  border: 1px solid #2a3240;
-  border-radius: 12px;
-  background:
-    radial-gradient(circle at top right, rgba(37, 99, 235, 0.12), transparent 45%),
-    linear-gradient(180deg, #121722 0%, #0f141d 100%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  border: 1px solid #333;
+  border-radius: 8px;
+  background: transparent;
 }
 
 .workflow-filters-title {
@@ -30,17 +27,15 @@
 .workflow-filters-heading {
   font-size: 0.9rem;
   font-weight: 600;
-  color: #e5e7eb;
-  letter-spacing: 0.01em;
+  color: inherit;
 }
 
 .workflow-filters-count {
   font-size: 0.75rem;
-  color: #cbd5e1;
-  background: rgba(148, 163, 184, 0.14);
-  border: 1px solid rgba(148, 163, 184, 0.18);
+  color: #888;
+  background: #333;
   padding: 0.2rem 0.45rem;
-  border-radius: 999px;
+  border-radius: 4px;
 }
 
 .workflow-filter-group {
@@ -56,10 +51,8 @@
 
 .workflow-filter-group label {
   font-size: 0.75rem;
-  color: #b7c1d1;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
+  color: #888;
+  font-weight: 500;
 }
 
 .workflow-filter-select-wrap {
@@ -71,10 +64,10 @@
   position: absolute;
   right: 0.75rem;
   top: 50%;
-  width: 0.55rem;
-  height: 0.55rem;
-  border-right: 2px solid #93a3b8;
-  border-bottom: 2px solid #93a3b8;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-right: 2px solid #888;
+  border-bottom: 2px solid #888;
   transform: translateY(-65%) rotate(45deg);
   pointer-events: none;
 }
@@ -84,25 +77,23 @@
   min-width: 180px;
   appearance: none;
   -webkit-appearance: none;
-  background: rgba(15, 23, 42, 0.85);
-  color: #f9fafb;
-  border: 1px solid #334155;
-  border-radius: 10px;
-  padding: 0.55rem 2rem 0.55rem 0.75rem;
-  font-size: 0.9rem;
-  line-height: 1.2;
-  transition: border-color 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
+  background: #1a1a1a;
+  color: inherit;
+  border: 1px solid #444;
+  border-radius: 6px;
+  padding: 0.75rem 2rem 0.75rem 1rem;
+  font-size: 1rem;
+  font-family: inherit;
+  transition: border-color 0.25s;
 }
 
 .workflow-filter-group select:hover {
-  border-color: #475569;
-  background: rgba(15, 23, 42, 0.95);
+  border-color: #646cff;
 }
 
 .workflow-filter-group select:focus {
-  outline: none;
-  border-color: #60a5fa;
-  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.2);
+  outline: 4px auto -webkit-focus-ring-color;
+  border-color: transparent;
 }
 
 .workflow-filter-search-wrap {
@@ -110,57 +101,40 @@
 }
 
 .workflow-filter-search-wrap::before {
-  content: '';
+  content: '\1F50D';
   position: absolute;
   left: 0.75rem;
   top: 50%;
-  width: 0.62rem;
-  height: 0.62rem;
-  border: 2px solid #93a3b8;
-  border-radius: 999px;
-  transform: translateY(-60%);
-  pointer-events: none;
-}
-
-.workflow-filter-search-wrap::after {
-  content: '';
-  position: absolute;
-  left: 1.25rem;
-  top: calc(50% + 0.15rem);
-  width: 0.38rem;
-  height: 2px;
-  background: #93a3b8;
-  transform: rotate(45deg);
-  border-radius: 2px;
+  transform: translateY(-50%);
+  color: #888;
+  font-size: 0.9rem;
   pointer-events: none;
 }
 
 .workflow-filter-search-wrap input {
   width: 100%;
   min-width: 220px;
-  background: rgba(15, 23, 42, 0.85);
-  color: #f9fafb;
-  border: 1px solid #334155;
-  border-radius: 10px;
-  padding: 0.55rem 0.75rem 0.55rem 2.15rem;
-  font-size: 0.9rem;
-  line-height: 1.2;
-  transition: border-color 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
+  background: #1a1a1a;
+  color: inherit;
+  border: 1px solid #444;
+  border-radius: 6px;
+  padding: 0.75rem 1rem 0.75rem 2.5rem;
+  font-size: 1rem;
+  font-family: inherit;
+  transition: border-color 0.25s;
 }
 
 .workflow-filter-search-wrap input::placeholder {
-  color: #94a3b8;
+  color: #888;
 }
 
 .workflow-filter-search-wrap input:hover {
-  border-color: #475569;
-  background: rgba(15, 23, 42, 0.95);
+  border-color: #646cff;
 }
 
 .workflow-filter-search-wrap input:focus {
-  outline: none;
-  border-color: #60a5fa;
-  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.2);
+  outline: 4px auto -webkit-focus-ring-color;
+  border-color: transparent;
 }
 
 @media (max-width: 700px) {
@@ -328,75 +302,27 @@
 
 /* Light Mode Overrides */
 @media (prefers-color-scheme: light) {
-  .workflow-filter-group label {
-    color: #475569;
-  }
-
   .workflow-filters {
-    border-color: #dbe3ef;
-    background:
-      radial-gradient(circle at top right, rgba(37, 99, 235, 0.08), transparent 42%),
-      linear-gradient(180deg, #ffffff 0%, #f7fafc 100%);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
-  }
-
-  .workflow-filters-heading {
-    color: #0f172a;
+    border-color: #ddd;
   }
 
   .workflow-filters-count {
-    color: #334155;
-    background: rgba(148, 163, 184, 0.16);
-    border-color: rgba(148, 163, 184, 0.26);
+    background: #f0f0f0;
   }
 
   .workflow-filter-select-wrap::after {
-    border-right-color: #64748b;
-    border-bottom-color: #64748b;
+    border-right-color: #666;
+    border-bottom-color: #666;
   }
 
   .workflow-filter-group select {
-    background: #fff;
-    color: #111827;
-    border-color: #cbd5e1;
-  }
-
-  .workflow-filter-group select:hover {
-    border-color: #94a3b8;
-    background: #fff;
-  }
-
-  .workflow-filter-group select:focus {
-    border-color: #2563eb;
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
-  }
-
-  .workflow-filter-search-wrap::before {
-    border-color: #64748b;
-  }
-
-  .workflow-filter-search-wrap::after {
-    background: #64748b;
+    background: #f9f9f9;
+    border-color: #ccc;
   }
 
   .workflow-filter-search-wrap input {
-    background: #fff;
-    color: #111827;
-    border-color: #cbd5e1;
-  }
-
-  .workflow-filter-search-wrap input::placeholder {
-    color: #94a3b8;
-  }
-
-  .workflow-filter-search-wrap input:hover {
-    border-color: #94a3b8;
-    background: #fff;
-  }
-
-  .workflow-filter-search-wrap input:focus {
-    border-color: #2563eb;
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+    background: #f9f9f9;
+    border-color: #ccc;
   }
 
   .workflow-card {
