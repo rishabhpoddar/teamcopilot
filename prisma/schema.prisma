@@ -18,6 +18,7 @@ model users {
   reset_token_expires_at BigInt?
   workflowRuns           workflow_runs[]
   chatSessions           chat_sessions[]
+  workflowRunPermissionUsers workflow_run_permission_users[]
 }
 
 model workflow_runs {
@@ -61,4 +62,24 @@ model tool_execution_permissions {
 
   @@unique([opencode_session_id, message_id, call_id])
   @@index([opencode_session_id, status])
+}
+
+model workflow_run_permissions {
+  workflow_slug String @id
+  mode          String // "restricted" | "everyone"
+  created_at    BigInt
+  updated_at    BigInt
+  allowedUsers  workflow_run_permission_users[]
+}
+
+model workflow_run_permission_users {
+  id           String @id @default(uuid())
+  workflow_slug String
+  user_id      String
+  created_at   BigInt
+  permission   workflow_run_permissions @relation(fields: [workflow_slug], references: [workflow_slug], onDelete: Cascade)
+  user         users @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([workflow_slug, user_id])
+  @@index([workflow_slug])
 }

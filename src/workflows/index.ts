@@ -9,6 +9,15 @@ import {
     setWorkflowCreator,
     deleteWorkflowDirectory
 } from "../utils/workflow";
+import {
+    addApproverToWorkflowRunPermissionsIfRestricted,
+    ensureWorkflowRunPermissionsForManifest,
+    getPermissionSummaryFields,
+    getWorkflowRunPermissionWithUsers,
+    mapPermissionToApi,
+    setWorkflowRunPermissions,
+    initializeWorkflowRunPermissionsForCreator,
+} from "../utils/workflow-permissions";
 
 const router = express.Router({ mergeParams: true });
 
@@ -21,6 +30,7 @@ router.get('/', apiHandler(async (req, res) => {
 
     for (const slug of slugs) {
         const manifest = readWorkflowManifest(slug);
+        await ensureWorkflowRunPermissionsForManifest(slug, manifest);
         manifests.set(slug, manifest);
         if (manifest.created_by_user_id) {
             creatorIds.add(manifest.created_by_user_id);
@@ -39,6 +49,8 @@ router.get('/', apiHandler(async (req, res) => {
     for (const slug of slugs) {
         const manifest = manifests.get(slug);
         if (!manifest) continue;
+        const permission = await getWorkflowRunPermissionWithUsers(slug);
+        const permissionSummary = getPermissionSummaryFields(permission, req.userId!);
         const createdByUserId = manifest.created_by_user_id ?? null;
         workflows.push({
             slug,
@@ -47,7 +59,8 @@ router.get('/', apiHandler(async (req, res) => {
             created_by_user_id: createdByUserId,
             created_by_user_name: createdByUserId ? (creatorNameById.get(createdByUserId) ?? null) : null,
             created_by_user_email: createdByUserId ? (creatorEmailById.get(createdByUserId) ?? null) : null,
-            approved_by_user_id: manifest.approved_by_user_id ?? null
+            approved_by_user_id: manifest.approved_by_user_id ?? null,
+            ...permissionSummary
         });
     }
 
@@ -81,11 +94,23 @@ router.post('/runs', apiHandler(async (req, res) => {
     }
 
     const manifest = readWorkflowManifest(workflow_slug);
+    await ensureWorkflowRunPermissionsForManifest(workflow_slug, manifest);
 
     if (manifest.approved_by_user_id === null) {
         throw {
             status: 403,
             message: 'Workflow is not approved yet'
+        };
+    }
+
+    const permission = await getWorkflowRunPermissionWithUsers(workflow_slug);
+    const permissionSummary = getPermissionSummaryFields(permission, req.userId!);
+    if (!permissionSummary.can_current_user_run) {
+        throw {
+            status: 403,
+            message: permissionSummary.is_run_locked_due_to_missing_users
+                ? 'Workflow cannot be run because no allowed users remain'
+                : 'You do not have permission to run this workflow'
         };
     }
 
@@ -156,6 +181,9 @@ router.post('/:slug/approve', apiHandler(async (req, res) => {
     const slug = req.params.slug as string;
 
     await approveWorkflow(slug, req.userId!);
+    const approvedManifest = readWorkflowManifest(slug);
+    await ensureWorkflowRunPermissionsForManifest(slug, approvedManifest);
+    await addApproverToWorkflowRunPermissionsIfRestricted(slug, req.userId!, approvedManifest.created_by_user_id);
 
     res.json({
         workflow: {
@@ -181,6 +209,7 @@ router.post('/:slug/creator', apiHandler(async (req, res) => {
     const updatedManifest = existingCreator
         ? manifest
         : setWorkflowCreator(slug, req.userId!);
+    await initializeWorkflowRunPermissionsForCreator(slug, req.userId!);
 
     res.json({
         workflow: {
@@ -217,16 +246,37 @@ router.delete('/:slug', apiHandler(async (req, res) => {
     await prisma.workflow_runs.deleteMany({
         where: { workflow_slug: slug }
     });
+    await prisma.workflow_run_permissions.deleteMany({
+        where: { workflow_slug: slug }
+    });
 
     deleteWorkflowDirectory(slug);
 
     res.json({ success: true });
 }, true));
 
+// GET /api/workflows/users - List users for permission picker
+router.get('/users', apiHandler(async (_req, res) => {
+    const users = await prisma.users.findMany({
+        orderBy: { name: 'asc' },
+        select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true
+        }
+    });
+
+    res.json({ users });
+}, true));
+
 // GET /api/workflows/:slug - Get workflow details from filesystem
 router.get('/:slug', apiHandler(async (req, res) => {
     const slug = req.params.slug as string;
     const manifest = readWorkflowManifest(slug);
+    await ensureWorkflowRunPermissionsForManifest(slug, manifest);
+    const permission = await getWorkflowRunPermissionWithUsers(slug);
+    const permissionSummary = getPermissionSummaryFields(permission, req.userId!);
 
     const createdByUserId = manifest.created_by_user_id ?? null;
     const creator = createdByUserId
@@ -245,7 +295,72 @@ router.get('/:slug', apiHandler(async (req, res) => {
             created_by_user_name: creator?.name ?? null,
             created_by_user_email: creator?.email ?? null,
             approved_by_user_id: manifest.approved_by_user_id ?? null,
+            ...permissionSummary,
+            run_permissions: mapPermissionToApi(permission),
+            allowed_runners_resolved: permission.allowedUsers.map((row) => ({
+                user_id: row.user.id,
+                name: row.user.name,
+                email: row.user.email,
+                is_owner: row.user.id === manifest.created_by_user_id,
+                is_approver: row.user.id === manifest.approved_by_user_id
+            })),
             manifest
+        }
+    });
+}, true));
+
+// PATCH /api/workflows/:slug/run-permissions - Update run permissions
+router.patch('/:slug/run-permissions', apiHandler(async (req, res) => {
+    const slug = req.params.slug as string;
+    const manifest = readWorkflowManifest(slug);
+    await ensureWorkflowRunPermissionsForManifest(slug, manifest);
+
+    if (manifest.approved_by_user_id === null) {
+        throw {
+            status: 403,
+            message: 'Workflow must be approved before updating run permissions'
+        };
+    }
+
+    const currentPermission = await getWorkflowRunPermissionWithUsers(slug);
+    const currentSummary = getPermissionSummaryFields(currentPermission, req.userId!);
+    if (!currentSummary.can_current_user_manage_run_permissions) {
+        throw {
+            status: 403,
+            message: currentSummary.is_run_locked_due_to_missing_users
+                ? 'Workflow permissions cannot be modified because no allowed users remain'
+                : 'You do not have permission to modify workflow run permissions'
+        };
+    }
+
+    const { mode, allowed_user_ids } = req.body as { mode?: string; allowed_user_ids?: unknown };
+    if (mode !== 'restricted' && mode !== 'everyone') {
+        throw {
+            status: 400,
+            message: 'mode must be "restricted" or "everyone"'
+        };
+    }
+
+    const updatedPermission = mode === 'everyone'
+        ? await setWorkflowRunPermissions(slug, { mode: 'everyone' }, manifest.created_by_user_id)
+        : await setWorkflowRunPermissions(slug, {
+            mode: 'restricted',
+            allowed_user_ids: Array.isArray(allowed_user_ids) ? allowed_user_ids.map((id) => String(id)) : []
+        }, manifest.created_by_user_id);
+    const updatedSummary = getPermissionSummaryFields(updatedPermission, req.userId!);
+
+    res.json({
+        workflow: {
+            slug,
+            ...updatedSummary,
+            run_permissions: mapPermissionToApi(updatedPermission),
+            allowed_runners_resolved: updatedPermission.allowedUsers.map((row) => ({
+                user_id: row.user.id,
+                name: row.user.name,
+                email: row.user.email,
+                is_owner: row.user.id === manifest.created_by_user_id,
+                is_approver: row.user.id === manifest.approved_by_user_id
+            }))
         }
     });
 }, true));

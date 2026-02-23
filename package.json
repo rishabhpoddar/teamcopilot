@@ -8,7 +8,8 @@
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:backend": "ts-node-dev src/index.ts",
     "dev:frontend": "cd frontend && npm run dev",
-    "reset-password": "ts-node src/reset-password.ts"
+    "reset-password": "ts-node src/reset-password.ts",
+    "backfill-workflow-run-permissions": "ts-node src/backfill-workflow-run-permissions.ts"
   },
   "keywords": [],
   "author": "",

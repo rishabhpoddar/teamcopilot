@@ -21,6 +21,11 @@ export default function WorkflowCard({
     created_by_user_email,
     created_by_user_id,
     approved_by_user_id,
+    run_permission_mode,
+    can_current_user_run,
+    can_current_user_manage_run_permissions,
+    allowed_runner_count,
+    is_run_locked_due_to_missing_users,
     userRole,
     currentUserId,
     token,
@@ -30,9 +35,82 @@ export default function WorkflowCard({
 }: WorkflowCardProps) {
     const [approving, setApproving] = useState(false);
     const [deleting, setDeleting] = useState(false);
+    const [showPermissionsEditor, setShowPermissionsEditor] = useState(false);
+    const [permissionsLoading, setPermissionsLoading] = useState(false);
+    const [permissionsSaving, setPermissionsSaving] = useState(false);
+    const [permissionsError, setPermissionsError] = useState<string | null>(null);
+    const [allUsers, setAllUsers] = useState<Array<{ id: string; name: string; email: string; role: 'User' | 'Engineer' }>>([]);
+    const [permissionMode, setPermissionMode] = useState<'restricted' | 'everyone'>('restricted');
+    const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+    const [ownerUserIdForEditor, setOwnerUserIdForEditor] = useState<string | null>(created_by_user_id);
+    const [approverUserIdForEditor, setApproverUserIdForEditor] = useState<string | null>(approved_by_user_id);
     const isApproved = approved_by_user_id !== null;
+    const canRun = isApproved && can_current_user_run;
+    const canManagePermissions = isApproved && can_current_user_manage_run_permissions;
     const creatorUserMissing = created_by_user_id === null || (!created_by_user_name && !created_by_user_email);
     const canDelete = created_by_user_id === currentUserId || (userRole === 'Engineer' && creatorUserMissing);
+
+    const loadPermissionsEditorData = async () => {
+        setPermissionsLoading(true);
+        setPermissionsError(null);
+        try {
+            const [workflowResponse, usersResponse] = await Promise.all([
+                axiosInstance.get(`/api/workflows/${slug}`, {
+                    headers: { Authorization: `Bearer ${token}` }
+                }),
+                axiosInstance.get('/api/workflows/users', {
+                    headers: { Authorization: `Bearer ${token}` }
+                })
+            ]);
+            const workflow = workflowResponse.data.workflow as {
+                created_by_user_id: string | null;
+                approved_by_user_id: string | null;
+                run_permissions: { mode: 'everyone' } | { mode: 'restricted'; allowed_user_ids: string[] };
+            };
+            setOwnerUserIdForEditor(workflow.created_by_user_id);
+            setApproverUserIdForEditor(workflow.approved_by_user_id);
+            setPermissionMode(workflow.run_permissions.mode);
+            setSelectedUserIds(workflow.run_permissions.mode === 'restricted' ? workflow.run_permissions.allowed_user_ids : []);
+            setAllUsers(usersResponse.data.users);
+            setShowPermissionsEditor(true);
+        } catch (err: unknown) {
+            const errorMessage = err instanceof AxiosError
+                ? err.response?.data?.message || err.response?.data || err.message
+                : 'Failed to load workflow permissions';
+            setPermissionsError(String(errorMessage));
+        } finally {
+            setPermissionsLoading(false);
+        }
+    };
+
+    const toggleAllowedUser = (userId: string) => {
+        if (ownerUserIdForEditor === userId) {
+            return;
+        }
+        setSelectedUserIds((prev) => prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]);
+    };
+
+    const handleSavePermissions = async () => {
+        setPermissionsSaving(true);
+        try {
+            const payload = permissionMode === 'everyone'
+                ? { mode: 'everyone' as const }
+                : { mode: 'restricted' as const, allowed_user_ids: Array.from(new Set(selectedUserIds)) };
+            await axiosInstance.patch(`/api/workflows/${slug}/run-permissions`, payload, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            toast.success('Workflow permissions updated');
+            setShowPermissionsEditor(false);
+            onApproved();
+        } catch (err: unknown) {
+            const errorMessage = err instanceof AxiosError
+                ? err.response?.data?.message || err.response?.data || err.message
+                : 'Failed to update workflow permissions';
+            toast.error(errorMessage);
+        } finally {
+            setPermissionsSaving(false);
+        }
+    };
 
     const handleApprove = async () => {
         setApproving(true);
@@ -106,10 +184,101 @@ export default function WorkflowCard({
                 </div>
             )}
 
+            {isApproved && (
+                <div className="workflow-approval-section">
+                    <p className="workflow-approval-message">
+                        {run_permission_mode === 'everyone'
+                            ? 'Run access: Everyone'
+                            : is_run_locked_due_to_missing_users
+                                ? 'Run access: Restricted (locked - no allowed users remain)'
+                                : can_current_user_run
+                                    ? `Run access: Restricted (${allowed_runner_count} allowed)`
+                                    : 'Run access: Restricted'}
+                    </p>
+                    {permissionsError && !showPermissionsEditor && (
+                        <p className="workflow-approval-message">{permissionsError}</p>
+                    )}
+                    {permissionsLoading && <p className="workflow-approval-message">Loading permissions...</p>}
+                    <button
+                        className="workflow-approve-btn"
+                        onClick={loadPermissionsEditorData}
+                        disabled={!canManagePermissions || permissionsLoading}
+                        type="button"
+                    >
+                        Manage Permissions
+                    </button>
+                    {!canManagePermissions && (
+                        <p className="workflow-approval-message">
+                            {is_run_locked_due_to_missing_users
+                                ? 'No one can modify permissions because no allowed users remain.'
+                                : 'Only users who can run this workflow can change permissions.'}
+                        </p>
+                    )}
+                    {showPermissionsEditor && (
+                        <div style={{ marginTop: 12, border: '1px solid #ddd', borderRadius: 8, padding: 12 }}>
+                            <label style={{ display: 'block', marginBottom: 8 }}>
+                                Permission mode
+                                <select
+                                    value={permissionMode}
+                                    onChange={(e) => setPermissionMode(e.target.value as 'restricted' | 'everyone')}
+                                    style={{ marginLeft: 8 }}
+                                >
+                                    <option value="restricted">Restricted</option>
+                                    <option value="everyone">Everyone</option>
+                                </select>
+                            </label>
+
+                            {permissionMode === 'restricted' && (
+                                <div style={{ maxHeight: 180, overflow: 'auto', border: '1px solid #eee', padding: 8 }}>
+                                    {allUsers.map((user) => {
+                                        const checked = selectedUserIds.includes(user.id);
+                                        const isOwner = ownerUserIdForEditor === user.id;
+                                        const isApprover = approverUserIdForEditor === user.id;
+                                        return (
+                                            <label key={user.id} style={{ display: 'block', marginBottom: 6, opacity: isOwner ? 0.9 : 1 }}>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={checked}
+                                                    disabled={isOwner}
+                                                    onChange={() => toggleAllowedUser(user.id)}
+                                                />
+                                                {' '}
+                                                {user.name} ({user.email})
+                                                {isOwner ? ' [Owner]' : ''}
+                                                {isApprover ? ' [Approver]' : ''}
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                            )}
+
+                            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                                <button
+                                    type="button"
+                                    className="workflow-approve-btn"
+                                    onClick={handleSavePermissions}
+                                    disabled={permissionsSaving}
+                                >
+                                    {permissionsSaving ? 'Saving...' : 'Save Permissions'}
+                                </button>
+                                <button
+                                    type="button"
+                                    className="workflow-card-delete-btn"
+                                    onClick={() => setShowPermissionsEditor(false)}
+                                    disabled={permissionsSaving}
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+
             <div className="workflow-card-actions">
                 <button
                     className="workflow-card-run-btn"
-                    disabled={!isApproved}
+                    disabled={!canRun}
                     onClick={() => onRunWorkflow(name || slug)}
                 >
                     Run Workflow
