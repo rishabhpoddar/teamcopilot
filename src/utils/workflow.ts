@@ -7,6 +7,7 @@ import path from "path";
 import { WorkflowManifest } from "../types/workflow";
 import prisma from "../prisma/client";
 import { assertEnv } from "./assert";
+import { ensureWorkflowRunPermissionsForManifest } from "./workflow-permissions";
 
 const WORKSPACE_DIR = assertEnv("WORKSPACE_DIR");
 
@@ -48,7 +49,7 @@ export function workflowExists(slug: string): boolean {
 }
 
 /** Read a workflow's manifest */
-export function readWorkflowManifest(slug: string): WorkflowManifest {
+function readWorkflowManifest(slug: string): WorkflowManifest {
     const manifestPath = getWorkflowManifestPath(slug);
 
     if (!fs.existsSync(manifestPath)) {
@@ -60,6 +61,12 @@ export function readWorkflowManifest(slug: string): WorkflowManifest {
 
     const content = fs.readFileSync(manifestPath, "utf-8");
     return JSON.parse(content) as WorkflowManifest;
+}
+
+export async function readWorkflowManifestAndEnsurePermissions(slug: string): Promise<WorkflowManifest> {
+    const manifest = readWorkflowManifest(slug);
+    await ensureWorkflowRunPermissionsForManifest(slug, manifest);
+    return manifest;
 }
 
 /** Write a workflow's manifest */

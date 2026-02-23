@@ -300,6 +300,240 @@
   font-style: italic;
 }
 
+/* Permissions Editor */
+.permissions-editor {
+  margin-top: 0.75rem;
+  background: #0f0f0f;
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.permissions-editor-header {
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #2a2a2a;
+}
+
+.permissions-editor-title {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #e0e0e0;
+}
+
+.permissions-mode-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.permissions-mode-label {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #999;
+}
+
+.permissions-mode-select {
+  width: 100%;
+  appearance: none;
+  -webkit-appearance: none;
+  background: #1a1a1a;
+  color: inherit;
+  border: 1px solid #444;
+  border-radius: 6px;
+  padding: 0.6rem 2.5rem 0.6rem 0.75rem;
+  font-size: 0.9rem;
+  font-family: inherit;
+  transition: border-color 0.2s;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M2 4l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  cursor: pointer;
+}
+
+.permissions-mode-select:hover {
+  border-color: #646cff;
+}
+
+.permissions-mode-select:focus {
+  outline: 2px solid #646cff;
+  outline-offset: 2px;
+  border-color: transparent;
+}
+
+.permissions-users-section {
+  margin-top: 1rem;
+}
+
+.permissions-users-title {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #999;
+  margin-bottom: 0.5rem;
+}
+
+.permissions-users-list {
+  max-height: 240px;
+  overflow-y: auto;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 0.5rem;
+}
+
+.permissions-users-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.permissions-users-list::-webkit-scrollbar-track {
+  background: #0f0f0f;
+  border-radius: 4px;
+}
+
+.permissions-users-list::-webkit-scrollbar-thumb {
+  background: #444;
+  border-radius: 4px;
+}
+
+.permissions-users-list::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+.permissions-user-item {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: 4px;
+  transition: background-color 0.15s;
+  cursor: pointer;
+  margin-bottom: 0.25rem;
+}
+
+.permissions-user-item:last-child {
+  margin-bottom: 0;
+}
+
+.permissions-user-item:hover:not(.permissions-user-item-disabled) {
+  background: #252525;
+}
+
+.permissions-user-item-disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.permissions-user-checkbox {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: #646cff;
+}
+
+.permissions-user-checkbox:disabled {
+  cursor: not-allowed;
+}
+
+.permissions-user-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.permissions-user-name {
+  font-size: 0.85rem;
+  color: #e0e0e0;
+  margin-bottom: 0.1rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.permissions-user-email {
+  font-size: 0.75rem;
+  color: #888;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.permissions-user-badges {
+  display: flex;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.permissions-user-badge {
+  font-size: 0.65rem;
+  padding: 0.15rem 0.4rem;
+  border-radius: 3px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.permissions-user-badge-owner {
+  background: #1a3a4d;
+  color: #60a5fa;
+}
+
+.permissions-user-badge-approver {
+  background: #1a4d1a;
+  color: #4ade80;
+}
+
+.permissions-editor-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #2a2a2a;
+}
+
+.permissions-editor-save-btn {
+  flex: 1;
+  background: #2563eb;
+  color: white;
+  border: none;
+  padding: 0.6rem 1rem;
+  font-size: 0.85rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.permissions-editor-save-btn:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.permissions-editor-save-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.permissions-editor-cancel-btn {
+  background: transparent;
+  color: #aaa;
+  border: 1px solid #444;
+  padding: 0.6rem 1rem;
+  font-size: 0.85rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.permissions-editor-cancel-btn:hover:not(:disabled) {
+  background: #1a1a1a;
+  border-color: #646cff;
+  color: #e0e0e0;
+}
+
+.permissions-editor-cancel-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 /* Light Mode Overrides */
 @media (prefers-color-scheme: light) {
   .workflow-filters {
@@ -360,5 +594,82 @@
 
   .workflow-card-delete-btn:hover:not(:disabled) {
     background: #fecaca;
+  }
+
+  .permissions-editor {
+    background: #fafafa;
+    border-color: #e0e0e0;
+  }
+
+  .permissions-editor-header {
+    border-bottom-color: #e0e0e0;
+  }
+
+  .permissions-editor-title {
+    color: #333;
+  }
+
+  .permissions-mode-label,
+  .permissions-users-title {
+    color: #666;
+  }
+
+  .permissions-mode-select {
+    background: #fff;
+    border-color: #ccc;
+  }
+
+  .permissions-users-list {
+    background: #fff;
+    border-color: #ddd;
+  }
+
+  .permissions-users-list::-webkit-scrollbar-track {
+    background: #f5f5f5;
+  }
+
+  .permissions-users-list::-webkit-scrollbar-thumb {
+    background: #ccc;
+  }
+
+  .permissions-users-list::-webkit-scrollbar-thumb:hover {
+    background: #aaa;
+  }
+
+  .permissions-user-item:hover:not(.permissions-user-item-disabled) {
+    background: #f5f5f5;
+  }
+
+  .permissions-user-name {
+    color: #333;
+  }
+
+  .permissions-user-email {
+    color: #666;
+  }
+
+  .permissions-user-badge-owner {
+    background: #dbeafe;
+    color: #1e40af;
+  }
+
+  .permissions-user-badge-approver {
+    background: #dcfce7;
+    color: #166534;
+  }
+
+  .permissions-editor-actions {
+    border-top-color: #e0e0e0;
+  }
+
+  .permissions-editor-cancel-btn {
+    color: #666;
+    border-color: #ccc;
+  }
+
+  .permissions-editor-cancel-btn:hover:not(:disabled) {
+    background: #f5f5f5;
+    border-color: #2563eb;
+    color: #333;
   }
 }

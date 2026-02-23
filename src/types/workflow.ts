@@ -24,6 +24,19 @@ export interface WorkflowManifest {
     approved_by_user_id: string | null
 }
 
+export type WorkflowRunPermissionMode = "restricted" | "everyone";
+
+export interface WorkflowRunPermissionsRestricted {
+    mode: "restricted";
+    allowed_user_ids: string[];
+}
+
+export interface WorkflowRunPermissionsEveryone {
+    mode: "everyone";
+}
+
+export type WorkflowRunPermissions = WorkflowRunPermissionsRestricted | WorkflowRunPermissionsEveryone;
+
 /** Workflow summary for API responses */
 export interface WorkflowSummary {
     slug: string;
@@ -33,6 +46,11 @@ export interface WorkflowSummary {
     created_by_user_name: string | null;
     created_by_user_email: string | null;
     approved_by_user_id: string | null;
+    run_permission_mode: WorkflowRunPermissionMode;
+    can_current_user_run: boolean;
+    can_current_user_manage_run_permissions: boolean;
+    allowed_runner_count: number;
+    is_run_locked_due_to_missing_users: boolean;
 }
 
 /** Alias for frontend compatibility */
