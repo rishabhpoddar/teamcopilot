@@ -48,6 +48,9 @@ app.use(cors({
 //     next();
 // });
 
+// Mount auth routes directly (no sanitization for token responses)
+app.use('/api/auth', authRouter);
+
 const apiRouter = express.Router();
 
 apiRouter.use((req, res, next) => {
@@ -76,7 +79,6 @@ apiRouter.get("/", (req, res) => {
     res.send("Hello from the API!");
 });
 
-apiRouter.use('/auth', authRouter);
 apiRouter.use('/workflows', workflowsRouter);
 apiRouter.use('/chat', chatRouter);
 
