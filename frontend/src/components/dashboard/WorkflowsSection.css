@@ -444,11 +444,17 @@
   font-size: 0.85rem;
   color: #e0e0e0;
   margin-bottom: 0.1rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .permissions-user-email {
   font-size: 0.75rem;
   color: #888;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .permissions-user-badges {
