@@ -50,6 +50,10 @@
   min-width: 180px;
 }
 
+.workflow-filter-group-search {
+  flex: 1 1 260px;
+}
+
 .workflow-filter-group label {
   font-size: 0.75rem;
   color: #b7c1d1;
@@ -101,6 +105,64 @@
   box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.2);
 }
 
+.workflow-filter-search-wrap {
+  position: relative;
+}
+
+.workflow-filter-search-wrap::before {
+  content: '';
+  position: absolute;
+  left: 0.75rem;
+  top: 50%;
+  width: 0.62rem;
+  height: 0.62rem;
+  border: 2px solid #93a3b8;
+  border-radius: 999px;
+  transform: translateY(-60%);
+  pointer-events: none;
+}
+
+.workflow-filter-search-wrap::after {
+  content: '';
+  position: absolute;
+  left: 1.25rem;
+  top: calc(50% + 0.15rem);
+  width: 0.38rem;
+  height: 2px;
+  background: #93a3b8;
+  transform: rotate(45deg);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.workflow-filter-search-wrap input {
+  width: 100%;
+  min-width: 220px;
+  background: rgba(15, 23, 42, 0.85);
+  color: #f9fafb;
+  border: 1px solid #334155;
+  border-radius: 10px;
+  padding: 0.55rem 0.75rem 0.55rem 2.15rem;
+  font-size: 0.9rem;
+  line-height: 1.2;
+  transition: border-color 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
+}
+
+.workflow-filter-search-wrap input::placeholder {
+  color: #94a3b8;
+}
+
+.workflow-filter-search-wrap input:hover {
+  border-color: #475569;
+  background: rgba(15, 23, 42, 0.95);
+}
+
+.workflow-filter-search-wrap input:focus {
+  outline: none;
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.2);
+}
+
 @media (max-width: 700px) {
   .workflow-filters {
     align-items: stretch;
@@ -118,6 +180,10 @@
   }
 
   .workflow-filter-group select {
+    min-width: 0;
+  }
+
+  .workflow-filter-search-wrap input {
     min-width: 0;
   }
 }
@@ -301,6 +367,34 @@
   }
 
   .workflow-filter-group select:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+  }
+
+  .workflow-filter-search-wrap::before {
+    border-color: #64748b;
+  }
+
+  .workflow-filter-search-wrap::after {
+    background: #64748b;
+  }
+
+  .workflow-filter-search-wrap input {
+    background: #fff;
+    color: #111827;
+    border-color: #cbd5e1;
+  }
+
+  .workflow-filter-search-wrap input::placeholder {
+    color: #94a3b8;
+  }
+
+  .workflow-filter-search-wrap input:hover {
+    border-color: #94a3b8;
+    background: #fff;
+  }
+
+  .workflow-filter-search-wrap input:focus {
     border-color: #2563eb;
     box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
   }

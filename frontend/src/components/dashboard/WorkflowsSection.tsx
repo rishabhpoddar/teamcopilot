@@ -13,6 +13,40 @@ interface WorkflowsSectionProps {
 type ApprovalFilter = 'all' | 'approved' | 'pending';
 type OwnershipFilter = 'everyone' | 'mine';
 
+function normalizeWorkflowSearchValue(value: string): string {
+    return value
+        .toLowerCase()
+        .trim()
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-');
+}
+
+function matchesWorkflowTitleSearch(title: string, query: string): boolean {
+    const normalizedQuery = normalizeWorkflowSearchValue(query);
+    if (!normalizedQuery) return true;
+
+    const normalizedTitle = normalizeWorkflowSearchValue(title);
+    if (!normalizedTitle) return false;
+
+    const parts = normalizedTitle.split('-').filter(Boolean);
+    const candidates = new Set<string>();
+
+    candidates.add(normalizedTitle);
+
+    for (let i = 0; i < parts.length; i += 1) {
+        candidates.add(parts[i]);
+        candidates.add(parts.slice(i).join('-'));
+    }
+
+    for (const candidate of candidates) {
+        if (candidate.startsWith(normalizedQuery)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 export default function WorkflowsSection({ onRunWorkflow }: WorkflowsSectionProps) {
     const auth = useAuth();
     const [workflows, setWorkflows] = useState<Workflow[]>([]);
@@ -20,6 +54,7 @@ export default function WorkflowsSection({ onRunWorkflow }: WorkflowsSectionProp
     const [error, setError] = useState<string | null>(null);
     const [approvalFilter, setApprovalFilter] = useState<ApprovalFilter>('all');
     const [ownershipFilter, setOwnershipFilter] = useState<OwnershipFilter>('everyone');
+    const [searchQuery, setSearchQuery] = useState('');
 
     const token = auth.loading ? null : auth.token;
     const user = auth.loading ? null : auth.user;
@@ -76,7 +111,9 @@ export default function WorkflowsSection({ onRunWorkflow }: WorkflowsSectionProp
             ? true
             : workflow.created_by_user_id === user?.userId;
 
-        return matchesApproval && matchesOwnership;
+        const matchesSearch = matchesWorkflowTitleSearch(workflow.name || workflow.slug, searchQuery);
+
+        return matchesApproval && matchesOwnership && matchesSearch;
     });
 
     return (
@@ -115,6 +152,19 @@ export default function WorkflowsSection({ onRunWorkflow }: WorkflowsSectionProp
                             <option value="everyone">Everyone&apos;s</option>
                             <option value="mine">Only mine</option>
                         </select>
+                    </div>
+                </div>
+
+                <div className="workflow-filter-group workflow-filter-group-search">
+                    <label htmlFor="workflow-title-search">Search title</label>
+                    <div className="workflow-filter-search-wrap">
+                        <input
+                            id="workflow-title-search"
+                            type="search"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            placeholder="Search workflow title..."
+                        />
                     </div>
                 </div>
             </div>
