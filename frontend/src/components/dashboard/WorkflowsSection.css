@@ -60,6 +60,33 @@
   cursor: not-allowed;
 }
 
+.workflow-card-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.workflow-card-delete-btn {
+  align-self: flex-start;
+  background: #7f1d1d;
+  color: #fecaca;
+  border: 1px solid #991b1b;
+  padding: 0.5rem 0.8rem;
+  font-size: 0.9rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.workflow-card-delete-btn:hover:not(:disabled) {
+  background: #991b1b;
+}
+
+.workflow-card-delete-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 /* Approval Badge */
 .workflow-approval-badge {
   font-size: 0.7rem;
@@ -137,5 +164,15 @@
 
   .workflow-card-run-btn {
     border-color: #ccc;
+  }
+
+  .workflow-card-delete-btn {
+    background: #fee2e2;
+    color: #991b1b;
+    border-color: #fecaca;
+  }
+
+  .workflow-card-delete-btn:hover:not(:disabled) {
+    background: #fecaca;
   }
 }

@@ -67,8 +67,10 @@ export default function WorkflowsSection({ onRunWorkflow }: WorkflowsSectionProp
                     key={workflow.slug}
                     {...workflow}
                     userRole={user?.role ?? 'User'}
+                    currentUserId={user?.userId ?? null}
                     token={token ?? ''}
                     onApproved={fetchWorkflows}
+                    onDeleted={fetchWorkflows}
                     onRunWorkflow={onRunWorkflow}
                 />
             ))}

@@ -28,6 +28,20 @@ export function getWorkflowManifestPath(slug: string): string {
     return path.join(getWorkflowPath(slug), "workflow.json");
 }
 
+/** Delete a workflow directory and all of its contents */
+export function deleteWorkflowDirectory(slug: string): void {
+    const workflowPath = getWorkflowPath(slug);
+
+    if (!fs.existsSync(workflowPath)) {
+        throw {
+            status: 404,
+            message: `Workflow not found for slug: ${slug}`
+        };
+    }
+
+    fs.rmSync(workflowPath, { recursive: true, force: false });
+}
+
 /** Check if a workflow exists */
 export function workflowExists(slug: string): boolean {
     return fs.existsSync(getWorkflowManifestPath(slug));

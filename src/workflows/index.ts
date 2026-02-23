@@ -6,7 +6,8 @@ import {
     listWorkflowSlugs,
     readWorkflowManifest,
     approveWorkflow,
-    setWorkflowCreator
+    setWorkflowCreator,
+    deleteWorkflowDirectory
 } from "../utils/workflow";
 
 const router = express.Router({ mergeParams: true });
@@ -187,6 +188,39 @@ router.post('/:slug/creator', apiHandler(async (req, res) => {
             created_by_user_id: updatedManifest.created_by_user_id
         }
     });
+}, true));
+
+// DELETE /api/workflows/:slug - Delete workflow directory and all past runs
+router.delete('/:slug', apiHandler(async (req, res) => {
+    const slug = req.params.slug as string;
+    const manifest = readWorkflowManifest(slug);
+    const creatorUserId = manifest.created_by_user_id ?? null;
+
+    const creator = creatorUserId
+        ? await prisma.users.findUnique({
+            where: { id: creatorUserId },
+            select: { id: true }
+        })
+        : null;
+
+    const isOwner = creatorUserId === req.userId!;
+    const hasNoCreatorUser = creator === null;
+    const isEngineer = req.role === 'Engineer';
+
+    if (!isOwner && !(hasNoCreatorUser && isEngineer)) {
+        throw {
+            status: 403,
+            message: 'Only the workflow owner can delete this workflow. Engineers can only delete workflows whose owner no longer exists.'
+        };
+    }
+
+    await prisma.workflow_runs.deleteMany({
+        where: { workflow_slug: slug }
+    });
+
+    deleteWorkflowDirectory(slug);
+
+    res.json({ success: true });
 }, true));
 
 // GET /api/workflows/:slug - Get workflow details from filesystem
