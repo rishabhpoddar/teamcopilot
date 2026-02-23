@@ -10,11 +10,16 @@ interface WorkflowsSectionProps {
     onRunWorkflow: (workflowName: string) => void;
 }
 
+type ApprovalFilter = 'all' | 'approved' | 'pending';
+type OwnershipFilter = 'everyone' | 'mine';
+
 export default function WorkflowsSection({ onRunWorkflow }: WorkflowsSectionProps) {
     const auth = useAuth();
     const [workflows, setWorkflows] = useState<Workflow[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [approvalFilter, setApprovalFilter] = useState<ApprovalFilter>('all');
+    const [ownershipFilter, setOwnershipFilter] = useState<OwnershipFilter>('everyone');
 
     const token = auth.loading ? null : auth.token;
     const user = auth.loading ? null : auth.user;
@@ -60,20 +65,81 @@ export default function WorkflowsSection({ onRunWorkflow }: WorkflowsSectionProp
         );
     }
 
+    const filteredWorkflows = workflows.filter((workflow) => {
+        const matchesApproval = approvalFilter === 'all'
+            ? true
+            : approvalFilter === 'approved'
+                ? workflow.approved_by_user_id !== null
+                : workflow.approved_by_user_id === null;
+
+        const matchesOwnership = ownershipFilter === 'everyone'
+            ? true
+            : workflow.created_by_user_id === user?.userId;
+
+        return matchesApproval && matchesOwnership;
+    });
+
     return (
-        <div className="workflows-grid">
-            {workflows.map((workflow) => (
-                <WorkflowCard
-                    key={workflow.slug}
-                    {...workflow}
-                    userRole={user?.role ?? 'User'}
-                    currentUserId={user?.userId ?? null}
-                    token={token ?? ''}
-                    onApproved={fetchWorkflows}
-                    onDeleted={fetchWorkflows}
-                    onRunWorkflow={onRunWorkflow}
-                />
-            ))}
+        <div className="workflows-section-content">
+            <div className="workflow-filters">
+                <div className="workflow-filters-title">
+                    <span className="workflow-filters-heading">Filters</span>
+                    <span className="workflow-filters-count">
+                        {filteredWorkflows.length} / {workflows.length} shown
+                    </span>
+                </div>
+
+                <div className="workflow-filter-group">
+                    <label htmlFor="workflow-approval-filter">Approval</label>
+                    <div className="workflow-filter-select-wrap">
+                        <select
+                            id="workflow-approval-filter"
+                            value={approvalFilter}
+                            onChange={(e) => setApprovalFilter(e.target.value as ApprovalFilter)}
+                        >
+                            <option value="all">All</option>
+                            <option value="approved">Approved</option>
+                            <option value="pending">Pending approval</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div className="workflow-filter-group">
+                    <label htmlFor="workflow-ownership-filter">Scope</label>
+                    <div className="workflow-filter-select-wrap">
+                        <select
+                            id="workflow-ownership-filter"
+                            value={ownershipFilter}
+                            onChange={(e) => setOwnershipFilter(e.target.value as OwnershipFilter)}
+                        >
+                            <option value="everyone">Everyone&apos;s</option>
+                            <option value="mine">Only mine</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            {filteredWorkflows.length === 0 ? (
+                <div className="section-empty">
+                    <h3>No Workflows Match Filters</h3>
+                    <p>Try changing the approval or ownership filters.</p>
+                </div>
+            ) : (
+                <div className="workflows-grid">
+                    {filteredWorkflows.map((workflow) => (
+                        <WorkflowCard
+                            key={workflow.slug}
+                            {...workflow}
+                            userRole={user?.role ?? 'User'}
+                            currentUserId={user?.userId ?? null}
+                            token={token ?? ''}
+                            onApproved={fetchWorkflows}
+                            onDeleted={fetchWorkflows}
+                            onRunWorkflow={onRunWorkflow}
+                        />
+                    ))}
+                </div>
+            )}
         </div>
     );
 }
