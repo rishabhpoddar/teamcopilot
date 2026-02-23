@@ -215,47 +215,76 @@ export default function WorkflowCard({
                         </p>
                     )}
                     {showPermissionsEditor && (
-                        <div style={{ marginTop: 12, border: '1px solid #ddd', borderRadius: 8, padding: 12 }}>
-                            <label style={{ display: 'block', marginBottom: 8 }}>
-                                Permission mode
-                                <select
-                                    value={permissionMode}
-                                    onChange={(e) => setPermissionMode(e.target.value as 'restricted' | 'everyone')}
-                                    style={{ marginLeft: 8 }}
-                                >
-                                    <option value="restricted">Restricted</option>
-                                    <option value="everyone">Everyone</option>
-                                </select>
-                            </label>
+                        <div className="permissions-editor">
+                            <div className="permissions-editor-header">
+                                <h4 className="permissions-editor-title">Manage Run Permissions</h4>
+                                <div className="permissions-mode-group">
+                                    <label className="permissions-mode-label" htmlFor="permission-mode-select">
+                                        Permission Mode
+                                    </label>
+                                    <select
+                                        id="permission-mode-select"
+                                        className="permissions-mode-select"
+                                        value={permissionMode}
+                                        onChange={(e) => setPermissionMode(e.target.value as 'restricted' | 'everyone')}
+                                    >
+                                        <option value="restricted">Restricted (Specific Users)</option>
+                                        <option value="everyone">Everyone</option>
+                                    </select>
+                                </div>
+                            </div>
 
                             {permissionMode === 'restricted' && (
-                                <div style={{ maxHeight: 180, overflow: 'auto', border: '1px solid #eee', padding: 8 }}>
-                                    {allUsers.map((user) => {
-                                        const checked = selectedUserIds.includes(user.id);
-                                        const isOwner = ownerUserIdForEditor === user.id;
-                                        const isApprover = approverUserIdForEditor === user.id;
-                                        return (
-                                            <label key={user.id} style={{ display: 'block', marginBottom: 6, opacity: isOwner ? 0.9 : 1 }}>
-                                                <input
-                                                    type="checkbox"
-                                                    checked={checked}
-                                                    disabled={isOwner}
-                                                    onChange={() => toggleAllowedUser(user.id)}
-                                                />
-                                                {' '}
-                                                {user.name} ({user.email})
-                                                {isOwner ? ' [Owner]' : ''}
-                                                {isApprover ? ' [Approver]' : ''}
-                                            </label>
-                                        );
-                                    })}
+                                <div className="permissions-users-section">
+                                    <div className="permissions-users-title">Allowed Users</div>
+                                    <div className="permissions-users-list">
+                                        {allUsers.map((user) => {
+                                            const checked = selectedUserIds.includes(user.id);
+                                            const isOwner = ownerUserIdForEditor === user.id;
+                                            const isApprover = approverUserIdForEditor === user.id;
+                                            return (
+                                                <div
+                                                    key={user.id}
+                                                    className={`permissions-user-item ${isOwner ? 'permissions-user-item-disabled' : ''}`}
+                                                    onClick={() => !isOwner && toggleAllowedUser(user.id)}
+                                                >
+                                                    <input
+                                                        type="checkbox"
+                                                        className="permissions-user-checkbox"
+                                                        checked={checked}
+                                                        disabled={isOwner}
+                                                        onChange={() => toggleAllowedUser(user.id)}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                    />
+                                                    <div className="permissions-user-info">
+                                                        <div className="permissions-user-name">{user.name}</div>
+                                                        <div className="permissions-user-email">{user.email}</div>
+                                                    </div>
+                                                    {(isOwner || isApprover) && (
+                                                        <div className="permissions-user-badges">
+                                                            {isOwner && (
+                                                                <span className="permissions-user-badge permissions-user-badge-owner">
+                                                                    Owner
+                                                                </span>
+                                                            )}
+                                                            {isApprover && (
+                                                                <span className="permissions-user-badge permissions-user-badge-approver">
+                                                                    Approver
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
                                 </div>
                             )}
 
-                            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                            <div className="permissions-editor-actions">
                                 <button
                                     type="button"
-                                    className="workflow-approve-btn"
+                                    className="permissions-editor-save-btn"
                                     onClick={handleSavePermissions}
                                     disabled={permissionsSaving}
                                 >
@@ -263,7 +292,7 @@ export default function WorkflowCard({
                                 </button>
                                 <button
                                     type="button"
-                                    className="workflow-card-delete-btn"
+                                    className="permissions-editor-cancel-btn"
                                     onClick={() => setShowPermissionsEditor(false)}
                                     disabled={permissionsSaving}
                                 >
