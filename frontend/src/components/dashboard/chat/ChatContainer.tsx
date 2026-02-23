@@ -41,7 +41,6 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
     const lastEscapePressRef = useRef<number>(0);
     const currentSessionInfoRef = useRef<{ id: string; isEmpty: boolean } | null>(null);
     const handledComposeKeyRef = useRef<string | null>(null);
-    const previousActiveSessionIdRef = useRef<string | null>(null);
 
     const token = auth.loading ? null : auth.token;
 
@@ -317,16 +316,8 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
 
     // Load messages when active session changes
     useEffect(() => {
-        const previousActiveSessionId = previousActiveSessionIdRef.current;
-        const isPendingToRealSessionTransition = previousActiveSessionId === PENDING_SESSION_ID
-            && activeSessionId !== null
-            && activeSessionId !== PENDING_SESSION_ID;
-
-        // Reset streaming state when switching sessions, except while materializing
-        // a pending session into a real one during the first send.
-        if (!isPendingToRealSessionTransition) {
-            setIsStreaming(false);
-        }
+        // Reset streaming state when switching sessions
+        setIsStreaming(false);
 
         if (activeSessionId && activeSessionId !== PENDING_SESSION_ID) {
             loadMessages(activeSessionId);
@@ -337,8 +328,6 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
             setParts([]);
             setPendingPermission(null);
         }
-
-        previousActiveSessionIdRef.current = activeSessionId;
 
         return () => {
             stopSSE();
