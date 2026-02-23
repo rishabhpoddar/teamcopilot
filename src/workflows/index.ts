@@ -110,7 +110,7 @@ router.post('/runs', apiHandler(async (req, res) => {
             status: 403,
             message: permissionSummary.is_run_locked_due_to_missing_users
                 ? 'Workflow cannot be run because no allowed users remain'
-                : 'You do not have permission to run this workflow'
+                : 'You do not have permission to run this workflow. Please contact the workflow owner to request permission.'
         };
     }
 
