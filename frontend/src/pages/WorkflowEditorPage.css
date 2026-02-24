@@ -173,7 +173,16 @@
 
 .wf-tree-icon {
     width: 16px;
-    font-size: 13px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.wf-tree-icon svg {
+    display: block;
+    color: #9ca3af;
 }
 
 .wf-tree-name {
@@ -381,6 +390,10 @@
 
     .wf-tree-chevron {
         color: #51627a;
+    }
+
+    .wf-tree-icon svg {
+        color: #6b7280;
     }
 
     .wf-tree-badge {

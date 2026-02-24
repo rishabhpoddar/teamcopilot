@@ -434,7 +434,18 @@ export default function WorkflowEditorPage() {
                         <span className="wf-tree-chevron">
                             {node.kind === 'directory' ? (isExpanded ? '▾' : '▸') : ''}
                         </span>
-                        <span className={`wf-tree-icon ${node.kind}`}>{node.kind === 'directory' ? '📁' : '📄'}</span>
+                        <span className={`wf-tree-icon ${node.kind}`}>
+                            {node.kind === 'directory' ? (
+                                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M1.75 3C1.75 2.30964 2.30964 1.75 3 1.75H6.08579C6.351 1.75 6.60536 1.85536 6.79289 2.04289L8.25 3.5H13C13.6904 3.5 14.25 4.05964 14.25 4.75V13C14.25 13.6904 13.6904 14.25 13 14.25H3C2.30964 14.25 1.75 13.6904 1.75 13V3Z" fill="currentColor" fillOpacity="0.3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                            ) : (
+                                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M3.75 2.75C3.75 2.19772 4.19772 1.75 4.75 1.75H9.08579C9.351 1.75 9.60536 1.85536 9.79289 2.04289L12.9571 5.20711C13.1446 5.39464 13.25 5.649 13.25 5.91421V13.25C13.25 13.8023 12.8023 14.25 12.25 14.25H4.75C4.19772 14.25 3.75 13.8023 3.75 13.25V2.75Z" fill="currentColor" fillOpacity="0.1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                    <path d="M9.25 2V5.25C9.25 5.66421 9.58579 6 10 6H13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                            )}
+                        </span>
                         <span className="wf-tree-name">{node.name}</span>
                         {node.is_symlink && <span className="wf-tree-badge">symlink</span>}
                         {!node.readable && <span className="wf-tree-badge">no-read</span>}
