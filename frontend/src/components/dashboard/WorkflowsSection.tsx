@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { axiosInstance } from '../../utils';
 import { useAuth } from '../../lib/auth';
 import type { Workflow } from '../../types/workflow';
@@ -48,6 +49,7 @@ function matchesWorkflowTitleSearch(title: string, query: string): boolean {
 }
 
 export default function WorkflowsSection({ onRunWorkflow }: WorkflowsSectionProps) {
+    const navigate = useNavigate();
     const auth = useAuth();
     const [workflows, setWorkflows] = useState<Workflow[]>([]);
     const [loading, setLoading] = useState(true);
@@ -186,6 +188,7 @@ export default function WorkflowsSection({ onRunWorkflow }: WorkflowsSectionProp
                             onApproved={fetchWorkflows}
                             onDeleted={fetchWorkflows}
                             onRunWorkflow={onRunWorkflow}
+                            onOpenWorkflow={(slug) => navigate(`/workflows/${encodeURIComponent(slug)}`)}
                         />
                     ))}
                 </div>

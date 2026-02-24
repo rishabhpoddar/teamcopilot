@@ -4,6 +4,7 @@ import Login from './pages/Login.tsx'
 import Signup from './pages/Signup.tsx'
 import ResetPassword from './pages/ResetPassword.tsx'
 import Home from './pages/Home.tsx'
+import WorkflowEditorPage from './pages/WorkflowEditorPage.tsx'
 import './App.css'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -28,6 +29,7 @@ function App() {
         <Route path="/signup" element={<GuestRoute><Signup /></GuestRoute>} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
+        <Route path="/workflows/:slug" element={<ProtectedRoute><WorkflowEditorPage /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AuthProvider>
