@@ -81,6 +81,27 @@ function resolveWorkflowTarget(slug: string, relativePath: string): string {
     return absolute;
 }
 
+function assertRealPathWithinWorkflowRoot(slug: string, absolutePath: string): void {
+    const realRoot = fs.realpathSync(getWorkflowPath(slug));
+    const realTarget = fs.realpathSync(absolutePath);
+    if (realTarget !== realRoot && !realTarget.startsWith(`${realRoot}${path.sep}`)) {
+        throw {
+            status: 400,
+            message: "path escapes the workflow root"
+        };
+    }
+}
+
+function assertExistingPathIsSafe(slug: string, absolutePath: string): void {
+    assertRealPathWithinWorkflowRoot(slug, absolutePath);
+    assertNotSymlink(absolutePath);
+}
+
+function assertParentDirectoryIsSafeForCreate(slug: string, parentAbsolutePath: string): void {
+    assertRealPathWithinWorkflowRoot(slug, parentAbsolutePath);
+    assertNotSymlink(parentAbsolutePath);
+}
+
 function assertValidName(name: string): void {
     const trimmed = name.trim();
     if (!trimmed || trimmed === "." || trimmed === "..") {
@@ -95,6 +116,20 @@ function assertValidName(name: string): void {
             message: "Invalid file or folder name"
         };
     }
+}
+
+function findClosingQuoteIndex(input: string, quote: '"' | "'"): number {
+    for (let i = 1; i < input.length; i += 1) {
+        const ch = input[i];
+        if (ch === "\\") {
+            i += 1;
+            continue;
+        }
+        if (ch === quote) {
+            return i;
+        }
+    }
+    return -1;
 }
 
 function toFileNode(parentRelativePath: string, name: string, absolutePath: string): WorkflowFileNode {
@@ -161,7 +196,7 @@ function parseEnvAssignmentLine(line: string): ParsedEnvAssignment {
     const [, prefix, key, separator, remainder] = match;
 
     if (remainder.startsWith('"')) {
-        const closeIdx = remainder.indexOf('"', 1);
+        const closeIdx = findClosingQuoteIndex(remainder, '"');
         if (closeIdx === -1) {
             return { kind: "other" };
         }
@@ -176,7 +211,7 @@ function parseEnvAssignmentLine(line: string): ParsedEnvAssignment {
         };
     }
     if (remainder.startsWith("'")) {
-        const closeIdx = remainder.indexOf("'", 1);
+        const closeIdx = findClosingQuoteIndex(remainder, "'");
         if (closeIdx === -1) {
             return { kind: "other" };
         }
@@ -313,7 +348,7 @@ export function listWorkflowDirectory(slug: string, rawPath: string | undefined)
             message: "Directory not found"
         };
     }
-    assertNotSymlink(absolutePath);
+    assertExistingPathIsSafe(slug, absolutePath);
     const stat = fs.statSync(absolutePath);
     if (!stat.isDirectory()) {
         throw {
@@ -342,7 +377,7 @@ export function readWorkflowFileContent(slug: string, rawPath: string | undefine
             message: "File not found"
         };
     }
-    assertNotSymlink(absolutePath);
+    assertExistingPathIsSafe(slug, absolutePath);
     const stat = fs.statSync(absolutePath);
     if (!stat.isFile()) {
         throw {
@@ -393,7 +428,7 @@ export function saveWorkflowFileContent(slug: string, request: WorkflowFileSaveR
             message: "File not found"
         };
     }
-    assertNotSymlink(absolutePath);
+    assertExistingPathIsSafe(slug, absolutePath);
     const stat = fs.statSync(absolutePath);
     if (!stat.isFile()) {
         throw {
@@ -439,7 +474,7 @@ export function createWorkflowFileOrFolder(slug: string, rawParentPath: string |
             message: "Parent directory not found"
         };
     }
-    assertNotSymlink(parentAbsolutePath);
+    assertParentDirectoryIsSafeForCreate(slug, parentAbsolutePath);
     if (!fs.statSync(parentAbsolutePath).isDirectory()) {
         throw {
             status: 400,
@@ -474,10 +509,11 @@ export function renameWorkflowPath(slug: string, rawPath: string | undefined, ne
             message: "File or folder not found"
         };
     }
-    assertNotSymlink(absolutePath);
+    assertExistingPathIsSafe(slug, absolutePath);
 
     const parentRelativePath = path.posix.dirname(relativePath) === "." ? "" : path.posix.dirname(relativePath);
     const parentAbsolutePath = resolveWorkflowTarget(slug, parentRelativePath);
+    assertParentDirectoryIsSafeForCreate(slug, parentAbsolutePath);
     const newAbsolutePath = path.join(parentAbsolutePath, newName);
     const newRelativePath = parentRelativePath ? `${parentRelativePath}/${newName}` : newName;
 
@@ -506,7 +542,7 @@ export function deleteWorkflowPath(slug: string, rawPath: string | undefined): v
             message: "File or folder not found"
         };
     }
-    assertNotSymlink(absolutePath);
+    assertExistingPathIsSafe(slug, absolutePath);
     const stat = fs.statSync(absolutePath);
     if (stat.isDirectory()) {
         fs.rmSync(absolutePath, { recursive: true, force: false });
