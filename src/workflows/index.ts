@@ -1,10 +1,13 @@
 import express from "express";
+import fs from "fs";
+import path from "path";
 import prisma from "../prisma/client";
 import { WorkflowManifest, WorkflowSummary } from "../types/workflow";
 import { WorkflowEditorAccessResponse } from "../types/workflow-files";
 import { apiHandler } from "../utils/index";
 import {
     listWorkflowSlugs,
+    getWorkflowPath,
     readWorkflowManifestAndEnsurePermissions,
     approveWorkflow,
     setWorkflowCreator,
@@ -28,6 +31,37 @@ import {
 } from "../utils/workflow-permissions";
 
 const router = express.Router({ mergeParams: true });
+
+function getWorkflowFilesystemTimestamps(slug: string): { created_at_ms: number; updated_at_ms: number } {
+    const workflowRoot = getWorkflowPath(slug);
+    const rootStat = fs.statSync(workflowRoot);
+    let updatedAtMs = rootStat.mtimeMs;
+
+    const stack: string[] = [workflowRoot];
+    while (stack.length > 0) {
+        const currentPath = stack.pop()!;
+        const currentStat = fs.statSync(currentPath);
+        if (currentStat.mtimeMs > updatedAtMs) {
+            updatedAtMs = currentStat.mtimeMs;
+        }
+        if (!currentStat.isDirectory()) {
+            continue;
+        }
+        const children = fs.readdirSync(currentPath, { withFileTypes: true });
+        for (const child of children) {
+            stack.push(path.join(currentPath, child.name));
+        }
+    }
+
+    const createdAtMs = Number.isFinite(rootStat.birthtimeMs) && rootStat.birthtimeMs > 0
+        ? rootStat.birthtimeMs
+        : rootStat.ctimeMs;
+
+    return {
+        created_at_ms: createdAtMs,
+        updated_at_ms: updatedAtMs,
+    };
+}
 
 async function getWorkflowEditorAccess(slug: string, userId: string, role: string | undefined): Promise<WorkflowEditorAccessResponse> {
     const manifest = await readWorkflowManifestAndEnsurePermissions(slug);
@@ -407,12 +441,18 @@ router.get('/:slug', apiHandler(async (req, res) => {
     const permissionSummary = getPermissionSummaryFields(permission, req.userId!);
 
     const createdByUserId = manifest.created_by_user_id ?? null;
-    const creator = createdByUserId
-        ? await prisma.users.findUnique({
-            where: { id: createdByUserId },
+    const approvedByUserId = manifest.approved_by_user_id ?? null;
+    const userIds = [createdByUserId, approvedByUserId].filter((id): id is string => typeof id === "string");
+    const users = userIds.length > 0
+        ? await prisma.users.findMany({
+            where: { id: { in: userIds } },
             select: { id: true, name: true, email: true }
         })
-        : null;
+        : [];
+    const usersById = new Map(users.map((user) => [user.id, user]));
+    const creator = createdByUserId ? (usersById.get(createdByUserId) ?? null) : null;
+    const approver = approvedByUserId ? (usersById.get(approvedByUserId) ?? null) : null;
+    const timestamps = getWorkflowFilesystemTimestamps(slug);
 
     res.json({
         workflow: {
@@ -422,7 +462,10 @@ router.get('/:slug', apiHandler(async (req, res) => {
             created_by_user_id: createdByUserId,
             created_by_user_name: creator?.name ?? null,
             created_by_user_email: creator?.email ?? null,
-            approved_by_user_id: manifest.approved_by_user_id ?? null,
+            approved_by_user_id: approvedByUserId,
+            approved_by_user_name: approver?.name ?? null,
+            approved_by_user_email: approver?.email ?? null,
+            ...timestamps,
             ...permissionSummary,
             run_permissions: mapPermissionToApi(permission),
             allowed_runners_resolved: permission.allowedUsers.map((row) => ({

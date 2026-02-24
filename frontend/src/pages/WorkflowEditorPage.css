@@ -117,6 +117,38 @@
     border-bottom: 1px solid #374151;
 }
 
+.wf-workflow-meta-card {
+    border-bottom: 1px solid #374151;
+    padding: 12px;
+    background: #111827;
+}
+
+.wf-workflow-meta-title {
+    font-weight: 700;
+    margin-bottom: 8px;
+    color: #e5e7eb;
+}
+
+.wf-workflow-meta-grid {
+    display: grid;
+    grid-template-columns: 92px minmax(0, 1fr);
+    gap: 6px 8px;
+    align-items: start;
+}
+
+.wf-workflow-meta-label {
+    font-size: 0.78rem;
+    color: #9ca3af;
+    font-weight: 600;
+}
+
+.wf-workflow-meta-value {
+    font-size: 0.82rem;
+    color: #e5e7eb;
+    line-height: 1.35;
+    word-break: break-word;
+}
+
 .wf-sidebar-title {
     font-weight: 700;
 }
@@ -374,6 +406,23 @@
 
     .wf-sidebar-header {
         border-bottom-color: #e7ebf2;
+    }
+
+    .wf-workflow-meta-card {
+        border-bottom-color: #e7ebf2;
+        background: #fbfdff;
+    }
+
+    .wf-workflow-meta-title {
+        color: #1f2e40;
+    }
+
+    .wf-workflow-meta-label {
+        color: #5f6e82;
+    }
+
+    .wf-workflow-meta-value {
+        color: #233246;
     }
 
     .wf-sidebar-caption {

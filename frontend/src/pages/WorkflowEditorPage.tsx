@@ -14,6 +14,21 @@ import './WorkflowEditorPage.css';
 
 type DirectoryChildrenMap = Record<string, WorkflowFileNode[]>;
 
+type WorkflowDetails = {
+    slug: string;
+    name: string;
+    created_by_user_name: string | null;
+    created_by_user_email: string | null;
+    approved_by_user_id: string | null;
+    approved_by_user_name: string | null;
+    approved_by_user_email: string | null;
+    created_at_ms: number | null;
+    updated_at_ms: number | null;
+    run_permission_mode: 'restricted' | 'everyone';
+    allowed_runner_count: number;
+    is_run_locked_due_to_missing_users: boolean;
+};
+
 type ActiveFileState =
     | {
         path: string;
@@ -93,6 +108,13 @@ function formatDateTime(ms: number): string {
     return new Date(ms).toLocaleString();
 }
 
+function displayUser(name: string | null, email: string | null): string {
+    if (name && email) return `${name} (${email})`;
+    if (name) return name;
+    if (email) return email;
+    return 'Unknown';
+}
+
 export default function WorkflowEditorPage() {
     const { slug = '' } = useParams();
     const navigate = useNavigate();
@@ -103,6 +125,7 @@ export default function WorkflowEditorPage() {
     const [pageLoading, setPageLoading] = useState(true);
     const [pageError, setPageError] = useState<string | null>(null);
     const [workflowTitle, setWorkflowTitle] = useState<string>(slug);
+    const [workflowDetails, setWorkflowDetails] = useState<WorkflowDetails | null>(null);
     const [access, setAccess] = useState<WorkflowEditorAccessResponse | null>(null);
 
     const [childrenByDir, setChildrenByDir] = useState<DirectoryChildrenMap>({});
@@ -155,7 +178,8 @@ export default function WorkflowEditorPage() {
                 ]);
                 if (cancelled) return;
                 setAccess(accessResponse.data as WorkflowEditorAccessResponse);
-                const workflow = workflowResponse.data.workflow as { name?: string; slug: string };
+                const workflow = workflowResponse.data.workflow as WorkflowDetails;
+                setWorkflowDetails(workflow);
                 setWorkflowTitle(workflow.name || workflow.slug);
                 await refreshDir('');
             } catch (err: unknown) {
@@ -479,6 +503,14 @@ export default function WorkflowEditorPage() {
 
     if (auth.loading) return null;
 
+    const permissionSummaryText = workflowDetails
+        ? workflowDetails.run_permission_mode === 'everyone'
+            ? 'Everyone can run'
+            : workflowDetails.is_run_locked_due_to_missing_users
+                ? 'Restricted (locked: no allowed users remain)'
+                : `Restricted (${workflowDetails.allowed_runner_count} allowed)`
+        : null;
+
     return (
         <div className="workflow-editor-page">
             <header className="workflow-editor-header">
@@ -516,6 +548,42 @@ export default function WorkflowEditorPage() {
             ) : (
                 <div className="workflow-editor-layout">
                     <aside className="workflow-editor-sidebar">
+                        {workflowDetails && (
+                            <div className="wf-workflow-meta-card">
+                                <div className="wf-workflow-meta-title">Workflow Info</div>
+                                <div className="wf-workflow-meta-grid">
+                                    <div className="wf-workflow-meta-label">Status</div>
+                                    <div className="wf-workflow-meta-value">
+                                        {access?.workflow_status === 'approved' ? 'Approved' : 'Pending approval'}
+                                    </div>
+
+                                    <div className="wf-workflow-meta-label">Permissions</div>
+                                    <div className="wf-workflow-meta-value">{permissionSummaryText}</div>
+
+                                    <div className="wf-workflow-meta-label">Creator</div>
+                                    <div className="wf-workflow-meta-value">
+                                        {displayUser(workflowDetails.created_by_user_name, workflowDetails.created_by_user_email)}
+                                    </div>
+
+                                    <div className="wf-workflow-meta-label">Approver</div>
+                                    <div className="wf-workflow-meta-value">
+                                        {workflowDetails.approved_by_user_id
+                                            ? displayUser(workflowDetails.approved_by_user_name, workflowDetails.approved_by_user_email)
+                                            : 'Not approved yet'}
+                                    </div>
+
+                                    <div className="wf-workflow-meta-label">Created</div>
+                                    <div className="wf-workflow-meta-value">
+                                        {workflowDetails.created_at_ms ? formatDateTime(workflowDetails.created_at_ms) : 'Unknown'}
+                                    </div>
+
+                                    <div className="wf-workflow-meta-label">Last updated</div>
+                                    <div className="wf-workflow-meta-value">
+                                        {workflowDetails.updated_at_ms ? formatDateTime(workflowDetails.updated_at_ms) : 'Unknown'}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                         <div className="wf-sidebar-header">
                             <div>
                                 <div className="wf-sidebar-title">Files</div>
