@@ -1,5 +1,5 @@
 import { AxiosError } from 'axios';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import MonacoEditor from '../components/workflow-editor/MonacoEditor';
@@ -22,8 +22,6 @@ type WorkflowDetails = {
     approved_by_user_id: string | null;
     approved_by_user_name: string | null;
     approved_by_user_email: string | null;
-    created_at_ms: number | null;
-    updated_at_ms: number | null;
     run_permission_mode: 'restricted' | 'everyone';
     allowed_runner_count: number;
     is_run_locked_due_to_missing_users: boolean;
@@ -144,7 +142,7 @@ export default function WorkflowEditorPage() {
 
     const authHeader = useMemo(() => token ? { Authorization: `Bearer ${token}` } : undefined, [token]);
 
-    const refreshDir = async (dirPath: string) => {
+    const refreshDir = useCallback(async (dirPath: string) => {
         if (!authHeader) return;
         setLoadingDirs((prev) => ({ ...prev, [dirPath]: true }));
         setDirErrors((prev) => ({ ...prev, [dirPath]: '' }));
@@ -163,7 +161,7 @@ export default function WorkflowEditorPage() {
         } finally {
             setLoadingDirs((prev) => ({ ...prev, [dirPath]: false }));
         }
-    };
+    }, [authHeader, slug]);
 
     useEffect(() => {
         if (!token) return;
@@ -194,7 +192,7 @@ export default function WorkflowEditorPage() {
         return () => {
             cancelled = true;
         };
-    }, [slug, token]);
+    }, [authHeader, refreshDir, slug, token]);
 
     useEffect(() => {
         const onBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -205,21 +203,6 @@ export default function WorkflowEditorPage() {
         window.addEventListener('beforeunload', onBeforeUnload);
         return () => window.removeEventListener('beforeunload', onBeforeUnload);
     }, [isDirty]);
-
-    useEffect(() => {
-        const onKeydown = (event: KeyboardEvent) => {
-            if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 's') {
-                return;
-            }
-            if (!activeTextFile || !isDirty || !canEdit) {
-                return;
-            }
-            event.preventDefault();
-            void handleSaveActiveFile();
-        };
-        window.addEventListener('keydown', onKeydown);
-        return () => window.removeEventListener('keydown', onKeydown);
-    }, [activeTextFile, isDirty, canEdit]);
 
     const confirmDiscardIfNeeded = (): boolean => {
         if (!isDirty) return true;
@@ -273,8 +256,8 @@ export default function WorkflowEditorPage() {
                 content: data.content,
                 savedContent: data.content,
                 etag: data.etag,
-                isDotenv: data.is_dotenv,
-                isRedacted: data.is_redacted,
+                isDotenv: data.name === '.env',
+                isRedacted: data.name === '.env',
                 modifiedAtMs: data.modified_at_ms,
                 sizeBytes: data.size_bytes,
                 loading: false,
@@ -286,14 +269,13 @@ export default function WorkflowEditorPage() {
         }
     };
 
-    async function handleSaveActiveFile() {
+    const handleSaveActiveFile = useCallback(async () => {
         if (!activeTextFile || !authHeader || !canEdit) return;
         try {
             const response = await axiosInstance.put(`/api/workflows/${encodeURIComponent(slug)}/files/content`, {
                 path: activeTextFile.path,
                 content: activeTextFile.content,
                 base_etag: activeTextFile.etag,
-                preserve_masked_dotenv_values: activeTextFile.isDotenv
             }, {
                 headers: authHeader
             });
@@ -313,7 +295,22 @@ export default function WorkflowEditorPage() {
         } catch (err: unknown) {
             toast.error(getErrorMessage(err, 'Failed to save file'));
         }
-    }
+    }, [activeTextFile, authHeader, canEdit, slug, refreshDir]);
+
+    useEffect(() => {
+        const onKeydown = (event: KeyboardEvent) => {
+            if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 's') {
+                return;
+            }
+            if (!activeTextFile || !isDirty || !canEdit) {
+                return;
+            }
+            event.preventDefault();
+            void handleSaveActiveFile();
+        };
+        window.addEventListener('keydown', onKeydown);
+        return () => window.removeEventListener('keydown', onKeydown);
+    }, [activeTextFile, isDirty, canEdit, handleSaveActiveFile]);
 
     const handleCreate = async (parentPath: string, kind: 'file' | 'directory') => {
         if (!authHeader || !canEdit) return;
@@ -572,15 +569,6 @@ export default function WorkflowEditorPage() {
                                             : 'Not approved yet'}
                                     </div>
 
-                                    <div className="wf-workflow-meta-label">Created</div>
-                                    <div className="wf-workflow-meta-value">
-                                        {workflowDetails.created_at_ms ? formatDateTime(workflowDetails.created_at_ms) : 'Unknown'}
-                                    </div>
-
-                                    <div className="wf-workflow-meta-label">Last updated</div>
-                                    <div className="wf-workflow-meta-value">
-                                        {workflowDetails.updated_at_ms ? formatDateTime(workflowDetails.updated_at_ms) : 'Unknown'}
-                                    </div>
                                 </div>
                             </div>
                         )}

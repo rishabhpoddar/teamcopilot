@@ -1,13 +1,10 @@
 import express from "express";
-import fs from "fs";
-import path from "path";
 import prisma from "../prisma/client";
 import { WorkflowManifest, WorkflowSummary } from "../types/workflow";
 import { WorkflowEditorAccessResponse } from "../types/workflow-files";
 import { apiHandler } from "../utils/index";
 import {
     listWorkflowSlugs,
-    getWorkflowPath,
     readWorkflowManifestAndEnsurePermissions,
     approveWorkflow,
     setWorkflowCreator,
@@ -32,37 +29,6 @@ import {
 
 const router = express.Router({ mergeParams: true });
 
-function getWorkflowFilesystemTimestamps(slug: string): { created_at_ms: number; updated_at_ms: number } {
-    const workflowRoot = getWorkflowPath(slug);
-    const rootStat = fs.statSync(workflowRoot);
-    let updatedAtMs = rootStat.mtimeMs;
-
-    const stack: string[] = [workflowRoot];
-    while (stack.length > 0) {
-        const currentPath = stack.pop()!;
-        const currentStat = fs.statSync(currentPath);
-        if (currentStat.mtimeMs > updatedAtMs) {
-            updatedAtMs = currentStat.mtimeMs;
-        }
-        if (!currentStat.isDirectory()) {
-            continue;
-        }
-        const children = fs.readdirSync(currentPath, { withFileTypes: true });
-        for (const child of children) {
-            stack.push(path.join(currentPath, child.name));
-        }
-    }
-
-    const createdAtMs = Number.isFinite(rootStat.birthtimeMs) && rootStat.birthtimeMs > 0
-        ? rootStat.birthtimeMs
-        : rootStat.ctimeMs;
-
-    return {
-        created_at_ms: createdAtMs,
-        updated_at_ms: updatedAtMs,
-    };
-}
-
 async function getWorkflowEditorAccess(slug: string, userId: string, role: string | undefined): Promise<WorkflowEditorAccessResponse> {
     const manifest = await readWorkflowManifestAndEnsurePermissions(slug);
     const isOwner = manifest.created_by_user_id === userId;
@@ -82,8 +48,6 @@ async function getWorkflowEditorAccess(slug: string, userId: string, role: strin
         can_view: true,
         can_edit: canEdit,
         workflow_status: workflowStatus,
-        is_owner: isOwner,
-        is_engineer: isEngineer,
     };
 }
 
@@ -373,11 +337,10 @@ router.get('/:slug/files/content', apiHandler(async (req, res) => {
 router.put('/:slug/files/content', apiHandler(async (req, res) => {
     const slug = req.params.slug as string;
     await assertCanEditWorkflowFiles(slug, req.userId!, req.role);
-    const { path, content, base_etag, preserve_masked_dotenv_values } = req.body as {
+    const { path, content, base_etag } = req.body as {
         path?: unknown;
         content?: unknown;
         base_etag?: unknown;
-        preserve_masked_dotenv_values?: unknown;
     };
     if (typeof path !== "string" || typeof content !== "string" || typeof base_etag !== "string") {
         throw {
@@ -389,7 +352,6 @@ router.put('/:slug/files/content', apiHandler(async (req, res) => {
         path,
         content,
         base_etag,
-        preserve_masked_dotenv_values: preserve_masked_dotenv_values === true
     });
     res.json(result);
 }, true));
@@ -452,8 +414,6 @@ router.get('/:slug', apiHandler(async (req, res) => {
     const usersById = new Map(users.map((user) => [user.id, user]));
     const creator = createdByUserId ? (usersById.get(createdByUserId) ?? null) : null;
     const approver = approvedByUserId ? (usersById.get(approvedByUserId) ?? null) : null;
-    const timestamps = getWorkflowFilesystemTimestamps(slug);
-
     res.json({
         workflow: {
             slug,
@@ -465,7 +425,6 @@ router.get('/:slug', apiHandler(async (req, res) => {
             approved_by_user_id: approvedByUserId,
             approved_by_user_name: approver?.name ?? null,
             approved_by_user_email: approver?.email ?? null,
-            ...timestamps,
             ...permissionSummary,
             run_permissions: mapPermissionToApi(permission),
             allowed_runners_resolved: permission.allowedUsers.map((row) => ({

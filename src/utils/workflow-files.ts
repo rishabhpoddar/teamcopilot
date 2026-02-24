@@ -128,7 +128,6 @@ function toFileNode(parentRelativePath: string, name: string, absolutePath: stri
         size_bytes: isDir ? null : lstat.size,
         modified_at_ms: lstat.mtimeMs,
         has_children: isDir ? (hasChildren ?? false) : null,
-        is_hidden: name.startsWith("."),
         is_symlink: isSymlink,
         readable,
     };
@@ -379,8 +378,6 @@ export function readWorkflowFileContent(slug: string, rawPath: string | undefine
         encoding: "utf-8",
         content,
         etag,
-        is_dotenv: isDotenv,
-        is_redacted: isDotenv,
         size_bytes: bytes.length,
         modified_at_ms: stat.mtimeMs,
     };
@@ -416,7 +413,7 @@ export function saveWorkflowFileContent(slug: string, request: WorkflowFileSaveR
 
     const name = path.basename(relativePath);
     const isDotenv = name === ".env";
-    const nextContent = isDotenv && request.preserve_masked_dotenv_values
+    const nextContent = isDotenv
         ? mergeDotenvMaskedValues(currentBytes.toString("utf-8"), request.content)
         : request.content;
 
@@ -429,8 +426,6 @@ export function saveWorkflowFileContent(slug: string, request: WorkflowFileSaveR
         etag: toEtag(nextBytes),
         modified_at_ms: nextStat.mtimeMs,
         size_bytes: nextBytes.length,
-        is_redacted: isDotenv,
-        saved: true,
     };
 }
 

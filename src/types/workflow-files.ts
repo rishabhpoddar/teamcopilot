@@ -2,8 +2,6 @@ export interface WorkflowEditorAccessResponse {
     can_view: true;
     can_edit: boolean;
     workflow_status: "approved" | "pending";
-    is_owner: boolean;
-    is_engineer: boolean;
 }
 
 export interface WorkflowFileNode {
@@ -13,7 +11,6 @@ export interface WorkflowFileNode {
     size_bytes: number | null;
     modified_at_ms: number;
     has_children: boolean | null;
-    is_hidden: boolean;
     is_symlink: boolean;
     readable: boolean;
 }
@@ -30,8 +27,6 @@ export interface WorkflowFileContentTextResponse {
     encoding: "utf-8";
     content: string;
     etag: string;
-    is_dotenv: boolean;
-    is_redacted: boolean;
     size_bytes: number;
     modified_at_ms: number;
 }
@@ -52,7 +47,6 @@ export interface WorkflowFileSaveRequest {
     path: string;
     content: string;
     base_etag: string;
-    preserve_masked_dotenv_values?: boolean;
 }
 
 export interface WorkflowFileSaveResponse {
@@ -60,6 +54,4 @@ export interface WorkflowFileSaveResponse {
     etag: string;
     modified_at_ms: number;
     size_bytes: number;
-    is_redacted: boolean;
-    saved: true;
 }

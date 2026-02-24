@@ -40,16 +40,14 @@ export default function MonacoEditor({ value, readOnly, language, onChange }: Mo
 
     useEffect(() => {
         if (!containerRef.current) return;
-
-        const theme = colorScheme === 'light' ? 'vs' : 'vs-dark';
         const editor = monaco.editor.create(containerRef.current, {
-            value,
-            language,
-            theme,
+            value: '',
+            language: 'plaintext',
+            theme: 'vs',
             automaticLayout: true,
             minimap: { enabled: false },
             fontSize: 13,
-            readOnly,
+            readOnly: false,
             scrollBeyondLastLine: false,
         });
         editorRef.current = editor;
