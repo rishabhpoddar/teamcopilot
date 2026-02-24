@@ -11,6 +11,7 @@ interface WorkflowCardProps extends Workflow {
     onApproved: () => void;
     onDeleted: () => void;
     onRunWorkflow: (workflowName: string) => void;
+    onOpenWorkflow: (slug: string) => void;
 }
 
 export default function WorkflowCard({
@@ -31,7 +32,8 @@ export default function WorkflowCard({
     token,
     onApproved,
     onDeleted,
-    onRunWorkflow
+    onRunWorkflow,
+    onOpenWorkflow
 }: WorkflowCardProps) {
     const [approving, setApproving] = useState(false);
     const [deleting, setDeleting] = useState(false);
@@ -171,7 +173,9 @@ export default function WorkflowCard({
                     {userRole === 'Engineer' ? (
                         <button
                             className="workflow-approve-btn"
-                            onClick={handleApprove}
+                            onClick={() => {
+                                void handleApprove();
+                            }}
                             disabled={approving}
                         >
                             {approving ? 'Approving...' : 'Approve Workflow'}
@@ -201,7 +205,9 @@ export default function WorkflowCard({
                     {permissionsLoading && <p className="workflow-approval-message">Loading permissions...</p>}
                     <button
                         className="workflow-approve-btn"
-                        onClick={loadPermissionsEditorData}
+                        onClick={() => {
+                            void loadPermissionsEditorData();
+                        }}
                         disabled={!canManagePermissions || permissionsLoading}
                         type="button"
                     >
@@ -286,6 +292,7 @@ export default function WorkflowCard({
                                     type="button"
                                     className="permissions-editor-save-btn"
                                     onClick={handleSavePermissions}
+                                    onMouseDown={(e) => e.stopPropagation()}
                                     disabled={permissionsSaving}
                                 >
                                     {permissionsSaving ? 'Saving...' : 'Save Permissions'}
@@ -294,6 +301,7 @@ export default function WorkflowCard({
                                     type="button"
                                     className="permissions-editor-cancel-btn"
                                     onClick={() => setShowPermissionsEditor(false)}
+                                    onMouseDown={(e) => e.stopPropagation()}
                                     disabled={permissionsSaving}
                                 >
                                     Cancel
@@ -307,8 +315,17 @@ export default function WorkflowCard({
             <div className="workflow-card-actions">
                 <button
                     className="workflow-card-run-btn"
+                    onClick={() => onOpenWorkflow(slug)}
+                >
+                    View Code
+                </button>
+
+                <button
+                    className="workflow-card-run-btn"
                     disabled={!canRun}
-                    onClick={() => onRunWorkflow(name || slug)}
+                    onClick={() => {
+                        onRunWorkflow(name || slug);
+                    }}
                 >
                     Run Workflow
                 </button>
@@ -316,7 +333,9 @@ export default function WorkflowCard({
                 {canDelete && (
                     <button
                         className="workflow-card-delete-btn"
-                        onClick={handleDelete}
+                        onClick={() => {
+                            void handleDelete();
+                        }}
                         disabled={deleting}
                     >
                         {deleting ? 'Deleting...' : 'Delete'}

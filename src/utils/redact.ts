@@ -1,6 +1,6 @@
 const SENSITIVE_KEY_PATTERN = /(token|secret|password|passwd|api[_-]?key|auth|credential)/i;
 
-function maskValue(value: string): string {
+export function maskValue(value: string): string {
     if (value.startsWith("***")) {
         return value;
     }
@@ -9,7 +9,7 @@ function maskValue(value: string): string {
     return `***${tail}`;
 }
 
-function isLikelySensitiveKey(key: string): boolean {
+export function isLikelySensitiveKey(key: string): boolean {
     return SENSITIVE_KEY_PATTERN.test(key);
 }
 
@@ -19,7 +19,7 @@ export function sanitizeStringContent(input: string): string {
     // Redact sensitive env-style assignments anywhere in text, including multiple
     // assignments per line and text prefixes.
     text = text.replace(
-        /(^|[^A-Za-z0-9_-])((?:export\s+)?([A-Za-z_][A-Za-z0-9_-]*)\s*(?:=|:|\s+)\s*)(?:"([^"\n]*)"|'([^'\n]*)'|([^\s#;,)\]}]+))/gm,
+        /(^|[^A-Za-z0-9_-])((?:export[ \t]+)?([A-Za-z_][A-Za-z0-9_-]*)[ \t]*(?:=|:|[ \t]+)[ \t]*)(?:"([^"\n]*)"|'([^'\n]*)'|([^\s#;,)\]}]+))/gm,
         (
             full: string,
             lead: string,

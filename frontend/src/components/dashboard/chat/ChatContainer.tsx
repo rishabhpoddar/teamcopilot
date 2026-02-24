@@ -355,7 +355,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
         setActiveSessionId(newSessionId);
     }, [deleteSessionSilently]);
 
-    const createSession = () => {
+    const createSession = useCallback(() => {
         // If already in pending new chat mode, do nothing
         if (activeSessionId === PENDING_SESSION_ID) {
             return;
@@ -363,7 +363,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
 
         // Switch to pending mode - session will be created when first message is sent
         switchSession(PENDING_SESSION_ID);
-    };
+    }, [activeSessionId, switchSession]);
 
     useEffect(() => {
         const composeKey = `${forceNewChat ? '1' : '0'}::${initialDraftMessage ?? ''}`;
@@ -386,7 +386,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
             }));
         }
         onDraftHandled();
-    }, [forceNewChat, initialDraftMessage, activeSessionId, onDraftHandled]);
+    }, [forceNewChat, initialDraftMessage, activeSessionId, onDraftHandled, createSession]);
 
     const deleteSession = async (sessionId: string) => {
         if (!token) return;

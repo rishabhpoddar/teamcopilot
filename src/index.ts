@@ -56,12 +56,19 @@ const apiRouter = express.Router();
 apiRouter.use((req, res, next) => {
     const originalJson = res.json.bind(res);
     const originalSend = res.send.bind(res);
+    const shouldSkipSanitization = () => Boolean((res.locals as { skipResponseSanitization?: boolean }).skipResponseSanitization);
 
     res.json = ((body: unknown) => {
+        if (shouldSkipSanitization()) {
+            return originalJson(body);
+        }
         return originalJson(sanitizeForClient(body));
     }) as typeof res.json;
 
     res.send = ((body?: unknown) => {
+        if (shouldSkipSanitization()) {
+            return originalSend(body);
+        }
         if (typeof body === "string") {
             return originalSend(sanitizeStringContent(body));
         }
