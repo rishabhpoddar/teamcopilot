@@ -11,9 +11,9 @@
     align-items: center;
     gap: 12px;
     padding: 12px 16px;
-    border: 1px solid #d7dbe3;
+    border: 1px solid #3a3f4a;
     border-radius: 12px;
-    background: linear-gradient(180deg, #fbfcfe 0%, #f1f5fb 100%);
+    background: linear-gradient(180deg, #2a2f38 0%, #252a33 100%);
 }
 
 .workflow-editor-header-left {
@@ -29,7 +29,7 @@
 
 .workflow-editor-subtitle {
     margin: 2px 0 0;
-    color: #536174;
+    color: #9ca3af;
     font-size: 0.88rem;
 }
 
@@ -42,16 +42,16 @@
 .workflow-editor-header button,
 .wf-sidebar-actions button,
 .wf-tree-actions button {
-    border: 1px solid #b6c0cf;
-    background: white;
-    color: #223041;
+    border: 1px solid #4a5568;
+    background: #374151;
+    color: #e5e7eb;
     border-radius: 8px;
     padding: 6px 10px;
     cursor: pointer;
 }
 
 .workflow-editor-header button.secondary {
-    background: #eef3f9;
+    background: #2d3748;
 }
 
 .workflow-editor-header button:disabled {
@@ -66,25 +66,25 @@
 }
 
 .wf-save-status.dirty {
-    background: #fff1c7;
-    color: #6a5000;
+    background: #78350f;
+    color: #fef3c7;
 }
 
 .wf-save-status.saved {
-    background: #dff6e6;
-    color: #165a2a;
+    background: #14532d;
+    color: #d1fae5;
 }
 
 .workflow-editor-loading,
 .workflow-editor-error {
     padding: 24px;
-    border: 1px solid #d7dbe3;
+    border: 1px solid #3a3f4a;
     border-radius: 12px;
-    background: white;
+    background: #1f2937;
 }
 
 .workflow-editor-error {
-    color: #a12727;
+    color: #fca5a5;
 }
 
 .workflow-editor-layout {
@@ -96,8 +96,8 @@
 
 .workflow-editor-sidebar,
 .workflow-editor-main {
-    background: white;
-    border: 1px solid #d7dbe3;
+    background: #1f2937;
+    border: 1px solid #3a3f4a;
     border-radius: 12px;
     min-height: 0;
 }
@@ -114,7 +114,7 @@
     align-items: flex-start;
     gap: 10px;
     padding: 12px;
-    border-bottom: 1px solid #e7ebf2;
+    border-bottom: 1px solid #374151;
 }
 
 .wf-sidebar-title {
@@ -123,7 +123,7 @@
 
 .wf-sidebar-caption {
     font-size: 0.82rem;
-    color: #5f6e82;
+    color: #9ca3af;
 }
 
 .wf-sidebar-actions {
@@ -158,17 +158,17 @@
 }
 
 .wf-tree-row:hover {
-    background: #f4f7fb;
+    background: #374151;
 }
 
 .wf-tree-row.selected {
-    background: #e8f0ff;
+    background: #1e3a8a;
 }
 
 .wf-tree-chevron {
     width: 12px;
     text-align: center;
-    color: #51627a;
+    color: #9ca3af;
 }
 
 .wf-tree-icon {
@@ -187,8 +187,8 @@
 
 .wf-tree-badge {
     font-size: 0.7rem;
-    color: #5f6e82;
-    border: 1px solid #d5dce7;
+    color: #9ca3af;
+    border: 1px solid #4a5568;
     border-radius: 999px;
     padding: 1px 6px;
 }
@@ -210,12 +210,12 @@
 
 .wf-tree-note {
     padding: 4px 12px;
-    color: #5f6e82;
+    color: #9ca3af;
     font-size: 0.82rem;
 }
 
 .wf-tree-note.error {
-    color: #a12727;
+    color: #fca5a5;
 }
 
 .workflow-editor-main {
@@ -232,12 +232,12 @@
     justify-content: center;
     text-align: center;
     padding: 24px;
-    color: #51627a;
+    color: #9ca3af;
 }
 
 .wf-editor-empty h2 {
     margin: 0 0 8px;
-    color: #1f2e40;
+    color: #e5e7eb;
 }
 
 .wf-editor-panel {
@@ -253,8 +253,8 @@
     gap: 12px;
     align-items: center;
     padding: 10px 12px;
-    border-bottom: 1px solid #e7ebf2;
-    background: #f8fbff;
+    border-bottom: 1px solid #374151;
+    background: #111827;
 }
 
 .wf-editor-filemeta {
@@ -271,32 +271,32 @@
 }
 
 .wf-editor-filemeta span {
-    color: #617087;
+    color: #9ca3af;
     font-size: 0.82rem;
 }
 
 .wf-editor-meta-right {
     display: flex;
     gap: 10px;
-    color: #617087;
+    color: #9ca3af;
     font-size: 0.8rem;
     flex-wrap: wrap;
     justify-content: flex-end;
 }
 
 .wf-dotenv-pill {
-    color: #7d4a00;
-    background: #fff4d4;
-    border: 1px solid #efd49a;
+    color: #fef3c7;
+    background: #78350f;
+    border: 1px solid #92400e;
     border-radius: 999px;
     padding: 2px 8px;
 }
 
 .wf-dotenv-warning {
     padding: 10px 12px;
-    background: #fff8e5;
-    color: #6f5608;
-    border-bottom: 1px solid #efdfb4;
+    background: #422006;
+    color: #fef3c7;
+    border-bottom: 1px solid #78350f;
     font-size: 0.88rem;
 }
 
@@ -311,8 +311,127 @@
 }
 
 .wf-editor-meta-line {
-    color: #5f6e82;
+    color: #9ca3af;
     font-size: 0.88rem;
+}
+
+@media (prefers-color-scheme: light) {
+    .workflow-editor-header {
+        border-color: #d7dbe3;
+        background: linear-gradient(180deg, #fbfcfe 0%, #f1f5fb 100%);
+    }
+
+    .workflow-editor-subtitle {
+        color: #536174;
+    }
+
+    .workflow-editor-header button,
+    .wf-sidebar-actions button,
+    .wf-tree-actions button {
+        border-color: #b6c0cf;
+        background: white;
+        color: #223041;
+    }
+
+    .workflow-editor-header button.secondary {
+        background: #eef3f9;
+    }
+
+    .wf-save-status.dirty {
+        background: #fff1c7;
+        color: #6a5000;
+    }
+
+    .wf-save-status.saved {
+        background: #dff6e6;
+        color: #165a2a;
+    }
+
+    .workflow-editor-loading,
+    .workflow-editor-error {
+        border-color: #d7dbe3;
+        background: white;
+    }
+
+    .workflow-editor-error {
+        color: #a12727;
+    }
+
+    .workflow-editor-sidebar,
+    .workflow-editor-main {
+        background: white;
+        border-color: #d7dbe3;
+    }
+
+    .wf-sidebar-header {
+        border-bottom-color: #e7ebf2;
+    }
+
+    .wf-sidebar-caption {
+        color: #5f6e82;
+    }
+
+    .wf-tree-row:hover {
+        background: #f4f7fb;
+    }
+
+    .wf-tree-row.selected {
+        background: #e8f0ff;
+    }
+
+    .wf-tree-chevron {
+        color: #51627a;
+    }
+
+    .wf-tree-badge {
+        color: #5f6e82;
+        border-color: #d5dce7;
+    }
+
+    .wf-tree-note {
+        color: #5f6e82;
+    }
+
+    .wf-tree-note.error {
+        color: #a12727;
+    }
+
+    .wf-editor-empty {
+        color: #51627a;
+    }
+
+    .wf-editor-empty h2 {
+        color: #1f2e40;
+    }
+
+    .wf-editor-toolbar {
+        border-bottom-color: #e7ebf2;
+        background: #f8fbff;
+    }
+
+    .wf-editor-filemeta span {
+        color: #617087;
+    }
+
+    .wf-editor-meta-right {
+        color: #617087;
+    }
+
+    .wf-dotenv-pill {
+        color: #7d4a00;
+        background: #fff4d4;
+        border-color: #efd49a;
+    }
+
+    .wf-dotenv-warning {
+        background: #fff8e5;
+        color: #6f5608;
+        border-bottom-color: #efdfb4;
+    }
+
+    .wf-editor-meta-line {
+        color: #5f6e82;
+    }
 }
 
 @media (max-width: 960px) {
