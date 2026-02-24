@@ -81,6 +81,20 @@ function resolveWorkflowTarget(slug: string, relativePath: string): string {
     return absolute;
 }
 
+function assertWorkflowRootNotSymlink(slug: string): void {
+    const workflowRoot = getWorkflowPath(slug);
+    if (!fs.existsSync(workflowRoot)) {
+        return;
+    }
+    const rootLstat = fs.lstatSync(workflowRoot);
+    if (rootLstat.isSymbolicLink()) {
+        throw {
+            status: 400,
+            message: "Workflow editor does not support symlinked workflow directories"
+        };
+    }
+}
+
 function assertRealPathWithinWorkflowRoot(slug: string, absolutePath: string): void {
     const realRoot = fs.realpathSync(getWorkflowPath(slug));
     const realTarget = fs.realpathSync(absolutePath);
@@ -92,14 +106,41 @@ function assertRealPathWithinWorkflowRoot(slug: string, absolutePath: string): v
     }
 }
 
+function assertNoSymlinkInAncestors(slug: string, absolutePath: string): void {
+    const root = path.resolve(getWorkflowPath(slug));
+    let current = path.resolve(absolutePath);
+    while (true) {
+        const lstat = fs.lstatSync(current);
+        if (lstat.isSymbolicLink()) {
+            throw {
+                status: 400,
+                message: "Workflow editor does not support symlinks"
+            };
+        }
+        if (current === root) {
+            return;
+        }
+        const parent = path.dirname(current);
+        if (parent === current) {
+            throw {
+                status: 400,
+                message: "path escapes the workflow root"
+            };
+        }
+        current = parent;
+    }
+}
+
 function assertExistingPathIsSafe(slug: string, absolutePath: string): void {
+    assertWorkflowRootNotSymlink(slug);
     assertRealPathWithinWorkflowRoot(slug, absolutePath);
-    assertNotSymlink(absolutePath);
+    assertNoSymlinkInAncestors(slug, absolutePath);
 }
 
 function assertParentDirectoryIsSafeForCreate(slug: string, parentAbsolutePath: string): void {
+    assertWorkflowRootNotSymlink(slug);
     assertRealPathWithinWorkflowRoot(slug, parentAbsolutePath);
-    assertNotSymlink(parentAbsolutePath);
+    assertNoSymlinkInAncestors(slug, parentAbsolutePath);
 }
 
 function assertValidName(name: string): void {
@@ -134,8 +175,7 @@ function findClosingQuoteIndex(input: string, quote: '"' | "'"): number {
 
 function toFileNode(parentRelativePath: string, name: string, absolutePath: string): WorkflowFileNode {
     const lstat = fs.lstatSync(absolutePath);
-    const isSymlink = lstat.isSymbolicLink();
-    const isDir = !isSymlink && lstat.isDirectory();
+    const isDir = lstat.isDirectory();
     let readable = true;
 
     try {
@@ -163,7 +203,6 @@ function toFileNode(parentRelativePath: string, name: string, absolutePath: stri
         size_bytes: isDir ? null : lstat.size,
         modified_at_ms: lstat.mtimeMs,
         has_children: isDir ? (hasChildren ?? false) : null,
-        is_symlink: isSymlink,
         readable,
     };
 }
@@ -329,16 +368,6 @@ function mergeDotenvMaskedValues(currentRaw: string, editedContent: string): str
     return output.join("");
 }
 
-function assertNotSymlink(absolutePath: string): void {
-    const lstat = fs.lstatSync(absolutePath);
-    if (lstat.isSymbolicLink()) {
-        throw {
-            status: 400,
-            message: "Symlink paths are not supported in the workflow editor"
-        };
-    }
-}
-
 export function listWorkflowDirectory(slug: string, rawPath: string | undefined): WorkflowFileTreeResponse {
     const relativePath = normalizeRelativePath(rawPath ?? "", true);
     const absolutePath = resolveWorkflowTarget(slug, relativePath);
@@ -358,6 +387,15 @@ export function listWorkflowDirectory(slug: string, rawPath: string | undefined)
     }
 
     const names = fs.readdirSync(absolutePath);
+    for (const name of names) {
+        const childPath = path.join(absolutePath, name);
+        if (fs.lstatSync(childPath).isSymbolicLink()) {
+            throw {
+                status: 400,
+                message: "Workflow editor does not support symlinks"
+            };
+        }
+    }
     const entries = names
         .map((name) => toFileNode(relativePath, name, path.join(absolutePath, name)))
         .sort(compareNodes);

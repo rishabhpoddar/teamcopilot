@@ -11,7 +11,6 @@ export interface WorkflowFileNode {
     size_bytes: number | null;
     modified_at_ms: number;
     has_children: boolean | null;
-    is_symlink: boolean;
     readable: boolean;
 }
 

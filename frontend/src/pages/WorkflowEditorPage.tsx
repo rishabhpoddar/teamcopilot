@@ -468,7 +468,6 @@ export default function WorkflowEditorPage() {
                             )}
                         </span>
                         <span className="wf-tree-name">{node.name}</span>
-                        {node.is_symlink && <span className="wf-tree-badge">symlink</span>}
                         {!node.readable && <span className="wf-tree-badge">no-read</span>}
                         {canEdit && (
                             <span className="wf-tree-actions" onClick={(e) => e.stopPropagation()}>
