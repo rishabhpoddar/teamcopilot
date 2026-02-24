@@ -156,18 +156,7 @@ export default function WorkflowCard({
     };
 
     return (
-        <div
-            className="workflow-card"
-            onClick={() => onOpenWorkflow(slug)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => {
-                if (e.target !== e.currentTarget) return;
-                if (e.key !== 'Enter' && e.key !== ' ') return;
-                e.preventDefault();
-                onOpenWorkflow(slug);
-            }}
-        >
+        <div className="workflow-card">
             <div className="workflow-card-header">
                 <h3 className="workflow-card-title">{name}</h3>
                 <span className={`workflow-approval-badge ${isApproved ? 'approved' : 'pending'}`}>
@@ -180,12 +169,11 @@ export default function WorkflowCard({
             </p>
 
             {!isApproved && (
-                <div className="workflow-approval-section" onClick={(e) => e.stopPropagation()}>
+                <div className="workflow-approval-section">
                     {userRole === 'Engineer' ? (
                         <button
                             className="workflow-approve-btn"
-                            onClick={(e) => {
-                                e.stopPropagation();
+                            onClick={() => {
                                 void handleApprove();
                             }}
                             disabled={approving}
@@ -201,7 +189,7 @@ export default function WorkflowCard({
             )}
 
             {isApproved && (
-                <div className="workflow-approval-section" onClick={(e) => e.stopPropagation()}>
+                <div className="workflow-approval-section">
                     <p className="workflow-approval-message">
                         {run_permission_mode === 'everyone'
                             ? 'Run access: Everyone'
@@ -217,8 +205,7 @@ export default function WorkflowCard({
                     {permissionsLoading && <p className="workflow-approval-message">Loading permissions...</p>}
                     <button
                         className="workflow-approve-btn"
-                        onClick={(e) => {
-                            e.stopPropagation();
+                        onClick={() => {
                             void loadPermissionsEditorData();
                         }}
                         disabled={!canManagePermissions || permissionsLoading}
@@ -234,7 +221,7 @@ export default function WorkflowCard({
                         </p>
                     )}
                     {showPermissionsEditor && (
-                        <div className="permissions-editor" onClick={(e) => e.stopPropagation()}>
+                        <div className="permissions-editor">
                             <div className="permissions-editor-header">
                                 <h4 className="permissions-editor-title">Manage Run Permissions</h4>
                                 <div className="permissions-mode-group">
@@ -325,12 +312,18 @@ export default function WorkflowCard({
                 </div>
             )}
 
-            <div className="workflow-card-actions" onClick={(e) => e.stopPropagation()}>
+            <div className="workflow-card-actions">
+                <button
+                    className="workflow-card-run-btn"
+                    onClick={() => onOpenWorkflow(slug)}
+                >
+                    View Code
+                </button>
+
                 <button
                     className="workflow-card-run-btn"
                     disabled={!canRun}
-                    onClick={(e) => {
-                        e.stopPropagation();
+                    onClick={() => {
                         onRunWorkflow(name || slug);
                     }}
                 >
@@ -340,8 +333,7 @@ export default function WorkflowCard({
                 {canDelete && (
                     <button
                         className="workflow-card-delete-btn"
-                        onClick={(e) => {
-                            e.stopPropagation();
+                        onClick={() => {
                             void handleDelete();
                         }}
                         disabled={deleting}
