@@ -36,11 +36,8 @@ type ActiveFileState =
         savedContent: string;
         etag: string;
         isDotenv: boolean;
-        isRedacted: boolean;
         modifiedAtMs: number;
         sizeBytes: number;
-        loading: false;
-        error: string | null;
     }
     | {
         path: string;
@@ -50,15 +47,11 @@ type ActiveFileState =
         etag: string;
         modifiedAtMs: number;
         sizeBytes: number;
-        loading: false;
-        error: string | null;
     }
     | {
         path: string;
         name: string;
         kind: 'loading';
-        loading: true;
-        error: null;
     };
 
 function getErrorMessage(err: unknown, fallback: string): string {
@@ -228,7 +221,7 @@ export default function WorkflowEditorPage() {
         if (!confirmDiscardIfNeeded()) return;
 
         setSelectedPath(node.path);
-        setActiveFile({ path: node.path, name: node.name, kind: 'loading', loading: true, error: null });
+        setActiveFile({ path: node.path, name: node.name, kind: 'loading' });
         try {
             const response = await axiosInstance.get(`/api/workflows/${encodeURIComponent(slug)}/files/content`, {
                 params: { path: node.path },
@@ -244,8 +237,6 @@ export default function WorkflowEditorPage() {
                     etag: data.etag,
                     modifiedAtMs: data.modified_at_ms,
                     sizeBytes: data.size_bytes,
-                    loading: false,
-                    error: null,
                 });
                 return;
             }
@@ -257,11 +248,8 @@ export default function WorkflowEditorPage() {
                 savedContent: data.content,
                 etag: data.etag,
                 isDotenv: data.name === '.env',
-                isRedacted: data.name === '.env',
                 modifiedAtMs: data.modified_at_ms,
                 sizeBytes: data.size_bytes,
-                loading: false,
-                error: null,
             });
         } catch (err: unknown) {
             setActiveFile(null);
