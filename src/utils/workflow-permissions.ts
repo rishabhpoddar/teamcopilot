@@ -256,15 +256,9 @@ export async function setWorkflowRunPermissions(
 
     if (payload.mode === "everyone") {
         await prisma.$transaction(async (tx) => {
-            await tx.workflow_metadata.upsert({
+            await tx.workflow_metadata.update({
                 where: { workflow_slug: slug },
-                create: {
-                    workflow_slug: slug,
-                    run_permission_mode: "everyone",
-                    created_at: now,
-                    updated_at: now
-                },
-                update: {
+                data: {
                     run_permission_mode: "everyone",
                     updated_at: now
                 }
@@ -306,15 +300,9 @@ export async function setWorkflowRunPermissions(
     }
 
     await prisma.$transaction(async (tx) => {
-        await tx.workflow_metadata.upsert({
+        await tx.workflow_metadata.update({
             where: { workflow_slug: slug },
-            create: {
-                workflow_slug: slug,
-                run_permission_mode: "restricted",
-                created_at: now,
-                updated_at: now
-            },
-            update: {
+            data: {
                 run_permission_mode: "restricted",
                 updated_at: now
             }
