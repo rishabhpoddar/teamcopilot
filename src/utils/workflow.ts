@@ -195,17 +195,16 @@ function mapWorkflowMetadataRow(row: {
     };
 }
 
-export async function getWorkflowMetadata(slug: string): Promise<WorkflowMetadata | null> {
-    const row = await prisma.workflow_metadata.findUnique({
-        where: { workflow_slug: slug }
-    });
-    if (!row) {
-        return null;
-    }
-    return mapWorkflowMetadataRow(row);
-}
-
 async function getOrCreateWorkflowMetadata(slug: string): Promise<WorkflowMetadata> {
+    async function getWorkflowMetadata(slug: string): Promise<WorkflowMetadata | null> {
+        const row = await prisma.workflow_metadata.findUnique({
+            where: { workflow_slug: slug }
+        });
+        if (!row) {
+            return null;
+        }
+        return mapWorkflowMetadataRow(row);
+    }
     readWorkflowManifest(slug);
     const existing = await getWorkflowMetadata(slug);
     if (existing) {
