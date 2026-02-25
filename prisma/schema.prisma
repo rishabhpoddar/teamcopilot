@@ -19,6 +19,8 @@ model users {
   workflowRuns               workflow_runs[]
   chatSessions               chat_sessions[]
   workflowRunPermissionUsers workflow_run_permission_users[]
+  createdWorkflowMetadata    workflow_metadata[]             @relation("WorkflowCreatedBy")
+  approvedWorkflowMetadata   workflow_metadata[]             @relation("WorkflowApprovedBy")
 }
 
 model workflow_runs {
@@ -84,6 +86,8 @@ model workflow_metadata {
   created_at          BigInt
   updated_at          BigInt
   allowedUsers        workflow_run_permission_users[]
+  createdByUser       users?                          @relation("WorkflowCreatedBy", fields: [created_by_user_id], references: [id], onDelete: SetNull)
+  approvedByUser      users?                          @relation("WorkflowApprovedBy", fields: [approved_by_user_id], references: [id], onDelete: SetNull)
 
   @@index([created_by_user_id])
   @@index([approved_by_user_id])
