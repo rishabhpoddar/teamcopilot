@@ -9,8 +9,7 @@ This document is your operating manual for working within this directory (called
 **You must NEVER execute workflow scripts directly using shell commands.**
 
 All workflow execution performed by the agent **must** go through the `runWorkflow` tool. This is enforced because:
-- Only workflows that have been **approved by an engineer user** can be executed
-- The `runWorkflow` tool checks approval status before execution
+- Only workflows that have been **approved by an engineer user** can be executed. This check (among other checks) is performed by the `runWorkflow` tool.
 - The `runWorkflow` can throw an error for various reasons. If it does, read the error message and report it to the user accurately.
 
 **However:** workflows must be written so that a **human** can run them directly with Python (without any agent tooling):
