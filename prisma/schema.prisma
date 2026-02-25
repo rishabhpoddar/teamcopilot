@@ -66,20 +66,12 @@ model tool_execution_permissions {
   @@index([opencode_session_id, status])
 }
 
-model workflow_run_permissions {
-  workflow_slug String @id
-  mode          String // "restricted" | "everyone"
-  created_at    BigInt
-  updated_at    BigInt
-  allowedUsers  workflow_run_permission_users[]
-}
-
 model workflow_run_permission_users {
   id           String @id @default(uuid())
   workflow_slug String
   user_id      String
   created_at   BigInt
-  permission   workflow_run_permissions @relation(fields: [workflow_slug], references: [workflow_slug], onDelete: Cascade)
+  permission   workflow_metadata @relation(fields: [workflow_slug], references: [workflow_slug], onDelete: Cascade)
   user         users @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@unique([workflow_slug, user_id])
@@ -90,10 +82,12 @@ model workflow_metadata {
   workflow_slug        String @id
   created_by_user_id   String?
   approved_by_user_id  String?
+  run_permission_mode  String @default("restricted") // "restricted" | "everyone"
   created_at           BigInt
   updated_at           BigInt
   creator              users? @relation("workflow_creator", fields: [created_by_user_id], references: [id], onDelete: SetNull)
   approver             users? @relation("workflow_approver", fields: [approved_by_user_id], references: [id], onDelete: SetNull)
+  allowedUsers         workflow_run_permission_users[]
 
   @@index([created_by_user_id])
   @@index([approved_by_user_id])

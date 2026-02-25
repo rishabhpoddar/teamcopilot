@@ -22,15 +22,11 @@ export interface WorkflowManifest {
     }
 }
 
-export interface WorkflowManifestLegacy extends WorkflowManifest {
-    created_by_user_id?: string | null
-    approved_by_user_id?: string | null
-}
-
 export interface WorkflowMetadata {
     workflow_slug: string;
     created_by_user_id: string | null;
     approved_by_user_id: string | null;
+    run_permission_mode: WorkflowRunPermissionMode;
 }
 
 export type WorkflowRunPermissionMode = "restricted" | "everyone";

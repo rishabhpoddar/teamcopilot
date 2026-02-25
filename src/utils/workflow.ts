@@ -4,7 +4,7 @@
 
 import fs from "fs";
 import path from "path";
-import { WorkflowManifest, WorkflowManifestLegacy, WorkflowMetadata } from "../types/workflow";
+import { WorkflowManifest, WorkflowMetadata } from "../types/workflow";
 import prisma from "../prisma/client";
 import { assertEnv } from "./assert";
 import { ensureWorkflowRunPermissionsForMetadata } from "./workflow-permissions";
@@ -60,26 +60,17 @@ function readWorkflowManifest(slug: string): WorkflowManifest {
     }
 
     const content = fs.readFileSync(manifestPath, "utf-8");
-    const parsed = JSON.parse(content) as WorkflowManifestLegacy;
-    return {
-        intent_summary: parsed.intent_summary,
-        inputs: parsed.inputs,
-        triggers: parsed.triggers,
-        runtime: parsed.runtime,
-    };
+    return JSON.parse(content) as WorkflowManifest;
 }
 
-export async function readWorkflowManifestAndEnsurePermissions(slug: string): Promise<WorkflowManifest> {
+export async function readWorkflowManifestAndEnsurePermissions(slug: string): Promise<{
+    manifest: WorkflowManifest;
+    metadata: WorkflowMetadata;
+}> {
     const manifest = readWorkflowManifest(slug);
     const metadata = await getOrCreateWorkflowMetadata(slug);
     await ensureWorkflowRunPermissionsForMetadata(slug, metadata);
-    return manifest;
-}
-
-function readWorkflowManifestLegacy(slug: string): WorkflowManifestLegacy {
-    const manifestPath = getWorkflowManifestPath(slug);
-    const content = fs.readFileSync(manifestPath, "utf-8");
-    return JSON.parse(content) as WorkflowManifestLegacy;
+    return { manifest, metadata };
 }
 
 /** Write a workflow's manifest */
@@ -122,7 +113,7 @@ export async function approveWorkflow(slug: string, userId: string): Promise<Wor
         };
     }
 
-    workflowExistsOrThrow(slug);
+    readWorkflowManifest(slug);
     const existing = await getOrCreateWorkflowMetadata(slug);
     const now = BigInt(Date.now());
     const row = await prisma.workflow_metadata.upsert({
@@ -131,6 +122,7 @@ export async function approveWorkflow(slug: string, userId: string): Promise<Wor
             workflow_slug: slug,
             created_by_user_id: existing.created_by_user_id,
             approved_by_user_id: userId,
+            run_permission_mode: existing.run_permission_mode,
             created_at: now,
             updated_at: now,
         },
@@ -144,7 +136,7 @@ export async function approveWorkflow(slug: string, userId: string): Promise<Wor
 
 /** Set workflow creator in database metadata */
 export async function setWorkflowCreator(slug: string, userId: string): Promise<WorkflowMetadata> {
-    workflowExistsOrThrow(slug);
+    readWorkflowManifest(slug);
     const existing = await getOrCreateWorkflowMetadata(slug);
     if (existing.created_by_user_id && existing.created_by_user_id !== userId) {
         return existing;
@@ -157,6 +149,7 @@ export async function setWorkflowCreator(slug: string, userId: string): Promise<
             workflow_slug: slug,
             created_by_user_id: userId,
             approved_by_user_id: existing.approved_by_user_id,
+            run_permission_mode: existing.run_permission_mode,
             created_at: now,
             updated_at: now,
         },
@@ -197,24 +190,23 @@ export function listWorkflowSlugs(): string[] {
     return slugs;
 }
 
-function workflowExistsOrThrow(slug: string): void {
-    if (!workflowExists(slug)) {
-        throw {
-            status: 404,
-            message: `Workflow manifest not found for slug: ${slug}`
-        };
-    }
-}
-
 function mapWorkflowMetadataRow(row: {
     workflow_slug: string;
     created_by_user_id: string | null;
     approved_by_user_id: string | null;
+    run_permission_mode: string;
 }): WorkflowMetadata {
+    if (row.run_permission_mode !== "restricted" && row.run_permission_mode !== "everyone") {
+        throw {
+            status: 500,
+            message: `Invalid workflow run permission mode: ${row.run_permission_mode}`
+        };
+    }
     return {
         workflow_slug: row.workflow_slug,
         created_by_user_id: row.created_by_user_id,
         approved_by_user_id: row.approved_by_user_id,
+        run_permission_mode: row.run_permission_mode,
     };
 }
 
@@ -229,7 +221,7 @@ export async function getWorkflowMetadata(slug: string): Promise<WorkflowMetadat
 }
 
 export async function getOrCreateWorkflowMetadata(slug: string): Promise<WorkflowMetadata> {
-    workflowExistsOrThrow(slug);
+    readWorkflowManifest(slug);
     const existing = await getWorkflowMetadata(slug);
     if (existing) {
         return existing;
@@ -239,34 +231,10 @@ export async function getOrCreateWorkflowMetadata(slug: string): Promise<Workflo
     const row = await prisma.workflow_metadata.create({
         data: {
             workflow_slug: slug,
+            run_permission_mode: "restricted",
             created_at: now,
             updated_at: now,
         }
     });
     return mapWorkflowMetadataRow(row);
-}
-
-export async function backfillWorkflowMetadataFromLegacyManifests(): Promise<void> {
-    const slugs = listWorkflowSlugs();
-    for (const slug of slugs) {
-        const existing = await prisma.workflow_metadata.findUnique({
-            where: { workflow_slug: slug },
-            select: { workflow_slug: true }
-        });
-        if (existing) {
-            continue;
-        }
-
-        const legacyManifest = readWorkflowManifestLegacy(slug);
-        const now = BigInt(Date.now());
-        await prisma.workflow_metadata.create({
-            data: {
-                workflow_slug: slug,
-                created_by_user_id: legacyManifest.created_by_user_id ?? null,
-                approved_by_user_id: legacyManifest.approved_by_user_id ?? null,
-                created_at: now,
-                updated_at: now,
-            }
-        });
-    }
 }

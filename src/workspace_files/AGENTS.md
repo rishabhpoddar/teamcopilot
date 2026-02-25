@@ -304,8 +304,6 @@ These rules exist to prevent data loss, secret leakage, and unsafe behavior. Vio
 ### Approval & execution integrity
 
 - Never attempt to bypass workflow approval requirements.
-- Do not try to self-approve workflows by editing workflow files; approvals must happen via the product’s intended UX/authorization flow.
-- Do not manually set workflow creator metadata in files; it is set via the system API tied to the authenticated creator.
 
 ### Secrets & sensitive data handling
 

@@ -1,6 +1,6 @@
 import express from "express";
 import prisma from "../prisma/client";
-import { WorkflowManifest, WorkflowSummary } from "../types/workflow";
+import { WorkflowManifest, WorkflowMetadata, WorkflowSummary } from "../types/workflow";
 import { WorkflowEditorAccessResponse } from "../types/workflow-files";
 import { apiHandler } from "../utils/index";
 import {
@@ -8,8 +8,7 @@ import {
     readWorkflowManifestAndEnsurePermissions,
     approveWorkflow,
     setWorkflowCreator,
-    deleteWorkflowDirectory,
-    getOrCreateWorkflowMetadata
+    deleteWorkflowDirectory
 } from "../utils/workflow";
 import {
     createWorkflowFileOrFolder,
@@ -31,8 +30,7 @@ import {
 const router = express.Router({ mergeParams: true });
 
 async function getWorkflowEditorAccess(slug: string, userId: string, role: string | undefined): Promise<WorkflowEditorAccessResponse> {
-    const manifest = await readWorkflowManifestAndEnsurePermissions(slug);
-    const metadata = await getOrCreateWorkflowMetadata(slug);
+    const { metadata } = await readWorkflowManifestAndEnsurePermissions(slug);
     const isOwner = metadata.created_by_user_id === userId;
     const isEngineer = role === "Engineer";
     const workflowStatus = metadata.approved_by_user_id ? "approved" : "pending";
@@ -69,11 +67,10 @@ router.get('/', apiHandler(async (req, res) => {
     const workflows: WorkflowSummary[] = [];
     const creatorIds = new Set<string>();
     const manifests = new Map<string, WorkflowManifest>();
-    const metadataBySlug = new Map<string, Awaited<ReturnType<typeof getOrCreateWorkflowMetadata>>>();
+    const metadataBySlug = new Map<string, WorkflowMetadata>();
 
     for (const slug of slugs) {
-        const manifest = await readWorkflowManifestAndEnsurePermissions(slug);
-        const metadata = await getOrCreateWorkflowMetadata(slug);
+        const { manifest, metadata } = await readWorkflowManifestAndEnsurePermissions(slug);
         manifests.set(slug, manifest);
         metadataBySlug.set(slug, metadata);
         if (metadata.created_by_user_id) {
@@ -139,8 +136,7 @@ router.post('/runs', apiHandler(async (req, res) => {
         };
     }
 
-    await readWorkflowManifestAndEnsurePermissions(workflow_slug);
-    const metadata = await getOrCreateWorkflowMetadata(workflow_slug);
+    const { metadata } = await readWorkflowManifestAndEnsurePermissions(workflow_slug);
 
     if (metadata.approved_by_user_id === null) {
         throw {
@@ -227,7 +223,6 @@ router.post('/:slug/approve', apiHandler(async (req, res) => {
     const slug = req.params.slug as string;
 
     const approvedMetadata = await approveWorkflow(slug, req.userId!);
-    await readWorkflowManifestAndEnsurePermissions(slug);
     await addApproverToWorkflowRunPermissionsIfRestricted(slug, req.userId!, approvedMetadata.created_by_user_id);
 
     res.json({
@@ -241,8 +236,7 @@ router.post('/:slug/approve', apiHandler(async (req, res) => {
 // POST /api/workflows/:slug/creator - Set the creator user id for a workflow
 router.post('/:slug/creator', apiHandler(async (req, res) => {
     const slug = req.params.slug as string;
-    await readWorkflowManifestAndEnsurePermissions(slug);
-    const metadata = await getOrCreateWorkflowMetadata(slug);
+    const { metadata } = await readWorkflowManifestAndEnsurePermissions(slug);
     const existingCreator = metadata.created_by_user_id ?? null;
 
     if (existingCreator && existingCreator !== req.userId!) {
@@ -268,8 +262,7 @@ router.post('/:slug/creator', apiHandler(async (req, res) => {
 // DELETE /api/workflows/:slug - Delete workflow directory and all past runs
 router.delete('/:slug', apiHandler(async (req, res) => {
     const slug = req.params.slug as string;
-    await readWorkflowManifestAndEnsurePermissions(slug);
-    const metadata = await getOrCreateWorkflowMetadata(slug);
+    const { metadata } = await readWorkflowManifestAndEnsurePermissions(slug);
     const creatorUserId = metadata.created_by_user_id ?? null;
 
     const creator = creatorUserId
@@ -291,9 +284,6 @@ router.delete('/:slug', apiHandler(async (req, res) => {
     }
 
     await prisma.workflow_runs.deleteMany({
-        where: { workflow_slug: slug }
-    });
-    await prisma.workflow_run_permissions.deleteMany({
         where: { workflow_slug: slug }
     });
     await prisma.workflow_metadata.deleteMany({
@@ -411,8 +401,7 @@ router.delete('/:slug/files', apiHandler(async (req, res) => {
 // GET /api/workflows/:slug - Get workflow details from filesystem
 router.get('/:slug', apiHandler(async (req, res) => {
     const slug = req.params.slug as string;
-    const manifest = await readWorkflowManifestAndEnsurePermissions(slug);
-    const metadata = await getOrCreateWorkflowMetadata(slug);
+    const { manifest, metadata } = await readWorkflowManifestAndEnsurePermissions(slug);
     const permission = await getWorkflowRunPermissionWithUsers(slug);
     const permissionSummary = getPermissionSummaryFields(permission, req.userId!);
 
@@ -456,8 +445,7 @@ router.get('/:slug', apiHandler(async (req, res) => {
 // PATCH /api/workflows/:slug/run-permissions - Update run permissions
 router.patch('/:slug/run-permissions', apiHandler(async (req, res) => {
     const slug = req.params.slug as string;
-    await readWorkflowManifestAndEnsurePermissions(slug);
-    const metadata = await getOrCreateWorkflowMetadata(slug);
+    const { metadata } = await readWorkflowManifestAndEnsurePermissions(slug);
 
     if (metadata.approved_by_user_id === null) {
         throw {

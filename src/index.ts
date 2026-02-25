@@ -21,7 +21,6 @@ import path from 'path';
 import { Server } from "http";
 import { assertEnv, parseIntStrict } from "./utils/assert";
 import { sanitizeForClient, sanitizeStringContent } from "./utils/redact";
-import { backfillWorkflowMetadataFromLegacyManifests } from "./utils/workflow";
 const app = express();
 
 app.use(express.json());
@@ -130,7 +129,6 @@ async function shutdown(exitCode: number) {
 }
 
 async function bootstrap() {
-    await backfillWorkflowMetadataFromLegacyManifests();
     await startOpencodeServer();
     startCronJobs();
 
