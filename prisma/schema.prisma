@@ -19,8 +19,6 @@ model users {
   workflowRuns               workflow_runs[]
   chatSessions               chat_sessions[]
   workflowRunPermissionUsers workflow_run_permission_users[]
-  createdWorkflows           workflow_metadata[]             @relation("workflow_creator")
-  approvedWorkflows          workflow_metadata[]             @relation("workflow_approver")
 }
 
 model workflow_runs {
@@ -85,8 +83,6 @@ model workflow_metadata {
   run_permission_mode String // "restricted" | "everyone"
   created_at          BigInt
   updated_at          BigInt
-  creator             users?                          @relation("workflow_creator", fields: [created_by_user_id], references: [id], onDelete: SetNull)
-  approver            users?                          @relation("workflow_approver", fields: [approved_by_user_id], references: [id], onDelete: SetNull)
   allowedUsers        workflow_run_permission_users[]
 
   @@index([created_by_user_id])

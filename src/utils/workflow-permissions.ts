@@ -55,39 +55,12 @@ async function createRestrictedPermissionRow(slug: string, userIds: string[]): P
 export async function ensureWorkflowRunPermissionsForMetadata(slug: string, metadata: WorkflowMetadata): Promise<void> {
     const existing = await prisma.workflow_metadata.findUnique({
         where: { workflow_slug: slug },
-        select: {
-            workflow_slug: true,
-            run_permission_mode: true,
-            allowedUsers: {
-                select: { user_id: true }
-            }
-        }
+        select: { workflow_slug: true }
     });
+    if (existing) return;
+
     const candidateUserIds = getDefaultCandidateUserIds(metadata);
     const existingUserIds = await getExistingUserIds(candidateUserIds);
-
-    if (existing) {
-        if (existing.run_permission_mode !== "restricted") return;
-        if (existing.allowedUsers.length > 0) return;
-        if (existingUserIds.length === 0) return;
-
-        const now = BigInt(Date.now());
-        await prisma.workflow_metadata.update({
-            where: { workflow_slug: slug },
-            data: {
-                updated_at: now,
-                allowedUsers: {
-                    createMany: {
-                        data: existingUserIds.map((userId) => ({
-                            user_id: userId,
-                            created_at: now
-                        }))
-                    }
-                }
-            }
-        });
-        return;
-    }
 
     try {
         await createRestrictedPermissionRow(slug, existingUserIds);

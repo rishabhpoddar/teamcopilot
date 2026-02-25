@@ -6,7 +6,7 @@ import fs from "fs";
 import path from "path";
 import { WorkflowManifest, WorkflowMetadata } from "../types/workflow";
 import prisma from "../prisma/client";
-import { assertEnv } from "./assert";
+import { assertCondition, assertEnv } from "./assert";
 import { ensureWorkflowRunPermissionsForMetadata } from "./workflow-permissions";
 
 const WORKSPACE_DIR = assertEnv("WORKSPACE_DIR");
@@ -114,19 +114,11 @@ export async function approveWorkflow(slug: string, userId: string): Promise<Wor
     }
 
     readWorkflowManifest(slug);
-    const existing = await getOrCreateWorkflowMetadata(slug);
+    await getOrCreateWorkflowMetadata(slug);
     const now = BigInt(Date.now());
-    const row = await prisma.workflow_metadata.upsert({
+    const row = await prisma.workflow_metadata.update({
         where: { workflow_slug: slug },
-        create: {
-            workflow_slug: slug,
-            created_by_user_id: existing.created_by_user_id,
-            approved_by_user_id: userId,
-            run_permission_mode: existing.run_permission_mode,
-            created_at: now,
-            updated_at: now,
-        },
-        update: {
+        data: {
             approved_by_user_id: userId,
             updated_at: now,
         }
@@ -138,22 +130,15 @@ export async function approveWorkflow(slug: string, userId: string): Promise<Wor
 export async function setWorkflowCreator(slug: string, userId: string): Promise<WorkflowMetadata> {
     readWorkflowManifest(slug);
     const existing = await getOrCreateWorkflowMetadata(slug);
-    if (existing.created_by_user_id && existing.created_by_user_id !== userId) {
+    if (existing.created_by_user_id) {
+        assertCondition(existing.created_by_user_id === userId, "Workflow creator mismatch");
         return existing;
     }
 
     const now = BigInt(Date.now());
-    const row = await prisma.workflow_metadata.upsert({
+    const row = await prisma.workflow_metadata.update({
         where: { workflow_slug: slug },
-        create: {
-            workflow_slug: slug,
-            created_by_user_id: userId,
-            approved_by_user_id: existing.approved_by_user_id,
-            run_permission_mode: existing.run_permission_mode,
-            created_at: now,
-            updated_at: now,
-        },
-        update: {
+        data: {
             created_by_user_id: userId,
             updated_at: now,
         }
