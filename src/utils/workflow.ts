@@ -220,7 +220,7 @@ export async function getWorkflowMetadata(slug: string): Promise<WorkflowMetadat
     return mapWorkflowMetadataRow(row);
 }
 
-export async function getOrCreateWorkflowMetadata(slug: string): Promise<WorkflowMetadata> {
+async function getOrCreateWorkflowMetadata(slug: string): Promise<WorkflowMetadata> {
     readWorkflowManifest(slug);
     const existing = await getWorkflowMetadata(slug);
     if (existing) {
