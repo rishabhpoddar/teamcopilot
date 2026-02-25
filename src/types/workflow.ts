@@ -20,8 +20,13 @@ export interface WorkflowManifest {
     runtime: {
         timeout_seconds: number
     }
-    created_by_user_id: string | null
-    approved_by_user_id: string | null
+}
+
+export interface WorkflowMetadata {
+    workflow_slug: string;
+    created_by_user_id: string | null;
+    approved_by_user_id: string | null;
+    run_permission_mode: WorkflowRunPermissionMode;
 }
 
 export type WorkflowRunPermissionMode = "restricted" | "everyone";

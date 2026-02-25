@@ -1,10 +1,10 @@
 import { Prisma } from "@prisma/client";
 import prisma from "../prisma/client";
-import { WorkflowManifest, WorkflowRunPermissionMode, WorkflowRunPermissions } from "../types/workflow";
+import { WorkflowMetadata, WorkflowRunPermissionMode, WorkflowRunPermissions } from "../types/workflow";
 
 type PermissionWithUsers = {
     workflow_slug: string;
-    mode: string;
+    run_permission_mode: string;
     allowedUsers: Array<{ user_id: string; user: { id: string; name: string; email: string } }>;
 };
 
@@ -18,8 +18,8 @@ function assertPermissionMode(mode: string): WorkflowRunPermissionMode {
     return mode;
 }
 
-function getDefaultCandidateUserIds(manifest: WorkflowManifest): string[] {
-    const ids = [manifest.created_by_user_id, manifest.approved_by_user_id].filter((id): id is string => Boolean(id));
+function getDefaultCandidateUserIds(metadata: WorkflowMetadata): string[] {
+    const ids = [metadata.created_by_user_id, metadata.approved_by_user_id].filter((id): id is string => Boolean(id));
     return Array.from(new Set(ids));
 }
 
@@ -34,10 +34,10 @@ async function getExistingUserIds(userIds: string[]): Promise<string[]> {
 
 async function createRestrictedPermissionRow(slug: string, userIds: string[]): Promise<void> {
     const now = BigInt(Date.now());
-    await prisma.workflow_run_permissions.create({
+    await prisma.workflow_metadata.create({
         data: {
             workflow_slug: slug,
-            mode: "restricted",
+            run_permission_mode: "restricted",
             created_at: now,
             updated_at: now,
             allowedUsers: userIds.length > 0 ? {
@@ -52,15 +52,16 @@ async function createRestrictedPermissionRow(slug: string, userIds: string[]): P
     });
 }
 
-export async function ensureWorkflowRunPermissionsForManifest(slug: string, manifest: WorkflowManifest): Promise<void> {
-    const existing = await prisma.workflow_run_permissions.findUnique({
+export async function ensureWorkflowRunPermissionsForMetadata(slug: string, metadata: WorkflowMetadata): Promise<void> {
+    const existing = await prisma.workflow_metadata.findUnique({
         where: { workflow_slug: slug },
         select: { workflow_slug: true }
     });
     if (existing) return;
 
-    const candidateUserIds = getDefaultCandidateUserIds(manifest);
+    const candidateUserIds = getDefaultCandidateUserIds(metadata);
     const existingUserIds = await getExistingUserIds(candidateUserIds);
+
     try {
         await createRestrictedPermissionRow(slug, existingUserIds);
     } catch (err) {
@@ -72,17 +73,17 @@ export async function ensureWorkflowRunPermissionsForManifest(slug: string, mani
 }
 
 export async function initializeWorkflowRunPermissionsForCreator(slug: string, creatorUserId: string): Promise<void> {
-    const existing = await prisma.workflow_run_permissions.findUnique({
+    const existing = await prisma.workflow_metadata.findUnique({
         where: { workflow_slug: slug },
-        select: { mode: true }
+        select: { run_permission_mode: true }
     });
 
     const now = BigInt(Date.now());
     if (!existing) {
-        await prisma.workflow_run_permissions.create({
+        await prisma.workflow_metadata.create({
             data: {
                 workflow_slug: slug,
-                mode: "restricted",
+                run_permission_mode: "restricted",
                 created_at: now,
                 updated_at: now,
                 allowedUsers: {
@@ -96,8 +97,8 @@ export async function initializeWorkflowRunPermissionsForCreator(slug: string, c
         return;
     }
 
-    if (existing.mode === "restricted") {
-        await prisma.workflow_run_permissions.update({
+    if (existing.run_permission_mode === "restricted") {
+        await prisma.workflow_metadata.update({
             where: { workflow_slug: slug },
             data: {
                 updated_at: now,
@@ -125,19 +126,19 @@ export async function addApproverToWorkflowRunPermissionsIfRestricted(
     approverUserId: string,
     ownerUserId: string | null,
 ): Promise<void> {
-    const permission = await prisma.workflow_run_permissions.findUnique({
+    const permission = await prisma.workflow_metadata.findUnique({
         where: { workflow_slug: slug },
-        select: { mode: true }
+        select: { run_permission_mode: true }
     });
     if (!permission) {
         const now = BigInt(Date.now());
         const initialUserIds = await getExistingUserIds(Array.from(new Set(
             [ownerUserId, approverUserId].filter((id): id is string => Boolean(id))
         )));
-        await prisma.workflow_run_permissions.create({
+        await prisma.workflow_metadata.create({
             data: {
                 workflow_slug: slug,
-                mode: "restricted",
+                run_permission_mode: "restricted",
                 created_at: now,
                 updated_at: now,
                 allowedUsers: initialUserIds.length > 0 ? {
@@ -153,12 +154,12 @@ export async function addApproverToWorkflowRunPermissionsIfRestricted(
         return;
     }
 
-    if (permission.mode !== "restricted") {
+    if (permission.run_permission_mode !== "restricted") {
         return;
     }
 
     const now = BigInt(Date.now());
-    await prisma.workflow_run_permissions.update({
+    await prisma.workflow_metadata.update({
         where: { workflow_slug: slug },
         data: {
             updated_at: now,
@@ -181,7 +182,7 @@ export async function addApproverToWorkflowRunPermissionsIfRestricted(
 }
 
 export async function getWorkflowRunPermissionWithUsers(slug: string): Promise<PermissionWithUsers> {
-    const permission = await prisma.workflow_run_permissions.findUnique({
+    const permission = await prisma.workflow_metadata.findUnique({
         where: { workflow_slug: slug },
         include: {
             allowedUsers: {
@@ -206,7 +207,7 @@ export async function getWorkflowRunPermissionWithUsers(slug: string): Promise<P
 }
 
 export function mapPermissionToApi(permission: PermissionWithUsers): WorkflowRunPermissions {
-    const mode = assertPermissionMode(permission.mode);
+    const mode = assertPermissionMode(permission.run_permission_mode);
     if (mode === "everyone") {
         return { mode: "everyone" };
     }
@@ -217,7 +218,7 @@ export function mapPermissionToApi(permission: PermissionWithUsers): WorkflowRun
 }
 
 export function canUserRunWorkflowFromPermission(permission: PermissionWithUsers, userId: string): boolean {
-    const mode = assertPermissionMode(permission.mode);
+    const mode = assertPermissionMode(permission.run_permission_mode);
     if (mode === "everyone") return true;
     return permission.allowedUsers.some((row) => row.user_id === userId);
 }
@@ -232,7 +233,7 @@ export function getPermissionSummaryFields(
     allowed_runner_count: number;
     is_run_locked_due_to_missing_users: boolean;
 } {
-    const mode = assertPermissionMode(permission.mode);
+    const mode = assertPermissionMode(permission.run_permission_mode);
     const canRun = canUserRunWorkflowFromPermission(permission, currentUserId);
     const allowedCount = mode === "restricted" ? permission.allowedUsers.length : 0;
     const isLocked = mode === "restricted" && permission.allowedUsers.length === 0;
@@ -255,16 +256,10 @@ export async function setWorkflowRunPermissions(
 
     if (payload.mode === "everyone") {
         await prisma.$transaction(async (tx) => {
-            await tx.workflow_run_permissions.upsert({
+            await tx.workflow_metadata.update({
                 where: { workflow_slug: slug },
-                create: {
-                    workflow_slug: slug,
-                    mode: "everyone",
-                    created_at: now,
-                    updated_at: now
-                },
-                update: {
-                    mode: "everyone",
+                data: {
+                    run_permission_mode: "everyone",
                     updated_at: now
                 }
             });
@@ -305,16 +300,10 @@ export async function setWorkflowRunPermissions(
     }
 
     await prisma.$transaction(async (tx) => {
-        await tx.workflow_run_permissions.upsert({
+        await tx.workflow_metadata.update({
             where: { workflow_slug: slug },
-            create: {
-                workflow_slug: slug,
-                mode: "restricted",
-                created_at: now,
-                updated_at: now
-            },
-            update: {
-                mode: "restricted",
+            data: {
+                run_permission_mode: "restricted",
                 updated_at: now
             }
         });

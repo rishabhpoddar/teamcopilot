@@ -4,10 +4,10 @@
 
 import fs from "fs";
 import path from "path";
-import { WorkflowManifest } from "../types/workflow";
+import { WorkflowManifest, WorkflowMetadata } from "../types/workflow";
 import prisma from "../prisma/client";
-import { assertEnv } from "./assert";
-import { ensureWorkflowRunPermissionsForManifest } from "./workflow-permissions";
+import { assertCondition, assertEnv } from "./assert";
+import { ensureWorkflowRunPermissionsForMetadata } from "./workflow-permissions";
 
 const WORKSPACE_DIR = assertEnv("WORKSPACE_DIR");
 
@@ -63,10 +63,14 @@ function readWorkflowManifest(slug: string): WorkflowManifest {
     return JSON.parse(content) as WorkflowManifest;
 }
 
-export async function readWorkflowManifestAndEnsurePermissions(slug: string): Promise<WorkflowManifest> {
+export async function readWorkflowManifestAndEnsurePermissions(slug: string): Promise<{
+    manifest: WorkflowManifest;
+    metadata: WorkflowMetadata;
+}> {
     const manifest = readWorkflowManifest(slug);
-    await ensureWorkflowRunPermissionsForManifest(slug, manifest);
-    return manifest;
+    const metadata = await getOrCreateWorkflowMetadata(slug);
+    await ensureWorkflowRunPermissionsForMetadata(slug, metadata);
+    return { manifest, metadata };
 }
 
 /** Write a workflow's manifest */
@@ -87,13 +91,13 @@ export function updateWorkflowManifest(
 }
 
 /** Check if a workflow is approved */
-export function isWorkflowApproved(slug: string): boolean {
-    const manifest = readWorkflowManifest(slug);
-    return manifest.approved_by_user_id != null;
+export async function isWorkflowApproved(slug: string): Promise<boolean> {
+    const metadata = await getOrCreateWorkflowMetadata(slug);
+    return metadata.approved_by_user_id != null;
 }
 
 /** Approve a workflow */
-export async function approveWorkflow(slug: string, userId: string): Promise<WorkflowManifest> {
+export async function approveWorkflow(slug: string, userId: string): Promise<WorkflowMetadata> {
     const user = await prisma.users.findUnique({ where: { id: userId } });
     if (!user) {
         throw {
@@ -109,12 +113,37 @@ export async function approveWorkflow(slug: string, userId: string): Promise<Wor
         };
     }
 
-    return updateWorkflowManifest(slug, { approved_by_user_id: userId });
+    readWorkflowManifest(slug);
+    await getOrCreateWorkflowMetadata(slug);
+    const now = BigInt(Date.now());
+    const row = await prisma.workflow_metadata.update({
+        where: { workflow_slug: slug },
+        data: {
+            approved_by_user_id: userId,
+            updated_at: now,
+        }
+    });
+    return mapWorkflowMetadataRow(row);
 }
 
-/** Set workflow creator on workflow.json */
-export function setWorkflowCreator(slug: string, userId: string): WorkflowManifest {
-    return updateWorkflowManifest(slug, { created_by_user_id: userId });
+/** Set workflow creator in database metadata */
+export async function setWorkflowCreator(slug: string, userId: string): Promise<WorkflowMetadata> {
+    readWorkflowManifest(slug);
+    const existing = await getOrCreateWorkflowMetadata(slug);
+    if (existing.created_by_user_id) {
+        assertCondition(existing.created_by_user_id === userId, "Workflow creator mismatch");
+        return existing;
+    }
+
+    const now = BigInt(Date.now());
+    const row = await prisma.workflow_metadata.update({
+        where: { workflow_slug: slug },
+        data: {
+            created_by_user_id: userId,
+            updated_at: now,
+        }
+    });
+    return mapWorkflowMetadataRow(row);
 }
 
 /** Get the timeout for a workflow (defaults to 300 seconds) */
@@ -144,4 +173,52 @@ export function listWorkflowSlugs(): string[] {
     }
 
     return slugs;
+}
+
+function mapWorkflowMetadataRow(row: {
+    workflow_slug: string;
+    created_by_user_id: string | null;
+    approved_by_user_id: string | null;
+    run_permission_mode: string;
+}): WorkflowMetadata {
+    if (row.run_permission_mode !== "restricted" && row.run_permission_mode !== "everyone") {
+        throw {
+            status: 500,
+            message: `Invalid workflow run permission mode: ${row.run_permission_mode}`
+        };
+    }
+    return {
+        workflow_slug: row.workflow_slug,
+        created_by_user_id: row.created_by_user_id,
+        approved_by_user_id: row.approved_by_user_id,
+        run_permission_mode: row.run_permission_mode,
+    };
+}
+
+async function getOrCreateWorkflowMetadata(slug: string): Promise<WorkflowMetadata> {
+    async function getWorkflowMetadata(slug: string): Promise<WorkflowMetadata | null> {
+        const row = await prisma.workflow_metadata.findUnique({
+            where: { workflow_slug: slug }
+        });
+        if (!row) {
+            return null;
+        }
+        return mapWorkflowMetadataRow(row);
+    }
+    readWorkflowManifest(slug);
+    const existing = await getWorkflowMetadata(slug);
+    if (existing) {
+        return existing;
+    }
+
+    const now = BigInt(Date.now());
+    const row = await prisma.workflow_metadata.create({
+        data: {
+            workflow_slug: slug,
+            run_permission_mode: "restricted",
+            created_at: now,
+            updated_at: now,
+        }
+    });
+    return mapWorkflowMetadataRow(row);
 }

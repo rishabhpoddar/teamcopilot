@@ -6,7 +6,5 @@
   },
   "runtime": {
     "timeout_seconds": 30
-  },
-  "created_by_user_id": "b0298453-554d-466c-9c6b-9a33ae697999",
-  "approved_by_user_id": "b0298453-554d-466c-9c6b-9a33ae697999"
+  }
 }

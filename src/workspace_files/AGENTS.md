@@ -9,8 +9,7 @@ This document is your operating manual for working within this directory (called
 **You must NEVER execute workflow scripts directly using shell commands.**
 
 All workflow execution performed by the agent **must** go through the `runWorkflow` tool. This is enforced because:
-- Only workflows that have been **approved by an engineer user** can be executed
-- The `runWorkflow` tool checks approval status before execution
+- Only workflows that have been **approved by an engineer user** can be executed. This check (among other checks) is performed by the `runWorkflow` tool.
 - The `runWorkflow` can throw an error for various reasons. If it does, read the error message and report it to the user accurately.
 
 **However:** workflows must be written so that a **human** can run them directly with Python (without any agent tooling):
@@ -89,13 +88,9 @@ This manifest defines what the workflow does and how it runs. The UI and executi
   },
   "runtime": {
     "timeout_seconds": 300
-  },
-  "created_by_user_id": null,
-  "approved_by_user_id": null
+  }
 }
 ```
-
-`created_by_user_id` is set automatically by the system when `createWorkflow` is used, based on the authenticated user that invoked the tool.
 
 ### 2. `README.md` — Documentation
 
@@ -308,8 +303,6 @@ These rules exist to prevent data loss, secret leakage, and unsafe behavior. Vio
 ### Approval & execution integrity
 
 - Never attempt to bypass workflow approval requirements.
-- Do not “self-approve” workflows by editing `workflow.json` fields like `approved_by_user_id`; approvals must happen via the product’s intended UX/authorization flow.
-- Do not manually set `created_by_user_id`; it must be set via the system API tied to the authenticated creator.
 
 ### Secrets & sensitive data handling
 
