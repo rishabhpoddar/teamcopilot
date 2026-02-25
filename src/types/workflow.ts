@@ -79,3 +79,32 @@ export interface WorkflowRun {
         email: string;
     };
 }
+
+export type WorkflowApprovalDiffFileStatus = "added" | "modified" | "deleted";
+export type WorkflowApprovalDiffFileKind = "text" | "binary";
+
+export interface WorkflowApprovalDiffFile {
+    path: string;
+    status: WorkflowApprovalDiffFileStatus;
+    kind: WorkflowApprovalDiffFileKind;
+    old_size_bytes: number | null;
+    new_size_bytes: number | null;
+    patch_lines: string[] | null;
+    is_truncated: boolean;
+    message: string | null;
+}
+
+export interface WorkflowApprovalDiffSummary {
+    added: number;
+    modified: number;
+    deleted: number;
+    text_files: number;
+    binary_files: number;
+}
+
+export interface WorkflowApprovalDiffResponse {
+    has_previous_snapshot: boolean;
+    summary: WorkflowApprovalDiffSummary;
+    files: WorkflowApprovalDiffFile[];
+    ignored_rules: string[];
+}

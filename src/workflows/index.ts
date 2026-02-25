@@ -6,7 +6,6 @@ import { apiHandler } from "../utils/index";
 import {
     listWorkflowSlugs,
     readWorkflowManifestAndEnsurePermissions,
-    approveWorkflow,
     setWorkflowCreator,
     deleteWorkflowDirectory
 } from "../utils/workflow";
@@ -26,6 +25,13 @@ import {
     setWorkflowRunPermissions,
     initializeWorkflowRunPermissionsForCreator,
 } from "../utils/workflow-permissions";
+import {
+    approveWorkflowWithSnapshot,
+    buildApprovalDiffResponse,
+    collectCurrentWorkflowSnapshot,
+    ensureWorkflowMatchesApprovedSnapshotForRun,
+    loadApprovedSnapshotFromDb,
+} from "../utils/workflow-approval-snapshot";
 
 const router = express.Router({ mergeParams: true });
 
@@ -156,6 +162,8 @@ router.post('/runs', apiHandler(async (req, res) => {
         };
     }
 
+    await ensureWorkflowMatchesApprovedSnapshotForRun(workflow_slug);
+
     const run = await prisma.workflow_runs.create({
         data: {
             workflow_slug: workflow_slug,
@@ -222,13 +230,16 @@ router.patch('/runs/:id', apiHandler(async (req, res) => {
 router.post('/:slug/approve', apiHandler(async (req, res) => {
     const slug = req.params.slug as string;
 
-    const approvedMetadata = await approveWorkflow(slug, req.userId!);
+    const approvalResult = await approveWorkflowWithSnapshot(slug, req.userId!);
+    const { metadata: approvedMetadata } = await readWorkflowManifestAndEnsurePermissions(slug);
     await addApproverToWorkflowRunPermissionsIfRestricted(slug, req.userId!, approvedMetadata.created_by_user_id);
 
     res.json({
         workflow: {
             slug,
-            approved_by_user_id: req.userId!
+            approved_by_user_id: approvalResult.approved_by_user_id,
+            snapshot_hash: approvalResult.snapshot_hash,
+            snapshot_file_count: approvalResult.snapshot_file_count
         }
     });
 }, true));
@@ -308,6 +319,25 @@ router.get('/users', apiHandler(async (_req, res) => {
     });
 
     res.json({ users });
+}, true));
+
+// GET /api/workflows/:slug/approval-diff - Preview current code diff vs approved snapshot
+router.get('/:slug/approval-diff', apiHandler(async (req, res) => {
+    const slug = req.params.slug as string;
+
+    if (req.role !== 'Engineer') {
+        throw {
+            status: 403,
+            message: 'Only Engineers can review approval diffs'
+        };
+    }
+
+    await readWorkflowManifestAndEnsurePermissions(slug);
+    const previousSnapshot = await loadApprovedSnapshotFromDb(slug);
+    const currentSnapshot = collectCurrentWorkflowSnapshot(slug);
+    const diff = buildApprovalDiffResponse(previousSnapshot, currentSnapshot);
+    (res.locals as { skipResponseSanitization?: boolean }).skipResponseSanitization = true;
+    res.json(diff);
 }, true));
 
 // GET /api/workflows/:slug/files/access - Get workflow editor access capabilities

@@ -35,7 +35,6 @@ export default function WorkflowCard({
     onRunWorkflow,
     onOpenWorkflow
 }: WorkflowCardProps) {
-    const [approving, setApproving] = useState(false);
     const [deleting, setDeleting] = useState(false);
     const [showPermissionsEditor, setShowPermissionsEditor] = useState(false);
     const [permissionsLoading, setPermissionsLoading] = useState(false);
@@ -114,22 +113,9 @@ export default function WorkflowCard({
         }
     };
 
-    const handleApprove = async () => {
-        setApproving(true);
-        try {
-            await axiosInstance.post(`/api/workflows/${slug}/approve`, {}, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            toast.success('Workflow approved successfully');
-            onApproved();
-        } catch (err: unknown) {
-            const errorMessage = err instanceof AxiosError
-                ? err.response?.data?.message || err.response?.data?.message || err.response?.data || err.message
-                : 'Failed to approve workflow';
-            toast.error(errorMessage);
-        } finally {
-            setApproving(false);
-        }
+    const openApprovalReview = () => {
+        const url = `/workflows/${encodeURIComponent(slug)}/approval-review`;
+        window.open(url, '_blank', 'noopener,noreferrer');
     };
 
     const handleDelete = async () => {
@@ -171,15 +157,16 @@ export default function WorkflowCard({
             {!isApproved && (
                 <div className="workflow-approval-section">
                     {userRole === 'Engineer' ? (
-                        <button
-                            className="workflow-approve-btn"
-                            onClick={() => {
-                                void handleApprove();
-                            }}
-                            disabled={approving}
-                        >
-                            {approving ? 'Approving...' : 'Approve Workflow'}
-                        </button>
+                        <>
+                            <button
+                                className="workflow-approve-btn"
+                                onClick={() => {
+                                    openApprovalReview();
+                                }}
+                            >
+                                Review & Approve
+                            </button>
+                        </>
                     ) : (
                         <p className="workflow-approval-message">
                             Ask an engineer to approve this workflow before it can be run.

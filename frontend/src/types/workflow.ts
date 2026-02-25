@@ -9,4 +9,7 @@ export type {
     Workflow,
     WorkflowRunStatus,
     WorkflowRun,
+    WorkflowApprovalDiffFile,
+    WorkflowApprovalDiffSummary,
+    WorkflowApprovalDiffResponse,
 } from "../../../src/types/workflow";
