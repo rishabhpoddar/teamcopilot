@@ -22,8 +22,6 @@ interface WorkflowManifest {
   runtime?: {
     timeout_seconds?: number
   }
-  created_by_user_id?: string | null
-  approved_by_user_id?: string | null
 }
 
 // ============================================================================
@@ -161,8 +159,6 @@ export const CreateWorkflowPlugin: Plugin = async (_ctx) => {
             inputs: inputs as Record<string, WorkflowInput>,
             triggers: { manual: true },
             runtime: { timeout_seconds },
-            created_by_user_id: null,
-            approved_by_user_id: null,
           }
           await fs.writeFile(
             path.join(workflowDir, "workflow.json"),

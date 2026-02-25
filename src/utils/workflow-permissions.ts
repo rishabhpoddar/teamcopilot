@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import prisma from "../prisma/client";
-import { WorkflowManifest, WorkflowRunPermissionMode, WorkflowRunPermissions } from "../types/workflow";
+import { WorkflowMetadata, WorkflowRunPermissionMode, WorkflowRunPermissions } from "../types/workflow";
 
 type PermissionWithUsers = {
     workflow_slug: string;
@@ -18,8 +18,8 @@ function assertPermissionMode(mode: string): WorkflowRunPermissionMode {
     return mode;
 }
 
-function getDefaultCandidateUserIds(manifest: WorkflowManifest): string[] {
-    const ids = [manifest.created_by_user_id, manifest.approved_by_user_id].filter((id): id is string => Boolean(id));
+function getDefaultCandidateUserIds(metadata: WorkflowMetadata): string[] {
+    const ids = [metadata.created_by_user_id, metadata.approved_by_user_id].filter((id): id is string => Boolean(id));
     return Array.from(new Set(ids));
 }
 
@@ -52,14 +52,14 @@ async function createRestrictedPermissionRow(slug: string, userIds: string[]): P
     });
 }
 
-export async function ensureWorkflowRunPermissionsForManifest(slug: string, manifest: WorkflowManifest): Promise<void> {
+export async function ensureWorkflowRunPermissionsForMetadata(slug: string, metadata: WorkflowMetadata): Promise<void> {
     const existing = await prisma.workflow_run_permissions.findUnique({
         where: { workflow_slug: slug },
         select: { workflow_slug: true }
     });
     if (existing) return;
 
-    const candidateUserIds = getDefaultCandidateUserIds(manifest);
+    const candidateUserIds = getDefaultCandidateUserIds(metadata);
     const existingUserIds = await getExistingUserIds(candidateUserIds);
     try {
         await createRestrictedPermissionRow(slug, existingUserIds);

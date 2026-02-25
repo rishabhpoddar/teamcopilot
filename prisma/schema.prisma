@@ -19,6 +19,8 @@ model users {
   workflowRuns           workflow_runs[]
   chatSessions           chat_sessions[]
   workflowRunPermissionUsers workflow_run_permission_users[]
+  createdWorkflows       workflow_metadata[] @relation("workflow_creator")
+  approvedWorkflows      workflow_metadata[] @relation("workflow_approver")
 }
 
 model workflow_runs {
@@ -82,4 +84,17 @@ model workflow_run_permission_users {
 
   @@unique([workflow_slug, user_id])
   @@index([workflow_slug])
+}
+
+model workflow_metadata {
+  workflow_slug        String @id
+  created_by_user_id   String?
+  approved_by_user_id  String?
+  created_at           BigInt
+  updated_at           BigInt
+  creator              users? @relation("workflow_creator", fields: [created_by_user_id], references: [id], onDelete: SetNull)
+  approver             users? @relation("workflow_approver", fields: [approved_by_user_id], references: [id], onDelete: SetNull)
+
+  @@index([created_by_user_id])
+  @@index([approved_by_user_id])
 }
