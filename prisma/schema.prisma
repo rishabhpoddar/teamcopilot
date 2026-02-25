@@ -8,19 +8,19 @@ datasource db {
 }
 
 model users {
-  id                     String          @id @default(uuid())
-  email                  String          @unique
-  name                   String
-  role                   String // "User" or "Engineer"
-  created_at             BigInt
-  password_hash          String
-  reset_token            String?
-  reset_token_expires_at BigInt?
-  workflowRuns           workflow_runs[]
-  chatSessions           chat_sessions[]
+  id                         String                          @id @default(uuid())
+  email                      String                          @unique
+  name                       String
+  role                       String // "User" or "Engineer"
+  created_at                 BigInt
+  password_hash              String
+  reset_token                String?
+  reset_token_expires_at     BigInt?
+  workflowRuns               workflow_runs[]
+  chatSessions               chat_sessions[]
   workflowRunPermissionUsers workflow_run_permission_users[]
-  createdWorkflows       workflow_metadata[] @relation("workflow_creator")
-  approvedWorkflows      workflow_metadata[] @relation("workflow_approver")
+  createdWorkflows           workflow_metadata[]             @relation("workflow_creator")
+  approvedWorkflows          workflow_metadata[]             @relation("workflow_approver")
 }
 
 model workflow_runs {
@@ -58,7 +58,7 @@ model tool_execution_permissions {
   opencode_session_id String
   message_id          String
   call_id             String
-  status              String  // "pending" | "approved" | "rejected"
+  status              String // "pending" | "approved" | "rejected"
   created_at          BigInt
   responded_at        BigInt?
 
@@ -67,27 +67,27 @@ model tool_execution_permissions {
 }
 
 model workflow_run_permission_users {
-  id           String @id @default(uuid())
+  id            String            @id @default(uuid())
   workflow_slug String
-  user_id      String
-  created_at   BigInt
-  permission   workflow_metadata @relation(fields: [workflow_slug], references: [workflow_slug], onDelete: Cascade)
-  user         users @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  user_id       String
+  created_at    BigInt
+  permission    workflow_metadata @relation(fields: [workflow_slug], references: [workflow_slug], onDelete: Cascade)
+  user          users             @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@unique([workflow_slug, user_id])
   @@index([workflow_slug])
 }
 
 model workflow_metadata {
-  workflow_slug        String @id
-  created_by_user_id   String?
-  approved_by_user_id  String?
-  run_permission_mode  String @default("restricted") // "restricted" | "everyone"
-  created_at           BigInt
-  updated_at           BigInt
-  creator              users? @relation("workflow_creator", fields: [created_by_user_id], references: [id], onDelete: SetNull)
-  approver             users? @relation("workflow_approver", fields: [approved_by_user_id], references: [id], onDelete: SetNull)
-  allowedUsers         workflow_run_permission_users[]
+  workflow_slug       String                          @id
+  created_by_user_id  String?
+  approved_by_user_id String?
+  run_permission_mode String // "restricted" | "everyone"
+  created_at          BigInt
+  updated_at          BigInt
+  creator             users?                          @relation("workflow_creator", fields: [created_by_user_id], references: [id], onDelete: SetNull)
+  approver            users?                          @relation("workflow_approver", fields: [approved_by_user_id], references: [id], onDelete: SetNull)
+  allowedUsers        workflow_run_permission_users[]
 
   @@index([created_by_user_id])
   @@index([approved_by_user_id])

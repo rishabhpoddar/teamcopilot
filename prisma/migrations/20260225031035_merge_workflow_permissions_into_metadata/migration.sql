@@ -4,6 +4,11 @@
   - You are about to drop the `workflow_run_permissions` table. If the table is not empty, all the data it contains will be lost.
 
 */
+-- DropTable
+PRAGMA foreign_keys=off;
+DROP TABLE "workflow_run_permissions";
+PRAGMA foreign_keys=on;
+
 -- RedefineTables
 PRAGMA defer_foreign_keys=ON;
 PRAGMA foreign_keys=OFF;
@@ -17,16 +22,7 @@ CREATE TABLE "new_workflow_metadata" (
     CONSTRAINT "workflow_metadata_created_by_user_id_fkey" FOREIGN KEY ("created_by_user_id") REFERENCES "users" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
     CONSTRAINT "workflow_metadata_approved_by_user_id_fkey" FOREIGN KEY ("approved_by_user_id") REFERENCES "users" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
-INSERT INTO "new_workflow_metadata" ("approved_by_user_id", "created_at", "created_by_user_id", "run_permission_mode", "updated_at", "workflow_slug")
-SELECT
-    wm."approved_by_user_id",
-    wm."created_at",
-    wm."created_by_user_id",
-    COALESCE(wrp."mode", 'restricted'),
-    wm."updated_at",
-    wm."workflow_slug"
-FROM "workflow_metadata" wm
-LEFT JOIN "workflow_run_permissions" wrp ON wrp."workflow_slug" = wm."workflow_slug";
+INSERT INTO "new_workflow_metadata" ("approved_by_user_id", "created_at", "created_by_user_id", "updated_at", "workflow_slug") SELECT "approved_by_user_id", "created_at", "created_by_user_id", "updated_at", "workflow_slug" FROM "workflow_metadata";
 DROP TABLE "workflow_metadata";
 ALTER TABLE "new_workflow_metadata" RENAME TO "workflow_metadata";
 CREATE INDEX "workflow_metadata_created_by_user_id_idx" ON "workflow_metadata"("created_by_user_id");
@@ -44,6 +40,5 @@ DROP TABLE "workflow_run_permission_users";
 ALTER TABLE "new_workflow_run_permission_users" RENAME TO "workflow_run_permission_users";
 CREATE INDEX "workflow_run_permission_users_workflow_slug_idx" ON "workflow_run_permission_users"("workflow_slug");
 CREATE UNIQUE INDEX "workflow_run_permission_users_workflow_slug_user_id_key" ON "workflow_run_permission_users"("workflow_slug", "user_id");
-DROP TABLE "workflow_run_permissions";
 PRAGMA foreign_keys=ON;
 PRAGMA defer_foreign_keys=OFF;
