@@ -106,8 +106,8 @@ export default function WorkflowsSection({ onRunWorkflow }: WorkflowsSectionProp
         const matchesApproval = approvalFilter === 'all'
             ? true
             : approvalFilter === 'approved'
-                ? workflow.approved_by_user_id !== null
-                : workflow.approved_by_user_id === null;
+                ? workflow.is_approved
+                : !workflow.is_approved;
 
         const matchesOwnership = ownershipFilter === 'everyone'
             ? true

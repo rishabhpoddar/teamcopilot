@@ -28,9 +28,9 @@ import {
 import {
     approveWorkflowWithSnapshot,
     buildApprovalDiffResponse,
-    clearApprovalIfSnapshotDrifted,
     collectCurrentWorkflowSnapshot,
     ensureWorkflowMatchesApprovedSnapshotForRun,
+    getWorkflowSnapshotApprovalState,
     loadApprovedSnapshotFromDb,
     restoreWorkflowToApprovedSnapshot,
 } from "../utils/workflow-approval-snapshot";
@@ -41,7 +41,8 @@ async function getWorkflowEditorAccess(slug: string, userId: string, role: strin
     const { metadata } = await readWorkflowManifestAndEnsurePermissions(slug);
     const isOwner = metadata.created_by_user_id === userId;
     const isEngineer = role === "Engineer";
-    const workflowStatus = metadata.approved_by_user_id ? "approved" : "pending";
+    const approvalState = await getWorkflowSnapshotApprovalState(slug);
+    const workflowStatus = approvalState.is_current_code_approved ? "approved" : "pending";
 
     let canEdit = false;
     if (workflowStatus === "approved") {
@@ -102,6 +103,7 @@ router.get('/', apiHandler(async (req, res) => {
         if (!metadata) continue;
         const permission = await getWorkflowRunPermissionWithUsers(slug);
         const permissionSummary = getPermissionSummaryFields(permission, req.userId!);
+        const approvalState = await getWorkflowSnapshotApprovalState(slug);
         const createdByUserId = metadata.created_by_user_id ?? null;
         workflows.push({
             slug,
@@ -111,6 +113,7 @@ router.get('/', apiHandler(async (req, res) => {
             created_by_user_name: createdByUserId ? (creatorNameById.get(createdByUserId) ?? null) : null,
             created_by_user_email: createdByUserId ? (creatorEmailById.get(createdByUserId) ?? null) : null,
             approved_by_user_id: metadata.approved_by_user_id ?? null,
+            is_approved: approvalState.is_current_code_approved,
             ...permissionSummary
         });
     }
@@ -146,10 +149,11 @@ router.post('/runs', apiHandler(async (req, res) => {
 
     const { metadata } = await readWorkflowManifestAndEnsurePermissions(workflow_slug);
 
-    if (metadata.approved_by_user_id === null) {
+    const approvalState = await getWorkflowSnapshotApprovalState(workflow_slug);
+    if (!approvalState.is_current_code_approved) {
         throw {
             status: 403,
-            message: 'Workflow is not approved yet'
+            message: 'Workflow is not approved for the current code version'
         };
     }
 
@@ -240,6 +244,7 @@ router.post('/:slug/approve', apiHandler(async (req, res) => {
         workflow: {
             slug,
             approved_by_user_id: approvalResult.approved_by_user_id,
+            is_approved: true,
             snapshot_hash: approvalResult.snapshot_hash,
             snapshot_file_count: approvalResult.snapshot_file_count
         }
@@ -401,7 +406,6 @@ router.put('/:slug/files/content', apiHandler(async (req, res) => {
         content,
         base_etag,
     });
-    await clearApprovalIfSnapshotDrifted(slug);
     res.json(result);
 }, true));
 
@@ -417,7 +421,6 @@ router.post('/:slug/files', apiHandler(async (req, res) => {
         };
     }
     const node = createWorkflowFileOrFolder(slug, typeof parent_path === "string" ? parent_path : "", name, kind);
-    await clearApprovalIfSnapshotDrifted(slug);
     res.json({ node });
 }, true));
 
@@ -433,7 +436,6 @@ router.patch('/:slug/files/rename', apiHandler(async (req, res) => {
         };
     }
     const result = renameWorkflowPath(slug, path, new_name);
-    await clearApprovalIfSnapshotDrifted(slug);
     res.json(result);
 }, true));
 
@@ -443,7 +445,6 @@ router.delete('/:slug/files', apiHandler(async (req, res) => {
     await assertCanEditWorkflowFiles(slug, req.userId!, req.role);
     const rawPath = typeof req.query.path === "string" ? req.query.path : undefined;
     deleteWorkflowPath(slug, rawPath);
-    await clearApprovalIfSnapshotDrifted(slug);
     res.json({ success: true });
 }, true));
 
@@ -453,6 +454,7 @@ router.get('/:slug', apiHandler(async (req, res) => {
     const { manifest, metadata } = await readWorkflowManifestAndEnsurePermissions(slug);
     const permission = await getWorkflowRunPermissionWithUsers(slug);
     const permissionSummary = getPermissionSummaryFields(permission, req.userId!);
+    const approvalState = await getWorkflowSnapshotApprovalState(slug);
 
     const createdByUserId = metadata.created_by_user_id ?? null;
     const approvedByUserId = metadata.approved_by_user_id ?? null;
@@ -475,6 +477,7 @@ router.get('/:slug', apiHandler(async (req, res) => {
             created_by_user_name: creator?.name ?? null,
             created_by_user_email: creator?.email ?? null,
             approved_by_user_id: approvedByUserId,
+            is_approved: approvalState.is_current_code_approved,
             approved_by_user_name: approver?.name ?? null,
             approved_by_user_email: approver?.email ?? null,
             ...permissionSummary,
@@ -496,7 +499,8 @@ router.patch('/:slug/run-permissions', apiHandler(async (req, res) => {
     const slug = req.params.slug as string;
     const { metadata } = await readWorkflowManifestAndEnsurePermissions(slug);
 
-    if (metadata.approved_by_user_id === null) {
+    const approvalState = await getWorkflowSnapshotApprovalState(slug);
+    if (!approvalState.is_current_code_approved) {
         throw {
             status: 403,
             message: 'Workflow must be approved before updating run permissions'

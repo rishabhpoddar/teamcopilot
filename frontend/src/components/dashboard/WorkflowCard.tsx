@@ -22,6 +22,7 @@ export default function WorkflowCard({
     created_by_user_email,
     created_by_user_id,
     approved_by_user_id,
+    is_approved,
     run_permission_mode,
     can_current_user_run,
     can_current_user_manage_run_permissions,
@@ -45,7 +46,7 @@ export default function WorkflowCard({
     const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
     const [ownerUserIdForEditor, setOwnerUserIdForEditor] = useState<string | null>(created_by_user_id);
     const [approverUserIdForEditor, setApproverUserIdForEditor] = useState<string | null>(approved_by_user_id);
-    const isApproved = approved_by_user_id !== null;
+    const isApproved = is_approved;
     const canRun = isApproved && can_current_user_run;
     const canManagePermissions = isApproved && can_current_user_manage_run_permissions;
     const creatorUserMissing = created_by_user_id === null || (!created_by_user_name && !created_by_user_email);

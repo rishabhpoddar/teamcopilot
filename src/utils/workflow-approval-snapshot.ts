@@ -48,6 +48,11 @@ export interface WorkflowApprovalDiffResponse {
     ignored_rules: string[];
 }
 
+export interface WorkflowSnapshotApprovalState {
+    has_approved_snapshot: boolean;
+    is_current_code_approved: boolean;
+}
+
 const MAX_INLINE_DIFF_FILE_BYTES = 200 * 1024;
 const MAX_PATCH_LINES_PER_FILE = 5000;
 
@@ -667,64 +672,33 @@ export function buildApprovalDiffResponse(previous: WorkflowSnapshot | null, cur
     };
 }
 
-export async function ensureWorkflowMatchesApprovedSnapshotForRun(slug: string): Promise<void> {
-    const metadata = await prisma.workflow_metadata.findUnique({
-        where: { workflow_slug: slug },
-        select: { approved_by_user_id: true }
-    });
-    if (!metadata || metadata.approved_by_user_id === null) {
-        return;
-    }
-
+export async function getWorkflowSnapshotApprovalState(slug: string): Promise<WorkflowSnapshotApprovalState> {
     const approvedSnapshot = await loadApprovedSnapshotFromDb(slug);
     if (!approvedSnapshot) {
-        return;
+        return {
+            has_approved_snapshot: false,
+            is_current_code_approved: false,
+        };
     }
 
     const currentSnapshot = collectCurrentWorkflowSnapshot(slug);
-    if (approvedSnapshot.snapshot_hash === currentSnapshot.snapshot_hash && approvedSnapshot.file_count === currentSnapshot.file_count) {
-        return;
-    }
+    const matches = approvedSnapshot.snapshot_hash === currentSnapshot.snapshot_hash
+        && approvedSnapshot.file_count === currentSnapshot.file_count;
 
-    const now = BigInt(Date.now());
-    await prisma.workflow_metadata.update({
-        where: { workflow_slug: slug },
-        data: {
-            approved_by_user_id: null,
-            updated_at: now,
-        }
-    });
-
-    throw {
-        status: 403,
-        message: "Workflow code changed since approval. The workflow has been set to pending approval. Please review and re-approve before running."
+    return {
+        has_approved_snapshot: true,
+        is_current_code_approved: matches,
     };
 }
 
-export async function clearApprovalIfSnapshotDrifted(slug: string): Promise<boolean> {
-    const metadata = await prisma.workflow_metadata.findUnique({
-        where: { workflow_slug: slug },
-        select: { approved_by_user_id: true }
-    });
-    if (!metadata || metadata.approved_by_user_id === null) {
-        return false;
+export async function ensureWorkflowMatchesApprovedSnapshotForRun(slug: string): Promise<void> {
+    const approvalState = await getWorkflowSnapshotApprovalState(slug);
+    if (approvalState.is_current_code_approved) {
+        return;
     }
 
-    const approvedSnapshot = await loadApprovedSnapshotFromDb(slug);
-
-    const currentSnapshot = collectCurrentWorkflowSnapshot(slug);
-    if (approvedSnapshot) {
-        if (approvedSnapshot.snapshot_hash === currentSnapshot.snapshot_hash && approvedSnapshot.file_count === currentSnapshot.file_count) {
-            return false;
-        }
-    }
-
-    await prisma.workflow_metadata.update({
-        where: { workflow_slug: slug },
-        data: {
-            approved_by_user_id: null,
-            updated_at: BigInt(Date.now()),
-        }
-    });
-    return true;
+    throw {
+        status: 403,
+        message: "Workflow is not approved for the current code version. Please review and approve the current code before running."
+    };
 }

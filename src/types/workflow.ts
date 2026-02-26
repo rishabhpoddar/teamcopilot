@@ -51,6 +51,7 @@ export interface WorkflowSummary {
     created_by_user_name: string | null;
     created_by_user_email: string | null;
     approved_by_user_id: string | null;
+    is_approved: boolean;
     run_permission_mode: WorkflowRunPermissionMode;
     can_current_user_run: boolean;
     can_current_user_manage_run_permissions: boolean;
