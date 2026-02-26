@@ -31,6 +31,7 @@ import {
     collectCurrentWorkflowSnapshot,
     ensureWorkflowMatchesApprovedSnapshotForRun,
     loadApprovedSnapshotFromDb,
+    restoreWorkflowToApprovedSnapshot,
 } from "../utils/workflow-approval-snapshot";
 
 const router = express.Router({ mergeParams: true });
@@ -240,6 +241,19 @@ router.post('/:slug/approve', apiHandler(async (req, res) => {
             approved_by_user_id: approvalResult.approved_by_user_id,
             snapshot_hash: approvalResult.snapshot_hash,
             snapshot_file_count: approvalResult.snapshot_file_count
+        }
+    });
+}, true));
+
+// POST /api/workflows/:slug/reject-restore - Restore workflow files to last approved snapshot
+router.post('/:slug/reject-restore', apiHandler(async (req, res) => {
+    const slug = req.params.slug as string;
+    const result = await restoreWorkflowToApprovedSnapshot(slug, req.userId!);
+    res.json({
+        workflow: {
+            slug,
+            restored_file_count: result.restored_file_count,
+            snapshot_hash: result.snapshot_hash,
         }
     });
 }, true));

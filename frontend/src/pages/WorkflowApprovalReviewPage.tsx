@@ -18,6 +18,7 @@ export default function WorkflowApprovalReviewPage() {
 
     const [loading, setLoading] = useState(true);
     const [approving, setApproving] = useState(false);
+    const [rejecting, setRejecting] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [diff, setDiff] = useState<WorkflowApprovalDiffResponse | null>(null);
     const [approved, setApproved] = useState(false);
@@ -70,6 +71,30 @@ export default function WorkflowApprovalReviewPage() {
         }
     };
 
+    const handleRejectAndRestore = async () => {
+        if (!token || !diff || !diff.has_previous_snapshot) return;
+        setRejecting(true);
+        try {
+            await axiosInstance.post(`/api/workflows/${encodeURIComponent(slug)}/reject-restore`, {}, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            setApproved(false);
+            toast.success('Workflow files restored to last approved snapshot');
+            if (window.opener && !window.opener.closed) {
+                try {
+                    window.opener.location.reload();
+                } catch {
+                    // no-op
+                }
+            }
+            await loadDiff();
+        } catch (err: unknown) {
+            toast.error(getErrorMessage(err, 'Failed to restore files from approved snapshot'));
+        } finally {
+            setRejecting(false);
+        }
+    };
+
     return (
         <div className="approval-review-page">
             <header className="approval-review-header">
@@ -85,15 +110,25 @@ export default function WorkflowApprovalReviewPage() {
                         type="button"
                         className="approval-review-btn secondary"
                         onClick={() => { void loadDiff(); }}
-                        disabled={loading || approving}
+                        disabled={loading || approving || rejecting}
                     >
                         {loading ? 'Refreshing...' : 'Refresh Diff'}
                     </button>
+                    {diff?.has_previous_snapshot && (
+                        <button
+                            type="button"
+                            className="approval-review-btn danger"
+                            onClick={() => { void handleRejectAndRestore(); }}
+                            disabled={loading || approving || rejecting}
+                        >
+                            {rejecting ? 'Restoring...' : 'Reject & Restore'}
+                        </button>
+                    )}
                     <button
                         type="button"
                         className="approval-review-btn primary"
                         onClick={() => { void handleApprove(); }}
-                        disabled={loading || approving || diff === null}
+                        disabled={loading || approving || rejecting || diff === null}
                     >
                         {approving ? 'Approving...' : 'Approve Workflow'}
                     </button>
@@ -182,4 +217,3 @@ export default function WorkflowApprovalReviewPage() {
         </div>
     );
 }
-

@@ -92,6 +92,10 @@ function assertNoSymlink(absolutePath: string): void {
     }
 }
 
+function ensureDirectoryExists(absoluteDir: string): void {
+    fs.mkdirSync(absoluteDir, { recursive: true });
+}
+
 function collectFilesRecursive(absoluteDir: string, relativeDir: string, out: WorkflowSnapshotFile[]): void {
     const entries = fs.readdirSync(absoluteDir, { withFileTypes: true })
         .sort((a, b) => a.name.localeCompare(b.name));
@@ -122,6 +126,51 @@ function collectFilesRecursive(absoluteDir: string, relativeDir: string, out: Wo
             size_bytes: bytes.length,
             content_sha256: sha256(bytes),
         });
+    }
+}
+
+function collectCurrentNonIgnoredFilePaths(workflowRoot: string, absoluteDir: string, relativeDir: string, out: string[]): void {
+    const entries = fs.readdirSync(absoluteDir, { withFileTypes: true })
+        .sort((a, b) => a.name.localeCompare(b.name));
+    for (const entry of entries) {
+        const rel = relativeDir ? `${relativeDir}/${entry.name}` : entry.name;
+        if (shouldIgnoreRelativePath(rel)) {
+            continue;
+        }
+        const abs = path.join(absoluteDir, entry.name);
+        assertNoSymlink(abs);
+
+        if (entry.isDirectory()) {
+            collectCurrentNonIgnoredFilePaths(workflowRoot, abs, rel, out);
+            continue;
+        }
+        if (entry.isFile()) {
+            out.push(rel);
+        }
+    }
+}
+
+function pruneEmptyNonIgnoredDirectories(workflowRoot: string, absoluteDir: string, relativeDir: string): void {
+    const entries = fs.readdirSync(absoluteDir, { withFileTypes: true });
+    for (const entry of entries) {
+        const rel = relativeDir ? `${relativeDir}/${entry.name}` : entry.name;
+        if (shouldIgnoreRelativePath(rel)) {
+            continue;
+        }
+        const abs = path.join(absoluteDir, entry.name);
+        assertNoSymlink(abs);
+        if (entry.isDirectory()) {
+            pruneEmptyNonIgnoredDirectories(workflowRoot, abs, rel);
+        }
+    }
+
+    if (absoluteDir === workflowRoot) {
+        return;
+    }
+    const remaining = fs.readdirSync(absoluteDir, { withFileTypes: true })
+        .filter((entry) => !shouldIgnoreRelativePath(relativeDir ? `${relativeDir}/${entry.name}` : entry.name));
+    if (remaining.length === 0) {
+        fs.rmdirSync(absoluteDir);
     }
 }
 
@@ -164,6 +213,64 @@ export function collectCurrentWorkflowSnapshot(slug: string): WorkflowSnapshot {
         files,
         file_count: files.length,
         snapshot_hash: computeSnapshotHash(files),
+    };
+}
+
+export async function restoreWorkflowToApprovedSnapshot(slug: string, userId: string): Promise<{ restored_file_count: number; snapshot_hash: string }> {
+    const user = await prisma.users.findUnique({ where: { id: userId } });
+    if (!user) {
+        throw {
+            status: 404,
+            message: "User not found"
+        };
+    }
+    if (user.role !== "Engineer") {
+        throw {
+            status: 403,
+            message: "Only Engineers can restore workflows from approved snapshots"
+        };
+    }
+
+    await readWorkflowManifestAndEnsurePermissions(slug);
+    const snapshot = await loadApprovedSnapshotFromDb(slug);
+    if (!snapshot) {
+        throw {
+            status: 409,
+            message: "No approved snapshot exists to restore"
+        };
+    }
+
+    const workflowRoot = getWorkflowPath(slug);
+    assertNoSymlink(workflowRoot);
+
+    const currentPaths: string[] = [];
+    collectCurrentNonIgnoredFilePaths(workflowRoot, workflowRoot, "", currentPaths);
+    const snapshotPathSet = new Set(snapshot.files.map((file) => file.relative_path));
+
+    for (const currentPath of currentPaths) {
+        if (snapshotPathSet.has(currentPath)) {
+            continue;
+        }
+        const absolutePath = path.join(workflowRoot, currentPath);
+        if (fs.existsSync(absolutePath) && fs.statSync(absolutePath).isFile()) {
+            fs.unlinkSync(absolutePath);
+        }
+    }
+
+    for (const file of snapshot.files) {
+        const absolutePath = path.join(workflowRoot, file.relative_path);
+        ensureDirectoryExists(path.dirname(absolutePath));
+        const bytes = file.content_kind === "binary"
+            ? (file.binary_content ?? Buffer.alloc(0))
+            : Buffer.from(file.text_content ?? "", "utf-8");
+        fs.writeFileSync(absolutePath, bytes);
+    }
+
+    pruneEmptyNonIgnoredDirectories(workflowRoot, workflowRoot, "");
+
+    return {
+        restored_file_count: snapshot.file_count,
+        snapshot_hash: snapshot.snapshot_hash,
     };
 }
 
