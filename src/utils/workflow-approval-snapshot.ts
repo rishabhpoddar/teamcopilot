@@ -10,6 +10,7 @@ import type {
     WorkflowSnapshotApprovalState,
     WorkflowSnapshotFile,
 } from "../types/workflow";
+import { readWorkflowManifestAndEnsurePermissions } from "./workflow";
 import { getWorkflowPath, workflowExists } from "./workflow";
 
 const MAX_INLINE_DIFF_FILE_BYTES = 200 * 1024;
@@ -343,12 +344,7 @@ export async function approveWorkflowWithSnapshot(slug: string, userId: string):
         };
     }
 
-    if (!workflowExists(slug)) {
-        throw {
-            status: 404,
-            message: `Workflow manifest not found for slug: ${slug}`
-        };
-    }
+    await readWorkflowManifestAndEnsurePermissions(slug);
     const snapshot = collectCurrentWorkflowSnapshot(slug);
     const now = Date.now();
 

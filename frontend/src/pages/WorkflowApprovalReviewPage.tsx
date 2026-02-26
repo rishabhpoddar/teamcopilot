@@ -58,13 +58,6 @@ export default function WorkflowApprovalReviewPage() {
             });
             setApproved(true);
             toast.success('Workflow approved successfully');
-            if (window.opener && !window.opener.closed) {
-                try {
-                    window.opener.location.reload();
-                } catch {
-                    // no-op
-                }
-            }
             await loadDiff();
         } catch (err: unknown) {
             toast.error(getErrorMessage(err, 'Failed to approve workflow'));
@@ -82,13 +75,6 @@ export default function WorkflowApprovalReviewPage() {
             });
             setApproved(false);
             toast.success('Workflow files restored to last approved snapshot');
-            if (window.opener && !window.opener.closed) {
-                try {
-                    window.opener.location.reload();
-                } catch {
-                    // no-op
-                }
-            }
             await loadDiff();
         } catch (err: unknown) {
             toast.error(getErrorMessage(err, 'Failed to restore files from approved snapshot'));
