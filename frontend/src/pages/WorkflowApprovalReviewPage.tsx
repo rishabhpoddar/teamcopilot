@@ -22,6 +22,7 @@ export default function WorkflowApprovalReviewPage() {
     const [error, setError] = useState<string | null>(null);
     const [diff, setDiff] = useState<WorkflowApprovalDiffResponse | null>(null);
     const [approved, setApproved] = useState(false);
+    const [collapsedFiles, setCollapsedFiles] = useState<Record<string, boolean>>({});
 
     const loadDiff = async () => {
         if (!token) return;
@@ -35,6 +36,7 @@ export default function WorkflowApprovalReviewPage() {
                 ? JSON.parse(response.data) as WorkflowApprovalDiffResponse
                 : response.data as WorkflowApprovalDiffResponse;
             setDiff(data);
+            setCollapsedFiles({});
         } catch (err: unknown) {
             setError(getErrorMessage(err, 'Failed to load approval diff'));
         } finally {
@@ -93,6 +95,13 @@ export default function WorkflowApprovalReviewPage() {
         } finally {
             setRejecting(false);
         }
+    };
+
+    const toggleFileCollapsed = (fileKey: string) => {
+        setCollapsedFiles((prev) => ({
+            ...prev,
+            [fileKey]: !prev[fileKey]
+        }));
     };
 
     return (
@@ -169,46 +178,68 @@ export default function WorkflowApprovalReviewPage() {
                             <div className="approval-review-empty">No differences from the approved snapshot.</div>
                         ) : (
                             diff.files.map((file) => (
-                                <article key={`${file.status}:${file.path}`} className="approval-review-file">
-                                    <div className="approval-review-file-header">
-                                        <div className="approval-review-file-path">{file.path}</div>
-                                        <div className="approval-review-file-badges">
-                                            <span className={`approval-review-file-badge ${file.status}`}>{file.status}</span>
-                                            <span className="approval-review-file-badge kind">{file.kind}</span>
-                                        </div>
-                                    </div>
+                                (() => {
+                                    const fileKey = `${file.status}:${file.path}`;
+                                    const isCollapsed = collapsedFiles[fileKey] === true;
+                                    return (
+                                        <article key={fileKey} className="approval-review-file">
+                                            <button
+                                                type="button"
+                                                className="approval-review-file-header approval-review-file-toggle"
+                                                onClick={() => toggleFileCollapsed(fileKey)}
+                                                aria-expanded={!isCollapsed}
+                                                aria-controls={`approval-diff-file-${encodeURIComponent(fileKey)}`}
+                                            >
+                                                <div className="approval-review-file-header-main">
+                                                    <span className="approval-review-file-chevron">{isCollapsed ? '▸' : '▾'}</span>
+                                                    <div className="approval-review-file-path">{file.path}</div>
+                                                </div>
+                                                <div className="approval-review-file-badges">
+                                                    <span className="approval-review-file-badge collapse-label">
+                                                        {isCollapsed ? 'collapsed' : 'expanded'}
+                                                    </span>
+                                                    <span className={`approval-review-file-badge ${file.status}`}>{file.status}</span>
+                                                    <span className="approval-review-file-badge kind">{file.kind}</span>
+                                                </div>
+                                            </button>
 
-                                    {file.message && (
-                                        <div className="approval-review-file-message">
-                                            {file.message}
-                                            {(file.old_size_bytes !== null || file.new_size_bytes !== null) && (
-                                                <span> ({file.old_size_bytes ?? 0}B → {file.new_size_bytes ?? 0}B)</span>
-                                            )}
-                                        </div>
-                                    )}
+                                            {!isCollapsed && (
+                                                <div id={`approval-diff-file-${encodeURIComponent(fileKey)}`}>
+                                                    {file.message && (
+                                                        <div className="approval-review-file-message">
+                                                            {file.message}
+                                                            {(file.old_size_bytes !== null || file.new_size_bytes !== null) && (
+                                                                <span> ({file.old_size_bytes ?? 0}B → {file.new_size_bytes ?? 0}B)</span>
+                                                            )}
+                                                        </div>
+                                                    )}
 
-                                    {file.patch_lines && (
-                                        <pre className="approval-review-patch">
-                                            {file.patch_lines.map((line, index) => {
-                                                const lineClass = line.startsWith('+')
-                                                    ? 'added'
-                                                    : line.startsWith('-')
-                                                        ? 'removed'
-                                                        : line.startsWith('@@')
-                                                            ? 'hunk'
-                                                            : 'context';
-                                                return (
-                                                    <div key={`${file.path}-${index}`} className={`approval-review-line ${lineClass}`}>
-                                                        {line}
-                                                    </div>
-                                                );
-                                            })}
-                                            {file.is_truncated && (
-                                                <div className="approval-review-line truncated">... diff truncated ...</div>
+                                                    {file.patch_lines && (
+                                                        <pre className="approval-review-patch">
+                                                            {file.patch_lines.map((line, index) => {
+                                                                const lineClass = line.startsWith('+')
+                                                                    ? 'added'
+                                                                    : line.startsWith('-')
+                                                                        ? 'removed'
+                                                                        : line.startsWith('@@')
+                                                                            ? 'hunk'
+                                                                            : 'context';
+                                                                return (
+                                                                    <div key={`${file.path}-${index}`} className={`approval-review-line ${lineClass}`}>
+                                                                        {line}
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                            {file.is_truncated && (
+                                                                <div className="approval-review-line truncated">... diff truncated ...</div>
+                                                            )}
+                                                        </pre>
+                                                    )}
+                                                </div>
                                             )}
-                                        </pre>
-                                    )}
-                                </article>
+                                        </article>
+                                    );
+                                })()
                             ))
                         )}
                     </section>

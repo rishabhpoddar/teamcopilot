@@ -170,6 +170,27 @@
   border-bottom: 1px solid #233047;
 }
 
+.approval-review-file-toggle {
+  width: 100%;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+
+.approval-review-file-header-main {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.approval-review-file-chevron {
+  color: #93c5fd;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
 .approval-review-file-path {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size: 0.82rem;
@@ -208,6 +229,11 @@
 .approval-review-file-badge.kind {
   background: rgba(148, 163, 184, 0.14);
   color: #cbd5e1;
+}
+
+.approval-review-file-badge.collapse-label {
+  background: rgba(59, 130, 246, 0.12);
+  color: #bfdbfe;
 }
 
 .approval-review-file-message {
