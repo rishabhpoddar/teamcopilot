@@ -95,25 +95,25 @@ model workflow_metadata {
 }
 
 model workflow_approved_snapshots {
-  workflow_slug  String                         @id
-  snapshot_hash  String
-  file_count     Int
-  created_at     BigInt
-  updated_at     BigInt
-  workflow       workflow_metadata              @relation(fields: [workflow_slug], references: [workflow_slug], onDelete: Cascade)
-  files          workflow_approved_snapshot_files[]
+  workflow_slug String                             @id
+  snapshot_hash String
+  file_count    Int
+  created_at    BigInt
+  updated_at    BigInt
+  workflow      workflow_metadata                  @relation(fields: [workflow_slug], references: [workflow_slug], onDelete: Cascade)
+  files         workflow_approved_snapshot_files[]
 }
 
 model workflow_approved_snapshot_files {
-  id            String                      @id @default(uuid())
-  workflow_slug String
-  relative_path String
-  content_kind  String // "text" | "binary"
-  text_content  String?
+  id             String                      @id @default(uuid())
+  workflow_slug  String
+  relative_path  String
+  content_kind   String // "text" | "binary"
+  text_content   String?
   binary_content Bytes?
-  size_bytes    Int
+  size_bytes     Int
   content_sha256 String
-  snapshot      workflow_approved_snapshots @relation(fields: [workflow_slug], references: [workflow_slug], onDelete: Cascade)
+  snapshot       workflow_approved_snapshots @relation(fields: [workflow_slug], references: [workflow_slug], onDelete: Cascade)
 
   @@unique([workflow_slug, relative_path])
   @@index([workflow_slug])
