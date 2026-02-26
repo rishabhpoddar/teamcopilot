@@ -2,56 +2,15 @@ import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import prisma from "../prisma/client";
-import { readWorkflowManifestAndEnsurePermissions } from "./workflow";
-import { getWorkflowPath } from "./workflow";
-
-export type SnapshotContentKind = "text" | "binary";
-export type ApprovalDiffFileStatus = "added" | "deleted" | "modified";
-
-export interface WorkflowSnapshotFile {
-    relative_path: string;
-    content_kind: SnapshotContentKind;
-    text_content: string | null;
-    binary_content: Buffer | null;
-    size_bytes: number;
-    content_sha256: string;
-}
-
-export interface WorkflowSnapshot {
-    workflow_slug: string;
-    snapshot_hash: string;
-    file_count: number;
-    files: WorkflowSnapshotFile[];
-}
-
-export interface WorkflowApprovalDiffFile {
-    path: string;
-    status: ApprovalDiffFileStatus;
-    kind: SnapshotContentKind;
-    old_size_bytes: number | null;
-    new_size_bytes: number | null;
-    patch_lines: string[] | null;
-    is_truncated: boolean;
-    message: string | null;
-}
-
-export interface WorkflowApprovalDiffResponse {
-    has_previous_snapshot: boolean;
-    summary: {
-        added: number;
-        modified: number;
-        deleted: number;
-        text_files: number;
-        binary_files: number;
-    };
-    files: WorkflowApprovalDiffFile[];
-    ignored_rules: string[];
-}
-
-export interface WorkflowSnapshotApprovalState {
-    has_approved_snapshot: boolean;
-    is_current_code_approved: boolean;
-}
+import type {
+    SnapshotContentKind,
+    WorkflowApprovalDiffFile,
+    WorkflowApprovalDiffResponse,
+    WorkflowSnapshot,
+    WorkflowSnapshotApprovalState,
+    WorkflowSnapshotFile,
+} from "../types/workflow";
+import { getWorkflowPath, workflowExists } from "./workflow";
 
 const MAX_INLINE_DIFF_FILE_BYTES = 200 * 1024;
 const MAX_PATCH_LINES_PER_FILE = 5000;
@@ -236,7 +195,12 @@ export async function restoreWorkflowToApprovedSnapshot(slug: string, userId: st
         };
     }
 
-    await readWorkflowManifestAndEnsurePermissions(slug);
+    if (!workflowExists(slug)) {
+        throw {
+            status: 404,
+            message: `Workflow manifest not found for slug: ${slug}`
+        };
+    }
     const snapshot = await loadApprovedSnapshotFromDb(slug);
     if (!snapshot) {
         throw {
@@ -279,6 +243,58 @@ export async function restoreWorkflowToApprovedSnapshot(slug: string, userId: st
     };
 }
 
+type SnapshotWriteTx = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
+
+async function writeApprovedSnapshotInTx(
+    tx: SnapshotWriteTx,
+    slug: string,
+    snapshot: WorkflowSnapshot,
+    now: bigint
+): Promise<void> {
+    const existingSnapshot = await tx.workflow_approved_snapshots.findUnique({
+        where: { workflow_slug: slug },
+        select: { workflow_slug: true }
+    });
+
+    if (existingSnapshot) {
+        await tx.workflow_approved_snapshot_files.deleteMany({
+            where: { workflow_slug: slug }
+        });
+        await tx.workflow_approved_snapshots.update({
+            where: { workflow_slug: slug },
+            data: {
+                snapshot_hash: snapshot.snapshot_hash,
+                file_count: snapshot.file_count,
+                updated_at: now,
+            }
+        });
+    } else {
+        await tx.workflow_approved_snapshots.create({
+            data: {
+                workflow_slug: slug,
+                snapshot_hash: snapshot.snapshot_hash,
+                file_count: snapshot.file_count,
+                created_at: now,
+                updated_at: now,
+            }
+        });
+    }
+
+    if (snapshot.files.length > 0) {
+        await tx.workflow_approved_snapshot_files.createMany({
+            data: snapshot.files.map((file) => ({
+                workflow_slug: slug,
+                relative_path: file.relative_path,
+                content_kind: file.content_kind,
+                text_content: file.text_content,
+                binary_content: file.binary_content ? new Uint8Array(file.binary_content) : null,
+                size_bytes: file.size_bytes,
+                content_sha256: file.content_sha256,
+            }))
+        });
+    }
+}
+
 export async function loadApprovedSnapshotFromDb(slug: string): Promise<WorkflowSnapshot | null> {
     const row = await prisma.workflow_approved_snapshots.findUnique({
         where: { workflow_slug: slug },
@@ -308,48 +324,7 @@ export async function loadApprovedSnapshotFromDb(slug: string): Promise<Workflow
 export async function replaceApprovedSnapshot(slug: string, snapshot: WorkflowSnapshot, nowMs: number): Promise<void> {
     const now = BigInt(nowMs);
     await prisma.$transaction(async (tx) => {
-        const existing = await tx.workflow_approved_snapshots.findUnique({
-            where: { workflow_slug: slug },
-            select: { workflow_slug: true }
-        });
-
-        if (existing) {
-            await tx.workflow_approved_snapshot_files.deleteMany({
-                where: { workflow_slug: slug }
-            });
-            await tx.workflow_approved_snapshots.update({
-                where: { workflow_slug: slug },
-                data: {
-                    snapshot_hash: snapshot.snapshot_hash,
-                    file_count: snapshot.file_count,
-                    updated_at: now,
-                }
-            });
-        } else {
-            await tx.workflow_approved_snapshots.create({
-                data: {
-                    workflow_slug: slug,
-                    snapshot_hash: snapshot.snapshot_hash,
-                    file_count: snapshot.file_count,
-                    created_at: now,
-                    updated_at: now,
-                }
-            });
-        }
-
-        if (snapshot.files.length > 0) {
-            await tx.workflow_approved_snapshot_files.createMany({
-                data: snapshot.files.map((file) => ({
-                    workflow_slug: slug,
-                    relative_path: file.relative_path,
-                    content_kind: file.content_kind,
-                    text_content: file.text_content,
-                    binary_content: file.binary_content ? new Uint8Array(file.binary_content) : null,
-                    size_bytes: file.size_bytes,
-                    content_sha256: file.content_sha256,
-                }))
-            });
-        }
+        await writeApprovedSnapshotInTx(tx, slug, snapshot, now);
     });
 }
 
@@ -368,54 +343,18 @@ export async function approveWorkflowWithSnapshot(slug: string, userId: string):
         };
     }
 
-    await readWorkflowManifestAndEnsurePermissions(slug);
+    if (!workflowExists(slug)) {
+        throw {
+            status: 404,
+            message: `Workflow manifest not found for slug: ${slug}`
+        };
+    }
     const snapshot = collectCurrentWorkflowSnapshot(slug);
     const now = Date.now();
 
     await prisma.$transaction(async (tx) => {
         const nowBigInt = BigInt(now);
-        const existingSnapshot = await tx.workflow_approved_snapshots.findUnique({
-            where: { workflow_slug: slug },
-            select: { workflow_slug: true }
-        });
-
-        if (existingSnapshot) {
-            await tx.workflow_approved_snapshot_files.deleteMany({
-                where: { workflow_slug: slug }
-            });
-            await tx.workflow_approved_snapshots.update({
-                where: { workflow_slug: slug },
-                data: {
-                    snapshot_hash: snapshot.snapshot_hash,
-                    file_count: snapshot.file_count,
-                    updated_at: nowBigInt,
-                }
-            });
-        } else {
-            await tx.workflow_approved_snapshots.create({
-                data: {
-                    workflow_slug: slug,
-                    snapshot_hash: snapshot.snapshot_hash,
-                    file_count: snapshot.file_count,
-                    created_at: nowBigInt,
-                    updated_at: nowBigInt,
-                }
-            });
-        }
-
-        if (snapshot.files.length > 0) {
-            await tx.workflow_approved_snapshot_files.createMany({
-                data: snapshot.files.map((file) => ({
-                    workflow_slug: slug,
-                    relative_path: file.relative_path,
-                    content_kind: file.content_kind,
-                    text_content: file.text_content,
-                    binary_content: file.binary_content ? new Uint8Array(file.binary_content) : null,
-                    size_bytes: file.size_bytes,
-                    content_sha256: file.content_sha256,
-                }))
-            });
-        }
+        await writeApprovedSnapshotInTx(tx, slug, snapshot, nowBigInt);
 
         await tx.workflow_metadata.update({
             where: { workflow_slug: slug },

@@ -109,3 +109,27 @@ export interface WorkflowApprovalDiffResponse {
     files: WorkflowApprovalDiffFile[];
     ignored_rules: string[];
 }
+
+export type SnapshotContentKind = "text" | "binary";
+export type ApprovalDiffFileStatus = "added" | "deleted" | "modified";
+
+export interface WorkflowSnapshotFile {
+    relative_path: string;
+    content_kind: SnapshotContentKind;
+    text_content: string | null;
+    binary_content: Uint8Array | null;
+    size_bytes: number;
+    content_sha256: string;
+}
+
+export interface WorkflowSnapshot {
+    workflow_slug: string;
+    snapshot_hash: string;
+    file_count: number;
+    files: WorkflowSnapshotFile[];
+}
+
+export interface WorkflowSnapshotApprovalState {
+    has_approved_snapshot: boolean;
+    is_current_code_approved: boolean;
+}
