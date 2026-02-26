@@ -1,0 +1,303 @@
+.approval-review-page {
+  min-height: 100vh;
+  background: linear-gradient(180deg, #0b1020 0%, #0a0d14 55%, #07090e 100%);
+  color: #e5e7eb;
+  padding: 1.25rem;
+}
+
+.approval-review-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.approval-review-eyebrow {
+  margin: 0 0 0.25rem 0;
+  color: #93c5fd;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.approval-review-title {
+  margin: 0;
+  font-size: 1.5rem;
+  line-height: 1.15;
+  word-break: break-word;
+}
+
+.approval-review-subtitle {
+  margin: 0.4rem 0 0 0;
+  color: #94a3b8;
+  font-size: 0.9rem;
+}
+
+.approval-review-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.approval-review-btn {
+  border-radius: 8px;
+  padding: 0.55rem 0.85rem;
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.approval-review-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.approval-review-btn.primary {
+  background: #2563eb;
+  color: #fff;
+}
+
+.approval-review-btn.secondary {
+  background: #111827;
+  color: #d1d5db;
+  border-color: #374151;
+}
+
+.approval-review-btn.danger {
+  background: #3b0d12;
+  color: #fecaca;
+  border-color: #7f1d1d;
+}
+
+.approval-review-banner {
+  border-radius: 10px;
+  padding: 0.7rem 0.9rem;
+  margin-bottom: 0.9rem;
+}
+
+.approval-review-banner.success {
+  background: rgba(22, 163, 74, 0.14);
+  color: #86efac;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.approval-review-state {
+  border: 1px solid #2b3443;
+  background: #0f172a;
+  border-radius: 10px;
+  padding: 1rem;
+}
+
+.approval-review-state.error {
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #fecaca;
+}
+
+.approval-review-summary-card {
+  border: 1px solid #293244;
+  background: rgba(15, 23, 42, 0.8);
+  border-radius: 10px;
+  padding: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.approval-review-summary-pills {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.approval-review-pill {
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  border: 1px solid transparent;
+}
+
+.approval-review-pill.added {
+  color: #86efac;
+  background: rgba(22, 163, 74, 0.14);
+  border-color: rgba(74, 222, 128, 0.25);
+}
+
+.approval-review-pill.modified {
+  color: #fcd34d;
+  background: rgba(217, 119, 6, 0.14);
+  border-color: rgba(251, 191, 36, 0.22);
+}
+
+.approval-review-pill.deleted {
+  color: #fca5a5;
+  background: rgba(185, 28, 28, 0.14);
+  border-color: rgba(248, 113, 113, 0.25);
+}
+
+.approval-review-note {
+  margin: 0.5rem 0 0 0;
+  color: #94a3b8;
+  font-size: 0.82rem;
+}
+
+.approval-review-files {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.approval-review-empty {
+  border: 1px solid #293244;
+  background: rgba(15, 23, 42, 0.8);
+  border-radius: 10px;
+  padding: 1rem;
+  color: #cbd5e1;
+}
+
+.approval-review-file {
+  border: 1px solid #293244;
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(10, 15, 24, 0.9);
+}
+
+.approval-review-file-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem 0.8rem;
+  background: #101827;
+  border-bottom: 1px solid #233047;
+}
+
+.approval-review-file-toggle {
+  width: 100%;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+
+.approval-review-file-header-main {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.approval-review-file-chevron {
+  color: #93c5fd;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.approval-review-file-path {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.82rem;
+  word-break: break-all;
+}
+
+.approval-review-file-badges {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.approval-review-file-badge {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border-radius: 999px;
+  padding: 0.15rem 0.45rem;
+}
+
+.approval-review-file-badge.added {
+  background: rgba(22, 163, 74, 0.15);
+  color: #86efac;
+}
+
+.approval-review-file-badge.modified {
+  background: rgba(217, 119, 6, 0.15);
+  color: #fcd34d;
+}
+
+.approval-review-file-badge.deleted {
+  background: rgba(185, 28, 28, 0.15);
+  color: #fca5a5;
+}
+
+.approval-review-file-badge.kind {
+  background: rgba(148, 163, 184, 0.14);
+  color: #cbd5e1;
+}
+
+.approval-review-file-badge.collapse-label {
+  background: rgba(59, 130, 246, 0.12);
+  color: #bfdbfe;
+}
+
+.approval-review-file-message {
+  padding: 0.6rem 0.8rem;
+  color: #cbd5e1;
+  font-size: 0.82rem;
+}
+
+.approval-review-patch {
+  margin: 0;
+  background: #090e16;
+  overflow: auto;
+  padding: 0.5rem 0;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.approval-review-line {
+  padding: 0 0.8rem;
+  white-space: pre;
+  color: #cbd5e1;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.approval-review-line.added {
+  background: rgba(22, 163, 74, 0.13);
+  color: #86efac;
+}
+
+.approval-review-line.removed {
+  background: rgba(185, 28, 28, 0.13);
+  color: #fca5a5;
+}
+
+.approval-review-line.hunk {
+  background: rgba(37, 99, 235, 0.14);
+  color: #93c5fd;
+}
+
+.approval-review-line.truncated {
+  background: rgba(217, 119, 6, 0.16);
+  color: #fdba74;
+  font-style: italic;
+}
+
+@media (max-width: 900px) {
+  .approval-review-page {
+    padding: 0.8rem;
+  }
+
+  .approval-review-header {
+    flex-direction: column;
+  }
+
+  .approval-review-actions {
+    width: 100%;
+  }
+
+  .approval-review-btn {
+    flex: 1;
+  }
+
+  .approval-review-file-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

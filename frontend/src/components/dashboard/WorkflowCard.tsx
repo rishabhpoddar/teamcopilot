@@ -22,6 +22,7 @@ export default function WorkflowCard({
     created_by_user_email,
     created_by_user_id,
     approved_by_user_id,
+    is_approved,
     run_permission_mode,
     can_current_user_run,
     can_current_user_manage_run_permissions,
@@ -35,7 +36,6 @@ export default function WorkflowCard({
     onRunWorkflow,
     onOpenWorkflow
 }: WorkflowCardProps) {
-    const [approving, setApproving] = useState(false);
     const [deleting, setDeleting] = useState(false);
     const [showPermissionsEditor, setShowPermissionsEditor] = useState(false);
     const [permissionsLoading, setPermissionsLoading] = useState(false);
@@ -46,7 +46,7 @@ export default function WorkflowCard({
     const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
     const [ownerUserIdForEditor, setOwnerUserIdForEditor] = useState<string | null>(created_by_user_id);
     const [approverUserIdForEditor, setApproverUserIdForEditor] = useState<string | null>(approved_by_user_id);
-    const isApproved = approved_by_user_id !== null;
+    const isApproved = is_approved;
     const canRun = isApproved && can_current_user_run;
     const canManagePermissions = isApproved && can_current_user_manage_run_permissions;
     const creatorUserMissing = created_by_user_id === null || (!created_by_user_name && !created_by_user_email);
@@ -114,22 +114,9 @@ export default function WorkflowCard({
         }
     };
 
-    const handleApprove = async () => {
-        setApproving(true);
-        try {
-            await axiosInstance.post(`/api/workflows/${slug}/approve`, {}, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            toast.success('Workflow approved successfully');
-            onApproved();
-        } catch (err: unknown) {
-            const errorMessage = err instanceof AxiosError
-                ? err.response?.data?.message || err.response?.data?.message || err.response?.data || err.message
-                : 'Failed to approve workflow';
-            toast.error(errorMessage);
-        } finally {
-            setApproving(false);
-        }
+    const openApprovalReview = () => {
+        const url = `/workflows/${encodeURIComponent(slug)}/approval-review`;
+        window.open(url, '_blank', 'noopener,noreferrer');
     };
 
     const handleDelete = async () => {
@@ -171,15 +158,16 @@ export default function WorkflowCard({
             {!isApproved && (
                 <div className="workflow-approval-section">
                     {userRole === 'Engineer' ? (
-                        <button
-                            className="workflow-approve-btn"
-                            onClick={() => {
-                                void handleApprove();
-                            }}
-                            disabled={approving}
-                        >
-                            {approving ? 'Approving...' : 'Approve Workflow'}
-                        </button>
+                        <>
+                            <button
+                                className="workflow-approve-btn"
+                                onClick={() => {
+                                    openApprovalReview();
+                                }}
+                            >
+                                Review & Approve
+                            </button>
+                        </>
                     ) : (
                         <p className="workflow-approval-message">
                             Ask an engineer to approve this workflow before it can be run.

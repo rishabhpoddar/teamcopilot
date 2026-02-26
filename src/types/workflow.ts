@@ -51,6 +51,7 @@ export interface WorkflowSummary {
     created_by_user_name: string | null;
     created_by_user_email: string | null;
     approved_by_user_id: string | null;
+    is_approved: boolean;
     run_permission_mode: WorkflowRunPermissionMode;
     can_current_user_run: boolean;
     can_current_user_manage_run_permissions: boolean;
@@ -78,4 +79,57 @@ export interface WorkflowRun {
         name: string;
         email: string;
     };
+}
+
+export type WorkflowApprovalDiffFileStatus = "added" | "modified" | "deleted";
+export type WorkflowApprovalDiffFileKind = "text" | "binary";
+
+export interface WorkflowApprovalDiffFile {
+    path: string;
+    status: WorkflowApprovalDiffFileStatus;
+    kind: WorkflowApprovalDiffFileKind;
+    old_size_bytes: number | null;
+    new_size_bytes: number | null;
+    patch_lines: string[] | null;
+    is_truncated: boolean;
+    message: string | null;
+}
+
+export interface WorkflowApprovalDiffSummary {
+    added: number;
+    modified: number;
+    deleted: number;
+    text_files: number;
+    binary_files: number;
+}
+
+export interface WorkflowApprovalDiffResponse {
+    has_previous_snapshot: boolean;
+    summary: WorkflowApprovalDiffSummary;
+    files: WorkflowApprovalDiffFile[];
+    ignored_rules: string[];
+}
+
+export type SnapshotContentKind = "text" | "binary";
+export type ApprovalDiffFileStatus = "added" | "deleted" | "modified";
+
+export interface WorkflowSnapshotFile {
+    relative_path: string;
+    content_kind: SnapshotContentKind;
+    text_content: string | null;
+    binary_content: Uint8Array | null;
+    size_bytes: number;
+    content_sha256: string;
+}
+
+export interface WorkflowSnapshot {
+    workflow_slug: string;
+    snapshot_hash: string;
+    file_count: number;
+    files: WorkflowSnapshotFile[];
+}
+
+export interface WorkflowSnapshotApprovalState {
+    has_approved_snapshot: boolean;
+    is_current_code_approved: boolean;
 }
