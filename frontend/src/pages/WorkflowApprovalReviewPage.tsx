@@ -104,6 +104,8 @@ export default function WorkflowApprovalReviewPage() {
         }));
     };
 
+    const hasVisibleChanges = diff !== null && diff.files.length > 0;
+
     return (
         <div className="approval-review-page">
             <header className="approval-review-header">
@@ -123,7 +125,7 @@ export default function WorkflowApprovalReviewPage() {
                     >
                         {loading ? 'Refreshing...' : 'Refresh Diff'}
                     </button>
-                    {diff?.has_previous_snapshot && (
+                    {hasVisibleChanges && diff?.has_previous_snapshot && (
                         <button
                             type="button"
                             className="approval-review-btn danger"
@@ -133,14 +135,16 @@ export default function WorkflowApprovalReviewPage() {
                             {rejecting ? 'Restoring...' : 'Reject & Restore'}
                         </button>
                     )}
-                    <button
-                        type="button"
-                        className="approval-review-btn primary"
-                        onClick={() => { void handleApprove(); }}
-                        disabled={loading || approving || rejecting || diff === null}
-                    >
-                        {approving ? 'Approving...' : 'Approve Workflow'}
-                    </button>
+                    {hasVisibleChanges && (
+                        <button
+                            type="button"
+                            className="approval-review-btn primary"
+                            onClick={() => { void handleApprove(); }}
+                            disabled={loading || approving || rejecting || diff === null}
+                        >
+                            {approving ? 'Approving...' : 'Approve Workflow'}
+                        </button>
+                    )}
                 </div>
             </header>
 

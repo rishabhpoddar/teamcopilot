@@ -28,6 +28,7 @@ import {
 import {
     approveWorkflowWithSnapshot,
     buildApprovalDiffResponse,
+    clearApprovalIfSnapshotDrifted,
     collectCurrentWorkflowSnapshot,
     ensureWorkflowMatchesApprovedSnapshotForRun,
     loadApprovedSnapshotFromDb,
@@ -400,6 +401,7 @@ router.put('/:slug/files/content', apiHandler(async (req, res) => {
         content,
         base_etag,
     });
+    await clearApprovalIfSnapshotDrifted(slug);
     res.json(result);
 }, true));
 
@@ -415,6 +417,7 @@ router.post('/:slug/files', apiHandler(async (req, res) => {
         };
     }
     const node = createWorkflowFileOrFolder(slug, typeof parent_path === "string" ? parent_path : "", name, kind);
+    await clearApprovalIfSnapshotDrifted(slug);
     res.json({ node });
 }, true));
 
@@ -430,6 +433,7 @@ router.patch('/:slug/files/rename', apiHandler(async (req, res) => {
         };
     }
     const result = renameWorkflowPath(slug, path, new_name);
+    await clearApprovalIfSnapshotDrifted(slug);
     res.json(result);
 }, true));
 
@@ -439,6 +443,7 @@ router.delete('/:slug/files', apiHandler(async (req, res) => {
     await assertCanEditWorkflowFiles(slug, req.userId!, req.role);
     const rawPath = typeof req.query.path === "string" ? req.query.path : undefined;
     deleteWorkflowPath(slug, rawPath);
+    await clearApprovalIfSnapshotDrifted(slug);
     res.json({ success: true });
 }, true));
 

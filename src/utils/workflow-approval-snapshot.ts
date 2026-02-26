@@ -700,3 +700,31 @@ export async function ensureWorkflowMatchesApprovedSnapshotForRun(slug: string):
         message: "Workflow code changed since approval. The workflow has been set to pending approval. Please review and re-approve before running."
     };
 }
+
+export async function clearApprovalIfSnapshotDrifted(slug: string): Promise<boolean> {
+    const metadata = await prisma.workflow_metadata.findUnique({
+        where: { workflow_slug: slug },
+        select: { approved_by_user_id: true }
+    });
+    if (!metadata || metadata.approved_by_user_id === null) {
+        return false;
+    }
+
+    const approvedSnapshot = await loadApprovedSnapshotFromDb(slug);
+
+    const currentSnapshot = collectCurrentWorkflowSnapshot(slug);
+    if (approvedSnapshot) {
+        if (approvedSnapshot.snapshot_hash === currentSnapshot.snapshot_hash && approvedSnapshot.file_count === currentSnapshot.file_count) {
+            return false;
+        }
+    }
+
+    await prisma.workflow_metadata.update({
+        where: { workflow_slug: slug },
+        data: {
+            approved_by_user_id: null,
+            updated_at: BigInt(Date.now()),
+        }
+    });
+    return true;
+}
