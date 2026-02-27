@@ -75,6 +75,7 @@ export interface WorkflowRun {
     completed_at: number | null;
     args: string | null;
     error_message: string | null;
+    output: string | null;
     user: {
         name: string;
         email: string;
