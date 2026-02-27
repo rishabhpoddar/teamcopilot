@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { axiosInstance } from '../../utils';
 import { useAuth } from '../../lib/auth';
 import type { WorkflowRun, WorkflowRunStatus } from '../../types/workflow';
@@ -23,6 +24,7 @@ function StatusBadge({ status }: { status: WorkflowRunStatus }) {
 
 export default function RunHistorySection() {
     const auth = useAuth();
+    const navigate = useNavigate();
     const [runs, setRuns] = useState<WorkflowRun[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -82,7 +84,19 @@ export default function RunHistorySection() {
                 </thead>
                 <tbody>
                     {runs.map((run) => (
-                        <tr key={run.id}>
+                        <tr
+                            key={run.id}
+                            className="run-history-row"
+                            onClick={() => navigate(`/runs/${encodeURIComponent(run.id)}`)}
+                            onKeyDown={(event) => {
+                                if (event.key === 'Enter' || event.key === ' ') {
+                                    event.preventDefault();
+                                    navigate(`/runs/${encodeURIComponent(run.id)}`);
+                                }
+                            }}
+                            tabIndex={0}
+                            role="button"
+                        >
                             <td className="workflow-name-cell">{run.workflow_slug}</td>
                             <td><StatusBadge status={run.status} /></td>
                             <td>{formatDate(run.started_at)}</td>

@@ -136,6 +136,29 @@ router.get('/runs', apiHandler(async (req, res) => {
     res.json({ runs });
 }, true));
 
+// GET /api/workflows/runs/:id - Get details for a specific workflow run
+router.get('/runs/:id', apiHandler(async (req, res) => {
+    const id = req.params.id as string;
+
+    const run = await prisma.workflow_runs.findUnique({
+        where: { id },
+        include: {
+            user: {
+                select: { name: true, email: true }
+            }
+        }
+    });
+
+    if (!run) {
+        throw {
+            status: 404,
+            message: 'Workflow run not found'
+        };
+    }
+
+    res.json({ run });
+}, true));
+
 // POST /api/workflows/runs - Create new workflow run record
 router.post('/runs', apiHandler(async (req, res) => {
     const { workflow_slug, args } = req.body;

@@ -1,0 +1,128 @@
+.run-details-page {
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.run-details-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+}
+
+.run-details-header h1 {
+  margin: 0;
+}
+
+.run-details-back-btn {
+  border: 1px solid #333;
+  background: transparent;
+  padding: 0.45rem 0.75rem;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.run-details-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.run-details-card {
+  border: 1px solid #333;
+  border-radius: 10px;
+  padding: 1rem;
+}
+
+.run-details-card h3 {
+  margin-top: 0;
+}
+
+.run-details-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.run-details-title-row h2 {
+  margin: 0;
+  word-break: break-word;
+}
+
+.run-details-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.8rem 1rem;
+  margin-top: 1rem;
+}
+
+.run-details-label {
+  margin: 0 0 0.25rem;
+  color: #888;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+}
+
+.run-details-grid p {
+  margin: 0;
+}
+
+.run-details-card pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 380px;
+  overflow: auto;
+  background: #111;
+  border-radius: 8px;
+  padding: 0.75rem;
+  border: 1px solid #2a2a2a;
+}
+
+.run-details-status {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  text-transform: capitalize;
+}
+
+.status-running {
+  background: #3b82f620;
+  color: #60a5fa;
+}
+
+.status-success {
+  background: #22c55e20;
+  color: #4ade80;
+}
+
+.status-failed {
+  background: #ef444420;
+  color: #f87171;
+}
+
+.run-details-state {
+  text-align: center;
+  padding: 2rem 1rem;
+  color: #888;
+}
+
+.run-details-state.error {
+  color: #ff6b6b;
+}
+
+@media (prefers-color-scheme: light) {
+  .run-details-back-btn,
+  .run-details-card {
+    border-color: #ddd;
+  }
+
+  .run-details-card pre {
+    background: #f7f7f7;
+    border-color: #e4e4e4;
+  }
+}
