@@ -47,6 +47,11 @@ function shouldIgnoreRelativePath(relativePath: string): boolean {
     return false;
 }
 
+function isDataPath(relativePath: string): boolean {
+    const segments = relativePath.split("/").filter(Boolean);
+    return segments.includes("data");
+}
+
 function assertNoSymlink(absolutePath: string): void {
     const lstat = fs.lstatSync(absolutePath);
     if (lstat.isSymbolicLink()) {
@@ -141,7 +146,9 @@ function pruneEmptyNonIgnoredDirectories(workflowRoot: string, absoluteDir: stri
 
 export function computeSnapshotHash(files: WorkflowSnapshotFile[]): string {
     const hash = crypto.createHash("sha256");
-    const sorted = [...files].sort((a, b) => a.relative_path.localeCompare(b.relative_path));
+    const sorted = files
+        .filter((file) => !isDataPath(file.relative_path))
+        .sort((a, b) => a.relative_path.localeCompare(b.relative_path));
     for (const file of sorted) {
         hash.update(file.relative_path);
         hash.update("\0");
@@ -240,7 +247,7 @@ export async function restoreWorkflowToApprovedSnapshot(slug: string, userId: st
 
     return {
         restored_file_count: snapshot.file_count,
-        snapshot_hash: snapshot.snapshot_hash,
+        snapshot_hash: computeSnapshotHash(snapshot.files),
     };
 }
 
@@ -264,7 +271,6 @@ async function writeApprovedSnapshotInTx(
         await tx.workflow_approved_snapshots.update({
             where: { workflow_slug: slug },
             data: {
-                snapshot_hash: snapshot.snapshot_hash,
                 file_count: snapshot.file_count,
                 updated_at: now,
             }
@@ -273,7 +279,6 @@ async function writeApprovedSnapshotInTx(
         await tx.workflow_approved_snapshots.create({
             data: {
                 workflow_slug: slug,
-                snapshot_hash: snapshot.snapshot_hash,
                 file_count: snapshot.file_count,
                 created_at: now,
                 updated_at: now,
@@ -316,7 +321,7 @@ export async function loadApprovedSnapshotFromDb(slug: string): Promise<Workflow
 
     return {
         workflow_slug: slug,
-        snapshot_hash: row.snapshot_hash,
+        snapshot_hash: computeSnapshotHash(files),
         file_count: row.file_count,
         files,
     };
@@ -617,8 +622,10 @@ export async function getWorkflowSnapshotApprovalState(slug: string): Promise<Wo
     }
 
     const currentSnapshot = collectCurrentWorkflowSnapshot(slug);
-    const matches = approvedSnapshot.snapshot_hash === currentSnapshot.snapshot_hash
-        && approvedSnapshot.file_count === currentSnapshot.file_count;
+    // Recompute from stored files so snapshots created under older hash rules
+    // remain comparable after hash logic changes.
+    const approvedSnapshotHash = computeSnapshotHash(approvedSnapshot.files);
+    const matches = approvedSnapshotHash === currentSnapshot.snapshot_hash;
 
     return {
         has_approved_snapshot: true,

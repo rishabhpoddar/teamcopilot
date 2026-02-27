@@ -96,7 +96,6 @@ model workflow_metadata {
 
 model workflow_approved_snapshots {
   workflow_slug String                             @id
-  snapshot_hash String
   file_count    Int
   created_at    BigInt
   updated_at    BigInt
