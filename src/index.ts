@@ -57,6 +57,16 @@ apiRouter.use((req, res, next) => {
     const originalJson = res.json.bind(res);
     const originalSend = res.send.bind(res);
     const shouldSkipSanitization = () => Boolean((res.locals as { skipResponseSanitization?: boolean }).skipResponseSanitization);
+    const hasJsonContentType = () => {
+        const contentType = res.getHeader("Content-Type");
+        if (typeof contentType === "string") {
+            return contentType.includes("application/json");
+        }
+        if (Array.isArray(contentType)) {
+            return contentType.some((value) => value.includes("application/json"));
+        }
+        return false;
+    };
 
     res.json = ((body: unknown) => {
         if (shouldSkipSanitization()) {
@@ -70,9 +80,15 @@ apiRouter.use((req, res, next) => {
             return originalSend(body);
         }
         if (typeof body === "string") {
+            if (hasJsonContentType()) {
+                return originalSend(body);
+            }
             return originalSend(sanitizeStringContent(body));
         }
         if (Buffer.isBuffer(body)) {
+            if (hasJsonContentType()) {
+                return originalSend(body);
+            }
             return originalSend(Buffer.from(sanitizeStringContent(body.toString("utf-8")), "utf-8"));
         }
         return originalSend(sanitizeForClient(body));
