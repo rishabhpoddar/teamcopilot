@@ -12,13 +12,15 @@ All workflow execution performed by the agent **must** go through the `runWorkfl
 - Only workflows that have been **approved by an engineer user** can be executed. This check (among other checks) is performed by the `runWorkflow` tool.
 - The `runWorkflow` can throw an error for various reasons. If it does, read the error message and report it to the user accurately.
 
-**However:** workflows must be written so that a **human** can run them directly with Python (without any agent tooling):
-- ✅ `python run.py ...` (run by a human, from the workflow directory)
-- ✅ The script must contain everything required to complete the workflow end-to-end (given correct deps + env)
+Workflows must still be fully executable end-to-end by the platform tooling (given correct deps + env), but direct Python execution is not allowed.
 
 **Forbidden actions (for the agent):**
 - ❌ `python run.py`
 - ❌ `cd workflows/xxx && python run.py`
+- ❌ `python3 run.py`, `python3.x run.py`, `python2 run.py`, `py run.py`, `pypy run.py`
+- ❌ `/usr/bin/python ...`, `/usr/bin/python3 ...`, `.venv/bin/python ...`, `env python ...`, `env python3 ...`
+- ❌ `python -m ...`, `python3 -m ...`, `py -m ...` (including module-based launch paths)
+- ❌ Any alias, symlink, wrapper, or alternative interpreter invocation that executes Python code
 - ❌ Any shell command that runs a workflow script
 
 **Required action:**
@@ -36,9 +38,9 @@ A **workflow** is a self-contained automation package that lives in `workflows/<
 - Must be self-contained on disk: **any external additions** required by the workflow (e.g., cloned git repos, downloaded SDKs/assets, vendored scripts, fixtures) **must be placed inside** `workflows/<slug>/` and **must not** be created/checked out anywhere outside the workflow folder
 - Can be triggered manually via the `runWorkflow` tool (by you) or from the UI (by a human)
 - Must be **approved by an engineer user** before it can be executed
-- Internally runs with `python run.py {optional args}`
+- Internally runs through approved platform runtime entrypoints
   - **Agent execution**: must be invoked via `runWorkflow` (never via shell)
-  - **Human execution**: may be run directly via `python run.py ...`
+  - **Human execution**: must also go through approved platform tooling (no direct Python execution)
 
 ---
 
@@ -104,7 +106,7 @@ Document:
 ### 3. `run.py` — Entrypoint Script
 
 The main script that executes the workflow logic. It must:
-- Be runnable via `python run.py` (when run by a human, without any agent/tooling)
+- Not be run directly with Python from shell; execution must happen via approved platform tooling only
 - Be end-to-end self-contained: it should perform the full workflow (setup (if needed) + inputs → processing → outputs) in one invocation
 - Read inputs via args passed to the script.
 - Write outputs to to the console.
@@ -261,7 +263,7 @@ days_back = args.days_back
 
 ## Best Practices
 
-1. **Agent: never run scripts directly** — Always use the `runWorkflow` tool to execute workflows (humans may run `python run.py ...` directly)
+1. **Never run scripts directly with Python** — Always use the `runWorkflow` tool or other approved platform tooling
 2. **Always check for existing workflows** before creating new ones — you MUST use the `findSimilarWorkflow` tool to do this. Only create new ones if no existing workflow can fit the request. If needed, modify the existing workflow to fit the request WITHOUT losing older functionality.
    - If you find a similar workflow, **study it and follow its business logic and conventions**.
 3. **Ask the user for help** when unsure.
@@ -346,7 +348,7 @@ When asked to "Create a workflow that checks Stripe for failed payments":
    - Edit `requirements.txt` — Add `stripe` dependency (no version specifier)
    - Edit `.env` — Add `STRIPE_API_KEY` (never commit)
    - Edit `.env.example` — Template with `STRIPE_API_KEY=sk_test_...`
-   - Create `.venv/` — Create virtualenv with `python -m venv .venv`
+   - Create `.venv/` — Use approved platform tooling only; do not invoke Python directly from shell
    - Update `requirements.lock.txt` — Run `pip freeze > requirements.lock.txt` after installing
    - Edit `README.md` — Document usage and required secrets
 4. If unsure about Stripe API details, ask the user for help or search the web using your tools.
@@ -357,9 +359,10 @@ When asked to "Create a workflow that checks Stripe for failed payments":
 When asked to "Run the failed-stripe-payments workflow for customer cus_123":
 
 1. **DO NOT** run `python run.py` or any shell command
-2. Use the `runWorkflow` tool.
-3. If the workflow is not approved, inform the user about the error and that they need to wait for an engineer's approval
-4. If the workflow runs successfully, report the output to the user
+2. **DO NOT** run any Python interpreter command (`python`, `python3`, `python3.x`, `py`, `pypy`, absolute/interpreter-path variants, or `-m` module invocations)
+3. Use the `runWorkflow` tool.
+4. If the workflow is not approved, inform the user about the error and that they need to wait for an engineer's approval
+5. If the workflow runs successfully, report the output to the user
 
 ## Example: Finding a workflow to run
 When the user does not specify a workflow to run, you MUST use the `findSimilarWorkflow` tool to find a workflow to run. For example, if the user asks "How many users do I have in my app?"
