@@ -147,6 +147,9 @@ function pruneEmptyNonIgnoredDirectories(workflowRoot: string, absoluteDir: stri
 export function computeSnapshotHash(files: WorkflowSnapshotFile[]): string {
     const hash = crypto.createHash("sha256");
     const sorted = files
+        // Intentionally exclude any `data/` path from approval hashing.
+        // Workflows may modify data files as part of normal execution, and
+        // those runtime changes should not require re-approval of code.
         .filter((file) => !isDataPath(file.relative_path))
         .sort((a, b) => a.relative_path.localeCompare(b.relative_path));
     for (const file of sorted) {
