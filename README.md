@@ -111,7 +111,7 @@ Data is persisted in Docker named volumes. Even if you remove and recreate the c
 | `OPENCODE_PORT` | Port for the Opencode server | `4096` |
 | `OPENCODE_MODEL` | AI model for Opencode | `anthropic/claude-sonnet-4-5-20250929` |
 
-> Note: SQLite database files are automatically managed inside `WORKSPACE_DIR` at `data.db`, and migrations are applied automatically at startup. `HOST` and `PORT` control the main HTTP server. `OPENCODE_PORT` is used internally by the backend process and normally does not need to be exposed with a Docker `-p` flag.
+> Note: SQLite database files are automatically managed inside `WORKSPACE_DIR/.sqlite` at `data.db`, and migrations are applied automatically at startup. `HOST` and `PORT` control the main HTTP server. `OPENCODE_PORT` is used internally by the backend process and normally does not need to be exposed with a Docker `-p` flag.
 
 ---
 

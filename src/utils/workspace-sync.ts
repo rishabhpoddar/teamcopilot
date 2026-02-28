@@ -11,6 +11,7 @@ interface IgnoreRuleSet {
 }
 
 const execFileAsync = promisify(execFile);
+const WORKSPACE_DB_DIRECTORY = ".sqlite";
 const WORKSPACE_DB_FILENAME = "data.db";
 
 export function getWorkspaceDirFromEnv(): string {
@@ -22,7 +23,7 @@ export function getWorkspaceDirFromEnv(): string {
 }
 
 export function getWorkspaceDatabasePath(): string {
-    return path.join(getWorkspaceDirFromEnv(), WORKSPACE_DB_FILENAME);
+    return path.join(getWorkspaceDirFromEnv(), WORKSPACE_DB_DIRECTORY, WORKSPACE_DB_FILENAME);
 }
 
 export function getWorkspaceDatabaseUrl(): string {
@@ -145,6 +146,7 @@ export function initializeWorkspaceDirectory(): void {
 
 export async function ensureWorkspaceDatabase(): Promise<void> {
     const workspaceDatabaseUrl = getWorkspaceDatabaseUrl();
+    fs.mkdirSync(path.dirname(getWorkspaceDatabasePath()), { recursive: true });
     process.env.DATABASE_URL = workspaceDatabaseUrl;
 
     await execFileAsync("npx", ["prisma", "migrate", "deploy"], {
