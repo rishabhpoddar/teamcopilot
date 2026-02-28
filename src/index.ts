@@ -10,7 +10,6 @@ import dotenv from 'dotenv';
 dotenv.config();
 import express from "express";
 import cors from "cors";
-import prisma from "./prisma/client";
 import { logError } from "./logging";
 import authRouter from "./auth";
 import workflowsRouter from "./workflows";
@@ -21,7 +20,7 @@ import path from 'path';
 import { Server } from "http";
 import { assertEnv, parseIntStrict } from "./utils/assert";
 import { sanitizeForClient, sanitizeStringContent } from "./utils/redact";
-import { initializeWorkspaceDirectory } from "./utils/workspace-sync";
+import { ensureWorkspaceDatabase, initializeWorkspaceDirectory } from "./utils/workspace-sync";
 const app = express();
 
 app.use(express.json());
@@ -147,6 +146,7 @@ async function shutdown(exitCode: number) {
 
 async function bootstrap() {
     initializeWorkspaceDirectory();
+    await ensureWorkspaceDatabase();
     await startOpencodeServer();
     startCronJobs();
 

@@ -5,6 +5,7 @@ An open-source platform for running AI agent workflows on your local machine. Lo
 ## Features
 
 - Local SQLite database for data persistence
+- Workspace-scoped SQLite database (one DB per `WORKSPACE_DIR`)
 - Web-based UI for workflow management
 - Workspace-based workflow organization
 - Python-based workflow execution
@@ -31,8 +32,7 @@ cd frontend && npm install && cd ..
 # Configure environment
 cp .env.example .env
 
-# Set up database and build frontend
-npx prisma migrate dev
+# Build frontend
 cd frontend && npm run build && cd ..
 
 # Start the server
@@ -40,6 +40,8 @@ npm start
 ```
 
 The application will be available at **http://localhost:3000**
+
+Database migrations are applied automatically at server startup. If you point `WORKSPACE_DIR` to a new location, LocalTool creates a fresh SQLite database there.
 
 ### OpenCode Setup (Install + API Key)
 
@@ -77,7 +79,6 @@ docker build -t localtool .
 docker run -d \
   --name localtool \
   -p 3000:3000 \
-  -v db-data:/app/data \
   -v my_workspaces:/app/workspaces \
   -e EXTERNAL_SERVICE_URL="http://localhost:3000" \
   -e JWT_SECRET="your-secret-key" \
@@ -90,10 +91,11 @@ The application will be available at **http://localhost:3000**
 
 | Volume | Container Path | Purpose |
 |--------|---------------|---------|
-| `db-data` | `/app/data` | SQLite database file |
-| `my_workspaces` | `/app/workspaces` | User workflow storage |
+| `my_workspaces` | `/app/workspaces` | User workflow storage and per-workspace SQLite database |
 
-Data is persisted in Docker named volumes. Even if you remove and recreate the container, your database and workspaces are retained.
+Data is persisted in Docker named volumes. Even if you remove and recreate the container, your workspace files and workspace-scoped database are retained.
+
+When upgrading from older Docker setups that used `/app/data`, LocalTool automatically moves the legacy SQLite files into `/app/workspaces` on first boot.
 
 ---
 
@@ -105,14 +107,13 @@ Data is persisted in Docker named volumes. Even if you remove and recreate the c
 |----------|-------------|---------|
 | `EXTERNAL_SERVICE_URL` | URL where the service is accessible | `http://localhost:3000` |
 | `JWT_SECRET` | Secret for JWT tokens | - |
-| `DATABASE_URL` | SQLite database path | `file:./dev.db` |
 | `WORKSPACE_DIR` | Path to workspace directory | `./my_workspaces` |
 | `HOST` | Hostname for the main server | `0.0.0.0` |
 | `PORT` | Port for the main server | `3000` |
 | `OPENCODE_PORT` | Port for the Opencode server | `4096` |
 | `OPENCODE_MODEL` | AI model for Opencode | `anthropic/claude-sonnet-4-5-20250929` |
 
-> Note: `DATABASE_URL` is relative to the `prisma/` directory. For Docker, `DATABASE_URL` and `WORKSPACE_DIR` are set automatically in the image. `HOST` and `PORT` control the main HTTP server. `OPENCODE_PORT` is used internally by the backend process and normally does not need to be exposed with a Docker `-p` flag.
+> Note: SQLite database files are automatically managed inside `WORKSPACE_DIR` at `localtool.db`, and migrations are applied automatically at startup. `HOST` and `PORT` control the main HTTP server. `OPENCODE_PORT` is used internally by the backend process and normally does not need to be exposed with a Docker `-p` flag.
 
 ---
 

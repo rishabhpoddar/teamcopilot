@@ -1,6 +1,8 @@
 import fs from "fs";
 import path from "path";
 import ignore, { Ignore } from "ignore";
+import { execFile } from "child_process";
+import { promisify } from "util";
 import { assertEnv } from "./assert";
 import { logInfo } from "../logging";
 
@@ -9,12 +11,105 @@ interface IgnoreRuleSet {
     matcher: Ignore;
 }
 
-function getWorkspaceDirFromEnv(): string {
+const execFileAsync = promisify(execFile);
+const WORKSPACE_DB_FILENAME = "localtool.db";
+
+export function getWorkspaceDirFromEnv(): string {
     let workspaceDir = assertEnv("WORKSPACE_DIR");
     if (!path.isAbsolute(workspaceDir)) {
         workspaceDir = path.resolve(process.cwd(), workspaceDir);
     }
     return workspaceDir;
+}
+
+export function getWorkspaceDatabasePath(): string {
+    return path.join(getWorkspaceDirFromEnv(), WORKSPACE_DB_FILENAME);
+}
+
+export function getWorkspaceDatabaseUrl(): string {
+    return `file:${getWorkspaceDatabasePath()}`;
+}
+
+function parseSqlitePathFromPrismaUrl(url: string): string | null {
+    if (!url.startsWith("file:")) {
+        return null;
+    }
+
+    const withoutPrefix = url.slice("file:".length).split("?")[0];
+    if (withoutPrefix.length === 0) {
+        return null;
+    }
+
+    if (path.isAbsolute(withoutPrefix)) {
+        return withoutPrefix;
+    }
+
+    return path.resolve(process.cwd(), "prisma", withoutPrefix);
+}
+
+function moveFile(sourcePath: string, targetPath: string): void {
+    try {
+        fs.renameSync(sourcePath, targetPath);
+        return;
+    } catch (error: unknown) {
+        const err = error as NodeJS.ErrnoException;
+        if (err.code !== "EXDEV") {
+            throw err;
+        }
+    }
+
+    fs.copyFileSync(sourcePath, targetPath);
+    fs.unlinkSync(sourcePath);
+}
+
+function moveSqliteArtifacts(sourceDbPath: string, targetDbPath: string): boolean {
+    const suffixes = ["", "-journal", "-shm", "-wal"];
+    const sourcePaths = suffixes.map((suffix) => `${sourceDbPath}${suffix}`);
+    const hasAnySource = sourcePaths.some((sourcePath) => fs.existsSync(sourcePath));
+    if (!hasAnySource || fs.existsSync(targetDbPath)) {
+        return false;
+    }
+
+    fs.mkdirSync(path.dirname(targetDbPath), { recursive: true });
+    for (const suffix of suffixes) {
+        const sourcePath = `${sourceDbPath}${suffix}`;
+        if (!fs.existsSync(sourcePath)) {
+            continue;
+        }
+        const targetPath = `${targetDbPath}${suffix}`;
+        moveFile(sourcePath, targetPath);
+    }
+    return true;
+}
+
+function moveLegacyDatabaseIntoWorkspace(): void {
+    const workspaceDbPath = getWorkspaceDatabasePath();
+    if (fs.existsSync(workspaceDbPath)) {
+        return;
+    }
+
+    const candidateSet = new Set<string>();
+    candidateSet.add(path.resolve(process.cwd(), "prisma", "dev.db"));
+    candidateSet.add("/app/data/data.db");
+
+    const envDatabaseUrl = process.env.DATABASE_URL;
+    if (typeof envDatabaseUrl === "string" && envDatabaseUrl.length > 0) {
+        const parsedPath = parseSqlitePathFromPrismaUrl(envDatabaseUrl);
+        if (parsedPath) {
+            candidateSet.add(parsedPath);
+        }
+    }
+
+    for (const candidate of candidateSet) {
+        if (!fs.existsSync(candidate)) {
+            continue;
+        }
+        const moved = moveSqliteArtifacts(candidate, workspaceDbPath);
+        if (moved) {
+            logInfo(`Moved existing database into workspace: ${workspaceDbPath}`);
+            return;
+        }
+    }
 }
 
 function normalizeRelativePath(relativePath: string): string {
@@ -129,4 +224,19 @@ export function initializeWorkspaceDirectory(): void {
 
     syncTemplateDirectory(workspaceTemplateDir, workspaceDir, "", []);
     fs.mkdirSync(path.join(workspaceDir, "workflows"), { recursive: true });
+}
+
+export async function ensureWorkspaceDatabase(): Promise<void> {
+    moveLegacyDatabaseIntoWorkspace();
+
+    const workspaceDatabaseUrl = getWorkspaceDatabaseUrl();
+    process.env.DATABASE_URL = workspaceDatabaseUrl;
+
+    await execFileAsync("npx", ["prisma", "migrate", "deploy"], {
+        cwd: process.cwd(),
+        env: {
+            ...process.env,
+            DATABASE_URL: workspaceDatabaseUrl,
+        },
+    });
 }
