@@ -11,7 +11,7 @@ dotenv.config();
 import express from "express";
 import cors from "cors";
 import prisma from "./prisma/client";
-import { logError, logInfo } from "./logging";
+import { logError } from "./logging";
 import authRouter from "./auth";
 import workflowsRouter from "./workflows";
 import chatRouter from "./chat";
@@ -21,6 +21,7 @@ import path from 'path';
 import { Server } from "http";
 import { assertEnv, parseIntStrict } from "./utils/assert";
 import { sanitizeForClient, sanitizeStringContent } from "./utils/redact";
+import { initializeWorkspaceDirectory } from "./utils/workspace-sync";
 const app = express();
 
 app.use(express.json());
@@ -145,6 +146,7 @@ async function shutdown(exitCode: number) {
 }
 
 async function bootstrap() {
+    initializeWorkspaceDirectory();
     await startOpencodeServer();
     startCronJobs();
 

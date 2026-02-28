@@ -94,10 +94,7 @@ export default function WorkflowsSection({ onRunWorkflow }: WorkflowsSectionProp
         return (
             <div className="section-empty">
                 <h3>No Workflows Available</h3>
-                <p>Create a workflow in your workspace to get started.</p>
-                <p className="section-empty-hint">
-                    Workflows should be placed in <code>workflows/&lt;slug&gt;/workflow.json</code>
-                </p>
+                <p>Create a workflow by talking to the AI Assistant.</p>
             </div>
         );
     }
