@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs';
 import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 import prisma from './prisma/client';
-import { ensureWorkspaceDatabase, initializeWorkspaceDirectory } from './utils/workspace-sync';
+import { getPasswordPolicyErrorMessage, isPasswordValid, MIN_PASSWORD_LENGTH } from './utils/password-policy';
 
 type UserRole = 'User' | 'Engineer';
 
@@ -47,8 +47,8 @@ function parseArgs(argv: string[]): PartialCreateUserArgs {
     if (roleRaw !== undefined && roleRaw !== 'User' && roleRaw !== 'Engineer') {
         throw new Error('Role must be User or Engineer. Pass --role User|Engineer');
     }
-    if (password !== undefined && password.length < 8) {
-        throw new Error('Password must be at least 8 characters. Pass --password <temp-password>');
+    if (password !== undefined && !isPasswordValid(password)) {
+        throw new Error(`${getPasswordPolicyErrorMessage()}. Pass --password <temp-password>`);
     }
 
     return {
@@ -74,8 +74,8 @@ async function promptMissingArgs(parsedArgs: PartialCreateUserArgs): Promise<Cre
             value === 'User' || value === 'Engineer' ? null : 'Role must be User or Engineer. Please try again.'
         ) as UserRole;
 
-        const password = parsedArgs.password ?? await promptValidated(rl, 'Enter temporary password (min 8 chars): ', (value) =>
-            value.length >= 8 ? null : 'Password must be at least 8 characters. Please try again.'
+        const password = parsedArgs.password ?? await promptValidated(rl, `Enter temporary password (min ${MIN_PASSWORD_LENGTH} chars): `, (value) =>
+            isPasswordValid(value) ? null : `${getPasswordPolicyErrorMessage()}. Please try again.`
         );
 
         return { email, name, role, password };
@@ -100,9 +100,6 @@ async function promptValidated(
 async function main() {
     const parsedArgs = parseArgs(process.argv.slice(2));
     const args = await promptMissingArgs(parsedArgs);
-
-    initializeWorkspaceDirectory();
-    await ensureWorkspaceDatabase();
 
     const existing = await prisma.users.findUnique({ where: { email: args.email } });
     if (existing) {

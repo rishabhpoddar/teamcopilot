@@ -20,6 +20,7 @@ function getErrorMessage(err: unknown): string {
 export default function ResetPassword() {
     const [searchParams] = useSearchParams();
     const token = searchParams.get('token');
+    const email = searchParams.get('email');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [success, setSuccess] = useState(false);
@@ -65,6 +66,19 @@ export default function ResetPassword() {
             <h1>Reset Password</h1>
             <form onSubmit={handleSubmit} className="auth-form">
                 {error && <p className="auth-error">{error}</p>}
+                {email && (
+                    <>
+                        <label htmlFor="reset-email">Email</label>
+                        <input
+                            id="reset-email"
+                            name="email"
+                            type="email"
+                            value={email}
+                            autoComplete="username"
+                            readOnly
+                        />
+                    </>
+                )}
                 <label htmlFor="reset-password">New Password (min 8 characters)</label>
                 <input
                     id="reset-password"

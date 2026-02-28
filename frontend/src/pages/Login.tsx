@@ -14,7 +14,7 @@ export default function Login() {
     const [newPassword, setNewPassword] = useState('');
     const [challengeToken, setChallengeToken] = useState('');
     const [error, setError] = useState('');
-    const { login, completePasswordChange } = useAuth();
+    const { login, completePasswordChange, logout } = useAuth();
     const navigate = useNavigate();
 
     const handleSignIn = async (e: FormEvent) => {
@@ -32,6 +32,7 @@ export default function Login() {
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Sign in failed';
             setError(message);
+            setPassword('');
             toast.error(message);
         }
     };
@@ -103,6 +104,19 @@ export default function Login() {
                         required
                     />
                     <button type="submit">Save Password</button>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            logout();
+                            setStep('signin');
+                            setChallengeToken('');
+                            setPassword('');
+                            setNewPassword('');
+                            navigate('/login');
+                        }}
+                    >
+                        Sign Out
+                    </button>
                 </form>
             )}
             <p className="auth-link">Accounts are created by an administrator via CLI.</p>

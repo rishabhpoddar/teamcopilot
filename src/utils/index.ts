@@ -12,14 +12,9 @@ type CustomRequest = express.Request & {
     tokenUse?: "access" | "password_change";
 }
 
-type ApiHandlerOptions = {
-    allowPasswordChangeToken?: boolean;
-}
-
 export function apiHandler(
     handler: (req: CustomRequest, res: express.Response, next: express.NextFunction) => Promise<void>,
-    requireAuth: boolean,
-    options?: ApiHandlerOptions
+    requireAuth: boolean
 ) {
     return async (req: express.Request, res: express.Response, next: express.NextFunction) => {
         try {
@@ -84,7 +79,7 @@ export function apiHandler(
                     message: 'Invalid authorization token. Please pass a valid authorization bearer token in the header.'
                 };
             }
-            if (requireAuth && !options?.allowPasswordChangeToken && (req as CustomRequest).tokenUse === "password_change") {
+            if (requireAuth && (req as CustomRequest).tokenUse === "password_change") {
                 throw {
                     status: 401,
                     message: 'This token can only be used to complete password change.'

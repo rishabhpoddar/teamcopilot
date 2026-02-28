@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import prisma from "../prisma/client";
 import { apiHandler } from "../utils/index";
 import { assertEnv } from "../utils/assert";
+import { getPasswordPolicyErrorMessage, isPasswordValid } from "../utils/password-policy";
 
 const router = express.Router({ mergeParams: true });
 
@@ -110,10 +111,10 @@ router.post('/complete-password-change', (async (req: express.Request, res: expr
                 message: 'challengeToken and newPassword are required'
             };
         }
-        if (typeof newPassword !== 'string' || newPassword.length < 8) {
+        if (typeof newPassword !== 'string' || !isPasswordValid(newPassword)) {
             throw {
                 status: 400,
-                message: 'Password must be at least 8 characters'
+                message: getPasswordPolicyErrorMessage()
             };
         }
 
@@ -131,7 +132,7 @@ router.post('/complete-password-change', (async (req: express.Request, res: expr
         }
 
         const user = await prisma.users.findUnique({ where: { id: payload.sub } });
-        if (!user || user.email !== payload.email || user.name !== payload.name) {
+        if (!user || user.email !== payload.email) {
             throw {
                 status: 401,
                 message: 'Invalid password change challenge token'
@@ -173,10 +174,10 @@ router.post('/reset-password', (async (req: express.Request, res: express.Respon
                 message: 'Token and newPassword are required'
             };
         }
-        if (typeof newPassword !== 'string' || newPassword.length < 8) {
+        if (typeof newPassword !== 'string' || !isPasswordValid(newPassword)) {
             throw {
                 status: 400,
-                message: 'Password must be at least 8 characters'
+                message: getPasswordPolicyErrorMessage()
             };
         }
 
@@ -210,10 +211,6 @@ router.post('/reset-password', (async (req: express.Request, res: express.Respon
         next(err);
     }
 }) as express.RequestHandler);
-
-router.post('/signout', apiHandler(async (_req, res) => {
-    res.json({ message: 'Signed out' });
-}, true, { allowPasswordChangeToken: true }));
 
 router.get('/me', apiHandler(async (req, res) => {
     res.json({

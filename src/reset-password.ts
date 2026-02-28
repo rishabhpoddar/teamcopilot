@@ -5,7 +5,6 @@ import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 import prisma from './prisma/client';
 import { assertEnv } from './utils/assert';
-import { ensureWorkspaceDatabase, initializeWorkspaceDirectory } from './utils/workspace-sync';
 
 async function resolveEmailArgOrPrompt(): Promise<string> {
     const argEmail = process.argv[2];
@@ -30,9 +29,6 @@ async function resolveEmailArgOrPrompt(): Promise<string> {
 async function main() {
     const email = await resolveEmailArgOrPrompt();
 
-    initializeWorkspaceDirectory();
-    await ensureWorkspaceDatabase();
-
     const user = await prisma.users.findUnique({ where: { email } });
     if (!user) {
         console.error(`No user found with email: ${email}`);
@@ -48,7 +44,7 @@ async function main() {
     });
 
     const serviceUrl = assertEnv('EXTERNAL_SERVICE_URL');
-    console.log(`\nPassword reset link (expires in 1 hour):\n${serviceUrl}/reset-password?token=${resetToken}\n`);
+    console.log(`\nPassword reset link (expires in 1 hour):\n${serviceUrl}/reset-password?token=${resetToken}&email=${encodeURIComponent(user.email)}\n`);
 
     await prisma.$disconnect();
 }
