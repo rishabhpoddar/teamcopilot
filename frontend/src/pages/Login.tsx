@@ -12,6 +12,8 @@ export default function Login() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [newPassword, setNewPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
+    const [showNewPassword, setShowNewPassword] = useState(false);
     const [challengeToken, setChallengeToken] = useState('');
     const [error, setError] = useState('');
     const { login, completePasswordChange, logout } = useAuth();
@@ -67,16 +69,25 @@ export default function Login() {
                         required
                     />
                     <label htmlFor="password">Password</label>
-                    <input
-                        id="password"
-                        name="password"
-                        type="password"
-                        value={password}
-                        onChange={e => setPassword(e.target.value)}
-                        autoComplete="current-password"
-                        required
-                    />
-                    <button type="submit">Sign In</button>
+                    <div className="password-input-row">
+                        <input
+                            id="password"
+                            name="password"
+                            type={showPassword ? "text" : "password"}
+                            value={password}
+                            onChange={e => setPassword(e.target.value)}
+                            autoComplete="current-password"
+                            required
+                        />
+                        <button
+                            type="button"
+                            className="password-toggle-button"
+                            onClick={() => setShowPassword((value) => !value)}
+                        >
+                            {showPassword ? 'Hide' : 'Show'}
+                        </button>
+                    </div>
+                    <button className="auth-submit-button" type="submit">Sign In</button>
                 </form>
             ) : (
                 <form onSubmit={handleCompletePasswordChange} className="auth-form">
@@ -93,18 +104,28 @@ export default function Login() {
                         required
                     />
                     <label htmlFor="new-password">New Password (min 8 characters)</label>
-                    <input
-                        id="new-password"
-                        name="new-password"
-                        type="password"
-                        value={newPassword}
-                        onChange={e => setNewPassword(e.target.value)}
-                        autoComplete="new-password"
-                        minLength={8}
-                        required
-                    />
-                    <button type="submit">Save Password</button>
+                    <div className="password-input-row">
+                        <input
+                            id="new-password"
+                            name="new-password"
+                            type={showNewPassword ? "text" : "password"}
+                            value={newPassword}
+                            onChange={e => setNewPassword(e.target.value)}
+                            autoComplete="new-password"
+                            minLength={8}
+                            required
+                        />
+                        <button
+                            type="button"
+                            className="password-toggle-button"
+                            onClick={() => setShowNewPassword((value) => !value)}
+                        >
+                            {showNewPassword ? 'Hide' : 'Show'}
+                        </button>
+                    </div>
+                    <button className="auth-submit-button" type="submit">Save Password</button>
                     <button
+                        className="auth-submit-button"
                         type="button"
                         onClick={() => {
                             logout();

@@ -43,6 +43,27 @@
   padding: 0.6em 1.2em;
 }
 
+.auth-submit-button {
+  margin-top: 0.5rem;
+  padding: 0.6em 1.2em;
+}
+
+.password-input-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.password-input-row input {
+  flex: 1;
+}
+
+.auth-form .password-toggle-button {
+  margin-top: 0;
+  padding: 0.5em 0.8em;
+  white-space: nowrap;
+}
+
 .auth-error {
   color: #ff6b6b;
   margin: 0;

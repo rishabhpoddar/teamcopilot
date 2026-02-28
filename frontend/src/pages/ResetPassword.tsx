@@ -22,6 +22,7 @@ export default function ResetPassword() {
     const token = searchParams.get('token');
     const email = searchParams.get('email');
     const [password, setPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState(false);
 
@@ -80,17 +81,26 @@ export default function ResetPassword() {
                     </>
                 )}
                 <label htmlFor="reset-password">New Password (min 8 characters)</label>
-                <input
-                    id="reset-password"
-                    name="new-password"
-                    type="password"
-                    value={password}
-                    onChange={e => setPassword(e.target.value)}
-                    autoComplete="new-password"
-                    required
-                    minLength={8}
-                />
-                <button type="submit">Reset Password</button>
+                <div className="password-input-row">
+                    <input
+                        id="reset-password"
+                        name="new-password"
+                        type={showPassword ? "text" : "password"}
+                        value={password}
+                        onChange={e => setPassword(e.target.value)}
+                        autoComplete="new-password"
+                        required
+                        minLength={8}
+                    />
+                    <button
+                        type="button"
+                        className="password-toggle-button"
+                        onClick={() => setShowPassword((value) => !value)}
+                    >
+                        {showPassword ? 'Hide' : 'Show'}
+                    </button>
+                </div>
+                <button className="auth-submit-button" type="submit">Reset Password</button>
             </form>
             <p className="auth-link"><Link to="/login">Back to Sign In</Link></p>
         </div>
