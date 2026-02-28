@@ -95,8 +95,6 @@ The application will be available at **http://localhost:3000**
 
 Data is persisted in Docker named volumes. Even if you remove and recreate the container, your workspace files and workspace-scoped database are retained.
 
-When upgrading from older Docker setups that used `/app/data`, LocalTool automatically moves the legacy SQLite files into `/app/workspaces` on first boot.
-
 ---
 
 ## Configuration
