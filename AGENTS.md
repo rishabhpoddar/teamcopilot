@@ -33,10 +33,10 @@ npm run preview          # Preview production build
 
 ### Database (Prisma, run from repo root)
 ```bash
-npx prisma migrate dev --name <description>   # Create and apply migration
-npx prisma migrate reset                      # Reset database (deletes all data)
-npx prisma migrate deploy                     # Deploy migrations (production/Docker)
-npx prisma studio                             # Visual database browser
+npm run prisma:migrate:dev -- --name <description>   # Create and apply migration
+npm run prisma:migrate:reset                          # Reset database (deletes all data)
+npm run prisma:migrate:deploy                         # Deploy migrations
+npm run prisma:studio                                 # Visual database browser
 ```
 
 ### Initial Setup
@@ -44,7 +44,6 @@ npx prisma studio                             # Visual database browser
 npm install
 cd frontend && npm install && cd ..
 cp .env.example .env     # Then fill in values
-npx prisma migrate dev
 cd frontend && npm run build && cd ..
 ```
 
@@ -91,7 +90,7 @@ SQLite via Prisma ORM. Schema is at `prisma/schema.prisma`. Currently two tables
 
 ## Environment Variables
 
-Required: `JWT_SECRET`, `EXTERNAL_SERVICE_URL` (default `http://localhost:3000`), `DATABASE_URL` (default `file:./dev.db` relative to `prisma/`)
+Required: `JWT_SECRET`, `EXTERNAL_SERVICE_URL` (default `http://localhost:3000`)
 Optional: `WORKSPACE_DIR` (absolute path or relative to project root, default `./my_workspaces`)
 
 ### Server

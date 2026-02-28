@@ -1,3 +1,7 @@
 workflow-runs/
 .env
 .venv/
+*.db
+*.db-journal
+*.db-shm
+*.db-wal

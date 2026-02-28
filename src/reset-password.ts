@@ -3,6 +3,7 @@ dotenv.config();
 import crypto from 'crypto';
 import prisma from './prisma/client';
 import { assertEnv } from './utils/assert';
+import { ensureWorkspaceDatabase, initializeWorkspaceDirectory } from './utils/workspace-sync';
 
 async function main() {
     const email = process.argv[2];
@@ -10,6 +11,9 @@ async function main() {
         console.error('Usage: npm run reset-password -- <email>');
         process.exit(1);
     }
+
+    initializeWorkspaceDirectory();
+    await ensureWorkspaceDatabase();
 
     const user = await prisma.users.findUnique({ where: { email } });
     if (!user) {

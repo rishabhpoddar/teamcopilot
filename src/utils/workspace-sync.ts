@@ -1,20 +1,32 @@
 import fs from "fs";
 import path from "path";
 import ignore, { Ignore } from "ignore";
+import { execFile } from "child_process";
+import { promisify } from "util";
 import { assertEnv } from "./assert";
-import { logInfo } from "../logging";
 
 interface IgnoreRuleSet {
     basePath: string;
     matcher: Ignore;
 }
 
-function getWorkspaceDirFromEnv(): string {
+const execFileAsync = promisify(execFile);
+const WORKSPACE_DB_FILENAME = "data.db";
+
+export function getWorkspaceDirFromEnv(): string {
     let workspaceDir = assertEnv("WORKSPACE_DIR");
     if (!path.isAbsolute(workspaceDir)) {
         workspaceDir = path.resolve(process.cwd(), workspaceDir);
     }
     return workspaceDir;
+}
+
+export function getWorkspaceDatabasePath(): string {
+    return path.join(getWorkspaceDirFromEnv(), WORKSPACE_DB_FILENAME);
+}
+
+export function getWorkspaceDatabaseUrl(): string {
+    return `file:${getWorkspaceDatabasePath()}`;
 }
 
 function normalizeRelativePath(relativePath: string): string {
@@ -129,4 +141,17 @@ export function initializeWorkspaceDirectory(): void {
 
     syncTemplateDirectory(workspaceTemplateDir, workspaceDir, "", []);
     fs.mkdirSync(path.join(workspaceDir, "workflows"), { recursive: true });
+}
+
+export async function ensureWorkspaceDatabase(): Promise<void> {
+    const workspaceDatabaseUrl = getWorkspaceDatabaseUrl();
+    process.env.DATABASE_URL = workspaceDatabaseUrl;
+
+    await execFileAsync("npx", ["prisma", "migrate", "deploy"], {
+        cwd: process.cwd(),
+        env: {
+            ...process.env,
+            DATABASE_URL: workspaceDatabaseUrl,
+        },
+    });
 }

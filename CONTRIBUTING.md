@@ -18,7 +18,7 @@ This starts both the backend (port 3000) and frontend Vite dev server (port 5173
 
 ```bash
 # Open Prisma Studio (visual database browser)
-npx prisma studio
+npm run prisma:studio
 ```
 
 ### Modify the Schema
@@ -27,14 +27,14 @@ npx prisma studio
 2. Create and apply a migration:
 
 ```bash
-npx prisma migrate dev --name describe-your-changes
+npm run prisma:migrate:dev -- --name describe-your-changes
 ```
 
 ### Reset Database
 
 ```bash
 # Warning: This deletes all data
-npx prisma migrate reset
+npm run prisma:migrate:reset
 ```
 
 ---
@@ -51,8 +51,8 @@ lsof -ti:3000 | xargs kill -9
 
 ```bash
 # Reset and recreate the database
-rm prisma/dev.db
-npx prisma migrate dev
+rm "$WORKSPACE_DIR/data.db"
+npm run prisma:migrate:dev
 ```
 
 ### Frontend Not Loading

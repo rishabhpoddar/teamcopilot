@@ -21,11 +21,10 @@ RUN cd frontend && npm install
 COPY frontend ./frontend
 RUN cd frontend && npm run build
 
-# Database is stored in /app/data (separate from prisma/ so it can be volume-mounted independently)
-RUN mkdir -p /app/data
+# Workspace directory stores both workflows and the SQLite database
+RUN mkdir -p /app/workspaces
 
 # Default environment variables
-ENV DATABASE_URL="file:/app/data/data.db"
 ENV WORKSPACE_DIR="/app/workspaces"
 ENV HOST="0.0.0.0"
 ENV PORT="3000"
@@ -33,4 +32,4 @@ ENV OPENCODE_PORT="4096"
 ENV OPENCODE_MODEL="anthropic/claude-sonnet-4-5-20250929"
 
 EXPOSE 3000
-CMD npx prisma migrate deploy && node dist/index.js
+CMD node dist/index.js
