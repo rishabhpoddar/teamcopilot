@@ -219,6 +219,7 @@ router.get('/sessions/:id', apiHandler(async (req, res) => {
     });
 }, true));
 
+/*
 // DELETE /api/chat/sessions/:id - Delete session
 router.delete('/sessions/:id', apiHandler(async (req, res) => {
     const id = req.params.id as string;
@@ -250,6 +251,7 @@ router.delete('/sessions/:id', apiHandler(async (req, res) => {
 
     res.json({ success: true });
 }, true));
+*/
 
 // GET /api/chat/sessions/:id/messages - Get messages
 router.get('/sessions/:id/messages', apiHandler(async (req, res) => {

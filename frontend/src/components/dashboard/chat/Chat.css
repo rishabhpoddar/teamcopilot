@@ -109,6 +109,7 @@
     pointer-events: none;
 }
 
+/*
 .session-delete-btn {
     opacity: 0;
     padding: 0.25rem 0.5rem;
@@ -127,6 +128,7 @@
 .session-delete-btn:hover {
     color: #ff6b6b;
 }
+*/
 
 .no-sessions {
     padding: 1rem;

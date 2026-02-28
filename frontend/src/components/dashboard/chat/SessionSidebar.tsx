@@ -5,7 +5,7 @@ interface SessionSidebarProps {
     activeSessionId: string | null;
     onSelectSession: (sessionId: string) => void;
     onNewSession: () => void;
-    onDeleteSession: (sessionId: string) => void;
+    // onDeleteSession: (sessionId: string) => void;
     loading: boolean;
 }
 
@@ -14,15 +14,15 @@ export default function SessionSidebar({
     activeSessionId,
     onSelectSession,
     onNewSession,
-    onDeleteSession,
+    // onDeleteSession,
     loading
 }: SessionSidebarProps) {
-    const handleDelete = (e: React.MouseEvent, sessionId: string) => {
-        e.stopPropagation();
-        if (window.confirm('Are you sure you want to delete this session?')) {
-            onDeleteSession(sessionId);
-        }
-    };
+    // const handleDelete = (e: React.MouseEvent, sessionId: string) => {
+    //     e.stopPropagation();
+    //     if (window.confirm('Are you sure you want to delete this session?')) {
+    //         onDeleteSession(sessionId);
+    //     }
+    // };
 
     const formatDate = (timestamp: number) => {
         const date = new Date(timestamp);
@@ -67,12 +67,14 @@ export default function SessionSidebar({
                                     {formatDate(Number(session.updated_at))}
                                 </span>
                             </div>
+                            {/*
                             <button
                                 className="session-delete-btn"
                                 onClick={(e) => handleDelete(e, session.id)}
                             >
                                 ✕
                             </button>
+                            */}
                         </div>
                         );
                     })

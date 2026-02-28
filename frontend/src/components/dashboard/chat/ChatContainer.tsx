@@ -39,7 +39,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
     const abortControllerRef = useRef<AbortController | null>(null);
     const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
     const lastEscapePressRef = useRef<number>(0);
-    const currentSessionInfoRef = useRef<{ id: string; isEmpty: boolean } | null>(null);
+    // const currentSessionInfoRef = useRef<{ id: string; isEmpty: boolean } | null>(null);
     const handledComposeKeyRef = useRef<string | null>(null);
 
     const token = auth.loading ? null : auth.token;
@@ -334,6 +334,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
         };
     }, [activeSessionId, loadMessages, loadPendingPermission, startSSE, stopSSE]);
 
+    /*
     const deleteSessionSilently = useCallback(async (sessionId: string) => {
         if (!token) return;
         try {
@@ -345,15 +346,16 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
             // Silently fail - this is cleanup
         }
     }, [token]);
+    */
 
     const switchSession = useCallback((newSessionId: string | null) => {
-        // Clean up previous empty session
-        const prev = currentSessionInfoRef.current;
-        if (prev && prev.isEmpty && prev.id !== newSessionId) {
-            deleteSessionSilently(prev.id);
-        }
+        // // Clean up previous empty session
+        // const prev = currentSessionInfoRef.current;
+        // if (prev && prev.isEmpty && prev.id !== newSessionId) {
+        //     deleteSessionSilently(prev.id);
+        // }
         setActiveSessionId(newSessionId);
-    }, [deleteSessionSilently]);
+    }, []);
 
     const createSession = useCallback(() => {
         // If already in pending new chat mode, do nothing
@@ -388,6 +390,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
         onDraftHandled();
     }, [forceNewChat, initialDraftMessage, activeSessionId, onDraftHandled, createSession]);
 
+    /*
     const deleteSession = async (sessionId: string) => {
         if (!token) return;
 
@@ -425,6 +428,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
             currentSessionInfoRef.current = null;
         }
     }, [activeSessionId, messages.length]);
+    */
 
     const sendMessage = async (content: string) => {
         if (!token || !activeSessionId) return;
@@ -618,12 +622,12 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
 
     return (
         <div className="chat-layout">
+            {/* Previously used: onDeleteSession={deleteSession} */}
             <SessionSidebar
                 sessions={sessions}
                 activeSessionId={activeSessionId}
                 onSelectSession={switchSession}
                 onNewSession={createSession}
-                onDeleteSession={deleteSession}
                 loading={loading}
             />
             <div className="chat-main">
