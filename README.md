@@ -127,6 +127,18 @@ npm run create-user -- --email user@example.com --name "User Name" --role User -
 
 On first sign-in with this temporary password, the user must set a new password before they can access the app.
 
+### Updating a User's Role
+
+```bash
+npm run change-user-role -- --email user@example.com --role Engineer
+```
+
+### Deleting a User
+
+```bash
+npm run delete-user -- --email user@example.com
+```
+
 ### Signing In
 
 Visit `/login` and enter your email and password.
