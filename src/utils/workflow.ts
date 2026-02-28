@@ -73,58 +73,6 @@ export async function readWorkflowManifestAndEnsurePermissions(slug: string): Pr
     return { manifest, metadata };
 }
 
-/** Write a workflow's manifest */
-export function writeWorkflowManifest(slug: string, manifest: WorkflowManifest): void {
-    const manifestPath = getWorkflowManifestPath(slug);
-    fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), "utf-8");
-}
-
-/** Update specific fields in a workflow's manifest */
-export function updateWorkflowManifest(
-    slug: string,
-    updates: Partial<WorkflowManifest>
-): WorkflowManifest {
-    const manifest = readWorkflowManifest(slug);
-    const updatedManifest = { ...manifest, ...updates };
-    writeWorkflowManifest(slug, updatedManifest);
-    return updatedManifest;
-}
-
-/** Check if a workflow is approved */
-export async function isWorkflowApproved(slug: string): Promise<boolean> {
-    const metadata = await getOrCreateWorkflowMetadata(slug);
-    return metadata.approved_by_user_id != null;
-}
-
-/** Approve a workflow */
-export async function approveWorkflow(slug: string, userId: string): Promise<WorkflowMetadata> {
-    const user = await prisma.users.findUnique({ where: { id: userId } });
-    if (!user) {
-        throw {
-            status: 404,
-            message: 'User not found'
-        };
-    }
-
-    if (user.role !== 'Engineer') {
-        throw {
-            status: 403,
-            message: 'Only Engineers can approve workflows'
-        };
-    }
-
-    readWorkflowManifest(slug);
-    await getOrCreateWorkflowMetadata(slug);
-    const now = BigInt(Date.now());
-    const row = await prisma.workflow_metadata.update({
-        where: { workflow_slug: slug },
-        data: {
-            approved_by_user_id: userId,
-            updated_at: now,
-        }
-    });
-    return mapWorkflowMetadataRow(row);
-}
 
 /** Set workflow creator in database metadata */
 export async function setWorkflowCreator(slug: string, userId: string): Promise<WorkflowMetadata> {
@@ -144,12 +92,6 @@ export async function setWorkflowCreator(slug: string, userId: string): Promise<
         }
     });
     return mapWorkflowMetadataRow(row);
-}
-
-/** Get the timeout for a workflow (defaults to 300 seconds) */
-export function getWorkflowTimeout(slug: string): number {
-    const manifest = readWorkflowManifest(slug);
-    return manifest.runtime.timeout_seconds;
 }
 
 /** List all workflow slugs */

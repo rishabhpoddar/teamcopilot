@@ -119,7 +119,25 @@ Data is persisted in Docker named volumes. Even if you remove and recreate the c
 
 ### Creating an Account
 
-Visit the application in your browser and click **Sign Up**. You'll need to provide a name, email, and password (minimum 8 characters).
+Accounts are created via CLI on the server:
+
+```bash
+npm run create-user -- --email user@example.com --name "User Name" --role User --password "temporary-password"
+```
+
+On first sign-in with this temporary password, the user must set a new password before they can access the app.
+
+### Updating a User's Role
+
+```bash
+npm run change-user-role -- --email user@example.com --role Engineer
+```
+
+### Deleting a User
+
+```bash
+npm run delete-user -- --email user@example.com
+```
 
 ### Signing In
 

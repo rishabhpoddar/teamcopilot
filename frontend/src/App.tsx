@@ -1,7 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './lib/auth.tsx'
 import Login from './pages/Login.tsx'
-import Signup from './pages/Signup.tsx'
 import ResetPassword from './pages/ResetPassword.tsx'
 import Home from './pages/Home.tsx'
 import WorkflowEditorPage from './pages/WorkflowEditorPage.tsx'
@@ -28,7 +27,6 @@ function App() {
     <AuthProvider>
       <Routes>
         <Route path="/login" element={<GuestRoute><Login /></GuestRoute>} />
-        <Route path="/signup" element={<GuestRoute><Signup /></GuestRoute>} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
         <Route path="/runs/:id" element={<ProtectedRoute><RunDetailsPage /></ProtectedRoute>} />

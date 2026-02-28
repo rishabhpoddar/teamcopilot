@@ -110,6 +110,7 @@ Per `plan-single-tenant.md`, LocalTool is evolving toward: a Next.js frontend, P
 ### General
 - Avoid too many conditional types. Be sure of the types before implementing. For example, if something cannot be undefined / null, then don't make it optional and don't use `| undefined` or `| null` in the type.
 - IMPORTANT: DO NOT BE DEFENSIVE WHEN IMPLEMENTING CODE. BE SURE OF TYPES! Add asserts, and if things error out, we can debug the errors if they happen!
+- When making prisma schema changes, the migration needs to be done via the prisma migration command. NOT via by manually creating the migration file.
 
 ### Frontend
 #### Network calls

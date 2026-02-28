@@ -1,12 +1,28 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
+import { AxiosError } from 'axios';
+import { toast } from 'react-toastify';
+import { axiosInstance } from '../utils';
 import './Auth.css';
+
+function getErrorMessage(err: unknown): string {
+    if (err instanceof AxiosError) {
+        const responseData = err.response?.data;
+        if (typeof responseData?.message === 'string') return responseData.message;
+        if (typeof responseData?.error === 'string') return responseData.error;
+        if (typeof responseData === 'string') return responseData;
+        return err.message;
+    }
+    return err instanceof Error ? err.message : 'Reset failed';
+}
 
 export default function ResetPassword() {
     const [searchParams] = useSearchParams();
     const token = searchParams.get('token');
+    const email = searchParams.get('email');
     const [password, setPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState(false);
 
@@ -14,16 +30,15 @@ export default function ResetPassword() {
         e.preventDefault();
         setError('');
         try {
-            const res = await fetch('/api/auth/reset-password', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ token, newPassword: password })
+            await axiosInstance.post('/api/auth/reset-password', {
+                token,
+                newPassword: password
             });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error || 'Reset failed');
             setSuccess(true);
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Reset failed');
+        } catch (err: unknown) {
+            const message = getErrorMessage(err);
+            setError(message);
+            toast.error(message);
         }
     };
 
@@ -52,17 +67,40 @@ export default function ResetPassword() {
             <h1>Reset Password</h1>
             <form onSubmit={handleSubmit} className="auth-form">
                 {error && <p className="auth-error">{error}</p>}
-                <label>
-                    New Password (min 8 characters)
+                {email && (
+                    <>
+                        <label htmlFor="reset-email">Email</label>
+                        <input
+                            id="reset-email"
+                            name="email"
+                            type="email"
+                            value={email}
+                            autoComplete="username"
+                            readOnly
+                        />
+                    </>
+                )}
+                <label htmlFor="reset-password">New Password (min 8 characters)</label>
+                <div className="password-input-row">
                     <input
-                        type="password"
+                        id="reset-password"
+                        name="new-password"
+                        type={showPassword ? "text" : "password"}
                         value={password}
                         onChange={e => setPassword(e.target.value)}
+                        autoComplete="new-password"
                         required
                         minLength={8}
                     />
-                </label>
-                <button type="submit">Reset Password</button>
+                    <button
+                        type="button"
+                        className="password-toggle-button"
+                        onClick={() => setShowPassword((value) => !value)}
+                    >
+                        {showPassword ? 'Hide' : 'Show'}
+                    </button>
+                </div>
+                <button className="auth-submit-button" type="submit">Reset Password</button>
             </form>
             <p className="auth-link"><Link to="/login">Back to Sign In</Link></p>
         </div>

@@ -11,7 +11,10 @@ export const axiosInstance = axios.create({
 axiosInstance.interceptors.response.use(
     response => response,
     error => {
-        if (error.response?.status === 401) {
+        const requestUrl = error.config?.url as string | undefined
+        const isAuthEndpoint = typeof requestUrl === 'string' && requestUrl.startsWith('/api/auth/')
+
+        if (error.response?.status === 401 && !isAuthEndpoint) {
             signOut()
             window.location.href = '/login'
         }
