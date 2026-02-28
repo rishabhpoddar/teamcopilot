@@ -12,7 +12,7 @@ interface IgnoreRuleSet {
 }
 
 const execFileAsync = promisify(execFile);
-const WORKSPACE_DB_FILENAME = "localtool.db";
+const WORKSPACE_DB_FILENAME = "data.db";
 
 export function getWorkspaceDirFromEnv(): string {
     let workspaceDir = assertEnv("WORKSPACE_DIR");

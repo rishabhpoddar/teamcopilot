@@ -51,7 +51,7 @@ lsof -ti:3000 | xargs kill -9
 
 ```bash
 # Reset and recreate the database
-rm "$WORKSPACE_DIR/localtool.db"
+rm "$WORKSPACE_DIR/data.db"
 npm run prisma:migrate:dev
 ```
 
