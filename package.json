@@ -8,6 +8,7 @@
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:backend": "ts-node-dev src/index.ts",
     "dev:frontend": "cd frontend && npm run dev",
+    "create-user": "ts-node src/create-user.ts",
     "reset-password": "ts-node src/reset-password.ts",
     "prisma": "ts-node src/scripts/prisma-workspace.ts",
     "prisma:migrate:dev": "npm run prisma -- migrate dev",

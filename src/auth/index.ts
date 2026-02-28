@@ -3,78 +3,160 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import prisma from "../prisma/client";
 import { apiHandler } from "../utils/index";
+import { assertEnv } from "../utils/assert";
 
 const router = express.Router({ mergeParams: true });
 
-const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_SECRET = assertEnv('JWT_SECRET');
 
-if (!JWT_SECRET) {
-    throw new Error('JWT_SECRET is not set');
+type PasswordChangeTokenPayload = {
+    sub: string;
+    email: string;
+    name: string;
+    token_use: "password_change";
+};
+
+function issueAccessToken(user: { id: string; email: string; name: string }): string {
+    return jwt.sign(
+        { sub: user.id, email: user.email, name: user.name },
+        JWT_SECRET,
+        { expiresIn: '365d' }
+    );
 }
 
-router.post('/signup', (async (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    try {
-        const { email, name, password, role } = req.body;
+function issuePasswordChangeToken(user: { id: string; email: string; name: string }): string {
+    return jwt.sign(
+        { sub: user.id, email: user.email, name: user.name, token_use: 'password_change' },
+        JWT_SECRET,
+        { expiresIn: '10m' }
+    );
+}
 
-        if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-            return res.status(400).json({ error: 'Invalid email address' });
-        }
-        if (!name || name.trim().length === 0) {
-            return res.status(400).json({ error: 'Name is required' });
-        }
-        if (!password || password.length < 8) {
-            return res.status(400).json({ error: 'Password must be at least 8 characters' });
-        }
-        if (!role || !['User', 'Engineer'].includes(role)) {
-            return res.status(400).json({ error: 'Role must be either "User" or "Engineer"' });
-        }
-
-        const existing = await prisma.users.findUnique({ where: { email } });
-        if (existing) {
-            return res.status(409).json({ error: 'An account with this email already exists' });
-        }
-
-        const password_hash = await bcrypt.hash(password, 12);
-        const user = await prisma.users.create({
-            data: { email, name: name.trim(), role, password_hash, created_at: Date.now() }
-        });
-
-        const token = jwt.sign(
-            { sub: user.id, email: user.email, name: user.name },
-            JWT_SECRET,
-            { expiresIn: '365d' }
-        );
-
-        res.json({ token });
-    } catch (err) {
-        next(err);
+function parsePasswordChangeToken(rawToken: string): PasswordChangeTokenPayload {
+    const decoded = jwt.verify(rawToken, JWT_SECRET);
+    if (typeof decoded !== 'object' || decoded === null) {
+        throw {
+            status: 401,
+            message: 'Invalid password change challenge token'
+        };
     }
-}) as express.RequestHandler);
+
+    const payload = decoded as Record<string, unknown>;
+    if (typeof payload.sub !== 'string' || typeof payload.email !== 'string' || typeof payload.name !== 'string' || payload.token_use !== 'password_change') {
+        throw {
+            status: 401,
+            message: 'Invalid password change challenge token'
+        };
+    }
+
+    return {
+        sub: payload.sub,
+        email: payload.email,
+        name: payload.name,
+        token_use: 'password_change'
+    };
+}
 
 router.post('/signin', (async (req: express.Request, res: express.Response, next: express.NextFunction) => {
     try {
         const { email, password } = req.body;
 
         if (!email || !password) {
-            return res.status(400).json({ error: 'Email and password are required' });
+            throw {
+                status: 400,
+                message: 'Email and password are required'
+            };
         }
 
         const user = await prisma.users.findUnique({ where: { email } });
         if (!user) {
-            return res.status(401).json({ error: 'Invalid email or password' });
+            throw {
+                status: 401,
+                message: 'Invalid email or password'
+            };
         }
 
         const valid = await bcrypt.compare(password, user.password_hash);
         if (!valid) {
-            return res.status(401).json({ error: 'Invalid email or password' });
+            throw {
+                status: 401,
+                message: 'Invalid email or password'
+            };
         }
 
-        const token = jwt.sign(
-            { sub: user.id, email: user.email, name: user.name },
-            JWT_SECRET,
-            { expiresIn: '365d' }
-        );
+        if (user.must_change_password) {
+            const challengeToken = issuePasswordChangeToken(user);
+            res.json({
+                requires_password_change: true,
+                challenge_token: challengeToken
+            });
+            return;
+        }
 
+        const token = issueAccessToken(user);
+        res.json({ token });
+    } catch (err) {
+        next(err);
+    }
+}) as express.RequestHandler);
+
+router.post('/complete-password-change', (async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    try {
+        const { challengeToken, newPassword } = req.body;
+
+        if (!challengeToken || !newPassword) {
+            throw {
+                status: 400,
+                message: 'challengeToken and newPassword are required'
+            };
+        }
+        if (typeof newPassword !== 'string' || newPassword.length < 8) {
+            throw {
+                status: 400,
+                message: 'Password must be at least 8 characters'
+            };
+        }
+
+        let payload: PasswordChangeTokenPayload;
+        try {
+            payload = parsePasswordChangeToken(challengeToken);
+        } catch (error) {
+            if (error instanceof jwt.JsonWebTokenError || error instanceof jwt.TokenExpiredError) {
+                throw {
+                    status: 401,
+                    message: 'Invalid or expired password change challenge token'
+                };
+            }
+            throw error;
+        }
+
+        const user = await prisma.users.findUnique({ where: { id: payload.sub } });
+        if (!user || user.email !== payload.email || user.name !== payload.name) {
+            throw {
+                status: 401,
+                message: 'Invalid password change challenge token'
+            };
+        }
+
+        if (!user.must_change_password) {
+            throw {
+                status: 400,
+                message: 'Password change is not required for this user'
+            };
+        }
+
+        const password_hash = await bcrypt.hash(newPassword, 12);
+        await prisma.users.update({
+            where: { id: user.id },
+            data: {
+                password_hash,
+                must_change_password: false,
+                reset_token: null,
+                reset_token_expires_at: null
+            }
+        });
+
+        const token = issueAccessToken(user);
         res.json({ token });
     } catch (err) {
         next(err);
@@ -86,10 +168,16 @@ router.post('/reset-password', (async (req: express.Request, res: express.Respon
         const { token, newPassword } = req.body;
 
         if (!token || !newPassword) {
-            return res.status(400).json({ error: 'Token and new password are required' });
+            throw {
+                status: 400,
+                message: 'Token and newPassword are required'
+            };
         }
-        if (newPassword.length < 8) {
-            return res.status(400).json({ error: 'Password must be at least 8 characters' });
+        if (typeof newPassword !== 'string' || newPassword.length < 8) {
+            throw {
+                status: 400,
+                message: 'Password must be at least 8 characters'
+            };
         }
 
         const user = await prisma.users.findFirst({
@@ -100,13 +188,21 @@ router.post('/reset-password', (async (req: express.Request, res: express.Respon
         });
 
         if (!user) {
-            return res.status(400).json({ error: 'Invalid or expired reset token' });
+            throw {
+                status: 400,
+                message: 'Invalid or expired reset token'
+            };
         }
 
         const password_hash = await bcrypt.hash(newPassword, 12);
         await prisma.users.update({
             where: { id: user.id },
-            data: { password_hash, reset_token: null, reset_token_expires_at: null }
+            data: {
+                password_hash,
+                must_change_password: false,
+                reset_token: null,
+                reset_token_expires_at: null
+            }
         });
 
         res.json({ message: 'Password reset successfully' });
@@ -114,6 +210,10 @@ router.post('/reset-password', (async (req: express.Request, res: express.Respon
         next(err);
     }
 }) as express.RequestHandler);
+
+router.post('/signout', apiHandler(async (_req, res) => {
+    res.json({ message: 'Signed out' });
+}, true, { allowPasswordChangeToken: true }));
 
 router.get('/me', apiHandler(async (req, res) => {
     res.json({
@@ -123,6 +223,5 @@ router.get('/me', apiHandler(async (req, res) => {
         role: req.role
     });
 }, true));
-
 
 export default router;

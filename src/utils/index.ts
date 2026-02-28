@@ -9,9 +9,18 @@ type CustomRequest = express.Request & {
     name?: string;
     role?: string;
     opencode_session_id?: string;
+    tokenUse?: "access" | "password_change";
 }
 
-export function apiHandler(handler: (req: CustomRequest, res: express.Response, next: express.NextFunction) => Promise<void>, requireAuth: boolean) {
+type ApiHandlerOptions = {
+    allowPasswordChangeToken?: boolean;
+}
+
+export function apiHandler(
+    handler: (req: CustomRequest, res: express.Response, next: express.NextFunction) => Promise<void>,
+    requireAuth: boolean,
+    options?: ApiHandlerOptions
+) {
     return async (req: express.Request, res: express.Response, next: express.NextFunction) => {
         try {
             const authHeader = req.headers['authorization'];
@@ -26,9 +35,11 @@ export function apiHandler(handler: (req: CustomRequest, res: express.Response, 
                 assertCondition(rawToken, 'Missing authorization bearer token');
                 try {
                     const decoded = jwt.verify(rawToken, assertEnv("JWT_SECRET"));
+                    const payload = decoded as { sub?: string; token_use?: string };
+                    assertCondition(typeof payload.sub === "string" && payload.sub.length > 0, "Invalid authorization token subject");
                     const user = await prisma.users.findUnique({
                         where: {
-                            id: (decoded as { sub: string }).sub
+                            id: payload.sub
                         }
                     });
 
@@ -43,6 +54,7 @@ export function apiHandler(handler: (req: CustomRequest, res: express.Response, 
                     (req as CustomRequest).name = user.name;
                     (req as CustomRequest).role = user.role;
                     (req as CustomRequest).opencode_session_id = undefined;
+                    (req as CustomRequest).tokenUse = payload.token_use === "password_change" ? "password_change" : "access";
                 } catch (e) {
                     if (e instanceof jwt.JsonWebTokenError || e instanceof jwt.TokenExpiredError) {
                         const session = await prisma.chat_sessions.findFirst({
@@ -58,6 +70,7 @@ export function apiHandler(handler: (req: CustomRequest, res: express.Response, 
                             (req as CustomRequest).name = session.user.name;
                             (req as CustomRequest).role = session.user.role;
                             (req as CustomRequest).opencode_session_id = session.opencode_session_id;
+                            (req as CustomRequest).tokenUse = "access";
                         }
                     } else {
                         throw e;
@@ -69,6 +82,12 @@ export function apiHandler(handler: (req: CustomRequest, res: express.Response, 
                 throw {
                     status: 401,
                     message: 'Invalid authorization token. Please pass a valid authorization bearer token in the header.'
+                };
+            }
+            if (requireAuth && !options?.allowPasswordChangeToken && (req as CustomRequest).tokenUse === "password_change") {
+                throw {
+                    status: 401,
+                    message: 'This token can only be used to complete password change.'
                 };
             }
             await handler(req as CustomRequest, res, next);

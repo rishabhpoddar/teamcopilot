@@ -1,6 +1,8 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
+import { AxiosError } from 'axios';
+import { axiosInstance } from '../utils';
 
 interface User {
     userId: string;
@@ -9,23 +11,38 @@ interface User {
     role: 'User' | 'Engineer';
 }
 
+type LoginResult =
+    | { type: 'authenticated' }
+    | { type: 'password_change_required'; challengeToken: string };
+
 type AuthContextType =
     | {
         loading: true;
-        login: (email: string, password: string) => Promise<void>;
-        signup: (email: string, name: string, password: string, role: 'User' | 'Engineer') => Promise<void>;
+        login: (email: string, password: string) => Promise<LoginResult>;
+        completePasswordChange: (challengeToken: string, newPassword: string) => Promise<void>;
         logout: () => void;
     }
     | {
         loading: false;
         user: User | null;
         token: string | null;
-        login: (email: string, password: string) => Promise<void>;
-        signup: (email: string, name: string, password: string, role: 'User' | 'Engineer') => Promise<void>;
+        login: (email: string, password: string) => Promise<LoginResult>;
+        completePasswordChange: (challengeToken: string, newPassword: string) => Promise<void>;
         logout: () => void;
     };
 
 const AuthContext = createContext<AuthContextType | null>(null);
+
+function getErrorMessage(err: unknown, fallback: string): string {
+    if (err instanceof AxiosError) {
+        const responseData = err.response?.data;
+        if (typeof responseData?.message === 'string') return responseData.message;
+        if (typeof responseData?.error === 'string') return responseData.error;
+        if (typeof responseData === 'string') return responseData;
+        return err.message || fallback;
+    }
+    return err instanceof Error ? err.message : fallback;
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
@@ -37,55 +54,70 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!token) {
             return;
         }
+
         (async () => {
             try {
-                const res = await fetch('/api/auth/me', {
+                const res = await axiosInstance.get<User>('/api/auth/me', {
                     headers: { Authorization: `Bearer ${token}` }
                 });
-
-                if (res.status === 401) {
+                setUser(res.data);
+                setLoading(false);
+            } catch (err: unknown) {
+                if (err instanceof AxiosError && err.response?.status === 401) {
                     localStorage.removeItem('token');
                     setToken(null);
                     setLoading(false);
                     return;
                 }
-
-                if (!res.ok) {
-                    // Non-401 error: keep loading true
-                    return;
-                }
-
-                const data = await res.json();
-                setUser(data);
                 setLoading(false);
-            } catch {
-                // Network error: keep loading true
             }
         })();
     }, [token]);
 
-    const login = async (email: string, password: string) => {
-        const res = await fetch('/api/auth/signin', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password })
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Sign in failed');
-        localStorage.setItem('token', data.token);
-        setToken(data.token);
+    const login = async (email: string, password: string): Promise<LoginResult> => {
+        try {
+            const res = await axiosInstance.post<{ token?: string; requires_password_change?: boolean; challenge_token?: string }>('/api/auth/signin', {
+                email,
+                password
+            });
+
+            if (res.data.requires_password_change) {
+                if (typeof res.data.challenge_token !== 'string' || res.data.challenge_token.length === 0) {
+                    throw new Error('Missing challenge token for password change');
+                }
+                return {
+                    type: 'password_change_required',
+                    challengeToken: res.data.challenge_token
+                };
+            }
+
+            if (typeof res.data.token !== 'string' || res.data.token.length === 0) {
+                throw new Error('Missing authentication token from sign in response');
+            }
+            localStorage.setItem('token', res.data.token);
+            setToken(res.data.token);
+
+            return { type: 'authenticated' };
+        } catch (err: unknown) {
+            throw new Error(getErrorMessage(err, 'Sign in failed'));
+        }
     };
 
-    const signup = async (email: string, name: string, password: string, role: 'User' | 'Engineer') => {
-        const res = await fetch('/api/auth/signup', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, name, password, role })
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Sign up failed');
-        localStorage.setItem('token', data.token);
-        setToken(data.token);
+    const completePasswordChange = async (challengeToken: string, newPassword: string) => {
+        try {
+            const res = await axiosInstance.post<{ token?: string }>('/api/auth/complete-password-change', {
+                challengeToken,
+                newPassword
+            });
+
+            if (typeof res.data.token !== 'string' || res.data.token.length === 0) {
+                throw new Error('Missing authentication token from password change response');
+            }
+            localStorage.setItem('token', res.data.token);
+            setToken(res.data.token);
+        } catch (err: unknown) {
+            throw new Error(getErrorMessage(err, 'Password change failed'));
+        }
     };
 
     const logout = () => {
@@ -95,8 +127,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     const value: AuthContextType = loading
-        ? { loading: true, login, signup, logout }
-        : { loading: false, user, token, login, signup, logout };
+        ? { loading: true, login, completePasswordChange, logout }
+        : { loading: false, user, token, login, completePasswordChange, logout };
 
     return (
         <AuthContext.Provider value={value}>

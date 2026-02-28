@@ -1,16 +1,34 @@
 import dotenv from 'dotenv';
 dotenv.config();
 import crypto from 'crypto';
+import { createInterface } from 'node:readline/promises';
+import { stdin as input, stdout as output } from 'node:process';
 import prisma from './prisma/client';
 import { assertEnv } from './utils/assert';
 import { ensureWorkspaceDatabase, initializeWorkspaceDirectory } from './utils/workspace-sync';
 
-async function main() {
-    const email = process.argv[2];
-    if (!email) {
-        console.error('Usage: npm run reset-password -- <email>');
-        process.exit(1);
+async function resolveEmailArgOrPrompt(): Promise<string> {
+    const argEmail = process.argv[2];
+    if (argEmail && argEmail.trim().length > 0) {
+        return argEmail.trim();
     }
+
+    const rl = createInterface({ input, output });
+    try {
+        while (true) {
+            const answer = (await rl.question('Enter email: ')).trim();
+            if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(answer)) {
+                return answer;
+            }
+            console.error('Invalid email address. Please try again.');
+        }
+    } finally {
+        rl.close();
+    }
+}
+
+async function main() {
+    const email = await resolveEmailArgOrPrompt();
 
     initializeWorkspaceDirectory();
     await ensureWorkspaceDatabase();
