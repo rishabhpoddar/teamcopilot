@@ -128,6 +128,7 @@ export default function WorkflowEditorPage() {
     const [activeFile, setActiveFile] = useState<ActiveFileState | null>(null);
     const [uploadTargetDir, setUploadTargetDir] = useState<string>('');
     const [uploadingByDir, setUploadingByDir] = useState<Record<string, boolean>>({});
+    const [uploadProgressByDir, setUploadProgressByDir] = useState<Record<string, { fileName: string; percent: number }>>({});
     const uploadInputRef = useRef<HTMLInputElement | null>(null);
 
     const canEdit = access?.can_edit ?? false;
@@ -418,27 +419,38 @@ export default function WorkflowEditorPage() {
     };
 
     const handleUploadSelectedFiles = async (event: ChangeEvent<HTMLInputElement>) => {
-        const files = Array.from(event.target.files ?? []);
-        if (files.length === 0 || !authHeader || !canEdit) return;
+        const file = event.target.files?.[0];
+        if (!file || !authHeader || !canEdit) return;
         const targetDir = uploadTargetDir;
         setUploadingByDir((prev) => ({ ...prev, [targetDir]: true }));
+        setUploadProgressByDir((prev) => ({ ...prev, [targetDir]: { fileName: file.name, percent: 0 } }));
         try {
-            for (const file of files) {
-                const formData = new FormData();
-                formData.append('parent_path', targetDir);
-                formData.append('name', file.name);
-                formData.append('file', file, file.name);
-                await axiosUploadInstance.post(`/api/workflows/${encodeURIComponent(slug)}/files/upload`, formData, {
-                    headers: authHeader
-                });
-            }
+            const formData = new FormData();
+            formData.append('parent_path', targetDir);
+            formData.append('name', file.name);
+            formData.append('file', file, file.name);
+            await axiosUploadInstance.post(`/api/workflows/${encodeURIComponent(slug)}/files/upload`, formData, {
+                headers: authHeader,
+                onUploadProgress: (progressEvent) => {
+                    const total = progressEvent.total ?? file.size;
+                    if (!total) return;
+                    const percent = Math.min(100, Math.round((progressEvent.loaded / total) * 100));
+                    setUploadProgressByDir((prev) => ({ ...prev, [targetDir]: { fileName: file.name, percent } }));
+                }
+            });
             setExpandedDirs((prev) => ({ ...prev, [targetDir]: true }));
             await refreshDir(targetDir);
-            toast.success(files.length === 1 ? `Uploaded ${files[0].name}` : `Uploaded ${files.length} files`);
+            setUploadProgressByDir((prev) => ({ ...prev, [targetDir]: { fileName: file.name, percent: 100 } }));
+            toast.success(`Uploaded ${file.name}`);
         } catch (err: unknown) {
             toast.error(getErrorMessage(err, 'Failed to upload file'));
         } finally {
             setUploadingByDir((prev) => ({ ...prev, [targetDir]: false }));
+            setUploadProgressByDir((prev) => {
+                const next = { ...prev };
+                delete next[targetDir];
+                return next;
+            });
             setUploadTargetDir('');
             event.currentTarget.value = '';
         }
@@ -452,6 +464,7 @@ export default function WorkflowEditorPage() {
             const dirLoading = loadingDirs[node.path];
             const dirError = dirErrors[node.path];
             const dirUploading = uploadingByDir[node.path];
+            const dirUploadProgress = uploadProgressByDir[node.path];
 
             return (
                 <div key={node.path} className="wf-tree-row-wrap">
@@ -511,7 +524,11 @@ export default function WorkflowEditorPage() {
                     {node.kind === 'directory' && isExpanded && (
                         <div>
                             {dirLoading && <div className="wf-tree-note" style={{ paddingLeft: `${24 + depth * 16}px` }}>Loading...</div>}
-                            {dirUploading && <div className="wf-tree-note" style={{ paddingLeft: `${24 + depth * 16}px` }}>Uploading...</div>}
+                            {dirUploading && dirUploadProgress && (
+                                <div className="wf-tree-note" style={{ paddingLeft: `${24 + depth * 16}px` }}>
+                                    Uploading {dirUploadProgress.fileName}... {dirUploadProgress.percent}%
+                                </div>
+                            )}
                             {dirError && <div className="wf-tree-note error" style={{ paddingLeft: `${24 + depth * 16}px` }}>{dirError}</div>}
                             {!dirLoading && !dirError && children.length > 0 && renderTree(children, depth + 1)}
                             {!dirLoading && !dirError && children.length === 0 && (
@@ -613,7 +630,11 @@ export default function WorkflowEditorPage() {
                         </div>
                         <div className="wf-tree-scroll">
                             {loadingDirs[''] && rootEntries.length === 0 && <div className="wf-tree-note">Loading...</div>}
-                            {uploadingByDir[''] && <div className="wf-tree-note">Uploading...</div>}
+                            {uploadingByDir[''] && uploadProgressByDir[''] && (
+                                <div className="wf-tree-note">
+                                    Uploading {uploadProgressByDir[''].fileName}... {uploadProgressByDir[''].percent}%
+                                </div>
+                            )}
                             {dirErrors[''] && <div className="wf-tree-note error">{dirErrors['']}</div>}
                             {!loadingDirs[''] && !dirErrors[''] && rootEntries.length === 0 && <div className="wf-tree-note">No files found.</div>}
                             {renderTree(rootEntries, 0)}
@@ -623,7 +644,6 @@ export default function WorkflowEditorPage() {
                                 ref={uploadInputRef}
                                 className="wf-hidden-upload-input"
                                 type="file"
-                                multiple
                                 onChange={(event) => void handleUploadSelectedFiles(event)}
                             />
                         )}
