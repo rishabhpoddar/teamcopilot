@@ -43,6 +43,8 @@ import {
 } from "../utils/workflow-approval-snapshot";
 import { getWorkspaceDirFromEnv } from "../utils/workspace-sync";
 import { startWorkflowRunViaBackend } from "../utils/workflow-runner";
+import { getOpencodeClient, getPendingPermissionForSession, getPendingQuestionForSession, replyToPendingPermission, replyToPendingQuestion } from "../utils/opencode-client";
+import { isWorkflowSessionInterrupted, markWorkflowSessionAborted } from "../utils/workflow-interruption";
 
 const router = express.Router({ mergeParams: true });
 
@@ -260,6 +262,104 @@ router.get('/runs/:id/logs', apiHandler(async (req, res) => {
             logs: null
         });
     }
+}, true));
+
+// GET /api/workflows/interruption-status/:sessionId - Check if a workflow session should stop
+router.get('/interruption-status/:sessionId', apiHandler(async (req, res) => {
+    const sessionId = req.params.sessionId as string;
+    const workspaceDir = getWorkspaceDirFromEnv();
+    const interrupted = await isWorkflowSessionInterrupted(sessionId, workspaceDir);
+    res.json({ interrupted });
+}, true));
+
+// POST /api/workflows/runs/:id/stop - Stop an in-progress workflow run
+router.post('/runs/:id/stop', apiHandler(async (req, res) => {
+    const id = req.params.id as string;
+    const run = await prisma.workflow_runs.findUnique({
+        where: { id }
+    });
+
+    if (!run) {
+        throw {
+            status: 404,
+            message: 'Workflow run not found'
+        };
+    }
+
+    if (run.status !== 'running') {
+        res.json({ success: true });
+        return;
+    }
+
+    const isOwner = run.ran_by_user_id === req.userId!;
+    const isEngineer = req.role === "Engineer";
+    if (!isOwner && !isEngineer) {
+        const permission = await getWorkflowRunPermissionWithUsers(run.workflow_slug);
+        const permissionSummary = getPermissionSummaryFields(permission, req.userId!);
+        if (!permissionSummary.can_current_user_run) {
+            throw {
+                status: 403,
+                message: 'You do not have permission to stop this workflow run'
+            };
+        }
+    }
+
+    const runLogRef = await prisma.workflow_run_log_refs.findUnique({
+        where: { run_id: id }
+    });
+    if (!runLogRef) {
+        throw {
+            status: 404,
+            message: 'Workflow run log mapping not found'
+        };
+    }
+    await markWorkflowSessionAborted(runLogRef.session_id);
+
+    const chatSession = await prisma.chat_sessions.findFirst({
+        where: { opencode_session_id: runLogRef.session_id }
+    });
+    if (chatSession) {
+        const pendingQuestion = await getPendingQuestionForSession(runLogRef.session_id);
+        if (pendingQuestion) {
+            const abortAnswer = "User aborted";
+            const answers = pendingQuestion.questions.map(() => [abortAnswer]);
+            await replyToPendingQuestion(pendingQuestion.id, answers);
+        }
+
+        const pendingPermission = await getPendingPermissionForSession(runLogRef.session_id);
+        if (pendingPermission) {
+            await replyToPendingPermission(runLogRef.session_id, pendingPermission.id, "reject");
+        }
+
+        await prisma.tool_execution_permissions.updateMany({
+            where: {
+                opencode_session_id: runLogRef.session_id,
+                status: 'pending'
+            },
+            data: {
+                status: 'rejected',
+                responded_at: BigInt(Date.now())
+            }
+        });
+
+        try {
+            const client = await getOpencodeClient();
+            await client.session.command({
+                path: { id: runLogRef.session_id },
+                body: {
+                    command: 'session.interrupt',
+                    arguments: ''
+                }
+            });
+            await client.session.abort({
+                path: { id: runLogRef.session_id }
+            });
+        } catch {
+            // Best effort only; runner keeps polling interruption status.
+        }
+    }
+
+    res.json({ success: true });
 }, true));
 
 // POST /api/workflows/runs - Create new workflow run record

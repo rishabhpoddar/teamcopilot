@@ -4,6 +4,7 @@ import { createWriteStream } from "fs";
 import * as fsp from "fs/promises";
 import * as path from "path";
 import prisma from "../prisma/client";
+import { isWorkflowSessionInterrupted } from "./workflow-interruption";
 
 const MAX_OUTPUT_CHARS = 300_000;
 export const SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -208,7 +209,7 @@ async function requestWorkflowPermission(opencodeSessionId: string, messageId: s
 }
 
 type RunWithTimeoutResult = {
-    status: "success" | "error" | "timeout";
+    status: "success" | "error" | "timeout" | "aborted";
     output: string;
 };
 
@@ -216,7 +217,8 @@ function runWithTimeout(
     workflowPath: string,
     args: string[],
     timeoutSeconds: number,
-    outputFilePath: string
+    outputFilePath: string,
+    shouldAbort: () => Promise<boolean>
 ): Promise<RunWithTimeoutResult> {
     return new Promise((resolve) => {
         const venvPython = getVenvPythonPath(workflowPath);
@@ -267,9 +269,13 @@ function runWithTimeout(
             }
         };
 
-        const finalize = (status: "success" | "error" | "timeout") => {
+        const finalize = (status: "success" | "error" | "timeout" | "aborted") => {
             if (finished) return;
             finished = true;
+            if (abortPollId) {
+                clearInterval(abortPollId);
+                abortPollId = null;
+            }
             outputFileStream.end();
             resolve({ status, output });
         };
@@ -285,6 +291,28 @@ function runWithTimeout(
             appendOutput(text);
             outputFileStream.write(text);
         });
+
+        let abortPollInFlight = false;
+        let abortPollId: NodeJS.Timeout | null = null;
+        abortPollId = setInterval(async () => {
+            if (finished || abortPollInFlight) return;
+            abortPollInFlight = true;
+            let abortRequested = false;
+            try {
+                abortRequested = await shouldAbort();
+            } catch {
+                abortRequested = false;
+            } finally {
+                abortPollInFlight = false;
+            }
+            if (!abortRequested || finished) return;
+            cleanup("SIGTERM");
+            setTimeout(() => cleanup("SIGKILL"), 1000);
+            const message = "\n[ERROR] Workflow execution was aborted\n";
+            appendOutput(message);
+            outputFileStream.write(message);
+            finalize("aborted");
+        }, 500);
 
         const timeoutId = setTimeout(() => {
             cleanup("SIGTERM");
@@ -380,7 +408,6 @@ export async function startWorkflowRunViaBackend(options: {
             created_at: BigInt(Date.now()),
         }
     });
-
     const workflowRunsDir = path.join(options.workspaceDir, "workflow-runs");
     await fsp.mkdir(workflowRunsDir, { recursive: true });
     const outputFilePath = path.join(
@@ -390,7 +417,15 @@ export async function startWorkflowRunViaBackend(options: {
     await fsp.writeFile(outputFilePath, "", "utf-8");
 
     const completion = (async () => {
-        const runResult = await runWithTimeout(workflowPath, cmdArgs, timeoutSeconds, outputFilePath);
+        const runResult = await runWithTimeout(
+            workflowPath,
+            cmdArgs,
+            timeoutSeconds,
+            outputFilePath,
+            async () => {
+                return await isWorkflowSessionInterrupted(options.sessionId, options.workspaceDir);
+            }
+        );
         const finalStatus = runResult.status === "success" ? "success" : "failed";
 
         await prisma.workflow_runs.update({

@@ -45,6 +45,31 @@
   gap: 1rem;
 }
 
+.run-details-title-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.run-details-stop-btn {
+  border: 1px solid #7f1d1d;
+  background: #7f1d1d;
+  color: #fecaca;
+  border-radius: 6px;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.run-details-stop-btn:hover:not(:disabled) {
+  background: #991b1b;
+}
+
+.run-details-stop-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .run-details-title-row h2 {
   margin: 0;
   word-break: break-word;

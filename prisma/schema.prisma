@@ -48,6 +48,11 @@ model workflow_run_log_refs {
   run        workflow_runs @relation(fields: [run_id], references: [id], onDelete: Cascade)
 }
 
+model workflow_aborted_sessions {
+  session_id String @id
+  created_at BigInt
+}
+
 model key_value {
   key   String @id
   value String

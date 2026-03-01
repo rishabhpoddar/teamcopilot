@@ -1,5 +1,6 @@
 import { AxiosError } from 'axios';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { toast } from 'react-toastify';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import type { WorkflowRun } from '../types/workflow';
@@ -46,6 +47,7 @@ export default function RunDetailsPage() {
     const [error, setError] = useState<string | null>(null);
     const [run, setRun] = useState<WorkflowRun | null>(null);
     const [logs, setLogs] = useState<string>('No logs captured.');
+    const [stopping, setStopping] = useState(false);
     const runStatusRef = useRef<WorkflowRun['status'] | null>(null);
 
     const authHeader = useMemo(() => token ? { Authorization: `Bearer ${token}` } : undefined, [token]);
@@ -111,6 +113,21 @@ export default function RunDetailsPage() {
 
     if (auth.loading) return null;
 
+    const handleStopRun = async () => {
+        if (!authHeader || !run || run.status !== 'running') return;
+        setStopping(true);
+        try {
+            await axiosInstance.post(`/api/workflows/runs/${encodeURIComponent(id)}/stop`, {}, {
+                headers: authHeader
+            });
+            toast.info('Stop requested');
+        } catch (err: unknown) {
+            toast.error(getErrorMessage(err, 'Failed to stop workflow run'));
+        } finally {
+            setStopping(false);
+        }
+    };
+
     return (
         <div className="run-details-page">
             <header className="run-details-header">
@@ -128,7 +145,21 @@ export default function RunDetailsPage() {
                     <section className="run-details-card">
                         <div className="run-details-title-row">
                             <h2>{run.workflow_slug}</h2>
-                            <span className={`run-details-status status-${run.status}`}>{run.status}</span>
+                            <div className="run-details-title-actions">
+                                {run.status === 'running' && (
+                                    <button
+                                        type="button"
+                                        className="run-details-stop-btn"
+                                        onClick={() => {
+                                            void handleStopRun();
+                                        }}
+                                        disabled={stopping}
+                                    >
+                                        {stopping ? 'Stopping...' : 'Stop'}
+                                    </button>
+                                )}
+                                <span className={`run-details-status status-${run.status}`}>{run.status}</span>
+                            </div>
                         </div>
                         <div className="run-details-grid">
                             <div>
