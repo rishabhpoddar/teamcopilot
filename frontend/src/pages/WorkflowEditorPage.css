@@ -170,6 +170,10 @@
     font-size: 0.8rem;
 }
 
+.wf-hidden-upload-input {
+    display: none;
+}
+
 .wf-tree-scroll {
     overflow: auto;
     padding: 8px 0;

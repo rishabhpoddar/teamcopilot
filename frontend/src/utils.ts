@@ -8,19 +8,26 @@ export const axiosInstance = axios.create({
     },
 })
 
-axiosInstance.interceptors.response.use(
-    response => response,
-    error => {
-        const requestUrl = error.config?.url as string | undefined
-        const isAuthEndpoint = typeof requestUrl === 'string' && requestUrl.startsWith('/api/auth/')
+export const axiosUploadInstance = axios.create()
 
-        if (error.response?.status === 401 && !isAuthEndpoint) {
-            signOut()
-            window.location.href = '/login'
+function attachAuthRedirectInterceptor(instance: typeof axiosInstance) {
+    instance.interceptors.response.use(
+        response => response,
+        error => {
+            const requestUrl = error.config?.url as string | undefined
+            const isAuthEndpoint = typeof requestUrl === 'string' && requestUrl.startsWith('/api/auth/')
+
+            if (error.response?.status === 401 && !isAuthEndpoint) {
+                signOut()
+                window.location.href = '/login'
+            }
+            return Promise.reject(error)
         }
-        return Promise.reject(error)
-    }
-)
+    )
+}
+
+attachAuthRedirectInterceptor(axiosInstance)
+attachAuthRedirectInterceptor(axiosUploadInstance)
 
 export type SessionStatus = 'busy' | 'retry' | 'idle'
 export type MessagesPayload = Array<{ info: Message; parts: Part[] }>
