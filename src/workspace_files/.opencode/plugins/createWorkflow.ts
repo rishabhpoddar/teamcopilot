@@ -24,6 +24,10 @@ interface WorkflowManifest {
   }
 }
 
+interface PermissionResponse {
+  approved: boolean
+}
+
 // ============================================================================
 // Constants
 // ============================================================================
@@ -70,6 +74,113 @@ async function readErrorMessageFromResponse(
   } catch {
     return fallbackMessage
   }
+}
+
+function extractMessageId(context: unknown): string | null {
+  if (!context || typeof context !== "object") {
+    return null
+  }
+
+  const candidate = (context as { messageID?: unknown; messageId?: unknown; message_id?: unknown })
+  const raw = candidate.messageID ?? candidate.messageId ?? candidate.message_id
+  if (typeof raw === "string" && raw.trim().length > 0) {
+    return raw
+  }
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    return String(raw)
+  }
+  return null
+}
+
+function extractCallId(context: unknown): string | null {
+  if (!context || typeof context !== "object") {
+    return null
+  }
+
+  const candidate = (context as { callID?: unknown; callId?: unknown; call_id?: unknown })
+  const raw = candidate.callID ?? candidate.callId ?? candidate.call_id
+  if (typeof raw === "string" && raw.trim().length > 0) {
+    return raw
+  }
+  return null
+}
+
+async function rejectWorkflowPermission(
+  sessionID: string,
+  permissionId: string
+): Promise<void> {
+  await fetch(`${API_BASE_URL}/api/workflows/permission-reject/${permissionId}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${sessionID}`,
+    },
+  })
+}
+
+async function requestWorkflowPermission(
+  sessionID: string,
+  messageID: string,
+  callID: string
+): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/api/workflows/request-permission`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${sessionID}`,
+    },
+    body: JSON.stringify({
+      opencode_session_id: sessionID,
+      message_id: messageID,
+      call_id: callID,
+    }),
+  })
+
+  if (!response.ok) {
+    const message = await readErrorMessageFromResponse(
+      response,
+      `Failed to request permission (HTTP ${response.status})`
+    )
+    throw new Error(message)
+  }
+
+  const data = (await response.json()) as { permission_id: string }
+  const permissionId = data.permission_id
+
+  const maxAttempts = 300
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 1000))
+
+    const statusResponse = await fetch(
+      `${API_BASE_URL}/api/workflows/permission-status/${permissionId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${sessionID}`,
+        },
+      }
+    )
+
+    if (!statusResponse.ok) {
+      continue
+    }
+
+    const statusData = (await statusResponse.json()) as PermissionResponse & {
+      status: string
+    }
+
+    if (statusData.status === "approved") {
+      return
+    }
+    if (statusData.status === "rejected") {
+      throw new Error("User denied permission to create this workflow.")
+    }
+  }
+
+  try {
+    await rejectWorkflowPermission(sessionID, permissionId)
+  } catch {
+    // Best-effort cleanup only; preserve the timeout error below.
+  }
+  throw new Error("Permission request timed out")
 }
 
 // ============================================================================
@@ -119,6 +230,16 @@ export const CreateWorkflowPlugin: Plugin = async (_ctx) => {
         async execute(args, context) {
           const { directory, sessionID } = context
           const { slug, intent_summary, inputs = {}, timeout_seconds = 300 } = args
+          const messageId = extractMessageId(context)
+          const callId = extractCallId(context)
+
+          if (!messageId) {
+            throw new Error("Could not determine message id from tool context.")
+          }
+
+          if (!callId) {
+            throw new Error("Could not determine call id from tool context.")
+          }
 
           // Validate slug format
           if (!SLUG_REGEX.test(slug)) {
@@ -146,6 +267,13 @@ export const CreateWorkflowPlugin: Plugin = async (_ctx) => {
           if (await pathExists(workflowDir)) {
             throw new Error(`Workflow "${slug}" already exists at ${workflowDir}`)
           }
+
+          // Request permission after basic validation and existence checks pass.
+          await requestWorkflowPermission(
+            sessionID,
+            messageId,
+            callId
+          )
 
           // Ensure workflows directory exists
           await fs.mkdir(workflowsDir, { recursive: true })
