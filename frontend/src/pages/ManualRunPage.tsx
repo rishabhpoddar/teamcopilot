@@ -176,11 +176,22 @@ export default function ManualRunPage() {
                                         <span className="manual-run-field-desc">{input.description}</span>
                                     )}
                                     {input.type === 'boolean' ? (
-                                        <input
-                                            type="checkbox"
-                                            checked={Boolean(formValues[key])}
-                                            onChange={(event) => handleChange(key, event.target.checked)}
-                                        />
+                                        <div className="manual-run-boolean-group" role="group" aria-label={`${key} boolean input`}>
+                                            <button
+                                                type="button"
+                                                className={`manual-run-boolean-btn ${Boolean(formValues[key]) ? 'active' : ''}`}
+                                                onClick={() => handleChange(key, true)}
+                                            >
+                                                Yes
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className={`manual-run-boolean-btn ${!Boolean(formValues[key]) ? 'active' : ''}`}
+                                                onClick={() => handleChange(key, false)}
+                                            >
+                                                No
+                                            </button>
+                                        </div>
                                     ) : (
                                         <input
                                             type={input.type === 'number' ? 'number' : 'text'}

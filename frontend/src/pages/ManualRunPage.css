@@ -80,6 +80,32 @@
   padding: 0.6rem;
 }
 
+.manual-run-boolean-group {
+  display: inline-flex;
+  border: 1px solid #444;
+  border-radius: 8px;
+  overflow: hidden;
+  width: fit-content;
+}
+
+.manual-run-boolean-btn {
+  background: #1a1a1a;
+  color: inherit;
+  border: 0;
+  padding: 0.5rem 0.9rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.manual-run-boolean-btn + .manual-run-boolean-btn {
+  border-left: 1px solid #444;
+}
+
+.manual-run-boolean-btn.active {
+  background: #243a7a;
+  color: #dbe7ff;
+}
+
 .manual-run-actions {
   margin-top: 1rem;
 }
@@ -108,5 +134,22 @@
   .manual-run-field input[type="number"] {
     background: #f7f7f7;
     border-color: #ddd;
+  }
+
+  .manual-run-boolean-group {
+    border-color: #ddd;
+  }
+
+  .manual-run-boolean-btn {
+    background: #f7f7f7;
+  }
+
+  .manual-run-boolean-btn + .manual-run-boolean-btn {
+    border-left-color: #ddd;
+  }
+
+  .manual-run-boolean-btn.active {
+    background: #c7d7ff;
+    color: #162f6b;
   }
 }
