@@ -198,35 +198,41 @@ router.get('/runs', apiHandler(async (req, res) => {
     res.json({ runs });
 }, true));
 
-// GET /api/workflows/runs/:id - Get details for a specific workflow run
-router.get('/runs/:id', apiHandler(async (req, res) => {
-    const id = req.params.id as string;
+// GET /api/workflows/runs/logs - Get log file by run_id OR session_id+message_id
+router.get('/runs/logs', apiHandler(async (req, res) => {
+    const runIdRaw = req.query.run_id;
+    const sessionIdRaw = req.query.session_id;
+    const messageIdRaw = req.query.message_id;
 
-    const run = await prisma.workflow_runs.findUnique({
-        where: { id },
-        include: {
-            user: {
-                select: { name: true, email: true }
-            }
-        }
-    });
+    const runId = typeof runIdRaw === 'string' && runIdRaw.trim().length > 0 ? runIdRaw : null;
+    const sessionId = typeof sessionIdRaw === 'string' && sessionIdRaw.trim().length > 0 ? sessionIdRaw : null;
+    const messageId = typeof messageIdRaw === 'string' && messageIdRaw.trim().length > 0 ? messageIdRaw : null;
 
-    if (!run) {
+    if (!runId && !(sessionId && messageId)) {
         throw {
-            status: 404,
-            message: 'Workflow run not found'
+            status: 400,
+            message: 'Provide either run_id, or both session_id and message_id'
         };
     }
 
-    res.json({ run });
-}, true));
+    if (runId && (sessionId || messageId)) {
+        throw {
+            status: 400,
+            message: 'Provide either run_id, or session_id + message_id, not both'
+        };
+    }
 
-// GET /api/workflows/runs/:id/logs - Get log file for a specific workflow run
-router.get('/runs/:id/logs', apiHandler(async (req, res) => {
-    const id = req.params.id as string;
-    const runLogRef = await prisma.workflow_run_log_refs.findUnique({
-        where: { run_id: id }
-    });
+    const runLogRef = runId
+        ? await prisma.workflow_run_log_refs.findUnique({
+            where: { run_id: runId }
+        })
+        : await prisma.workflow_run_log_refs.findFirst({
+            where: {
+                session_id: sessionId!,
+                message_id: messageId!,
+            },
+            orderBy: { created_at: 'desc' }
+        });
 
     if (!runLogRef) {
         res.json({
@@ -262,6 +268,29 @@ router.get('/runs/:id/logs', apiHandler(async (req, res) => {
             logs: null
         });
     }
+}, true));
+
+// GET /api/workflows/runs/:id - Get details for a specific workflow run
+router.get('/runs/:id', apiHandler(async (req, res) => {
+    const id = req.params.id as string;
+
+    const run = await prisma.workflow_runs.findUnique({
+        where: { id },
+        include: {
+            user: {
+                select: { name: true, email: true }
+            }
+        }
+    });
+
+    if (!run) {
+        throw {
+            status: 404,
+            message: 'Workflow run not found'
+        };
+    }
+
+    res.json({ run });
 }, true));
 
 // GET /api/workflows/interruption-status/:sessionId - Check if a workflow session should stop

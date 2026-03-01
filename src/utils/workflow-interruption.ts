@@ -25,14 +25,24 @@ export async function isWorkflowSessionInterrupted(sessionId: string, workspaceD
 }
 
 export async function markWorkflowSessionAborted(sessionId: string): Promise<void> {
+    const now = Date.now();
+    const cutoff = now - (24 * 60 * 60 * 1000);
+    await prisma.workflow_aborted_sessions.deleteMany({
+        where: {
+            created_at: {
+                lt: BigInt(cutoff)
+            }
+        }
+    });
+
     await prisma.workflow_aborted_sessions.upsert({
         where: { session_id: sessionId },
         create: {
             session_id: sessionId,
-            created_at: BigInt(Date.now())
+            created_at: BigInt(now)
         },
         update: {
-            created_at: BigInt(Date.now())
+            created_at: BigInt(now)
         }
     });
 }

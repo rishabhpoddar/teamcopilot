@@ -69,7 +69,7 @@ export default function RunDetailsPage() {
                     axiosInstance.get(`/api/workflows/runs/${encodeURIComponent(id)}`, {
                         headers: authHeader
                     }),
-                    axiosInstance.get(`/api/workflows/runs/${encodeURIComponent(id)}/logs`, {
+                    axiosInstance.get(`/api/workflows/runs/logs?run_id=${encodeURIComponent(id)}`, {
                         headers: authHeader
                     })
                 ]);
