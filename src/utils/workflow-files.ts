@@ -537,6 +537,36 @@ export function createWorkflowFileOrFolder(slug: string, rawParentPath: string |
     return toFileNode(parentRelativePath, name, targetAbsolutePath);
 }
 
+export function uploadWorkflowFile(slug: string, rawParentPath: string | undefined, name: string, contentBytes: Buffer): WorkflowFileNode {
+    assertValidName(name);
+    const parentRelativePath = normalizeRelativePath(rawParentPath ?? "", true);
+    const parentAbsolutePath = resolveWorkflowTarget(slug, parentRelativePath);
+    if (!fs.existsSync(parentAbsolutePath)) {
+        throw {
+            status: 404,
+            message: "Parent directory not found"
+        };
+    }
+    assertParentDirectoryIsSafeForCreate(slug, parentAbsolutePath);
+    if (!fs.statSync(parentAbsolutePath).isDirectory()) {
+        throw {
+            status: 400,
+            message: "parent_path must be a directory"
+        };
+    }
+
+    const targetAbsolutePath = path.join(parentAbsolutePath, name);
+    if (fs.existsSync(targetAbsolutePath)) {
+        throw {
+            status: 409,
+            message: "A file or folder with that name already exists"
+        };
+    }
+
+    fs.writeFileSync(targetAbsolutePath, contentBytes);
+    return toFileNode(parentRelativePath, name, targetAbsolutePath);
+}
+
 export function renameWorkflowPath(slug: string, rawPath: string | undefined, newName: string): { old_path: string; new_path: string; node: WorkflowFileNode } {
     assertValidName(newName);
     const relativePath = normalizeRelativePath(rawPath ?? "", false);

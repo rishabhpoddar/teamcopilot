@@ -1,5 +1,5 @@
 import { AxiosError } from 'axios';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import MonacoEditor from '../components/workflow-editor/MonacoEditor';
@@ -126,6 +126,9 @@ export default function WorkflowEditorPage() {
 
     const [selectedPath, setSelectedPath] = useState<string | null>(null);
     const [activeFile, setActiveFile] = useState<ActiveFileState | null>(null);
+    const [uploadTargetDir, setUploadTargetDir] = useState<string>('');
+    const [uploadingByDir, setUploadingByDir] = useState<Record<string, boolean>>({});
+    const uploadInputRef = useRef<HTMLInputElement | null>(null);
 
     const canEdit = access?.can_edit ?? false;
     const activeTextFile = activeFile?.kind === 'text' ? activeFile : null;
@@ -408,6 +411,51 @@ export default function WorkflowEditorPage() {
         }
     };
 
+    const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
+        const bytes = new Uint8Array(buffer);
+        let binary = '';
+        const chunkSize = 0x8000;
+        for (let i = 0; i < bytes.length; i += chunkSize) {
+            const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+            binary += String.fromCharCode(...chunk);
+        }
+        return btoa(binary);
+    };
+
+    const handleTriggerUpload = (dirPath: string) => {
+        if (!canEdit) return;
+        setUploadTargetDir(dirPath);
+        uploadInputRef.current?.click();
+    };
+
+    const handleUploadSelectedFiles = async (event: ChangeEvent<HTMLInputElement>) => {
+        const files = Array.from(event.target.files ?? []);
+        if (files.length === 0 || !authHeader || !canEdit) return;
+        const targetDir = uploadTargetDir;
+        setUploadingByDir((prev) => ({ ...prev, [targetDir]: true }));
+        try {
+            for (const file of files) {
+                const contentBase64 = arrayBufferToBase64(await file.arrayBuffer());
+                await axiosInstance.post(`/api/workflows/${encodeURIComponent(slug)}/files/upload`, {
+                    parent_path: targetDir,
+                    name: file.name,
+                    content_base64: contentBase64
+                }, {
+                    headers: authHeader
+                });
+            }
+            setExpandedDirs((prev) => ({ ...prev, [targetDir]: true }));
+            await refreshDir(targetDir);
+            toast.success(files.length === 1 ? `Uploaded ${files[0].name}` : `Uploaded ${files.length} files`);
+        } catch (err: unknown) {
+            toast.error(getErrorMessage(err, 'Failed to upload file'));
+        } finally {
+            setUploadingByDir((prev) => ({ ...prev, [targetDir]: false }));
+            setUploadTargetDir('');
+            event.currentTarget.value = '';
+        }
+    };
+
     const renderTree = (entries: WorkflowFileNode[], depth: number) => {
         return entries.map((node) => {
             const isExpanded = node.kind === 'directory' && Boolean(expandedDirs[node.path]);
@@ -415,6 +463,7 @@ export default function WorkflowEditorPage() {
             const children = childrenByDir[node.path] ?? [];
             const dirLoading = loadingDirs[node.path];
             const dirError = dirErrors[node.path];
+            const dirUploading = uploadingByDir[node.path];
 
             return (
                 <div key={node.path} className="wf-tree-row-wrap">
@@ -463,6 +512,7 @@ export default function WorkflowEditorPage() {
                                     <>
                                         <button type="button" onClick={() => void handleCreate(node.path, 'file')} title="New file">+F</button>
                                         <button type="button" onClick={() => void handleCreate(node.path, 'directory')} title="New folder">+D</button>
+                                        <button type="button" onClick={() => handleTriggerUpload(node.path)} title="Upload files">Upload</button>
                                     </>
                                 )}
                                 <button type="button" onClick={() => void handleRename(node)} title="Rename">Rename</button>
@@ -473,6 +523,7 @@ export default function WorkflowEditorPage() {
                     {node.kind === 'directory' && isExpanded && (
                         <div>
                             {dirLoading && <div className="wf-tree-note" style={{ paddingLeft: `${24 + depth * 16}px` }}>Loading...</div>}
+                            {dirUploading && <div className="wf-tree-note" style={{ paddingLeft: `${24 + depth * 16}px` }}>Uploading...</div>}
                             {dirError && <div className="wf-tree-note error" style={{ paddingLeft: `${24 + depth * 16}px` }}>{dirError}</div>}
                             {!dirLoading && !dirError && children.length > 0 && renderTree(children, depth + 1)}
                             {!dirLoading && !dirError && children.length === 0 && (
@@ -568,15 +619,26 @@ export default function WorkflowEditorPage() {
                                 <div className="wf-sidebar-actions">
                                     <button type="button" onClick={() => void handleCreate('', 'file')}>New File</button>
                                     <button type="button" onClick={() => void handleCreate('', 'directory')}>New Folder</button>
+                                    <button type="button" onClick={() => handleTriggerUpload('')}>Upload</button>
                                 </div>
                             )}
                         </div>
                         <div className="wf-tree-scroll">
                             {loadingDirs[''] && rootEntries.length === 0 && <div className="wf-tree-note">Loading...</div>}
+                            {uploadingByDir[''] && <div className="wf-tree-note">Uploading...</div>}
                             {dirErrors[''] && <div className="wf-tree-note error">{dirErrors['']}</div>}
                             {!loadingDirs[''] && !dirErrors[''] && rootEntries.length === 0 && <div className="wf-tree-note">No files found.</div>}
                             {renderTree(rootEntries, 0)}
                         </div>
+                        {canEdit && (
+                            <input
+                                ref={uploadInputRef}
+                                className="wf-hidden-upload-input"
+                                type="file"
+                                multiple
+                                onChange={(event) => void handleUploadSelectedFiles(event)}
+                            />
+                        )}
                     </aside>
 
                     <section className="workflow-editor-main">

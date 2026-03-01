@@ -16,6 +16,7 @@ import {
     readWorkflowFileContent,
     renameWorkflowPath,
     saveWorkflowFileContent,
+    uploadWorkflowFile,
 } from "../utils/workflow-files";
 import {
     addApproverToWorkflowRunPermissionsIfRestricted,
@@ -444,6 +445,26 @@ router.post('/:slug/files', apiHandler(async (req, res) => {
         };
     }
     const node = createWorkflowFileOrFolder(slug, typeof parent_path === "string" ? parent_path : "", name, kind);
+    res.json({ node });
+}, true));
+
+// POST /api/workflows/:slug/files/upload - Upload a file to a workflow folder
+router.post('/:slug/files/upload', apiHandler(async (req, res) => {
+    const slug = req.params.slug as string;
+    await assertCanEditWorkflowFiles(slug, req.userId!, req.role);
+    const { parent_path, name, content_base64 } = req.body as {
+        parent_path?: unknown;
+        name?: unknown;
+        content_base64?: unknown;
+    };
+    if (typeof name !== "string" || typeof content_base64 !== "string") {
+        throw {
+            status: 400,
+            message: "name and content_base64 are required"
+        };
+    }
+    const contentBytes = Buffer.from(content_base64, "base64");
+    const node = uploadWorkflowFile(slug, typeof parent_path === "string" ? parent_path : "", name, contentBytes);
     res.json({ node });
 }, true));
 
