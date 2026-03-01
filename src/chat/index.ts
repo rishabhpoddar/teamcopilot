@@ -21,6 +21,7 @@ import {
 } from "../utils/chat-session";
 import { assertCondition } from "../utils/assert";
 import { sanitizeForClient } from "../utils/redact";
+import { abortOpencodeSession } from "../utils/session-abort";
 
 const router = express.Router({ mergeParams: true });
 
@@ -650,43 +651,7 @@ router.post('/sessions/:id/abort', apiHandler(async (req, res) => {
         };
     }
 
-    const pendingQuestion = await getPendingQuestionForSession(session.opencode_session_id);
-    if (pendingQuestion) {
-        const abortAnswer = "User aborted";
-        const answers = pendingQuestion.questions.map(() => [abortAnswer]);
-        await replyToPendingQuestion(pendingQuestion.id, answers);
-    }
-    const pendingPermission = await getPendingPermissionForSession(session.opencode_session_id);
-    if (pendingPermission) {
-        await replyToPendingPermission(session.opencode_session_id, pendingPermission.id, "reject");
-    }
-    await prisma.tool_execution_permissions.updateMany({
-        where: {
-            opencode_session_id: session.opencode_session_id,
-            status: 'pending'
-        },
-        data: {
-            status: 'rejected',
-            responded_at: BigInt(Date.now())
-        }
-    });
-
-    const client = await getOpencodeClient();
-
-    // First send an explicit interrupt command (used by opencode session controls),
-    // then call abort as a secondary stop signal.
-    await client.session.command({
-        path: { id: session.opencode_session_id },
-        body: {
-            command: 'session.interrupt',
-            arguments: ''
-        }
-    });
-
-    const abortResult = await client.session.abort({
-        path: { id: session.opencode_session_id }
-    });
-    assertCondition(!abortResult.error, getErrorMessage(abortResult.error));
+    await abortOpencodeSession(session.opencode_session_id);
 
     res.json({
         success: true

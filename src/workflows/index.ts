@@ -43,8 +43,8 @@ import {
 } from "../utils/workflow-approval-snapshot";
 import { getWorkspaceDirFromEnv } from "../utils/workspace-sync";
 import { startWorkflowRunViaBackend } from "../utils/workflow-runner";
-import { getOpencodeClient, getPendingPermissionForSession, getPendingQuestionForSession, replyToPendingPermission, replyToPendingQuestion } from "../utils/opencode-client";
 import { isWorkflowSessionInterrupted, markWorkflowSessionAborted } from "../utils/workflow-interruption";
+import { abortOpencodeSession } from "../utils/session-abort";
 
 const router = express.Router({ mergeParams: true });
 
@@ -313,50 +313,11 @@ router.post('/runs/:id/stop', apiHandler(async (req, res) => {
             message: 'Workflow run log mapping not found'
         };
     }
-    await markWorkflowSessionAborted(runLogRef.session_id);
-
-    const chatSession = await prisma.chat_sessions.findFirst({
-        where: { opencode_session_id: runLogRef.session_id }
-    });
-    if (chatSession) {
-        const pendingQuestion = await getPendingQuestionForSession(runLogRef.session_id);
-        if (pendingQuestion) {
-            const abortAnswer = "User aborted";
-            const answers = pendingQuestion.questions.map(() => [abortAnswer]);
-            await replyToPendingQuestion(pendingQuestion.id, answers);
-        }
-
-        const pendingPermission = await getPendingPermissionForSession(runLogRef.session_id);
-        if (pendingPermission) {
-            await replyToPendingPermission(runLogRef.session_id, pendingPermission.id, "reject");
-        }
-
-        await prisma.tool_execution_permissions.updateMany({
-            where: {
-                opencode_session_id: runLogRef.session_id,
-                status: 'pending'
-            },
-            data: {
-                status: 'rejected',
-                responded_at: BigInt(Date.now())
-            }
-        });
-
-        try {
-            const client = await getOpencodeClient();
-            await client.session.command({
-                path: { id: runLogRef.session_id },
-                body: {
-                    command: 'session.interrupt',
-                    arguments: ''
-                }
-            });
-            await client.session.abort({
-                path: { id: runLogRef.session_id }
-            });
-        } catch {
-            // Best effort only; runner keeps polling interruption status.
-        }
+    const isManualSession = runLogRef.session_id.startsWith("manual-");
+    if (isManualSession) {
+        await markWorkflowSessionAborted(runLogRef.session_id);
+    } else {
+        await abortOpencodeSession(runLogRef.session_id);
     }
 
     res.json({ success: true });
@@ -538,7 +499,11 @@ router.post('/execute', apiHandler(async (req, res) => {
     };
 
     if (result.status !== 'success') {
-        throw new Error("Workflow execution failed: " + JSON.stringify(responsePayload));
+        throw {
+            status: 500,
+            message: "Workflow execution failed: " + JSON.stringify(responsePayload),
+            doLogging: false,
+        };
     }
     res.json(responsePayload);
 }, true));
