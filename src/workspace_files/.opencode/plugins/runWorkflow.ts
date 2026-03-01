@@ -1,8 +1,4 @@
 import { type Plugin, tool } from "@opencode-ai/plugin"
-import {
-  startWorkflowRun,
-  type StartWorkflowRunOptions,
-} from "./workflowRunnerShared"
 
 function extractMessageId(context: unknown): string | null {
   if (!context || typeof context !== "object") {
@@ -33,32 +29,26 @@ function extractCallId(context: unknown): string | null {
   return null
 }
 
-function isAbortSignalLike(value: unknown): value is AbortSignal {
-  if (!value || typeof value !== "object") return false
-  const candidate = value as {
-    aborted?: unknown
-    addEventListener?: unknown
-    removeEventListener?: unknown
+async function readErrorMessageFromResponse(
+  response: Response,
+  fallbackMessage: string
+): Promise<string> {
+  try {
+    const text = await response.text()
+    if (!text) return fallbackMessage
+    try {
+      const parsed: unknown = JSON.parse(text)
+      if (parsed && typeof parsed === "object" && "message" in parsed) {
+        const msg = (parsed as { message?: unknown }).message
+        if (typeof msg === "string" && msg.trim().length > 0) return msg
+      }
+    } catch {
+      // fall back to text
+    }
+    return text.trim().length > 0 ? text : fallbackMessage
+  } catch {
+    return fallbackMessage
   }
-  return (
-    typeof candidate.aborted === "boolean" &&
-    typeof candidate.addEventListener === "function" &&
-    typeof candidate.removeEventListener === "function"
-  )
-}
-
-function extractAbortSignal(context: unknown): AbortSignal | null {
-  if (!context || typeof context !== "object") return null
-  const candidate = context as {
-    signal?: unknown
-    abortSignal?: unknown
-    abort_signal?: unknown
-  }
-
-  if (isAbortSignalLike(candidate.signal)) return candidate.signal
-  if (isAbortSignalLike(candidate.abortSignal)) return candidate.abortSignal
-  if (isAbortSignalLike(candidate.abort_signal)) return candidate.abort_signal
-  return null
 }
 
 export const RunWorkflowPlugin: Plugin = async (_ctx) => {
@@ -82,11 +72,10 @@ export const RunWorkflowPlugin: Plugin = async (_ctx) => {
             ),
         },
         async execute(args, context) {
-          const { directory, sessionID } = context
+          const { sessionID } = context
           const { slug, inputs = {} } = args
           const messageId = extractMessageId(context)
           const callId = extractCallId(context)
-          const abortSignal = extractAbortSignal(context)
 
           if (!messageId) {
             throw new Error("Could not determine message id from tool context.")
@@ -96,41 +85,30 @@ export const RunWorkflowPlugin: Plugin = async (_ctx) => {
             throw new Error("Could not determine call id from tool context.")
           }
 
-          const run = await startWorkflowRun({
-            directory,
-            sessionID,
-            messageID: messageId,
-            callID: callId,
-            authToken: sessionID,
-            slug,
-            inputs: inputs as Record<string, unknown>,
-            requestPermission: true,
-            abortSignal,
-            enableCancellationPolling: true,
-          } satisfies StartWorkflowRunOptions)
-
-          const result = await run.completion
-          const warningFields: Record<string, unknown> = result.warning
-            ? {
-              warning: "run_status_update_failed",
-              warning_message: result.warning,
-            }
-            : {}
-
-          const finalOutput = JSON.stringify({
-            status: result.status,
-            output: result.output,
-            workflow: slug,
-            timeout_seconds: run.timeoutSeconds,
-            run_id: run.runId,
-            ...warningFields,
+          const response = await fetch("http://localhost:3000/api/workflows/execute", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${sessionID}`,
+            },
+            body: JSON.stringify({
+              slug,
+              inputs,
+              message_id: messageId,
+              call_id: callId,
+            }),
           })
 
-          if (result.status !== "success") {
-            throw new Error("Workflow execution failed: " + finalOutput)
+          if (!response.ok) {
+            const errorMessage = await readErrorMessageFromResponse(
+              response,
+              `Failed to execute workflow (HTTP ${response.status})`
+            )
+            throw new Error(errorMessage)
           }
 
-          return finalOutput
+          const payload = await response.json()
+          return JSON.stringify(payload)
         },
       }),
     },

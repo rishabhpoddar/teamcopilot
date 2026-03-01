@@ -42,7 +42,7 @@ import {
     restoreWorkflowToApprovedSnapshot,
 } from "../utils/workflow-approval-snapshot";
 import { getWorkspaceDirFromEnv } from "../utils/workspace-sync";
-import { sanitizeFilenamePart, startWorkflowRun } from "../workspace_files/.opencode/plugins/workflowRunnerShared";
+import { startWorkflowRunViaBackend } from "../utils/workflow-runner";
 
 const router = express.Router({ mergeParams: true });
 
@@ -63,27 +63,38 @@ const workflowFileUpload = multer({
     },
 });
 
-function getAuthorizationBearerToken(rawAuthorizationHeader: string | undefined): string {
-    if (!rawAuthorizationHeader) {
-        throw {
-            status: 401,
-            message: 'Missing authorization header. Please pass an authorization bearer token in the header.'
-        };
-    }
-    const parts = rawAuthorizationHeader.split(' ');
-    if (parts.length !== 2 || parts[0] !== 'Bearer' || !parts[1]) {
-        throw {
-            status: 401,
-            message: 'Invalid authorization header. Please pass a valid authorization bearer token in the header.'
-        };
-    }
-    return parts[1];
-}
-
 function isPathInside(childPath: string, parentPath: string): boolean {
     const parent = path.resolve(parentPath) + path.sep;
     const child = path.resolve(childPath) + path.sep;
     return child.startsWith(parent);
+}
+
+function sanitizeFilenamePart(value: string): string {
+    return value.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
+async function assertCurrentUserCanRunWorkflow(slug: string, userId: string): Promise<void> {
+    await readWorkflowManifestAndEnsurePermissions(slug);
+    const approvalState = await getWorkflowSnapshotApprovalState(slug);
+    if (!approvalState.is_current_code_approved) {
+        throw {
+            status: 403,
+            message: 'Workflow is not approved for the current code version'
+        };
+    }
+
+    const permission = await getWorkflowRunPermissionWithUsers(slug);
+    const permissionSummary = getPermissionSummaryFields(permission, userId);
+    if (!permissionSummary.can_current_user_run) {
+        throw {
+            status: 403,
+            message: permissionSummary.is_run_locked_due_to_missing_users
+                ? 'Workflow cannot be run because no allowed users remain'
+                : 'You do not have permission to run this workflow. Please contact the workflow owner to request permission.'
+        };
+    }
+
+    await ensureWorkflowMatchesApprovedSnapshotForRun(slug);
 }
 
 async function getWorkflowEditorAccess(slug: string, userId: string, role: string | undefined): Promise<WorkflowEditorAccessResponse> {
@@ -341,23 +352,21 @@ router.post('/:slug/manual-run', apiHandler(async (req, res) => {
         };
     }
     const inputs = inputsRaw as Record<string, unknown>;
-    const authToken = getAuthorizationBearerToken(req.headers.authorization);
     const manualSessionId = `manual-${req.userId!}-${randomUUID()}`;
     const manualMessageId = `manual-message-${randomUUID()}`;
     const manualCallId = `manual-call-${randomUUID()}`;
     const workspaceDir = getWorkspaceDirFromEnv();
+    await assertCurrentUserCanRunWorkflow(slug, req.userId!);
 
-    const startedRun = await startWorkflowRun({
-        directory: workspaceDir,
-        sessionID: manualSessionId,
-        messageID: manualMessageId,
-        callID: manualCallId,
-        authToken,
+    const startedRun = await startWorkflowRunViaBackend({
+        workspaceDir,
         slug,
         inputs,
-        requestPermission: false,
-        abortSignal: null,
-        enableCancellationPolling: false,
+        authUserId: req.userId!,
+        sessionId: manualSessionId,
+        messageId: manualMessageId,
+        callId: manualCallId,
+        requirePermissionPrompt: false,
     });
 
     void startedRun.completion.catch(() => undefined);
@@ -365,6 +374,73 @@ router.post('/:slug/manual-run', apiHandler(async (req, res) => {
     res.json({
         run_id: startedRun.runId
     });
+}, true));
+
+// POST /api/workflows/execute - Execute workflow from runWorkflow tool (backend-owned logic)
+router.post('/execute', apiHandler(async (req, res) => {
+    const body = req.body as {
+        slug?: unknown;
+        inputs?: unknown;
+        message_id?: unknown;
+        call_id?: unknown;
+    };
+    if (typeof body.slug !== 'string' || !body.slug.trim()) {
+        throw {
+            status: 400,
+            message: 'slug is required'
+        };
+    }
+    if (!body.inputs || typeof body.inputs !== 'object' || Array.isArray(body.inputs)) {
+        throw {
+            status: 400,
+            message: 'inputs must be an object'
+        };
+    }
+    if (typeof body.message_id !== 'string' || !body.message_id.trim()) {
+        throw {
+            status: 400,
+            message: 'message_id is required'
+        };
+    }
+    if (typeof body.call_id !== 'string' || !body.call_id.trim()) {
+        throw {
+            status: 400,
+            message: 'call_id is required'
+        };
+    }
+    if (!req.opencode_session_id) {
+        throw {
+            status: 400,
+            message: 'This endpoint requires an opencode session token'
+        };
+    }
+
+    const workspaceDir = getWorkspaceDirFromEnv();
+    await assertCurrentUserCanRunWorkflow(body.slug, req.userId!);
+    const startedRun = await startWorkflowRunViaBackend({
+        workspaceDir,
+        slug: body.slug,
+        inputs: body.inputs as Record<string, unknown>,
+        authUserId: req.userId!,
+        sessionId: req.opencode_session_id,
+        messageId: body.message_id,
+        callId: body.call_id,
+        requirePermissionPrompt: true,
+    });
+
+    const result = await startedRun.completion;
+    const responsePayload = {
+        status: result.status,
+        output: result.output,
+        workflow: body.slug,
+        timeout_seconds: startedRun.timeoutSeconds,
+        run_id: startedRun.runId,
+    };
+
+    if (result.status !== 'success') {
+        throw new Error("Workflow execution failed: " + JSON.stringify(responsePayload));
+    }
+    res.json(responsePayload);
 }, true));
 
 // PATCH /api/workflows/runs/:id - Update run status
