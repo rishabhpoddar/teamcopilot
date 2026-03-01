@@ -2,6 +2,14 @@ import prisma from "../prisma/client";
 import { getOpencodePort } from "./opencode-client";
 
 export async function isWorkflowSessionInterrupted(sessionId: string, workspaceDir: string): Promise<boolean> {
+    const isManualSession = sessionId.startsWith("manual-");
+    if (isManualSession) {
+        const aborted = await prisma.workflow_aborted_sessions.findUnique({
+            where: { session_id: sessionId }
+        });
+        return Boolean(aborted);
+    }
+
     const port = getOpencodePort();
     const response = await fetch(`http://localhost:${port}/session/status?directory=${encodeURIComponent(workspaceDir)}`);
     if (response.ok) {
@@ -13,10 +21,7 @@ export async function isWorkflowSessionInterrupted(sessionId: string, workspaceD
         return sessionType !== "busy";
     }
 
-    const aborted = await prisma.workflow_aborted_sessions.findUnique({
-        where: { session_id: sessionId }
-    });
-    return Boolean(aborted);
+    return false;
 }
 
 export async function markWorkflowSessionAborted(sessionId: string): Promise<void> {
