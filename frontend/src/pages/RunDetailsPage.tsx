@@ -1,5 +1,5 @@
 import { AxiosError } from 'axios';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import type { WorkflowRun } from '../types/workflow';
@@ -45,39 +45,67 @@ export default function RunDetailsPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [run, setRun] = useState<WorkflowRun | null>(null);
+    const [logs, setLogs] = useState<string>('No logs captured.');
+    const runStatusRef = useRef<WorkflowRun['status'] | null>(null);
 
     const authHeader = useMemo(() => token ? { Authorization: `Bearer ${token}` } : undefined, [token]);
+
+    useEffect(() => {
+        runStatusRef.current = run?.status ?? null;
+    }, [run]);
 
     useEffect(() => {
         if (!authHeader) return;
         let cancelled = false;
 
-        const fetchRun = async () => {
-            setLoading(true);
-            setError(null);
+        const fetchRunAndLogs = async (showLoading: boolean) => {
+            if (showLoading) {
+                setLoading(true);
+            }
             try {
-                const response = await axiosInstance.get(`/api/workflows/runs/${encodeURIComponent(id)}`, {
-                    headers: authHeader
-                });
+                const [runResponse, logsResponse] = await Promise.all([
+                    axiosInstance.get(`/api/workflows/runs/${encodeURIComponent(id)}`, {
+                        headers: authHeader
+                    }),
+                    axiosInstance.get(`/api/workflows/runs/${encodeURIComponent(id)}/logs`, {
+                        headers: authHeader
+                    })
+                ]);
 
                 if (!cancelled) {
-                    setRun(response.data.run as WorkflowRun);
+                    const nextRun = runResponse.data.run as WorkflowRun;
+                    setRun(nextRun);
+                    if (logsResponse.data?.found && typeof logsResponse.data.logs === 'string') {
+                        setLogs(logsResponse.data.logs);
+                    } else {
+                        setLogs(nextRun.output || 'No logs captured.');
+                    }
+                    setError(null);
                 }
             } catch (err: unknown) {
                 if (!cancelled) {
                     setError(getErrorMessage(err, 'Failed to load run details'));
                 }
             } finally {
-                if (!cancelled) {
+                if (!cancelled && showLoading) {
                     setLoading(false);
                 }
             }
         };
 
-        void fetchRun();
+        void fetchRunAndLogs(true);
+
+        const intervalId = window.setInterval(() => {
+            if (cancelled) return;
+            if (runStatusRef.current && runStatusRef.current !== 'running') {
+                return;
+            }
+            void fetchRunAndLogs(false);
+        }, 1000);
 
         return () => {
             cancelled = true;
+            window.clearInterval(intervalId);
         };
     }, [authHeader, id]);
 
@@ -129,7 +157,7 @@ export default function RunDetailsPage() {
 
                     <section className="run-details-card">
                         <h3>Logs</h3>
-                        <pre>{run.output || 'No logs captured.'}</pre>
+                        <pre>{logs || 'No logs captured.'}</pre>
                     </section>
                 </div>
             )}

@@ -11,6 +11,7 @@ interface WorkflowCardProps extends Workflow {
     onApproved: () => void;
     onDeleted: () => void;
     onRunWorkflow: (workflowName: string) => void;
+    onRunWorkflowManual: (workflowSlug: string) => void;
     onOpenWorkflow: (slug: string) => void;
 }
 
@@ -34,6 +35,7 @@ export default function WorkflowCard({
     onApproved,
     onDeleted,
     onRunWorkflow,
+    onRunWorkflowManual,
     onOpenWorkflow
 }: WorkflowCardProps) {
     const [deleting, setDeleting] = useState(false);
@@ -44,6 +46,7 @@ export default function WorkflowCard({
     const [allUsers, setAllUsers] = useState<Array<{ id: string; name: string; email: string; role: 'User' | 'Engineer' }>>([]);
     const [permissionMode, setPermissionMode] = useState<'restricted' | 'everyone'>('restricted');
     const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+    const [showRunModeModal, setShowRunModeModal] = useState(false);
     const [ownerUserIdForEditor, setOwnerUserIdForEditor] = useState<string | null>(created_by_user_id);
     const [approverUserIdForEditor, setApproverUserIdForEditor] = useState<string | null>(approved_by_user_id);
     const isApproved = is_approved;
@@ -312,7 +315,7 @@ export default function WorkflowCard({
                     className="workflow-card-run-btn"
                     disabled={!canRun}
                     onClick={() => {
-                        onRunWorkflow(name || slug);
+                        setShowRunModeModal(true);
                     }}
                 >
                     Run Workflow
@@ -330,6 +333,48 @@ export default function WorkflowCard({
                     </button>
                 )}
             </div>
+
+            {showRunModeModal && (
+                <div
+                    className="workflow-run-mode-modal-backdrop"
+                    onClick={() => setShowRunModeModal(false)}
+                >
+                    <div
+                        className="workflow-run-mode-modal"
+                        onClick={(event) => event.stopPropagation()}
+                    >
+                        <h4>Choose run mode</h4>
+                        <p>Pick how you want to run this workflow.</p>
+                        <button
+                            type="button"
+                            className="workflow-run-mode-ai-btn"
+                            onClick={() => {
+                                onRunWorkflow(name || slug);
+                                setShowRunModeModal(false);
+                            }}
+                        >
+                            AI mode (recommended)
+                        </button>
+                        <button
+                            type="button"
+                            className="workflow-run-mode-manual-btn"
+                            onClick={() => {
+                                onRunWorkflowManual(slug);
+                                setShowRunModeModal(false);
+                            }}
+                        >
+                            Manual mode
+                        </button>
+                        <button
+                            type="button"
+                            className="workflow-run-mode-cancel-btn"
+                            onClick={() => setShowRunModeModal(false)}
+                        >
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

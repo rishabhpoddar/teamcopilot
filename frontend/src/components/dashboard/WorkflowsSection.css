@@ -250,6 +250,59 @@
   cursor: not-allowed;
 }
 
+.workflow-run-mode-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.workflow-run-mode-modal {
+  width: 100%;
+  max-width: 420px;
+  border: 1px solid #333;
+  border-radius: 10px;
+  background: #141414;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.workflow-run-mode-modal h4 {
+  margin: 0;
+}
+
+.workflow-run-mode-modal p {
+  margin: 0;
+  color: #aaa;
+  font-size: 0.9rem;
+}
+
+.workflow-run-mode-ai-btn,
+.workflow-run-mode-manual-btn,
+.workflow-run-mode-cancel-btn {
+  border: 1px solid #3e3e3e;
+  background: #1f1f1f;
+  text-align: left;
+  border-radius: 8px;
+  padding: 0.65rem 0.8rem;
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+
+.workflow-run-mode-ai-btn {
+  border-color: #3655d6;
+}
+
+.workflow-run-mode-cancel-btn {
+  margin-top: 0.2rem;
+}
+
 /* Approval Badge */
 .workflow-approval-badge {
   font-size: 0.7rem;

@@ -1,7 +1,9 @@
 import express from "express";
 import fs from "fs";
+import fsPromises from "fs/promises";
 import os from "os";
 import path from "path";
+import { randomUUID } from "crypto";
 import multer from "multer";
 import prisma from "../prisma/client";
 import { WorkflowManifest, WorkflowMetadata, WorkflowSummary } from "../types/workflow";
@@ -39,6 +41,8 @@ import {
     loadApprovedSnapshotFromDb,
     restoreWorkflowToApprovedSnapshot,
 } from "../utils/workflow-approval-snapshot";
+import { getWorkspaceDirFromEnv } from "../utils/workspace-sync";
+import { sanitizeFilenamePart, startWorkflowRun } from "../workspace_files/.opencode/plugins/workflowRunnerShared";
 
 const router = express.Router({ mergeParams: true });
 
@@ -58,6 +62,29 @@ const workflowFileUpload = multer({
         fileSize: maxUploadBytes,
     },
 });
+
+function getAuthorizationBearerToken(rawAuthorizationHeader: string | undefined): string {
+    if (!rawAuthorizationHeader) {
+        throw {
+            status: 401,
+            message: 'Missing authorization header. Please pass an authorization bearer token in the header.'
+        };
+    }
+    const parts = rawAuthorizationHeader.split(' ');
+    if (parts.length !== 2 || parts[0] !== 'Bearer' || !parts[1]) {
+        throw {
+            status: 401,
+            message: 'Invalid authorization header. Please pass a valid authorization bearer token in the header.'
+        };
+    }
+    return parts[1];
+}
+
+function isPathInside(childPath: string, parentPath: string): boolean {
+    const parent = path.resolve(parentPath) + path.sep;
+    const child = path.resolve(childPath) + path.sep;
+    return child.startsWith(parent);
+}
 
 async function getWorkflowEditorAccess(slug: string, userId: string, role: string | undefined): Promise<WorkflowEditorAccessResponse> {
     const { metadata } = await readWorkflowManifestAndEnsurePermissions(slug);
@@ -181,18 +208,80 @@ router.get('/runs/:id', apiHandler(async (req, res) => {
     res.json({ run });
 }, true));
 
-// POST /api/workflows/runs - Create new workflow run record
-router.post('/runs', apiHandler(async (req, res) => {
-    const { workflow_slug, args } = req.body;
+// GET /api/workflows/runs/:id/logs - Get log file for a specific workflow run
+router.get('/runs/:id/logs', apiHandler(async (req, res) => {
+    const id = req.params.id as string;
+    const runLogRef = await prisma.workflow_run_log_refs.findUnique({
+        where: { run_id: id }
+    });
 
-    if (!workflow_slug) {
+    if (!runLogRef) {
+        res.json({
+            found: false,
+            logs: null
+        });
+        return;
+    }
+
+    const workspaceDir = getWorkspaceDirFromEnv();
+    const workflowRunsDir = path.join(workspaceDir, 'workflow-runs');
+    const logPath = path.join(
+        workflowRunsDir,
+        `${sanitizeFilenamePart(runLogRef.session_id)}-${sanitizeFilenamePart(runLogRef.message_id)}.txt`
+    );
+
+    if (!isPathInside(logPath, workflowRunsDir)) {
         throw {
             status: 400,
-            message: 'workflow_slug are required'
+            message: 'Invalid log path'
         };
     }
 
-    const { metadata } = await readWorkflowManifestAndEnsurePermissions(workflow_slug);
+    try {
+        const logs = await fsPromises.readFile(logPath, 'utf-8');
+        res.json({
+            found: true,
+            logs
+        });
+    } catch {
+        res.json({
+            found: false,
+            logs: null
+        });
+    }
+}, true));
+
+// POST /api/workflows/runs - Create new workflow run record
+router.post('/runs', apiHandler(async (req, res) => {
+    const { workflow_slug, session_id, message_id, args } = req.body as {
+        workflow_slug?: unknown;
+        session_id?: unknown;
+        message_id?: unknown;
+        args?: unknown;
+    };
+
+    if (typeof workflow_slug !== 'string' || workflow_slug.trim().length === 0) {
+        throw {
+            status: 400,
+            message: 'workflow_slug is required'
+        };
+    }
+
+    if (typeof session_id !== 'string' || session_id.trim().length === 0) {
+        throw {
+            status: 400,
+            message: 'session_id is required'
+        };
+    }
+
+    if (typeof message_id !== 'string' || message_id.trim().length === 0) {
+        throw {
+            status: 400,
+            message: 'message_id is required'
+        };
+    }
+
+    await readWorkflowManifestAndEnsurePermissions(workflow_slug);
 
     const approvalState = await getWorkflowSnapshotApprovalState(workflow_slug);
     if (!approvalState.is_current_code_approved) {
@@ -215,17 +304,67 @@ router.post('/runs', apiHandler(async (req, res) => {
 
     await ensureWorkflowMatchesApprovedSnapshotForRun(workflow_slug);
 
-    const run = await prisma.workflow_runs.create({
-        data: {
-            workflow_slug: workflow_slug,
-            ran_by_user_id: req.userId!,
-            status: 'running',
-            started_at: Date.now(),
-            args: args ? JSON.stringify(args) : null
-        }
+    const run = await prisma.$transaction(async (tx) => {
+        const createdRun = await tx.workflow_runs.create({
+            data: {
+                workflow_slug: workflow_slug,
+                ran_by_user_id: req.userId!,
+                status: 'running',
+                started_at: Date.now(),
+                args: args !== undefined ? JSON.stringify(args) : null
+            }
+        });
+
+        await tx.workflow_run_log_refs.create({
+            data: {
+                run_id: createdRun.id,
+                session_id,
+                message_id,
+                created_at: BigInt(Date.now())
+            }
+        });
+
+        return createdRun;
     });
 
     res.json({ run });
+}, true));
+
+// POST /api/workflows/:slug/manual-run - Start a workflow run from manual mode UI
+router.post('/:slug/manual-run', apiHandler(async (req, res) => {
+    const slug = req.params.slug as string;
+    const inputsRaw = (req.body as { inputs?: unknown }).inputs ?? {};
+    if (!inputsRaw || typeof inputsRaw !== 'object' || Array.isArray(inputsRaw)) {
+        throw {
+            status: 400,
+            message: 'inputs must be an object'
+        };
+    }
+    const inputs = inputsRaw as Record<string, unknown>;
+    const authToken = getAuthorizationBearerToken(req.headers.authorization);
+    const manualSessionId = `manual-${req.userId!}-${randomUUID()}`;
+    const manualMessageId = `manual-message-${randomUUID()}`;
+    const manualCallId = `manual-call-${randomUUID()}`;
+    const workspaceDir = getWorkspaceDirFromEnv();
+
+    const startedRun = await startWorkflowRun({
+        directory: workspaceDir,
+        sessionID: manualSessionId,
+        messageID: manualMessageId,
+        callID: manualCallId,
+        authToken,
+        slug,
+        inputs,
+        requestPermission: false,
+        abortSignal: null,
+        enableCancellationPolling: false,
+    });
+
+    void startedRun.completion.catch(() => undefined);
+
+    res.json({
+        run_id: startedRun.runId
+    });
 }, true));
 
 // PATCH /api/workflows/runs/:id - Update run status

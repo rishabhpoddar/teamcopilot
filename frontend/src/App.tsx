@@ -6,6 +6,7 @@ import Home from './pages/Home.tsx'
 import WorkflowEditorPage from './pages/WorkflowEditorPage.tsx'
 import WorkflowApprovalReviewPage from './pages/WorkflowApprovalReviewPage.tsx'
 import RunDetailsPage from './pages/RunDetailsPage.tsx'
+import ManualRunPage from './pages/ManualRunPage.tsx'
 import './App.css'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -30,6 +31,7 @@ function App() {
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
         <Route path="/runs/:id" element={<ProtectedRoute><RunDetailsPage /></ProtectedRoute>} />
+        <Route path="/workflows/:slug/manual-run" element={<ProtectedRoute><ManualRunPage /></ProtectedRoute>} />
         <Route path="/workflows/:slug" element={<ProtectedRoute><WorkflowEditorPage /></ProtectedRoute>} />
         <Route path="/workflows/:slug/approval-review" element={<ProtectedRoute><WorkflowApprovalReviewPage /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
