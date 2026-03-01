@@ -1,4 +1,8 @@
 import express from "express";
+import fs from "fs";
+import os from "os";
+import path from "path";
+import multer from "multer";
 import prisma from "../prisma/client";
 import { WorkflowManifest, WorkflowMetadata, WorkflowSummary } from "../types/workflow";
 import { WorkflowEditorAccessResponse } from "../types/workflow-files";
@@ -16,7 +20,7 @@ import {
     readWorkflowFileContent,
     renameWorkflowPath,
     saveWorkflowFileContent,
-    uploadWorkflowFile,
+    uploadWorkflowFileFromTempPath,
 } from "../utils/workflow-files";
 import {
     addApproverToWorkflowRunPermissionsIfRestricted,
@@ -37,6 +41,23 @@ import {
 } from "../utils/workflow-approval-snapshot";
 
 const router = express.Router({ mergeParams: true });
+
+const uploadTmpDir = path.join(os.tmpdir(), "localtool-workflow-uploads");
+fs.mkdirSync(uploadTmpDir, { recursive: true });
+const maxUploadBytes = (() => {
+    const parsed = Number(process.env.WORKFLOW_FILE_UPLOAD_MAX_MB ?? "1024");
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+        return 1024 * 1024 * 1024;
+    }
+    return Math.floor(parsed * 1024 * 1024);
+})();
+const workflowFileUpload = multer({
+    dest: uploadTmpDir,
+    limits: {
+        files: 1,
+        fileSize: maxUploadBytes,
+    },
+});
 
 async function getWorkflowEditorAccess(slug: string, userId: string, role: string | undefined): Promise<WorkflowEditorAccessResponse> {
     const { metadata } = await readWorkflowManifestAndEnsurePermissions(slug);
@@ -449,23 +470,34 @@ router.post('/:slug/files', apiHandler(async (req, res) => {
 }, true));
 
 // POST /api/workflows/:slug/files/upload - Upload a file to a workflow folder
-router.post('/:slug/files/upload', apiHandler(async (req, res) => {
+router.post('/:slug/files/upload', workflowFileUpload.single("file"), apiHandler(async (req, res) => {
     const slug = req.params.slug as string;
     await assertCanEditWorkflowFiles(slug, req.userId!, req.role);
-    const { parent_path, name, content_base64 } = req.body as {
+    const { parent_path, name } = req.body as {
         parent_path?: unknown;
         name?: unknown;
-        content_base64?: unknown;
     };
-    if (typeof name !== "string" || typeof content_base64 !== "string") {
+    if (typeof name !== "string") {
         throw {
             status: 400,
-            message: "name and content_base64 are required"
+            message: "name is required"
         };
     }
-    const contentBytes = Buffer.from(content_base64, "base64");
-    const node = uploadWorkflowFile(slug, typeof parent_path === "string" ? parent_path : "", name, contentBytes);
-    res.json({ node });
+    if (!req.file?.path) {
+        throw {
+            status: 400,
+            message: "file is required"
+        };
+    }
+
+    try {
+        const node = uploadWorkflowFileFromTempPath(slug, typeof parent_path === "string" ? parent_path : "", name, req.file.path);
+        res.json({ node });
+    } finally {
+        if (fs.existsSync(req.file.path)) {
+            fs.unlinkSync(req.file.path);
+        }
+    }
 }, true));
 
 // PATCH /api/workflows/:slug/files/rename - Rename a file or folder

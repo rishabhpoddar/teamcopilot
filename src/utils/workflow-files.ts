@@ -537,7 +537,7 @@ export function createWorkflowFileOrFolder(slug: string, rawParentPath: string |
     return toFileNode(parentRelativePath, name, targetAbsolutePath);
 }
 
-export function uploadWorkflowFile(slug: string, rawParentPath: string | undefined, name: string, contentBytes: Buffer): WorkflowFileNode {
+export function uploadWorkflowFileFromTempPath(slug: string, rawParentPath: string | undefined, name: string, tempFilePath: string): WorkflowFileNode {
     assertValidName(name);
     const parentRelativePath = normalizeRelativePath(rawParentPath ?? "", true);
     const parentAbsolutePath = resolveWorkflowTarget(slug, parentRelativePath);
@@ -555,6 +555,13 @@ export function uploadWorkflowFile(slug: string, rawParentPath: string | undefin
         };
     }
 
+    if (!fs.existsSync(tempFilePath) || !fs.statSync(tempFilePath).isFile()) {
+        throw {
+            status: 400,
+            message: "Uploaded file was not received correctly"
+        };
+    }
+
     const targetAbsolutePath = path.join(parentAbsolutePath, name);
     if (fs.existsSync(targetAbsolutePath)) {
         throw {
@@ -563,7 +570,7 @@ export function uploadWorkflowFile(slug: string, rawParentPath: string | undefin
         };
     }
 
-    fs.writeFileSync(targetAbsolutePath, contentBytes);
+    fs.copyFileSync(tempFilePath, targetAbsolutePath);
     return toFileNode(parentRelativePath, name, targetAbsolutePath);
 }
 

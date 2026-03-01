@@ -4,7 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import MonacoEditor from '../components/workflow-editor/MonacoEditor';
 import { useAuth } from '../lib/auth';
-import { axiosInstance } from '../utils';
+import { axiosInstance, axiosUploadInstance } from '../utils';
 import type {
     WorkflowEditorAccessResponse,
     WorkflowFileContentResponse,
@@ -411,17 +411,6 @@ export default function WorkflowEditorPage() {
         }
     };
 
-    const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
-        const bytes = new Uint8Array(buffer);
-        let binary = '';
-        const chunkSize = 0x8000;
-        for (let i = 0; i < bytes.length; i += chunkSize) {
-            const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
-            binary += String.fromCharCode(...chunk);
-        }
-        return btoa(binary);
-    };
-
     const handleTriggerUpload = (dirPath: string) => {
         if (!canEdit) return;
         setUploadTargetDir(dirPath);
@@ -435,12 +424,11 @@ export default function WorkflowEditorPage() {
         setUploadingByDir((prev) => ({ ...prev, [targetDir]: true }));
         try {
             for (const file of files) {
-                const contentBase64 = arrayBufferToBase64(await file.arrayBuffer());
-                await axiosInstance.post(`/api/workflows/${encodeURIComponent(slug)}/files/upload`, {
-                    parent_path: targetDir,
-                    name: file.name,
-                    content_base64: contentBase64
-                }, {
+                const formData = new FormData();
+                formData.append('parent_path', targetDir);
+                formData.append('name', file.name);
+                formData.append('file', file, file.name);
+                await axiosUploadInstance.post(`/api/workflows/${encodeURIComponent(slug)}/files/upload`, formData, {
                     headers: authHeader
                 });
             }
