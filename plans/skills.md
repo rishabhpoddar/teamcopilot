@@ -33,6 +33,9 @@
   4. New custom tool in workspace plugin:
       - listAvailableSkills
       - Calls GET /api/skills/available and returns JSON list.
+  5. Add workflow-parity custom tools:
+      - createSkill (similar to createWorkflow)
+      - findSkill (similar to findWorkflow)
 
   ### Data / Schema Changes (Prisma)
 
@@ -79,10 +82,16 @@
      src/workspace_files/.opencode/plugins/listAvailableSkills.ts
   2. Tool result format:
       - [{ slug, name, description }] only (no full content).
-  3. Update src/workspace_files/AGENTS.md:
+  3. Tool parity with workflows:
+      - createSkill should mirror createWorkflow semantics for creating a skill package.
+      - findSkill should mirror findWorkflow semantics for locating/selecting a skill.
+  4. Session-start context behavior:
+      - On every new session start, inject the full list of available skills for the current user into context by default.
+  5. Update src/workspace_files/AGENTS.md:
       - Add rule: before any “use a skill” action, call listAvailableSkills.
       - If a skill is selected, read its SKILL.md from custom-skills/<slug>/SKILL.md.
       - Do not use OpenCode native skill tool for LocalTool custom skills.
+      - Security constraint: the agent must never discover/search skills via bash/filesystem scanning; skill discovery must only use listAvailableSkills or findSkill.
 
   ### Frontend Changes
 
