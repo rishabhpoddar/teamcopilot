@@ -448,6 +448,7 @@ router.post('/execute', apiHandler(async (req, res) => {
             status: 500,
             message: "Workflow execution failed: " + JSON.stringify(responsePayload),
             doLogging: false,
+            maskErrorMessage: false,
         };
     }
     res.json(responsePayload);
