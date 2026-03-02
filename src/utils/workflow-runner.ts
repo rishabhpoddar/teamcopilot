@@ -160,24 +160,13 @@ function inputsToArgs(inputs: Record<string, string | number | boolean>): string
 }
 
 async function requestWorkflowPermission(opencodeSessionId: string, messageId: string, callId: string): Promise<void> {
-    const permission = await prisma.tool_execution_permissions.upsert({
-        where: {
-            opencode_session_id_message_id_call_id: {
-                opencode_session_id: opencodeSessionId,
-                message_id: messageId,
-                call_id: callId
-            }
-        },
-        create: {
+    const permission = await prisma.tool_execution_permissions.create({
+        data: {
             opencode_session_id: opencodeSessionId,
             message_id: messageId,
             call_id: callId,
             status: "pending",
             created_at: BigInt(Date.now())
-        },
-        update: {
-            status: "pending",
-            responded_at: null
         }
     });
 
@@ -398,14 +387,8 @@ export async function startWorkflowRunViaBackend(options: {
             status: "running",
             started_at: BigInt(Date.now()),
             args: JSON.stringify(options.inputs),
-        }
-    });
-    await prisma.workflow_run_log_refs.create({
-        data: {
-            run_id: createdRun.id,
             session_id: options.sessionId,
             message_id: options.messageId,
-            created_at: BigInt(Date.now()),
         }
     });
     const workflowRunsDir = path.join(options.workspaceDir, "workflow-runs");

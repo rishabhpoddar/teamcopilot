@@ -34,18 +34,12 @@ model workflow_runs {
   error_message  String?
   output         String? // Captured stdout/stderr from the workflow run
   workflow_slug  String
+  session_id     String?
+  message_id     String?
   user           users   @relation(fields: [ran_by_user_id], references: [id], onDelete: Cascade)
-  log_ref        workflow_run_log_refs?
 
   @@index([started_at])
-}
-
-model workflow_run_log_refs {
-  run_id     String        @id
-  session_id String
-  message_id String
-  created_at BigInt
-  run        workflow_runs @relation(fields: [run_id], references: [id], onDelete: Cascade)
+  @@index([session_id, message_id])
 }
 
 model workflow_aborted_sessions {

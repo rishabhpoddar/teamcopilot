@@ -343,6 +343,12 @@ export default function WorkflowCard({
                         className="workflow-run-mode-modal"
                         onClick={(event) => event.stopPropagation()}
                     >
+                        <button
+                            type="button"
+                            className="workflow-run-mode-close-btn"
+                            aria-label="Close"
+                            onClick={() => setShowRunModeModal(false)}
+                        />
                         <h4>Choose run mode</h4>
                         <p>Pick how you want to run this workflow.</p>
                         <button
@@ -364,13 +370,6 @@ export default function WorkflowCard({
                             }}
                         >
                             Manual mode
-                        </button>
-                        <button
-                            type="button"
-                            className="workflow-run-mode-cancel-btn"
-                            onClick={() => setShowRunModeModal(false)}
-                        >
-                            Cancel
                         </button>
                     </div>
                 </div>

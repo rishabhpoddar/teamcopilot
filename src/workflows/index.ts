@@ -222,19 +222,21 @@ router.get('/runs/logs', apiHandler(async (req, res) => {
         };
     }
 
-    const runLogRef = runId
-        ? await prisma.workflow_run_log_refs.findUnique({
-            where: { run_id: runId }
+    const run = runId
+        ? await prisma.workflow_runs.findUnique({
+            where: { id: runId },
+            select: { session_id: true, message_id: true }
         })
-        : await prisma.workflow_run_log_refs.findFirst({
+        : await prisma.workflow_runs.findFirst({
             where: {
                 session_id: sessionId!,
                 message_id: messageId!,
             },
-            orderBy: { created_at: 'desc' }
+            select: { session_id: true, message_id: true },
+            orderBy: { started_at: 'desc' }
         });
 
-    if (!runLogRef) {
+    if (!run?.session_id || !run.message_id) {
         res.json({
             found: false,
             logs: null
@@ -246,7 +248,7 @@ router.get('/runs/logs', apiHandler(async (req, res) => {
     const workflowRunsDir = path.join(workspaceDir, 'workflow-runs');
     const logPath = path.join(
         workflowRunsDir,
-        `${sanitizeFilenamePart(runLogRef.session_id)}-${sanitizeFilenamePart(runLogRef.message_id)}.txt`
+        `${sanitizeFilenamePart(run.session_id)}-${sanitizeFilenamePart(run.message_id)}.txt`
     );
 
     if (!isPathInside(logPath, workflowRunsDir)) {
@@ -329,81 +331,20 @@ router.post('/runs/:id/stop', apiHandler(async (req, res) => {
         };
     }
 
-    const runLogRef = await prisma.workflow_run_log_refs.findUnique({
-        where: { run_id: id }
-    });
-    if (!runLogRef) {
+    if (!run.session_id) {
         throw {
             status: 404,
-            message: 'Workflow run log mapping not found'
+            message: 'Workflow run session not found'
         };
     }
-    const isManualSession = runLogRef.session_id.startsWith("manual-");
+    const isManualSession = run.session_id.startsWith("manual-");
     if (isManualSession) {
-        await markWorkflowSessionAborted(runLogRef.session_id);
+        await markWorkflowSessionAborted(run.session_id);
     } else {
-        await abortOpencodeSession(runLogRef.session_id);
+        await abortOpencodeSession(run.session_id);
     }
 
     res.json({ success: true });
-}, true));
-
-// POST /api/workflows/runs - Create new workflow run record
-router.post('/runs', apiHandler(async (req, res) => {
-    const { workflow_slug, session_id, message_id, args } = req.body as {
-        workflow_slug?: unknown;
-        session_id?: unknown;
-        message_id?: unknown;
-        args?: unknown;
-    };
-
-    if (typeof workflow_slug !== 'string' || workflow_slug.trim().length === 0) {
-        throw {
-            status: 400,
-            message: 'workflow_slug is required'
-        };
-    }
-
-    if (typeof session_id !== 'string' || session_id.trim().length === 0) {
-        throw {
-            status: 400,
-            message: 'session_id is required'
-        };
-    }
-
-    if (typeof message_id !== 'string' || message_id.trim().length === 0) {
-        throw {
-            status: 400,
-            message: 'message_id is required'
-        };
-    }
-
-    await assertCurrentUserCanRunWorkflow(workflow_slug, req.userId!);
-
-    const run = await prisma.$transaction(async (tx) => {
-        const createdRun = await tx.workflow_runs.create({
-            data: {
-                workflow_slug: workflow_slug,
-                ran_by_user_id: req.userId!,
-                status: 'running',
-                started_at: Date.now(),
-                args: args !== undefined ? JSON.stringify(args) : null
-            }
-        });
-
-        await tx.workflow_run_log_refs.create({
-            data: {
-                run_id: createdRun.id,
-                session_id,
-                message_id,
-                created_at: BigInt(Date.now())
-            }
-        });
-
-        return createdRun;
-    });
-
-    res.json({ run });
 }, true));
 
 // POST /api/workflows/:slug/manual-run - Start a workflow run from manual mode UI
