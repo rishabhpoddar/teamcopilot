@@ -84,8 +84,12 @@ export default function ToolCallDisplay({
         const fetchLogs = async () => {
             try {
                 setIsLogsLoading(true);
+                const query = new URLSearchParams({
+                    session_id: part.sessionID,
+                    message_id: part.messageID
+                }).toString();
                 const response = await axiosInstance.get(
-                    `/api/chat/workflow-runs/${encodeURIComponent(part.sessionID)}/${encodeURIComponent(part.messageID)}/logs`,
+                    `/api/workflows/runs/logs?${query}`,
                     {
                         headers: { Authorization: `Bearer ${token}` }
                     }

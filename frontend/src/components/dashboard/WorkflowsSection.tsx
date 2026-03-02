@@ -185,6 +185,7 @@ export default function WorkflowsSection({ onRunWorkflow }: WorkflowsSectionProp
                             onApproved={fetchWorkflows}
                             onDeleted={fetchWorkflows}
                             onRunWorkflow={onRunWorkflow}
+                            onRunWorkflowManual={(workflowSlug) => navigate(`/workflows/${encodeURIComponent(workflowSlug)}/manual-run`)}
                             onOpenWorkflow={(slug) => navigate(`/workflows/${encodeURIComponent(slug)}`)}
                         />
                     ))}

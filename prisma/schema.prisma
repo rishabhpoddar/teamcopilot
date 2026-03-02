@@ -34,9 +34,17 @@ model workflow_runs {
   error_message  String?
   output         String? // Captured stdout/stderr from the workflow run
   workflow_slug  String
+  session_id     String?
+  message_id     String?
   user           users   @relation(fields: [ran_by_user_id], references: [id], onDelete: Cascade)
 
   @@index([started_at])
+  @@index([session_id, message_id])
+}
+
+model workflow_aborted_sessions {
+  session_id String @id
+  created_at BigInt
 }
 
 model key_value {

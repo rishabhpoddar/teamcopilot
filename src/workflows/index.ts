@@ -1,7 +1,9 @@
 import express from "express";
 import fs from "fs";
+import fsPromises from "fs/promises";
 import os from "os";
 import path from "path";
+import { randomUUID } from "crypto";
 import multer from "multer";
 import prisma from "../prisma/client";
 import { WorkflowManifest, WorkflowMetadata, WorkflowSummary } from "../types/workflow";
@@ -39,6 +41,10 @@ import {
     loadApprovedSnapshotFromDb,
     restoreWorkflowToApprovedSnapshot,
 } from "../utils/workflow-approval-snapshot";
+import { getWorkspaceDirFromEnv } from "../utils/workspace-sync";
+import { startWorkflowRunViaBackend } from "../utils/workflow-runner";
+import { isWorkflowSessionInterrupted, markWorkflowSessionAborted } from "../utils/workflow-interruption";
+import { abortOpencodeSession } from "../utils/session-abort";
 
 const router = express.Router({ mergeParams: true });
 
@@ -58,6 +64,40 @@ const workflowFileUpload = multer({
         fileSize: maxUploadBytes,
     },
 });
+
+function isPathInside(childPath: string, parentPath: string): boolean {
+    const parent = path.resolve(parentPath) + path.sep;
+    const child = path.resolve(childPath) + path.sep;
+    return child.startsWith(parent);
+}
+
+function sanitizeFilenamePart(value: string): string {
+    return value.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
+async function assertCurrentUserCanRunWorkflow(slug: string, userId: string): Promise<void> {
+    await readWorkflowManifestAndEnsurePermissions(slug);
+    const approvalState = await getWorkflowSnapshotApprovalState(slug);
+    if (!approvalState.is_current_code_approved) {
+        throw {
+            status: 403,
+            message: 'Workflow is not approved for the current code version'
+        };
+    }
+
+    const permission = await getWorkflowRunPermissionWithUsers(slug);
+    const permissionSummary = getPermissionSummaryFields(permission, userId);
+    if (!permissionSummary.can_current_user_run) {
+        throw {
+            status: 403,
+            message: permissionSummary.is_run_locked_due_to_missing_users
+                ? 'Workflow cannot be run because no allowed users remain'
+                : 'You do not have permission to run this workflow. Please contact the workflow owner to request permission.'
+        };
+    }
+
+    await ensureWorkflowMatchesApprovedSnapshotForRun(slug);
+}
 
 async function getWorkflowEditorAccess(slug: string, userId: string, role: string | undefined): Promise<WorkflowEditorAccessResponse> {
     const { metadata } = await readWorkflowManifestAndEnsurePermissions(slug);
@@ -158,6 +198,80 @@ router.get('/runs', apiHandler(async (req, res) => {
     res.json({ runs });
 }, true));
 
+// GET /api/workflows/runs/logs - Get log file by run_id OR session_id+message_id
+router.get('/runs/logs', apiHandler(async (req, res) => {
+    const runIdRaw = req.query.run_id;
+    const sessionIdRaw = req.query.session_id;
+    const messageIdRaw = req.query.message_id;
+
+    const runId = typeof runIdRaw === 'string' && runIdRaw.trim().length > 0 ? runIdRaw : null;
+    const sessionId = typeof sessionIdRaw === 'string' && sessionIdRaw.trim().length > 0 ? sessionIdRaw : null;
+    const messageId = typeof messageIdRaw === 'string' && messageIdRaw.trim().length > 0 ? messageIdRaw : null;
+
+    if (!runId && !(sessionId && messageId)) {
+        throw {
+            status: 400,
+            message: 'Provide either run_id, or both session_id and message_id'
+        };
+    }
+
+    if (runId && (sessionId || messageId)) {
+        throw {
+            status: 400,
+            message: 'Provide either run_id, or session_id + message_id, not both'
+        };
+    }
+
+    const run = runId
+        ? await prisma.workflow_runs.findUnique({
+            where: { id: runId },
+            select: { session_id: true, message_id: true }
+        })
+        : await prisma.workflow_runs.findFirst({
+            where: {
+                session_id: sessionId!,
+                message_id: messageId!,
+            },
+            select: { session_id: true, message_id: true },
+            orderBy: { started_at: 'desc' }
+        });
+
+    if (!run?.session_id || !run.message_id) {
+        res.json({
+            found: false,
+            logs: null
+        });
+        return;
+    }
+
+    const workspaceDir = getWorkspaceDirFromEnv();
+    const workflowRunsDir = path.join(workspaceDir, 'workflow-runs');
+    const logPath = path.join(
+        workflowRunsDir,
+        `${sanitizeFilenamePart(run.session_id)}-${sanitizeFilenamePart(run.message_id)}.txt`
+    );
+
+    if (!isPathInside(logPath, workflowRunsDir)) {
+        throw {
+            status: 400,
+            message: 'Invalid log path'
+        };
+    }
+
+    try {
+        const logs = await fsPromises.readFile(logPath, 'utf-8');
+        res.json({
+            found: true,
+            logs
+        });
+    } catch {
+        res.json({
+            found: false,
+            logs: null
+        });
+    }
+}, true));
+
 // GET /api/workflows/runs/:id - Get details for a specific workflow run
 router.get('/runs/:id', apiHandler(async (req, res) => {
     const id = req.params.id as string;
@@ -181,51 +295,163 @@ router.get('/runs/:id', apiHandler(async (req, res) => {
     res.json({ run });
 }, true));
 
-// POST /api/workflows/runs - Create new workflow run record
-router.post('/runs', apiHandler(async (req, res) => {
-    const { workflow_slug, args } = req.body;
+// GET /api/workflows/interruption-status/:sessionId - Check if a workflow session should stop
+router.get('/interruption-status/:sessionId', apiHandler(async (req, res) => {
+    const sessionId = req.params.sessionId as string;
+    const workspaceDir = getWorkspaceDirFromEnv();
+    const interrupted = await isWorkflowSessionInterrupted(sessionId, workspaceDir);
+    res.json({ interrupted });
+}, true));
 
-    if (!workflow_slug) {
+// POST /api/workflows/runs/:id/stop - Stop an in-progress workflow run
+router.post('/runs/:id/stop', apiHandler(async (req, res) => {
+    const id = req.params.id as string;
+    const run = await prisma.workflow_runs.findUnique({
+        where: { id }
+    });
+
+    if (!run) {
         throw {
-            status: 400,
-            message: 'workflow_slug are required'
+            status: 404,
+            message: 'Workflow run not found'
         };
     }
 
-    const { metadata } = await readWorkflowManifestAndEnsurePermissions(workflow_slug);
-
-    const approvalState = await getWorkflowSnapshotApprovalState(workflow_slug);
-    if (!approvalState.is_current_code_approved) {
-        throw {
-            status: 403,
-            message: 'Workflow is not approved for the current code version'
-        };
+    if (run.status !== 'running') {
+        res.json({ success: true });
+        return;
     }
 
-    const permission = await getWorkflowRunPermissionWithUsers(workflow_slug);
+    const permission = await getWorkflowRunPermissionWithUsers(run.workflow_slug);
     const permissionSummary = getPermissionSummaryFields(permission, req.userId!);
     if (!permissionSummary.can_current_user_run) {
         throw {
             status: 403,
-            message: permissionSummary.is_run_locked_due_to_missing_users
-                ? 'Workflow cannot be run because no allowed users remain'
-                : 'You do not have permission to run this workflow. Please contact the workflow owner to request permission.'
+            message: 'You do not have permission to stop this workflow run'
         };
     }
 
-    await ensureWorkflowMatchesApprovedSnapshotForRun(workflow_slug);
+    if (!run.session_id) {
+        throw {
+            status: 404,
+            message: 'Workflow run session not found'
+        };
+    }
+    const isManualSession = run.session_id.startsWith("manual-");
+    if (isManualSession) {
+        await markWorkflowSessionAborted(run.session_id);
+    } else {
+        await abortOpencodeSession(run.session_id);
+    }
 
-    const run = await prisma.workflow_runs.create({
-        data: {
-            workflow_slug: workflow_slug,
-            ran_by_user_id: req.userId!,
-            status: 'running',
-            started_at: Date.now(),
-            args: args ? JSON.stringify(args) : null
-        }
+    res.json({ success: true });
+}, true));
+
+// POST /api/workflows/:slug/manual-run - Start a workflow run from manual mode UI
+router.post('/:slug/manual-run', apiHandler(async (req, res) => {
+    const slug = req.params.slug as string;
+    const inputsRaw = (req.body as { inputs?: unknown }).inputs ?? {};
+    if (!inputsRaw || typeof inputsRaw !== 'object' || Array.isArray(inputsRaw)) {
+        throw {
+            status: 400,
+            message: 'inputs must be an object'
+        };
+    }
+    const inputs = inputsRaw as Record<string, unknown>;
+    const manualSessionId = `manual-${req.userId!}-${randomUUID()}`;
+    const manualMessageId = `manual-message-${randomUUID()}`;
+    const manualCallId = `manual-call-${randomUUID()}`;
+    const workspaceDir = getWorkspaceDirFromEnv();
+    await assertCurrentUserCanRunWorkflow(slug, req.userId!);
+
+    const startedRun = await startWorkflowRunViaBackend({
+        workspaceDir,
+        slug,
+        inputs,
+        authUserId: req.userId!,
+        sessionId: manualSessionId,
+        messageId: manualMessageId,
+        callId: manualCallId,
+        requirePermissionPrompt: false,
     });
 
-    res.json({ run });
+    void startedRun.completion.catch(() => undefined);
+
+    res.json({
+        run_id: startedRun.runId
+    });
+}, true));
+
+// POST /api/workflows/execute - Execute workflow from runWorkflow tool (backend-owned logic)
+router.post('/execute', apiHandler(async (req, res) => {
+    const body = req.body as {
+        slug?: unknown;
+        inputs?: unknown;
+        message_id?: unknown;
+        call_id?: unknown;
+    };
+    if (typeof body.slug !== 'string' || !body.slug.trim()) {
+        throw {
+            status: 400,
+            message: 'slug is required'
+        };
+    }
+    if (!body.inputs || typeof body.inputs !== 'object' || Array.isArray(body.inputs)) {
+        throw {
+            status: 400,
+            message: 'inputs must be an object'
+        };
+    }
+    if (typeof body.message_id !== 'string' || !body.message_id.trim()) {
+        throw {
+            status: 400,
+            message: 'message_id is required'
+        };
+    }
+    if (typeof body.call_id !== 'string' || !body.call_id.trim()) {
+        throw {
+            status: 400,
+            message: 'call_id is required'
+        };
+    }
+    if (!req.opencode_session_id) {
+        throw {
+            status: 400,
+            message: 'This endpoint requires an opencode session token'
+        };
+    }
+
+    const workspaceDir = getWorkspaceDirFromEnv();
+    await assertCurrentUserCanRunWorkflow(body.slug, req.userId!);
+    const startedRun = await startWorkflowRunViaBackend({
+        workspaceDir,
+        slug: body.slug,
+        inputs: body.inputs as Record<string, unknown>,
+        authUserId: req.userId!,
+        sessionId: req.opencode_session_id,
+        messageId: body.message_id,
+        callId: body.call_id,
+        requirePermissionPrompt: true,
+    });
+
+    const result = await startedRun.completion;
+    const responsePayload = {
+        status: result.status,
+        output: result.output,
+        workflow: body.slug,
+        timeout_seconds: startedRun.timeoutSeconds,
+        run_id: startedRun.runId,
+    };
+
+    if (result.status !== 'success') {
+        throw {
+            status: 500,
+            message: "Workflow execution failed: " + JSON.stringify(responsePayload),
+            doLogging: false,
+            maskErrorMessage: false,
+        };
+    }
+    res.json(responsePayload);
 }, true));
 
 // PATCH /api/workflows/runs/:id - Update run status

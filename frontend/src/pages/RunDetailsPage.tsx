@@ -1,5 +1,6 @@
 import { AxiosError } from 'axios';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { toast } from 'react-toastify';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import type { WorkflowRun } from '../types/workflow';
@@ -45,43 +46,87 @@ export default function RunDetailsPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [run, setRun] = useState<WorkflowRun | null>(null);
+    const [logs, setLogs] = useState<string>('No logs captured.');
+    const [stopping, setStopping] = useState(false);
+    const runStatusRef = useRef<WorkflowRun['status'] | null>(null);
 
     const authHeader = useMemo(() => token ? { Authorization: `Bearer ${token}` } : undefined, [token]);
+
+    useEffect(() => {
+        runStatusRef.current = run?.status ?? null;
+    }, [run]);
 
     useEffect(() => {
         if (!authHeader) return;
         let cancelled = false;
 
-        const fetchRun = async () => {
-            setLoading(true);
-            setError(null);
+        const fetchRunAndLogs = async (showLoading: boolean) => {
+            if (showLoading) {
+                setLoading(true);
+            }
             try {
-                const response = await axiosInstance.get(`/api/workflows/runs/${encodeURIComponent(id)}`, {
-                    headers: authHeader
-                });
+                const [runResponse, logsResponse] = await Promise.all([
+                    axiosInstance.get(`/api/workflows/runs/${encodeURIComponent(id)}`, {
+                        headers: authHeader
+                    }),
+                    axiosInstance.get(`/api/workflows/runs/logs?run_id=${encodeURIComponent(id)}`, {
+                        headers: authHeader
+                    })
+                ]);
 
                 if (!cancelled) {
-                    setRun(response.data.run as WorkflowRun);
+                    const nextRun = runResponse.data.run as WorkflowRun;
+                    setRun(nextRun);
+                    if (logsResponse.data?.found && typeof logsResponse.data.logs === 'string') {
+                        setLogs(logsResponse.data.logs);
+                    } else {
+                        setLogs(nextRun.output || 'No logs captured.');
+                    }
+                    setError(null);
                 }
             } catch (err: unknown) {
                 if (!cancelled) {
                     setError(getErrorMessage(err, 'Failed to load run details'));
                 }
             } finally {
-                if (!cancelled) {
+                if (!cancelled && showLoading) {
                     setLoading(false);
                 }
             }
         };
 
-        void fetchRun();
+        void fetchRunAndLogs(true);
+
+        const intervalId = window.setInterval(() => {
+            if (cancelled) return;
+            if (runStatusRef.current && runStatusRef.current !== 'running') {
+                return;
+            }
+            void fetchRunAndLogs(false);
+        }, 1000);
 
         return () => {
             cancelled = true;
+            window.clearInterval(intervalId);
         };
     }, [authHeader, id]);
 
     if (auth.loading) return null;
+
+    const handleStopRun = async () => {
+        if (!authHeader || !run || run.status !== 'running') return;
+        setStopping(true);
+        try {
+            await axiosInstance.post(`/api/workflows/runs/${encodeURIComponent(id)}/stop`, {}, {
+                headers: authHeader
+            });
+            toast.info('Stop requested');
+        } catch (err: unknown) {
+            toast.error(getErrorMessage(err, 'Failed to stop workflow run'));
+        } finally {
+            setStopping(false);
+        }
+    };
 
     return (
         <div className="run-details-page">
@@ -100,7 +145,21 @@ export default function RunDetailsPage() {
                     <section className="run-details-card">
                         <div className="run-details-title-row">
                             <h2>{run.workflow_slug}</h2>
-                            <span className={`run-details-status status-${run.status}`}>{run.status}</span>
+                            <div className="run-details-title-actions">
+                                {run.status === 'running' && (
+                                    <button
+                                        type="button"
+                                        className="run-details-stop-btn"
+                                        onClick={() => {
+                                            void handleStopRun();
+                                        }}
+                                        disabled={stopping}
+                                    >
+                                        {stopping ? 'Stopping...' : 'Stop'}
+                                    </button>
+                                )}
+                                <span className={`run-details-status status-${run.status}`}>{run.status}</span>
+                            </div>
                         </div>
                         <div className="run-details-grid">
                             <div>
@@ -129,7 +188,7 @@ export default function RunDetailsPage() {
 
                     <section className="run-details-card">
                         <h3>Logs</h3>
-                        <pre>{run.output || 'No logs captured.'}</pre>
+                        <pre>{logs || 'No logs captured.'}</pre>
                     </section>
                 </div>
             )}

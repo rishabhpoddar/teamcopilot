@@ -1,6 +1,4 @@
 import express from "express";
-import fs from "fs/promises";
-import path from "path";
 import prisma from "../prisma/client";
 import { apiHandler } from "../utils/index";
 import {
@@ -21,6 +19,7 @@ import {
 } from "../utils/chat-session";
 import { assertCondition } from "../utils/assert";
 import { sanitizeForClient } from "../utils/redact";
+import { abortOpencodeSession } from "../utils/session-abort";
 
 const router = express.Router({ mergeParams: true });
 
@@ -32,16 +31,6 @@ function getErrorMessage(error: unknown): string {
         return error.message;
     }
     return 'Unknown error';
-}
-
-function sanitizeFilenamePart(value: string): string {
-    return value.replace(/[^a-zA-Z0-9._-]/g, "_");
-}
-
-function isPathInside(childPath: string, parentPath: string): boolean {
-    const parent = path.resolve(parentPath) + path.sep;
-    const child = path.resolve(childPath) + path.sep;
-    return child.startsWith(parent);
 }
 
 function shouldAutoGenerateTitle(title: string | null): boolean {
@@ -292,51 +281,6 @@ router.get('/sessions/:id/messages', apiHandler(async (req, res) => {
         messages: normalizedMessages,
         session_status: sessionStatusType
     });
-}, true));
-
-// GET /api/chat/workflow-runs/:sessionId/:messageId/logs - Get runWorkflow log file
-router.get('/workflow-runs/:sessionId/:messageId/logs', apiHandler(async (req, res) => {
-    const sessionId = req.params.sessionId as string;
-    const messageId = req.params.messageId as string;
-
-    const session = await prisma.chat_sessions.findFirst({
-        where: {
-            opencode_session_id: sessionId,
-            user_id: req.userId!
-        }
-    });
-
-    if (!session) {
-        throw {
-            status: 404,
-            message: 'Session not found'
-        };
-    }
-
-    const workspaceDir = getWorkspaceDir();
-    const workflowRunsDir = path.join(workspaceDir, 'workflow-runs');
-    const filename = `${sanitizeFilenamePart(sessionId)}-${sanitizeFilenamePart(messageId)}.txt`;
-    const logPath = path.join(workflowRunsDir, filename);
-
-    if (!isPathInside(logPath, workflowRunsDir)) {
-        throw {
-            status: 400,
-            message: 'Invalid log path'
-        };
-    }
-
-    try {
-        const logs = await fs.readFile(logPath, 'utf-8');
-        res.json({
-            found: true,
-            logs
-        });
-    } catch {
-        res.json({
-            found: false,
-            logs: null
-        });
-    }
 }, true));
 
 // POST /api/chat/sessions/:id/messages - Send message
@@ -650,43 +594,7 @@ router.post('/sessions/:id/abort', apiHandler(async (req, res) => {
         };
     }
 
-    const pendingQuestion = await getPendingQuestionForSession(session.opencode_session_id);
-    if (pendingQuestion) {
-        const abortAnswer = "User aborted";
-        const answers = pendingQuestion.questions.map(() => [abortAnswer]);
-        await replyToPendingQuestion(pendingQuestion.id, answers);
-    }
-    const pendingPermission = await getPendingPermissionForSession(session.opencode_session_id);
-    if (pendingPermission) {
-        await replyToPendingPermission(session.opencode_session_id, pendingPermission.id, "reject");
-    }
-    await prisma.tool_execution_permissions.updateMany({
-        where: {
-            opencode_session_id: session.opencode_session_id,
-            status: 'pending'
-        },
-        data: {
-            status: 'rejected',
-            responded_at: BigInt(Date.now())
-        }
-    });
-
-    const client = await getOpencodeClient();
-
-    // First send an explicit interrupt command (used by opencode session controls),
-    // then call abort as a secondary stop signal.
-    await client.session.command({
-        path: { id: session.opencode_session_id },
-        body: {
-            command: 'session.interrupt',
-            arguments: ''
-        }
-    });
-
-    const abortResult = await client.session.abort({
-        path: { id: session.opencode_session_id }
-    });
-    assertCondition(!abortResult.error, getErrorMessage(abortResult.error));
+    await abortOpencodeSession(session.opencode_session_id);
 
     res.json({
         success: true
