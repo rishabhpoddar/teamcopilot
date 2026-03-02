@@ -320,17 +320,13 @@ router.post('/runs/:id/stop', apiHandler(async (req, res) => {
         return;
     }
 
-    const isOwner = run.ran_by_user_id === req.userId!;
-    const isEngineer = req.role === "Engineer";
-    if (!isOwner && !isEngineer) {
-        const permission = await getWorkflowRunPermissionWithUsers(run.workflow_slug);
-        const permissionSummary = getPermissionSummaryFields(permission, req.userId!);
-        if (!permissionSummary.can_current_user_run) {
-            throw {
-                status: 403,
-                message: 'You do not have permission to stop this workflow run'
-            };
-        }
+    const permission = await getWorkflowRunPermissionWithUsers(run.workflow_slug);
+    const permissionSummary = getPermissionSummaryFields(permission, req.userId!);
+    if (!permissionSummary.can_current_user_run) {
+        throw {
+            status: 403,
+            message: 'You do not have permission to stop this workflow run'
+        };
     }
 
     const runLogRef = await prisma.workflow_run_log_refs.findUnique({
