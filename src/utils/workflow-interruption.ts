@@ -46,9 +46,3 @@ export async function markWorkflowSessionAborted(sessionId: string): Promise<voi
         }
     });
 }
-
-export async function clearWorkflowSessionAborted(sessionId: string): Promise<void> {
-    await prisma.workflow_aborted_sessions.deleteMany({
-        where: { session_id: sessionId }
-    });
-}
