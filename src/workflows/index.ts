@@ -378,28 +378,7 @@ router.post('/runs', apiHandler(async (req, res) => {
         };
     }
 
-    await readWorkflowManifestAndEnsurePermissions(workflow_slug);
-
-    const approvalState = await getWorkflowSnapshotApprovalState(workflow_slug);
-    if (!approvalState.is_current_code_approved) {
-        throw {
-            status: 403,
-            message: 'Workflow is not approved for the current code version'
-        };
-    }
-
-    const permission = await getWorkflowRunPermissionWithUsers(workflow_slug);
-    const permissionSummary = getPermissionSummaryFields(permission, req.userId!);
-    if (!permissionSummary.can_current_user_run) {
-        throw {
-            status: 403,
-            message: permissionSummary.is_run_locked_due_to_missing_users
-                ? 'Workflow cannot be run because no allowed users remain'
-                : 'You do not have permission to run this workflow. Please contact the workflow owner to request permission.'
-        };
-    }
-
-    await ensureWorkflowMatchesApprovedSnapshotForRun(workflow_slug);
+    await assertCurrentUserCanRunWorkflow(workflow_slug, req.userId!);
 
     const run = await prisma.$transaction(async (tx) => {
         const createdRun = await tx.workflow_runs.create({
