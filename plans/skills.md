@@ -104,6 +104,9 @@
       - create skill
       - manage approval state
       - manage allowlist permissions
+      - when viewing/editing a skill, use the same code view + project explorer UI used for workflow view/edit
+      - apply the same masking rules as workflows
+      - apply the same snapshot hash calculation rules as workflows
   4. Networking rules follow repo conventions:
       - GET errors inline (setError)
       - non-GET errors via toast
