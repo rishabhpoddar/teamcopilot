@@ -77,16 +77,24 @@
    - Snapshot diff/state/restore flows now ignore `data/` paths consistently.
    - Newly stored approved snapshots do not write `data/` directory contents into snapshot rows.
 
+13. Plugin tool integration (partially complete)
+   - Added workspace plugin tool `listAvailableSkills` in `src/workspace_files/.opencode/plugins/listAvailableSkills.ts`.
+     - Returns only skills where user has edit access and current code is approved.
+   - Added workspace plugin tool `createSkill` in `src/workspace_files/.opencode/plugins/createSkill.ts`.
+     - Accepts slug, description, and markdown content.
+     - Creates skill via backend (`POST /api/skills`) and writes `SKILL.md` via files API.
+     - Includes explicit user permission prompt flow (same request/poll model as `createWorkflow`).
+   - Added workspace plugin tool `findSkill` in `src/workspace_files/.opencode/plugins/findSkill.ts`.
+     - Searches only skills the user can edit and that are approved.
+     - Uses semantic similarity over both skill description and `SKILL.md` body content.
+   - Added workspace plugin tool `getSkillContent` in `src/workspace_files/.opencode/plugins/getSkillContent.ts`.
+     - Returns `SKILL.md` by slug only when user has access and the skill is approved.
+
 ### Pending
 
-1. Plugin + agent integration (not started)
-   - Add workspace plugin tool `listAvailableSkills`. This will list all skills available for this user (they should have the permission to edit the skills) + the skills have to be approved.
-   - Add/create and find skills tools for agent flow (`createSkill`, `findSkill`).
-      - Create skill should take as params the slug, the description and the contents of the markdown file. It should then do all the steps necessary to create the skill directory and update the database.
-      - findSkills should work in a very similar way to findWorkflow, except that it should only search across skills that the user has the permission to edit and that are approved. It will search based on the description of the skill or based on the actual body of the markdown file.
+1. Plugin + agent integration (remaining)
    - Inject available skills in session-start context.
    - Update workspace `AGENTS.md` in the workspace_files directory with instructions about custom skills and the tools. Also mention in it that the agent should always try and find a skill to use to fulfill the user's request.
-   - Need to ask for permission for create skill tool.
 
 2. API surface cleanup (optional)
    - Consider extracting shared permission API handlers/utilities to remove remaining workflow/skill endpoint duplication.
@@ -95,7 +103,7 @@
 ### Notes from latest audit
 
 1. `Review & Approve` now works for both workflows and skills via the same approval-review UI implementation.
-2. Current implementation reuses editor, card, and approval-review UI heavily; major remaining gaps are plugin/agent integration.
+2. Current implementation reuses editor, card, and approval-review UI heavily; remaining gap is agent-context/instruction integration for the new skill tools.
 3. Permission storage/mode typing and snapshot approval storage are shared between workflows and skills.
 4. `data/` directories are intentionally excluded from approval snapshot storage and diffs.
 5. Access model note: pending resource edit access intentionally allows Engineers and users who already have resource-use permission.
