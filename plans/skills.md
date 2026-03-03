@@ -92,11 +92,7 @@
 
 ### Pending
 
-1. Plugin + agent integration (remaining)
-   - Inject available skills in session-start context.
-   - Update workspace `AGENTS.md` in the workspace_files directory with instructions about custom skills and the tools. Also mention in it that the agent should always try and find a skill to use to fulfill the user's request.
-
-2. API surface cleanup (optional)
+1. API surface cleanup (optional)
    - Consider extracting shared permission API handlers/utilities to remove remaining workflow/skill endpoint duplication.
    - Keep current canonical route naming (`/:slug/permissions`) consistent everywhere.
 
