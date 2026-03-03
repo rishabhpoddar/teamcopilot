@@ -2,7 +2,7 @@
 
   ### Summary
 
-  Build a LocalTool-managed skills system under workspace_dir/custom-skills with workflow-like governance:
+  Build a LocalTool-managed skills system under workspace_dir/.custom-skills with workflow-like governance:
 
   1. Skills are files/folders managed by LocalTool (not OpenCode’s native .opencode/skills loader).
   2. Access uses per-skill allowlist.
@@ -17,7 +17,7 @@
       - GET /api/skills
           - Returns all skills user can view in dashboard, with approval + permission summary fields.
       - POST /api/skills
-          - Creates custom-skills/<slug>/SKILL.md (pending approval by default).
+          - Creates .custom-skills/<slug>/SKILL.md (pending approval by default).
       - GET /api/skills/:slug
       - PATCH /api/skills/:slug
       - DELETE /api/skills/:slug (ownership/Engineer policy aligned with workflows)
@@ -60,8 +60,8 @@
 
   ### Filesystem Contract
 
-  1. Root: <workspace>/custom-skills/
-  2. Each skill: <workspace>/custom-skills/<slug>/
+  1. Root: <workspace>/.custom-skills/
+  2. Each skill: <workspace>/.custom-skills/<slug>/
   3. Required file: SKILL.md (frontmatter includes name, description)
   4. Optional supporting files allowed inside skill folder for future use.
 
@@ -89,7 +89,7 @@
       - On every new session start, inject the full list of available skills for the current user into context by default.
   5. Update src/workspace_files/AGENTS.md:
       - Add rule: before any “use a skill” action, call listAvailableSkills.
-      - If a skill is selected, read its SKILL.md from custom-skills/<slug>/SKILL.md.
+      - If a skill is selected, read its SKILL.md from .custom-skills/<slug>/SKILL.md.
       - Do not use OpenCode native skill tool for LocalTool custom skills.
       - Security constraint: the agent must never discover/search skills via bash/filesystem scanning; skill discovery must only use listAvailableSkills or findSkill.
 
@@ -115,7 +115,7 @@
   ### Migration / Initialization
 
   1. Add Prisma migration for new skill tables.
-  2. Ensure workspace init creates custom-skills/ directory.
+  2. Ensure workspace init creates .custom-skills/ directory.
   ### Test Scenarios
   1. Creation:
       - create skill => pending, creator in allowlist.
@@ -138,5 +138,5 @@
 
   1. Access model is per-skill allowlist (no “everyone” in MVP unless needed for parity).
   2. Approval lifecycle matches workflows.
-  3. Custom skills live only in workspace_dir/custom-skills.
+  3. Custom skills live only in workspace_dir/.custom-skills.
   4. Agent uses LocalTool custom tool + file reads, not OpenCode native skill index.

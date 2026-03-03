@@ -3,10 +3,11 @@ import { useAuth } from '../lib/auth.tsx';
 import WorkflowsSection from '../components/dashboard/WorkflowsSection';
 import RunHistorySection from '../components/dashboard/RunHistorySection';
 import AIModeSection from '../components/dashboard/AIModeSection';
+import SkillsSection from '../components/dashboard/SkillsSection';
 import './Home.css';
 
-type Tab = 'workflows' | 'history' | 'ai';
-const validTabs: Tab[] = ['ai', 'workflows', 'history'];
+type Tab = 'workflows' | 'history' | 'ai' | 'skills';
+const validTabs: Tab[] = ['ai', 'workflows', 'skills', 'history'];
 
 export default function Home() {
     const auth = useAuth();
@@ -49,6 +50,8 @@ export default function Home() {
                 return <WorkflowsSection onRunWorkflow={handleRunWorkflow} />;
             case 'history':
                 return <RunHistorySection />;
+            case 'skills':
+                return <SkillsSection />;
             case 'ai':
                 return (
                     <AIModeSection
@@ -82,6 +85,12 @@ export default function Home() {
                     onClick={() => setActiveTab('workflows')}
                 >
                     Browse workflows
+                </button>
+                <button
+                    className={`tab-btn ${activeTab === 'skills' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('skills')}
+                >
+                    Browse skills
                 </button>
                 <button
                     className={`tab-btn ${activeTab === 'history' ? 'active' : ''}`}

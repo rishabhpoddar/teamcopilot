@@ -22,6 +22,9 @@ model users {
   workflowRunPermissionUsers workflow_run_permission_users[]
   createdWorkflowMetadata    workflow_metadata[]             @relation("WorkflowCreatedBy")
   approvedWorkflowMetadata   workflow_metadata[]             @relation("WorkflowApprovedBy")
+  skillAccessPermissionUsers skill_access_permission_users[]
+  createdSkillMetadata       skill_metadata[]                @relation("SkillCreatedBy")
+  approvedSkillMetadata      skill_metadata[]                @relation("SkillApprovedBy")
 }
 
 model workflow_runs {
@@ -125,4 +128,56 @@ model workflow_approved_snapshot_files {
 
   @@unique([workflow_slug, relative_path])
   @@index([workflow_slug])
+}
+
+model skill_access_permission_users {
+  id         String         @id @default(uuid())
+  skill_slug String
+  user_id    String
+  created_at BigInt
+  permission skill_metadata @relation(fields: [skill_slug], references: [skill_slug], onDelete: Cascade)
+  user       users          @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([skill_slug, user_id])
+  @@index([skill_slug])
+}
+
+model skill_metadata {
+  skill_slug              String                          @id
+  created_by_user_id      String?
+  approved_by_user_id     String?
+  access_permission_mode  String // "restricted"
+  created_at              BigInt
+  updated_at              BigInt
+  allowedUsers            skill_access_permission_users[]
+  approvedSnapshot        skill_approved_snapshots?
+  createdByUser           users?                          @relation("SkillCreatedBy", fields: [created_by_user_id], references: [id], onDelete: SetNull)
+  approvedByUser          users?                          @relation("SkillApprovedBy", fields: [approved_by_user_id], references: [id], onDelete: SetNull)
+
+  @@index([created_by_user_id])
+  @@index([approved_by_user_id])
+}
+
+model skill_approved_snapshots {
+  skill_slug String                        @id
+  file_count Int
+  created_at BigInt
+  updated_at BigInt
+  skill      skill_metadata                @relation(fields: [skill_slug], references: [skill_slug], onDelete: Cascade)
+  files      skill_approved_snapshot_files[]
+}
+
+model skill_approved_snapshot_files {
+  id             String                   @id @default(uuid())
+  skill_slug     String
+  relative_path  String
+  content_kind   String // "text" | "binary"
+  text_content   String?
+  binary_content Bytes?
+  size_bytes     Int
+  content_sha256 String
+  snapshot       skill_approved_snapshots @relation(fields: [skill_slug], references: [skill_slug], onDelete: Cascade)
+
+  @@unique([skill_slug, relative_path])
+  @@index([skill_slug])
 }

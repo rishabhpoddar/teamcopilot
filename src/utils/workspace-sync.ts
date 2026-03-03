@@ -142,6 +142,7 @@ export function initializeWorkspaceDirectory(): void {
 
     syncTemplateDirectory(workspaceTemplateDir, workspaceDir, "", []);
     fs.mkdirSync(path.join(workspaceDir, "workflows"), { recursive: true });
+    fs.mkdirSync(path.join(workspaceDir, ".custom-skills"), { recursive: true });
 }
 
 export async function ensureWorkspaceDatabase(): Promise<void> {
