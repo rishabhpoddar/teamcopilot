@@ -66,7 +66,6 @@ export default function SkillsSection() {
         setCreatingSkill(true);
         try {
             await axiosInstance.post('/api/skills', {
-                slug: newSkillNameOrSlug.trim(),
                 name: newSkillNameOrSlug.trim(),
             }, {
                 headers: { Authorization: `Bearer ${token}` }

@@ -17,7 +17,6 @@ export interface SkillMetadata {
 
 export interface CreateSkillInput {
     slug: string;
-    name: string;
     createdByUserId: string;
 }
 
@@ -112,7 +111,7 @@ function toSkillFrontmatterValue(value: string): string {
 
 export async function createSkill(input: CreateSkillInput): Promise<void> {
     const slug = input.slug.trim();
-    const name = input.name.trim();
+    const name = input.slug.trim();
 
     assertSkillSlug(slug);
     if (!name) {
@@ -228,4 +227,13 @@ export async function getOrCreateSkillMetadataAndEnsurePermission(slug: string):
         created_by_user_id: created.created_by_user_id,
         approved_by_user_id: created.approved_by_user_id,
     };
+}
+
+export async function readSkillManifestAndEnsurePermissions(slug: string): Promise<{
+    manifest: SkillManifest;
+    metadata: SkillMetadata;
+}> {
+    const manifest = readSkillManifest(slug);
+    const metadata = await getOrCreateSkillMetadataAndEnsurePermission(slug);
+    return { manifest, metadata };
 }

@@ -607,21 +607,6 @@ router.delete('/:slug', apiHandler(async (req, res) => {
     res.json({ success: true });
 }, true));
 
-// GET /api/workflows/users - List users for permission picker
-router.get('/users', apiHandler(async (_req, res) => {
-    const users = await prisma.users.findMany({
-        orderBy: { name: 'asc' },
-        select: {
-            id: true,
-            name: true,
-            email: true,
-            role: true
-        }
-    });
-
-    res.json({ users });
-}, true));
-
 // GET /api/workflows/:slug/approval-diff - Preview current code diff vs approved snapshot
 router.get('/:slug/approval-diff', apiHandler(async (req, res) => {
     const slug = req.params.slug as string;

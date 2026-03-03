@@ -15,6 +15,7 @@ import authRouter from "./auth";
 import workflowsRouter from "./workflows";
 import chatRouter from "./chat";
 import skillsRouter from "./skills";
+import usersRouter from "./users";
 import { startCronJobs } from "./cronjob";
 import { startOpencodeServer, stopOpencodeServer } from "./opencode-server";
 import path from 'path';
@@ -106,6 +107,7 @@ apiRouter.get("/", (req, res) => {
 apiRouter.use('/workflows', workflowsRouter);
 apiRouter.use('/chat', chatRouter);
 apiRouter.use('/skills', skillsRouter);
+apiRouter.use('/users', usersRouter);
 
 app.use('/api', apiRouter);
 

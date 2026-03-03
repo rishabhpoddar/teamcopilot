@@ -80,7 +80,7 @@ export default function UnifiedCard({
     const resourceLabel = kind === 'workflow' ? 'workflow' : 'skill';
     const resourceLabelTitle = kind === 'workflow' ? 'Workflow' : 'Skill';
     const detailUrl = `/api/${kind === 'workflow' ? 'workflows' : 'skills'}/${slug}`;
-    const usersUrl = `/api/${kind === 'workflow' ? 'workflows' : 'skills'}/users`;
+    const usersUrl = '/api/users';
     const updatePermissionsUrl = `/api/${kind === 'workflow' ? 'workflows' : 'skills'}/${slug}/permissions`;
 
     const loadPermissionsEditorData = async () => {

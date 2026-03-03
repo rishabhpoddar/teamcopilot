@@ -1,5 +1,5 @@
-import WorkflowEditorPage from './WorkflowEditorPage';
+import EditorPage from './EditorPage';
 
 export default function SkillEditorPage() {
-    return <WorkflowEditorPage entity="skill" />;
+    return <EditorPage entity="skill" />;
 }

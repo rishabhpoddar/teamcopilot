@@ -6,7 +6,7 @@ import multer from "multer";
 import prisma from "../prisma/client";
 import { SkillSummary } from "../types/skill";
 import { apiHandler } from "../utils";
-import { createSkill, deleteSkillDirectory, getOrCreateSkillMetadataAndEnsurePermission, listSkillSlugs, readSkillManifest } from "../utils/skill";
+import { createSkill, deleteSkillDirectory, getOrCreateSkillMetadataAndEnsurePermission, listSkillSlugs, readSkillManifestAndEnsurePermissions } from "../utils/skill";
 import {
     getSkillAccessPermissionWithUsers,
     getSkillPermissionSummaryFields,
@@ -24,6 +24,7 @@ import {
 } from "../utils/skill-files";
 import { WorkflowEditorAccessResponse } from "../types/workflow-files";
 import { registerResourceFileRoutes } from "../utils/resource-file-routes";
+import { getSkillSnapshotApprovalState } from "../utils/skill-approval-snapshot";
 
 const router = express.Router({ mergeParams: true });
 const uploadTmpDir = path.join(os.tmpdir(), "localtool-skill-uploads");
@@ -40,19 +41,11 @@ function normalizeSkillNameOrSlug(value: string): string {
 }
 
 async function getSkillEditorAccess(slug: string, userId: string, role: string | undefined): Promise<WorkflowEditorAccessResponse> {
-    const metadata = await getOrCreateSkillMetadataAndEnsurePermission(slug);
+    const { metadata } = await readSkillManifestAndEnsurePermissions(slug);
     const permission = await getSkillAccessPermissionWithUsers(slug);
     const permissionSummary = getSkillPermissionSummaryFields(permission, userId);
-    const hasApprovedSnapshot = await prisma.resource_approved_snapshots.findUnique({
-        where: {
-            resource_kind_resource_slug: {
-                resource_kind: "skill",
-                resource_slug: slug
-            }
-        },
-        select: { resource_slug: true }
-    });
-    const skillStatus = hasApprovedSnapshot ? "approved" : "pending";
+    const approvalState = await getSkillSnapshotApprovalState(slug);
+    const skillStatus = approvalState.is_current_code_approved ? "approved" : "pending";
     const isEngineer = role === "Engineer";
     const isOwner = metadata.created_by_user_id === userId;
     const canEdit = skillStatus === "approved"
@@ -78,14 +71,11 @@ async function assertCanEditSkillFiles(slug: string, userId: string, role: strin
 
 router.post("/", apiHandler(async (req, res) => {
     const body = req.body as {
-        slug?: unknown;
         name?: unknown;
     };
-    const rawSlug = typeof body.slug === "string" ? body.slug : "";
     const rawName = typeof body.name === "string" ? body.name : "";
-    const normalizedSlug = normalizeSkillNameOrSlug(rawSlug);
     const normalizedName = normalizeSkillNameOrSlug(rawName);
-    const unifiedName = normalizedName || normalizedSlug;
+    const unifiedName = normalizedName;
 
     if (!unifiedName) {
         throw {
@@ -96,7 +86,6 @@ router.post("/", apiHandler(async (req, res) => {
 
     await createSkill({
         slug: unifiedName,
-        name: unifiedName,
         createdByUserId: req.userId!,
     });
 
@@ -134,21 +123,13 @@ router.get("/", apiHandler(async (req, res) => {
     const creatorEmailById = new Map(creators.map((creator) => [creator.id, creator.email]));
 
     for (const slug of slugs) {
-        const manifest = readSkillManifest(slug);
         const metadata = metadataBySlug.get(slug);
         if (!metadata) continue;
+        const { manifest } = await readSkillManifestAndEnsurePermissions(slug);
         const permission = await getSkillAccessPermissionWithUsers(slug);
         const permissionSummary = getSkillPermissionSummaryFields(permission, req.userId!);
-        const hasApprovedSnapshot = await prisma.resource_approved_snapshots.findUnique({
-            where: {
-                resource_kind_resource_slug: {
-                    resource_kind: "skill",
-                    resource_slug: slug
-                }
-            },
-            select: { resource_slug: true }
-        });
-        const isApproved = Boolean(hasApprovedSnapshot);
+        const approvalState = await getSkillSnapshotApprovalState(slug);
+        const isApproved = approvalState.is_current_code_approved;
         const canListSkill = isApproved
             ? permissionSummary.can_current_user_use
             : (permissionSummary.can_current_user_use || isEngineer);
@@ -172,23 +153,9 @@ router.get("/", apiHandler(async (req, res) => {
     res.json({ skills });
 }, true));
 
-router.get("/users", apiHandler(async (_req, res) => {
-    const users = await prisma.users.findMany({
-        orderBy: { name: "asc" },
-        select: {
-            id: true,
-            name: true,
-            email: true,
-            role: true
-        }
-    });
-    res.json({ users });
-}, true));
-
 router.get("/:slug", apiHandler(async (req, res) => {
     const slug = req.params.slug as string;
-    const metadata = await getOrCreateSkillMetadataAndEnsurePermission(slug);
-    const manifest = readSkillManifest(slug);
+    const { metadata, manifest } = await readSkillManifestAndEnsurePermissions(slug);
 
     const createdByUserId = metadata.created_by_user_id ?? null;
     const approvedByUserId = metadata.approved_by_user_id ?? null;
@@ -236,7 +203,7 @@ registerResourceFileRoutes({
     router,
     uploadMiddleware: skillFileUpload.single("file"),
     ensureResourceExists: async (slug: string) => {
-        await getOrCreateSkillMetadataAndEnsurePermission(slug);
+        await readSkillManifestAndEnsurePermissions(slug);
     },
     getEditorAccess: getSkillEditorAccess,
     assertCanEdit: assertCanEditSkillFiles,
@@ -252,16 +219,8 @@ registerResourceFileRoutes({
 const updateSkillPermissionsHandler = apiHandler(async (req, res) => {
     const slug = req.params.slug as string;
     const metadata = await getOrCreateSkillMetadataAndEnsurePermission(slug);
-    const hasApprovedSnapshot = await prisma.resource_approved_snapshots.findUnique({
-        where: {
-            resource_kind_resource_slug: {
-                resource_kind: "skill",
-                resource_slug: slug
-            }
-        },
-        select: { resource_slug: true }
-    });
-    if (!hasApprovedSnapshot) {
+    const approvalState = await getSkillSnapshotApprovalState(slug);
+    if (!approvalState.is_current_code_approved) {
         throw {
             status: 403,
             message: "Skill must be approved before updating access permissions"

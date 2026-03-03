@@ -75,8 +75,7 @@ export async function readWorkflowManifestAndEnsurePermissions(slug: string): Pr
 
 /** Set workflow creator in database metadata */
 export async function setWorkflowCreator(slug: string, userId: string): Promise<WorkflowMetadata> {
-    readWorkflowManifest(slug);
-    const existing = await getOrCreateWorkflowMetadataAndEnsurePermission(slug);
+    const { metadata: existing } = await readWorkflowManifestAndEnsurePermissions(slug);
     if (existing.created_by_user_id) {
         assertCondition(existing.created_by_user_id === userId, "Workflow creator mismatch");
         return existing;
@@ -126,7 +125,6 @@ export function listWorkflowSlugs(): string[] {
 }
 
 async function getOrCreateWorkflowMetadataAndEnsurePermission(slug: string): Promise<WorkflowMetadata> {
-    readWorkflowManifest(slug);
     const existing = await prisma.resource_metadata.findUnique({
         where: {
             resource_kind_resource_slug: {
