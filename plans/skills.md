@@ -80,11 +80,12 @@
 ### Pending
 
 1. Plugin + agent integration (not started)
-   - Add `GET /api/skills/available` (session token auth).
-   - Add workspace plugin tool `listAvailableSkills`.
-   - Add/create parity tools for agent flow (`createSkill`, `findSkill`) if still required.
+   - Add workspace plugin tool `listAvailableSkills`. This will list all skills available for this user (they should have the permission to edit the skills) + the skills have to be approved.
+   - Add/create and find skills tools for agent flow (`createSkill`, `findSkill`).
+      - Create skill should take as params the slug, the description and the contents of the markdown file. It should then do all the steps necessary to create the skill directory and update the database.
+      - findSkills should work in a very similar way to findWorkflow, except that it should only search across skills that the user has the permission to edit and that are approved. It will search based on the description of the skill or based on the actual body of the markdown file.
    - Inject available skills in session-start context.
-   - Update workspace `AGENTS.md` with custom-skill discovery rules.
+   - Update workspace `AGENTS.md` in the workspace_files directory with instructions about custom skills and the tools. Also mention in it that the agent should always try and find a skill to use to fulfill the user's request.
 
 2. API surface cleanup (optional)
    - Consider extracting shared permission API handlers/utilities to remove remaining workflow/skill endpoint duplication.
