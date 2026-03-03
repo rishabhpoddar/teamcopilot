@@ -35,7 +35,6 @@ import {
     approveWorkflowWithSnapshot,
     buildApprovalDiffResponse,
     collectCurrentWorkflowSnapshot,
-    ensureWorkflowMatchesApprovedSnapshotForRun,
     getWorkflowSnapshotApprovalState,
     loadApprovedSnapshotFromDb,
     restoreWorkflowToApprovedSnapshot,
@@ -95,8 +94,6 @@ async function assertCurrentUserCanRunWorkflow(slug: string, userId: string): Pr
                 : 'You do not have permission to run this workflow. Please contact the workflow owner to request permission.'
         };
     }
-
-    await ensureWorkflowMatchesApprovedSnapshotForRun(slug);
 }
 
 async function getWorkflowEditorAccess(slug: string, userId: string): Promise<WorkflowEditorAccessResponse> {
