@@ -45,6 +45,7 @@ import { getWorkspaceDirFromEnv } from "../utils/workspace-sync";
 import { startWorkflowRunViaBackend } from "../utils/workflow-runner";
 import { isWorkflowSessionInterrupted, markWorkflowSessionAborted } from "../utils/workflow-interruption";
 import { abortOpencodeSession } from "../utils/session-abort";
+import { registerResourceFileRoutes } from "../utils/resource-file-routes";
 
 const router = express.Router({ mergeParams: true });
 
@@ -588,8 +589,11 @@ router.delete('/:slug', apiHandler(async (req, res) => {
     await prisma.workflow_runs.deleteMany({
         where: { workflow_slug: slug }
     });
-    await prisma.workflow_metadata.deleteMany({
-        where: { workflow_slug: slug }
+    await prisma.resource_metadata.deleteMany({
+        where: {
+            resource_kind: "workflow",
+            resource_slug: slug
+        }
     });
     await prisma.resource_permissions.deleteMany({
         where: {
@@ -637,124 +641,22 @@ router.get('/:slug/approval-diff', apiHandler(async (req, res) => {
     res.json(diff);
 }, true));
 
-// GET /api/workflows/:slug/files/access - Get workflow editor access capabilities
-router.get('/:slug/files/access', apiHandler(async (req, res) => {
-    const slug = req.params.slug as string;
-    const access = await getWorkflowEditorAccess(slug, req.userId!, req.role);
-    res.json(access);
-}, true));
-
-// GET /api/workflows/:slug/files/tree - List a workflow directory (lazy)
-router.get('/:slug/files/tree', apiHandler(async (req, res) => {
-    const slug = req.params.slug as string;
-    await readWorkflowManifestAndEnsurePermissions(slug);
-    const rawPath = typeof req.query.path === "string" ? req.query.path : undefined;
-    const tree = listWorkflowDirectory(slug, rawPath);
-    res.json(tree);
-}, true));
-
-// GET /api/workflows/:slug/files/content - Read a workflow file
-router.get('/:slug/files/content', apiHandler(async (req, res) => {
-    const slug = req.params.slug as string;
-    await readWorkflowManifestAndEnsurePermissions(slug);
-    const rawPath = typeof req.query.path === "string" ? req.query.path : undefined;
-    const content = readWorkflowFileContent(slug, rawPath);
-    (res.locals as { skipResponseSanitization?: boolean }).skipResponseSanitization = true;
-    res.json(content);
-}, true));
-
-// PUT /api/workflows/:slug/files/content - Save a workflow file
-router.put('/:slug/files/content', apiHandler(async (req, res) => {
-    const slug = req.params.slug as string;
-    await assertCanEditWorkflowFiles(slug, req.userId!, req.role);
-    const { path, content, base_etag } = req.body as {
-        path?: unknown;
-        content?: unknown;
-        base_etag?: unknown;
-    };
-    if (typeof path !== "string" || typeof content !== "string" || typeof base_etag !== "string") {
-        throw {
-            status: 400,
-            message: "path, content, and base_etag are required"
-        };
-    }
-    const result = saveWorkflowFileContent(slug, {
-        path,
-        content,
-        base_etag,
-    });
-    res.json(result);
-}, true));
-
-// POST /api/workflows/:slug/files - Create a file or folder
-router.post('/:slug/files', apiHandler(async (req, res) => {
-    const slug = req.params.slug as string;
-    await assertCanEditWorkflowFiles(slug, req.userId!, req.role);
-    const { parent_path, name, kind } = req.body as { parent_path?: unknown; name?: unknown; kind?: unknown };
-    if (typeof name !== "string" || (kind !== "file" && kind !== "directory")) {
-        throw {
-            status: 400,
-            message: 'name and kind ("file" or "directory") are required'
-        };
-    }
-    const node = createWorkflowFileOrFolder(slug, typeof parent_path === "string" ? parent_path : "", name, kind);
-    res.json({ node });
-}, true));
-
-// POST /api/workflows/:slug/files/upload - Upload a file to a workflow folder
-router.post('/:slug/files/upload', workflowFileUpload.single("file"), apiHandler(async (req, res) => {
-    const slug = req.params.slug as string;
-    await assertCanEditWorkflowFiles(slug, req.userId!, req.role);
-    const { parent_path, name } = req.body as {
-        parent_path?: unknown;
-        name?: unknown;
-    };
-    if (typeof name !== "string") {
-        throw {
-            status: 400,
-            message: "name is required"
-        };
-    }
-    if (!req.file?.path) {
-        throw {
-            status: 400,
-            message: "file is required"
-        };
-    }
-
-    try {
-        const node = uploadWorkflowFileFromTempPath(slug, typeof parent_path === "string" ? parent_path : "", name, req.file.path);
-        res.json({ node });
-    } finally {
-        if (fs.existsSync(req.file.path)) {
-            fs.unlinkSync(req.file.path);
-        }
-    }
-}, true));
-
-// PATCH /api/workflows/:slug/files/rename - Rename a file or folder
-router.patch('/:slug/files/rename', apiHandler(async (req, res) => {
-    const slug = req.params.slug as string;
-    await assertCanEditWorkflowFiles(slug, req.userId!, req.role);
-    const { path, new_name } = req.body as { path?: unknown; new_name?: unknown };
-    if (typeof path !== "string" || typeof new_name !== "string") {
-        throw {
-            status: 400,
-            message: "path and new_name are required"
-        };
-    }
-    const result = renameWorkflowPath(slug, path, new_name);
-    res.json(result);
-}, true));
-
-// DELETE /api/workflows/:slug/files - Delete a file or folder
-router.delete('/:slug/files', apiHandler(async (req, res) => {
-    const slug = req.params.slug as string;
-    await assertCanEditWorkflowFiles(slug, req.userId!, req.role);
-    const rawPath = typeof req.query.path === "string" ? req.query.path : undefined;
-    deleteWorkflowPath(slug, rawPath);
-    res.json({ success: true });
-}, true));
+registerResourceFileRoutes({
+    router,
+    uploadMiddleware: workflowFileUpload.single("file"),
+    ensureResourceExists: async (slug: string) => {
+        await readWorkflowManifestAndEnsurePermissions(slug);
+    },
+    getEditorAccess: getWorkflowEditorAccess,
+    assertCanEdit: assertCanEditWorkflowFiles,
+    listDirectory: listWorkflowDirectory,
+    readFileContent: readWorkflowFileContent,
+    saveFileContent: saveWorkflowFileContent,
+    createFileOrFolder: createWorkflowFileOrFolder,
+    uploadFileFromTempPath: uploadWorkflowFileFromTempPath,
+    renamePath: renameWorkflowPath,
+    deletePath: deleteWorkflowPath,
+});
 
 // GET /api/workflows/:slug - Get workflow details from filesystem
 router.get('/:slug', apiHandler(async (req, res) => {

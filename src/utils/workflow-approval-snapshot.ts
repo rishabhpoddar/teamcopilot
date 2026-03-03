@@ -262,26 +262,40 @@ async function writeApprovedSnapshotInTx(
     snapshot: WorkflowSnapshot,
     now: bigint
 ): Promise<void> {
-    const existingSnapshot = await tx.workflow_approved_snapshots.findUnique({
-        where: { workflow_slug: slug },
-        select: { workflow_slug: true }
+    const existingSnapshot = await tx.resource_approved_snapshots.findUnique({
+        where: {
+            resource_kind_resource_slug: {
+                resource_kind: "workflow",
+                resource_slug: slug
+            }
+        },
+        select: { resource_slug: true }
     });
 
     if (existingSnapshot) {
-        await tx.workflow_approved_snapshot_files.deleteMany({
-            where: { workflow_slug: slug }
+        await tx.resource_approved_snapshot_files.deleteMany({
+            where: {
+                resource_kind: "workflow",
+                resource_slug: slug
+            }
         });
-        await tx.workflow_approved_snapshots.update({
-            where: { workflow_slug: slug },
+        await tx.resource_approved_snapshots.update({
+            where: {
+                resource_kind_resource_slug: {
+                    resource_kind: "workflow",
+                    resource_slug: slug
+                }
+            },
             data: {
                 file_count: snapshot.file_count,
                 updated_at: now,
             }
         });
     } else {
-        await tx.workflow_approved_snapshots.create({
+        await tx.resource_approved_snapshots.create({
             data: {
-                workflow_slug: slug,
+                resource_kind: "workflow",
+                resource_slug: slug,
                 file_count: snapshot.file_count,
                 created_at: now,
                 updated_at: now,
@@ -290,9 +304,10 @@ async function writeApprovedSnapshotInTx(
     }
 
     if (snapshot.files.length > 0) {
-        await tx.workflow_approved_snapshot_files.createMany({
+        await tx.resource_approved_snapshot_files.createMany({
             data: snapshot.files.map((file) => ({
-                workflow_slug: slug,
+                resource_kind: "workflow",
+                resource_slug: slug,
                 relative_path: file.relative_path,
                 content_kind: file.content_kind,
                 text_content: file.text_content,
@@ -305,8 +320,13 @@ async function writeApprovedSnapshotInTx(
 }
 
 export async function loadApprovedSnapshotFromDb(slug: string): Promise<WorkflowSnapshot | null> {
-    const row = await prisma.workflow_approved_snapshots.findUnique({
-        where: { workflow_slug: slug },
+    const row = await prisma.resource_approved_snapshots.findUnique({
+        where: {
+            resource_kind_resource_slug: {
+                resource_kind: "workflow",
+                resource_slug: slug
+            }
+        },
         include: { files: true }
     });
     if (!row) {
@@ -360,8 +380,13 @@ export async function approveWorkflowWithSnapshot(slug: string, userId: string):
         const nowBigInt = BigInt(now);
         await writeApprovedSnapshotInTx(tx, slug, snapshot, nowBigInt);
 
-        await tx.workflow_metadata.update({
-            where: { workflow_slug: slug },
+        await tx.resource_metadata.update({
+            where: {
+                resource_kind_resource_slug: {
+                    resource_kind: "workflow",
+                    resource_slug: slug
+                }
+            },
             data: {
                 approved_by_user_id: userId,
                 updated_at: nowBigInt,
