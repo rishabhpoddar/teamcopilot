@@ -87,6 +87,6 @@
 
 ### Notes from latest audit
 
-1. `Review & Approve` for skills points to `/skills/:slug/approval-review`, but that page/flow is not implemented yet.
-2. Current implementation reuses editor and card UI heavily; parity gaps are mainly in approval-diff/approve/reject lifecycle and plugin integration.
-3. Permission storage and permission mode typing are now shared between workflows and skills.
+1. `Review & Approve` now works for both workflows and skills via the same approval-review UI implementation.
+2. Current implementation reuses editor, card, and approval-review UI heavily; major remaining gaps are plugin/agent integration.
+3. Permission storage/mode typing and snapshot approval storage are shared between workflows and skills.

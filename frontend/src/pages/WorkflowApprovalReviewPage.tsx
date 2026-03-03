@@ -104,7 +104,7 @@ export default function WorkflowApprovalReviewPage({ entity = 'workflow' }: { en
                     <p className="approval-review-eyebrow">Approval Review</p>
                     <h1 className="approval-review-title">{slug}</h1>
                     <p className="approval-review-subtitle">
-                        Review {entityLabelLower} code changes against the last approved snapshot before approving.
+                        Review {entityLabelLower} changes against the last approved snapshot before approving.
                     </p>
                 </div>
                 <div className="approval-review-actions">
