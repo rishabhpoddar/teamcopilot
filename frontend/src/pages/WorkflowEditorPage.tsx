@@ -23,9 +23,12 @@ type WorkflowDetails = {
     approved_by_user_id: string | null;
     approved_by_user_name: string | null;
     approved_by_user_email: string | null;
-    run_permission_mode: 'restricted' | 'everyone';
-    allowed_runner_count: number;
-    is_run_locked_due_to_missing_users: boolean;
+    run_permission_mode?: 'restricted' | 'everyone';
+    allowed_runner_count?: number;
+    is_run_locked_due_to_missing_users?: boolean;
+    access_permission_mode?: 'restricted';
+    allowed_user_count?: number;
+    is_access_locked_due_to_missing_users?: boolean;
 };
 
 type ActiveFileState =
@@ -216,6 +219,12 @@ export default function WorkflowEditorPage({ entity = 'workflow' }: { entity?: E
         if (!confirmDiscardIfNeeded()) return;
         navigate(`/?tab=${backTab}`);
     };
+
+    const editorStatus: 'approved' | 'pending' = entity === 'workflow'
+        ? (access?.workflow_status ?? 'pending')
+        : workflowDetails?.approved_by_user_id
+            ? 'approved'
+            : 'pending';
 
     const handleToggleDirectory = async (node: WorkflowFileNode) => {
         if (node.kind !== 'directory') return;
@@ -550,11 +559,15 @@ export default function WorkflowEditorPage({ entity = 'workflow' }: { entity?: E
     if (auth.loading) return null;
 
     const permissionSummaryText = workflowDetails
-        ? workflowDetails.run_permission_mode === 'everyone'
-            ? 'Everyone can run'
-            : workflowDetails.is_run_locked_due_to_missing_users
+        ? entity === 'workflow'
+            ? workflowDetails.run_permission_mode === 'everyone'
+                ? 'Everyone can run'
+                : workflowDetails.is_run_locked_due_to_missing_users
+                    ? 'Restricted (locked: no allowed users remain)'
+                    : `Restricted (${workflowDetails.allowed_runner_count ?? 0} allowed)`
+            : workflowDetails.is_access_locked_due_to_missing_users
                 ? 'Restricted (locked: no allowed users remain)'
-                : `Restricted (${workflowDetails.allowed_runner_count} allowed)`
+                : `Restricted (${workflowDetails.allowed_user_count ?? 0} allowed)`
         : null;
 
     return (
@@ -566,7 +579,7 @@ export default function WorkflowEditorPage({ entity = 'workflow' }: { entity?: E
                         <h1>{workflowTitle}</h1>
                         {access && (
                             <p className="workflow-editor-subtitle">
-                                {slug} · {access.workflow_status} · {canEdit ? 'Editable' : 'Read only'}
+                                {slug} · {editorStatus} · {canEdit ? 'Editable' : 'Read only'}
                             </p>
                         )}
                     </div>
@@ -600,7 +613,7 @@ export default function WorkflowEditorPage({ entity = 'workflow' }: { entity?: E
                                 <div className="wf-workflow-meta-grid">
                                     <div className="wf-workflow-meta-label">Status</div>
                                     <div className="wf-workflow-meta-value">
-                                        {access?.workflow_status === 'approved' ? 'Approved' : 'Pending approval'}
+                                        {editorStatus === 'approved' ? 'Approved' : 'Pending approval'}
                                     </div>
 
                                     <div className="wf-workflow-meta-label">Permissions</div>
