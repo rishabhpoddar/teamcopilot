@@ -261,7 +261,7 @@ router.get("/:slug/approval-diff", apiHandler(async (req, res) => {
 registerResourceFileRoutes({
     router,
     uploadMiddleware: skillFileUpload.single("file"),
-    assertCanView: async () => Promise.resolve(),
+    assertCanView: assertCanViewSkillFiles,
     ensureResourceExists: async (slug: string) => {
         await readSkillManifestAndEnsurePermissions(slug);
     },
