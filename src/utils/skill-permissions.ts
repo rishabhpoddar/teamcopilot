@@ -1,5 +1,12 @@
 import prisma from "../prisma/client";
 import { SkillAccessPermissions, SkillAccessPermissionMode } from "../types/skill";
+import {
+    assertCommonPermissionMode,
+    canUserUseFromMode,
+    getCommonPermissionSummary,
+    mapPermissionToApiCommon,
+    resolveRestrictedPermissionUserIds,
+} from "./permission-common";
 
 type SkillPermissionWithUsers = {
     skill_slug: string;
@@ -8,13 +15,7 @@ type SkillPermissionWithUsers = {
 };
 
 function assertSkillPermissionMode(mode: string): SkillAccessPermissionMode {
-    if (mode !== "restricted" && mode !== "everyone") {
-        throw {
-            status: 500,
-            message: `Invalid skill access permission mode: ${mode}`
-        };
-    }
-    return mode;
+    return assertCommonPermissionMode(mode, "skill access");
 }
 
 export async function getSkillAccessPermissionWithUsers(slug: string): Promise<SkillPermissionWithUsers> {
@@ -42,19 +43,13 @@ export async function getSkillAccessPermissionWithUsers(slug: string): Promise<S
 
 export function mapSkillPermissionToApi(permission: SkillPermissionWithUsers): SkillAccessPermissions {
     const mode = assertSkillPermissionMode(permission.access_permission_mode);
-    if (mode === "everyone") {
-        return { mode: "everyone" };
-    }
-    return {
-        mode: "restricted",
-        allowed_user_ids: permission.allowedUsers.map((row) => row.user_id),
-    };
+    const allowedUserIds = permission.allowedUsers.map((row) => row.user_id);
+    return mapPermissionToApiCommon(mode, allowedUserIds);
 }
 
 export function canUserAccessSkillFromPermission(permission: SkillPermissionWithUsers, userId: string): boolean {
     const mode = assertSkillPermissionMode(permission.access_permission_mode);
-    if (mode === "everyone") return true;
-    return permission.allowedUsers.some((row) => row.user_id === userId);
+    return canUserUseFromMode(mode, permission.allowedUsers.map((row) => row.user_id), userId);
 }
 
 export function getSkillPermissionSummaryFields(
@@ -68,16 +63,18 @@ export function getSkillPermissionSummaryFields(
     is_access_locked_due_to_missing_users: boolean;
 } {
     const mode = assertSkillPermissionMode(permission.access_permission_mode);
-    const canUse = canUserAccessSkillFromPermission(permission, currentUserId);
-    const allowedCount = mode === "restricted" ? permission.allowedUsers.length : 0;
-    const isLocked = mode === "restricted" && permission.allowedUsers.length === 0;
+    const summary = getCommonPermissionSummary(
+        mode,
+        permission.allowedUsers.map((row) => row.user_id),
+        currentUserId
+    );
 
     return {
         access_permission_mode: mode,
-        can_current_user_use_skill: canUse,
-        can_current_user_manage_access_permissions: canUse,
-        allowed_user_count: allowedCount,
-        is_access_locked_due_to_missing_users: isLocked,
+        can_current_user_use_skill: summary.canCurrentUserUse,
+        can_current_user_manage_access_permissions: summary.canCurrentUserUse,
+        allowed_user_count: summary.allowedUserCount,
+        is_access_locked_due_to_missing_users: summary.isLockedDueToMissingUsers,
     };
 }
 
@@ -106,28 +103,7 @@ export async function setSkillAccessPermissions(
         return getSkillAccessPermissionWithUsers(slug);
     }
 
-    let dedupedUserIds = Array.from(new Set(payload.allowed_user_ids));
-
-    if (ownerUserId && !dedupedUserIds.includes(ownerUserId)) {
-        dedupedUserIds = [...dedupedUserIds, ownerUserId];
-    }
-    if (dedupedUserIds.length === 0) {
-        throw {
-            status: 400,
-            message: "restricted permissions require at least one allowed user"
-        };
-    }
-
-    const existingUsers = await prisma.users.findMany({
-        where: { id: { in: dedupedUserIds } },
-        select: { id: true }
-    });
-    if (existingUsers.length !== dedupedUserIds.length) {
-        throw {
-            status: 400,
-            message: "One or more selected users do not exist"
-        };
-    }
+    const existingUserIds = await resolveRestrictedPermissionUserIds(payload.allowed_user_ids, ownerUserId);
 
     await prisma.$transaction(async (tx) => {
         await tx.skill_metadata.update({
@@ -143,7 +119,7 @@ export async function setSkillAccessPermissions(
         });
 
         await tx.skill_access_permission_users.createMany({
-            data: dedupedUserIds.map((userId) => ({
+            data: existingUserIds.map((userId) => ({
                 skill_slug: slug,
                 user_id: userId,
                 created_at: now,

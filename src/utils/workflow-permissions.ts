@@ -1,6 +1,14 @@
 import { Prisma } from "@prisma/client";
 import prisma from "../prisma/client";
 import { WorkflowMetadata, WorkflowRunPermissionMode, WorkflowRunPermissions } from "../types/workflow";
+import {
+    assertCommonPermissionMode,
+    canUserUseFromMode,
+    getCommonPermissionSummary,
+    getExistingUserIds,
+    mapPermissionToApiCommon,
+    resolveRestrictedPermissionUserIds,
+} from "./permission-common";
 
 type PermissionWithUsers = {
     workflow_slug: string;
@@ -9,27 +17,12 @@ type PermissionWithUsers = {
 };
 
 function assertPermissionMode(mode: string): WorkflowRunPermissionMode {
-    if (mode !== "restricted" && mode !== "everyone") {
-        throw {
-            status: 500,
-            message: `Invalid workflow run permission mode: ${mode}`
-        };
-    }
-    return mode;
+    return assertCommonPermissionMode(mode, "workflow run");
 }
 
 function getDefaultCandidateUserIds(metadata: WorkflowMetadata): string[] {
     const ids = [metadata.created_by_user_id, metadata.approved_by_user_id].filter((id): id is string => Boolean(id));
     return Array.from(new Set(ids));
-}
-
-async function getExistingUserIds(userIds: string[]): Promise<string[]> {
-    if (userIds.length === 0) return [];
-    const users = await prisma.users.findMany({
-        where: { id: { in: userIds } },
-        select: { id: true }
-    });
-    return users.map((user) => user.id);
 }
 
 async function createRestrictedPermissionRow(slug: string, userIds: string[]): Promise<void> {
@@ -208,19 +201,13 @@ export async function getWorkflowRunPermissionWithUsers(slug: string): Promise<P
 
 export function mapPermissionToApi(permission: PermissionWithUsers): WorkflowRunPermissions {
     const mode = assertPermissionMode(permission.run_permission_mode);
-    if (mode === "everyone") {
-        return { mode: "everyone" };
-    }
-    return {
-        mode: "restricted",
-        allowed_user_ids: permission.allowedUsers.map((row) => row.user_id)
-    };
+    const allowedUserIds = permission.allowedUsers.map((row) => row.user_id);
+    return mapPermissionToApiCommon(mode, allowedUserIds);
 }
 
 export function canUserRunWorkflowFromPermission(permission: PermissionWithUsers, userId: string): boolean {
     const mode = assertPermissionMode(permission.run_permission_mode);
-    if (mode === "everyone") return true;
-    return permission.allowedUsers.some((row) => row.user_id === userId);
+    return canUserUseFromMode(mode, permission.allowedUsers.map((row) => row.user_id), userId);
 }
 
 export function getPermissionSummaryFields(
@@ -234,16 +221,18 @@ export function getPermissionSummaryFields(
     is_run_locked_due_to_missing_users: boolean;
 } {
     const mode = assertPermissionMode(permission.run_permission_mode);
-    const canRun = canUserRunWorkflowFromPermission(permission, currentUserId);
-    const allowedCount = mode === "restricted" ? permission.allowedUsers.length : 0;
-    const isLocked = mode === "restricted" && permission.allowedUsers.length === 0;
+    const summary = getCommonPermissionSummary(
+        mode,
+        permission.allowedUsers.map((row) => row.user_id),
+        currentUserId
+    );
 
     return {
         run_permission_mode: mode,
-        can_current_user_run: canRun,
-        can_current_user_manage_run_permissions: canRun,
-        allowed_runner_count: allowedCount,
-        is_run_locked_due_to_missing_users: isLocked
+        can_current_user_run: summary.canCurrentUserUse,
+        can_current_user_manage_run_permissions: summary.canCurrentUserUse,
+        allowed_runner_count: summary.allowedUserCount,
+        is_run_locked_due_to_missing_users: summary.isLockedDueToMissingUsers
     };
 }
 
@@ -270,34 +259,7 @@ export async function setWorkflowRunPermissions(
         return getWorkflowRunPermissionWithUsers(slug);
     }
 
-    let dedupedUserIds = Array.from(new Set(payload.allowed_user_ids));
-
-    let ownerExists = false;
-    if (ownerUserId) {
-        const owner = await prisma.users.findUnique({
-            where: { id: ownerUserId },
-            select: { id: true }
-        });
-        ownerExists = owner !== null;
-        if (ownerExists && !dedupedUserIds.includes(ownerUserId)) {
-            dedupedUserIds = [...dedupedUserIds, ownerUserId];
-        }
-    }
-
-    if (dedupedUserIds.length === 0) {
-        throw {
-            status: 400,
-            message: "restricted permissions require at least one allowed user"
-        };
-    }
-
-    const existingUserIds = await getExistingUserIds(dedupedUserIds);
-    if (existingUserIds.length !== dedupedUserIds.length) {
-        throw {
-            status: 400,
-            message: "One or more selected users do not exist"
-        };
-    }
+    const existingUserIds = await resolveRestrictedPermissionUserIds(payload.allowed_user_ids, ownerUserId);
 
     await prisma.$transaction(async (tx) => {
         await tx.workflow_metadata.update({
