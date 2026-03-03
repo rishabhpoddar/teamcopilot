@@ -22,7 +22,7 @@ export function assertCommonPermissionMode(mode: string, label: string): CommonP
     return mode;
 }
 
-export function canUserUseFromMode(
+function canUserUseFromMode(
     mode: CommonPermissionMode,
     allowedUserIds: string[],
     userId: string,
@@ -43,10 +43,54 @@ export function getCommonPermissionSummary(
     const canCurrentUserUse = canUserUseFromMode(mode, allowedUserIds, currentUserId);
     const allowedUserCount = mode === "restricted" ? allowedUserIds.length : 0;
     const isLockedDueToMissingUsers = mode === "restricted" && allowedUserIds.length === 0;
+
     return {
         canCurrentUserUse,
         allowedUserCount,
         isLockedDueToMissingUsers
+    };
+}
+
+export function getPermissionSummaryForApi(
+    mode: CommonPermissionMode,
+    allowedUserIds: string[],
+    currentUserId: string,
+): {
+    permission_mode: PermissionMode;
+    can_current_user_use: boolean;
+    can_current_user_manage_permissions: boolean;
+    allowed_user_count: number;
+    is_locked_due_to_missing_users: boolean;
+} {
+    const summary = getCommonPermissionSummary(mode, allowedUserIds, currentUserId);
+    return {
+        permission_mode: mode,
+        can_current_user_use: summary.canCurrentUserUse,
+        can_current_user_manage_permissions: summary.canCurrentUserUse,
+        allowed_user_count: summary.allowedUserCount,
+        is_locked_due_to_missing_users: summary.isLockedDueToMissingUsers
+    };
+}
+
+export function getResourceAccess(
+    resourceKind: ResourceKind,
+    isApproved: boolean,
+    isEngineer: boolean,
+    canCurrentUserUse: boolean,
+): {
+    canView: boolean;
+    canEdit: boolean;
+} {
+    if (resourceKind === "workflow") {
+        return {
+            canView: true,
+            canEdit: isApproved ? canCurrentUserUse : (isEngineer || canCurrentUserUse)
+        };
+    }
+    const canEdit = isApproved ? canCurrentUserUse : (isEngineer || canCurrentUserUse);
+    return {
+        canView: canEdit,
+        canEdit,
     };
 }
 

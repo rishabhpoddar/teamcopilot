@@ -26,12 +26,11 @@ import {
 } from "../utils/workflow-files";
 import {
     addApproverToWorkflowRunPermissionsIfRestricted,
-    getPermissionSummaryFields,
     getWorkflowRunPermissionWithUsers,
     setWorkflowRunPermissions,
     initializeWorkflowRunPermissionsForCreator,
 } from "../utils/workflow-permissions";
-import { assertCommonPermissionMode } from "../utils/permission-common";
+import { assertCommonPermissionMode, getPermissionSummaryForApi, getResourceAccess } from "../utils/permission-common";
 import {
     approveWorkflowWithSnapshot,
     buildApprovalDiffResponse,
@@ -46,6 +45,7 @@ import { startWorkflowRunViaBackend } from "../utils/workflow-runner";
 import { isWorkflowSessionInterrupted, markWorkflowSessionAborted } from "../utils/workflow-interruption";
 import { abortOpencodeSession } from "../utils/session-abort";
 import { registerResourceFileRoutes } from "../utils/resource-file-routes";
+import { isEngineerUser } from "../utils/user-role";
 
 const router = express.Router({ mergeParams: true });
 
@@ -87,7 +87,11 @@ async function assertCurrentUserCanRunWorkflow(slug: string, userId: string): Pr
     }
 
     const permission = await getWorkflowRunPermissionWithUsers(slug);
-    const permissionSummary = getPermissionSummaryFields(permission, userId);
+    const permissionSummary = getPermissionSummaryForApi(
+        assertCommonPermissionMode(permission.permission_mode, "workflow run"),
+        permission.allowedUsers.map((row) => row.user_id),
+        userId
+    );
     if (!permissionSummary.can_current_user_use) {
         throw {
             status: 403,
@@ -100,33 +104,29 @@ async function assertCurrentUserCanRunWorkflow(slug: string, userId: string): Pr
     await ensureWorkflowMatchesApprovedSnapshotForRun(slug);
 }
 
-async function isEngineerUser(userId: string): Promise<boolean> {
-    const user = await prisma.users.findUnique({
-        where: { id: userId },
-        select: { role: true }
-    });
-    return user?.role === "Engineer";
-}
-
 async function getWorkflowEditorAccess(slug: string, userId: string): Promise<WorkflowEditorAccessResponse> {
-    const { metadata } = await readWorkflowManifestAndEnsurePermissions(slug);
-    const isOwner = metadata.created_by_user_id === userId;
+    await readWorkflowManifestAndEnsurePermissions(slug);
     const isEngineer = await isEngineerUser(userId);
     const approvalState = await getWorkflowSnapshotApprovalState(slug);
     const workflowStatus = approvalState.is_current_code_approved ? "approved" : "pending";
-
-    let canEdit = false;
-    if (workflowStatus === "approved") {
-        const permission = await getWorkflowRunPermissionWithUsers(slug);
-        const permissionSummary = getPermissionSummaryFields(permission, userId);
-        canEdit = permissionSummary.can_current_user_use;
-    } else {
-        canEdit = isOwner || isEngineer;
-    }
+    const permission = await getWorkflowRunPermissionWithUsers(slug);
+    const permissionMode = assertCommonPermissionMode(permission.permission_mode, "workflow run");
+    const allowedUserIds = permission.allowedUsers.map((row) => row.user_id);
+    const permissionSummary = getPermissionSummaryForApi(
+        permissionMode,
+        allowedUserIds,
+        userId
+    );
+    const access = getResourceAccess(
+        "workflow",
+        approvalState.is_current_code_approved,
+        isEngineer,
+        permissionSummary.can_current_user_use
+    );
 
     return {
-        can_view: true,
-        can_edit: canEdit,
+        can_view: access.canView,
+        can_edit: access.canEdit,
         workflow_status: workflowStatus,
     };
 }
@@ -173,7 +173,11 @@ router.get('/', apiHandler(async (req, res) => {
         if (!manifest) continue;
         if (!metadata) continue;
         const permission = await getWorkflowRunPermissionWithUsers(slug);
-        const permissionSummary = getPermissionSummaryFields(permission, req.userId!);
+        const permissionSummary = getPermissionSummaryForApi(
+            assertCommonPermissionMode(permission.permission_mode, "workflow run"),
+            permission.allowedUsers.map((row) => row.user_id),
+            req.userId!
+        );
         const approvalState = await getWorkflowSnapshotApprovalState(slug);
         const createdByUserId = metadata.created_by_user_id;
         workflows.push({
@@ -332,7 +336,11 @@ router.post('/runs/:id/stop', apiHandler(async (req, res) => {
     }
 
     const permission = await getWorkflowRunPermissionWithUsers(run.workflow_slug);
-    const permissionSummary = getPermissionSummaryFields(permission, req.userId!);
+    const permissionSummary = getPermissionSummaryForApi(
+        assertCommonPermissionMode(permission.permission_mode, "workflow run"),
+        permission.allowedUsers.map((row) => row.user_id),
+        req.userId!
+    );
     if (!permissionSummary.can_current_user_use) {
         throw {
             status: 403,
@@ -657,7 +665,11 @@ router.get('/:slug', apiHandler(async (req, res) => {
     const slug = req.params.slug as string;
     const { manifest, metadata } = await readWorkflowManifestAndEnsurePermissions(slug);
     const permission = await getWorkflowRunPermissionWithUsers(slug);
-    const permissionSummary = getPermissionSummaryFields(permission, req.userId!);
+    const permissionSummary = getPermissionSummaryForApi(
+        assertCommonPermissionMode(permission.permission_mode, "workflow run"),
+        permission.allowedUsers.map((row) => row.user_id),
+        req.userId!
+    );
     const approvalState = await getWorkflowSnapshotApprovalState(slug);
 
     const createdByUserId = metadata.created_by_user_id ?? null;
@@ -715,7 +727,11 @@ const updateWorkflowPermissionsHandler = apiHandler(async (req, res) => {
     }
 
     const currentPermission = await getWorkflowRunPermissionWithUsers(slug);
-    const currentSummary = getPermissionSummaryFields(currentPermission, req.userId!);
+    const currentSummary = getPermissionSummaryForApi(
+        assertCommonPermissionMode(currentPermission.permission_mode, "workflow run"),
+        currentPermission.allowedUsers.map((row) => row.user_id),
+        req.userId!
+    );
     if (!currentSummary.can_current_user_manage_permissions) {
         throw {
             status: 403,
@@ -739,7 +755,11 @@ const updateWorkflowPermissionsHandler = apiHandler(async (req, res) => {
             mode: 'restricted',
             allowed_user_ids: Array.isArray(allowed_user_ids) ? allowed_user_ids.map((id) => String(id)) : []
         }, metadata.created_by_user_id);
-    const updatedSummary = getPermissionSummaryFields(updatedPermission, req.userId!);
+    const updatedSummary = getPermissionSummaryForApi(
+        assertCommonPermissionMode(updatedPermission.permission_mode, "workflow run"),
+        updatedPermission.allowedUsers.map((row) => row.user_id),
+        req.userId!
+    );
     const updatedPermissionMode = assertCommonPermissionMode(updatedPermission.permission_mode, "workflow run");
     const permissions = updatedPermissionMode === "everyone"
         ? { mode: "everyone" as const }

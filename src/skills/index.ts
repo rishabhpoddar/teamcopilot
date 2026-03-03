@@ -9,11 +9,10 @@ import { apiHandler } from "../utils";
 import { createSkill, deleteSkillDirectory, getOrCreateSkillMetadataAndEnsurePermission, listSkillSlugs, readSkillManifestAndEnsurePermissions } from "../utils/skill";
 import {
     getSkillAccessPermissionWithUsers,
-    getSkillPermissionSummaryFields,
     setSkillAccessPermissions,
     addApproverToSkillAccessPermissionsIfRestricted,
 } from "../utils/skill-permissions";
-import { assertCommonPermissionMode } from "../utils/permission-common";
+import { assertCommonPermissionMode, getPermissionSummaryForApi, getResourceAccess } from "../utils/permission-common";
 import {
     createSkillFileOrFolder,
     deleteSkillPath,
@@ -33,6 +32,7 @@ import {
     loadApprovedSkillSnapshotFromDb,
     restoreSkillToApprovedSnapshot,
 } from "../utils/skill-approval-snapshot";
+import { isEngineerUser } from "../utils/user-role";
 
 const router = express.Router({ mergeParams: true });
 const uploadTmpDir = path.join(os.tmpdir(), "localtool-skill-uploads");
@@ -48,32 +48,25 @@ function normalizeSkillNameOrSlug(value: string): string {
         .replace(/-+/g, "-");
 }
 
-async function isEngineerUser(userId: string): Promise<boolean> {
-    const user = await prisma.users.findUnique({
-        where: { id: userId },
-        select: { role: true }
-    });
-    return user?.role === "Engineer";
-}
-
 async function getSkillEditorAccess(slug: string, userId: string): Promise<WorkflowEditorAccessResponse> {
-    const { metadata } = await readSkillManifestAndEnsurePermissions(slug);
+    await readSkillManifestAndEnsurePermissions(slug);
     const permission = await getSkillAccessPermissionWithUsers(slug);
-    const permissionSummary = getSkillPermissionSummaryFields(permission, userId);
+    const permissionMode = assertCommonPermissionMode(permission.permission_mode, "skill access");
+    const allowedUserIds = permission.allowedUsers.map((row) => row.user_id);
+    const permissionSummary = getPermissionSummaryForApi(permissionMode, allowedUserIds, userId);
     const approvalState = await getSkillSnapshotApprovalState(slug);
     const skillStatus = approvalState.is_current_code_approved ? "approved" : "pending";
     const isEngineer = await isEngineerUser(userId);
-    const isOwner = metadata.created_by_user_id === userId;
-    const canView = skillStatus === "approved"
-        ? permissionSummary.can_current_user_use
-        : (permissionSummary.can_current_user_use || isEngineer);
-    const canEdit = skillStatus === "approved"
-        ? permissionSummary.can_current_user_use
-        : (isOwner || isEngineer);
+    const access = getResourceAccess(
+        "skill",
+        approvalState.is_current_code_approved,
+        isEngineer,
+        permissionSummary.can_current_user_use
+    );
 
     return {
-        can_view: canView,
-        can_edit: canEdit,
+        can_view: access.canView,
+        can_edit: access.canEdit,
         workflow_status: skillStatus,
     };
 }
@@ -156,13 +149,18 @@ router.get("/", apiHandler(async (req, res) => {
         if (!metadata) continue;
         const { manifest } = await readSkillManifestAndEnsurePermissions(slug);
         const permission = await getSkillAccessPermissionWithUsers(slug);
-        const permissionSummary = getSkillPermissionSummaryFields(permission, req.userId!);
+        const permissionMode = assertCommonPermissionMode(permission.permission_mode, "skill access");
+        const allowedUserIds = permission.allowedUsers.map((row) => row.user_id);
+        const permissionSummary = getPermissionSummaryForApi(permissionMode, allowedUserIds, req.userId!);
         const approvalState = await getSkillSnapshotApprovalState(slug);
         const isApproved = approvalState.is_current_code_approved;
-        const canListSkill = isApproved
-            ? permissionSummary.can_current_user_use
-            : (permissionSummary.can_current_user_use || isEngineer);
-        if (!canListSkill) {
+        const access = getResourceAccess(
+            "skill",
+            isApproved,
+            isEngineer,
+            permissionSummary.can_current_user_use
+        );
+        if (!access.canView) {
             continue;
         }
         const createdByUserId = metadata.created_by_user_id;
@@ -200,7 +198,11 @@ router.get("/:slug", apiHandler(async (req, res) => {
     const creator = createdByUserId ? (usersById.get(createdByUserId) ?? null) : null;
     const approver = approvedByUserId ? (usersById.get(approvedByUserId) ?? null) : null;
     const permission = await getSkillAccessPermissionWithUsers(slug);
-    const permissionSummary = getSkillPermissionSummaryFields(permission, req.userId!);
+    const permissionSummary = getPermissionSummaryForApi(
+        assertCommonPermissionMode(permission.permission_mode, "skill access"),
+        permission.allowedUsers.map((row) => row.user_id),
+        req.userId!
+    );
     const approvalState = await getSkillSnapshotApprovalState(slug);
     const permissionMode = assertCommonPermissionMode(permission.permission_mode, "skill access");
     const permissions = permissionMode === "everyone"
@@ -309,7 +311,11 @@ const updateSkillPermissionsHandler = apiHandler(async (req, res) => {
     }
 
     const currentPermission = await getSkillAccessPermissionWithUsers(slug);
-    const currentSummary = getSkillPermissionSummaryFields(currentPermission, req.userId!);
+    const currentSummary = getPermissionSummaryForApi(
+        assertCommonPermissionMode(currentPermission.permission_mode, "skill access"),
+        currentPermission.allowedUsers.map((row) => row.user_id),
+        req.userId!
+    );
     if (!currentSummary.can_current_user_manage_permissions) {
         throw {
             status: 403,
@@ -333,7 +339,11 @@ const updateSkillPermissionsHandler = apiHandler(async (req, res) => {
             mode: "restricted",
             allowed_user_ids: Array.isArray(allowed_user_ids) ? allowed_user_ids.map((id) => String(id)) : []
         }, metadata.created_by_user_id);
-    const updatedSummary = getSkillPermissionSummaryFields(updatedPermission, req.userId!);
+    const updatedSummary = getPermissionSummaryForApi(
+        assertCommonPermissionMode(updatedPermission.permission_mode, "skill access"),
+        updatedPermission.allowedUsers.map((row) => row.user_id),
+        req.userId!
+    );
     const updatedPermissionMode = assertCommonPermissionMode(updatedPermission.permission_mode, "skill access");
     const permissions = updatedPermissionMode === "everyone"
         ? { mode: "everyone" as const }
