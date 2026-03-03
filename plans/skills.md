@@ -86,6 +86,7 @@
       - findSkills should work in a very similar way to findWorkflow, except that it should only search across skills that the user has the permission to edit and that are approved. It will search based on the description of the skill or based on the actual body of the markdown file.
    - Inject available skills in session-start context.
    - Update workspace `AGENTS.md` in the workspace_files directory with instructions about custom skills and the tools. Also mention in it that the agent should always try and find a skill to use to fulfill the user's request.
+   - Need to ask for permission for create skill tool.
 
 2. API surface cleanup (optional)
    - Consider extracting shared permission API handlers/utilities to remove remaining workflow/skill endpoint duplication.
