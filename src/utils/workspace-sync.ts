@@ -14,7 +14,7 @@ const execFileAsync = promisify(execFile);
 const WORKSPACE_DB_DIRECTORY = ".sqlite";
 const WORKSPACE_DB_FILENAME = "data.db";
 const HONEYTOKEN_UUID = "1f9f0b72-5f9f-4c9b-aef1-2fb2e0f6d8c4";
-const HONEYTOKEN_FILE_NAME = `localtool-honeytoken-${HONEYTOKEN_UUID}.txt`;
+const HONEYTOKEN_FILE_NAME = `honeytoken-${HONEYTOKEN_UUID}.txt`;
 
 export function getWorkspaceDirFromEnv(): string {
     let workspaceDir = assertEnv("WORKSPACE_DIR");
