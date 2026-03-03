@@ -4,7 +4,7 @@
   "main": "dist/index.js",
   "scripts": {
     "check:unused:functions": "tsc --noEmit --noUnusedLocals --noUnusedParameters",
-    "check:unused:exports": "ts-prune -e -p tsconfig.json -i \"^src/types/\"",
+    "check:unused:exports": "ts-prune -e -p tsconfig.json -i \"^src/types/shared/\"",
     "check:unused": "npm run check:unused:functions && npm run check:unused:exports",
     "build": "npm run check:unused && cd frontend && npm run build && cd .. && tsc",
     "start": "npm run build && node dist/index.js",

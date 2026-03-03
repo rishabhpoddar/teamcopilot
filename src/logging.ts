@@ -27,7 +27,3 @@ export function logError({ err, apiPath, apiMethod, customMeta }: { err: any, ap
     const meta = { status, loggingMessage, clientMessage, stack: err.stack, ourCodeStack, apiPath, apiMethod, ...customMeta };
     console.error(loggingMessage, meta);
 }
-
-export function logInfo(message: string, meta: any = {}) {
-    console.log(message, meta);
-}

@@ -8,4 +8,4 @@ export type {
     WorkflowRunStatus,
     WorkflowRun,
     WorkflowApprovalDiffResponse,
-} from "../../../src/types/workflow";
+} from "../../../src/types/shared/workflow";

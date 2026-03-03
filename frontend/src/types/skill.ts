@@ -1,3 +1,3 @@
 export type {
     Skill,
-} from "../../../src/types/skill";
+} from "../../../src/types/shared/skill";
