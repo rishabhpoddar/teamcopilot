@@ -1,5 +1,5 @@
 export interface WorkflowEditorAccessResponse {
-    can_view: true;
+    can_view: boolean;
     can_edit: boolean;
     workflow_status: "approved" | "pending";
 }

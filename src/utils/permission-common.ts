@@ -22,34 +22,6 @@ export function assertCommonPermissionMode(mode: string, label: string): CommonP
     return mode;
 }
 
-export function canUserUseFromMode(
-    mode: CommonPermissionMode,
-    allowedUserIds: string[],
-    userId: string,
-): boolean {
-    if (mode === "everyone") return true;
-    return allowedUserIds.includes(userId);
-}
-
-export function getCommonPermissionSummary(
-    mode: CommonPermissionMode,
-    allowedUserIds: string[],
-    currentUserId: string,
-): {
-    canCurrentUserUse: boolean;
-    allowedUserCount: number;
-    isLockedDueToMissingUsers: boolean;
-} {
-    const canCurrentUserUse = canUserUseFromMode(mode, allowedUserIds, currentUserId);
-    const allowedUserCount = mode === "restricted" ? allowedUserIds.length : 0;
-    const isLockedDueToMissingUsers = mode === "restricted" && allowedUserIds.length === 0;
-    return {
-        canCurrentUserUse,
-        allowedUserCount,
-        isLockedDueToMissingUsers
-    };
-}
-
 export async function getExistingUserIds(userIds: string[]): Promise<string[]> {
     if (userIds.length === 0) return [];
     const users = await prisma.users.findMany({

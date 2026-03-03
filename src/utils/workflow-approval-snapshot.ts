@@ -43,15 +43,3 @@ export async function getWorkflowSnapshotApprovalState(slug: string) {
 export async function restoreWorkflowToApprovedSnapshot(slug: string, userId: string): Promise<{ restored_file_count: number; snapshot_hash: string }> {
     return restoreResourceToApprovedSnapshot(getWorkflowSnapshotConfig(slug), userId);
 }
-
-export async function ensureWorkflowMatchesApprovedSnapshotForRun(slug: string): Promise<void> {
-    const approvalState = await getWorkflowSnapshotApprovalState(slug);
-    if (approvalState.is_current_code_approved) {
-        return;
-    }
-
-    throw {
-        status: 403,
-        message: "Workflow is not approved for the current code version. Please review and approve the current code before running."
-    };
-}

@@ -1,11 +1,9 @@
 import { WorkflowMetadata } from "../types/workflow";
-import { PermissionMode, Permissions } from "../types/permissions";
+import { Permissions } from "../types/permissions";
 import {
     ResourcePermissionWithUsers,
     addUserToResourcePermissionsIfRestricted,
-    assertCommonPermissionMode,
     ensureResourcePermissions,
-    getCommonPermissionSummary,
     getResourcePermissionWithUsers,
     initializeResourcePermissionsForCreator,
     setResourcePermissions,
@@ -36,32 +34,6 @@ export async function addApproverToWorkflowRunPermissionsIfRestricted(
 
 export async function getWorkflowRunPermissionWithUsers(slug: string): Promise<PermissionWithUsers> {
     return getResourcePermissionWithUsers("workflow", slug, "Workflow run");
-}
-
-export function getPermissionSummaryFields(
-    permission: PermissionWithUsers,
-    currentUserId: string,
-): {
-    permission_mode: PermissionMode;
-    can_current_user_use: boolean;
-    can_current_user_manage_permissions: boolean;
-    allowed_user_count: number;
-    is_locked_due_to_missing_users: boolean;
-} {
-    const mode = assertCommonPermissionMode(permission.permission_mode, "workflow run");
-    const summary = getCommonPermissionSummary(
-        mode,
-        permission.allowedUsers.map((row) => row.user_id),
-        currentUserId
-    );
-
-    return {
-        permission_mode: mode,
-        can_current_user_use: summary.canCurrentUserUse,
-        can_current_user_manage_permissions: summary.canCurrentUserUse,
-        allowed_user_count: summary.allowedUserCount,
-        is_locked_due_to_missing_users: summary.isLockedDueToMissingUsers
-    };
 }
 
 export async function setWorkflowRunPermissions(

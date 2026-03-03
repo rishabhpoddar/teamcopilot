@@ -24,7 +24,6 @@ type WorkflowDetails = {
     approved_by_user_name: string | null;
     approved_by_user_email: string | null;
     permission_mode?: 'restricted' | 'everyone';
-    allowed_user_count?: number;
     is_locked_due_to_missing_users?: boolean;
 };
 
@@ -557,12 +556,12 @@ export default function EditorPage({ entity = 'workflow' }: { entity?: EditorEnt
                 ? 'Everyone can run'
                 : workflowDetails.is_locked_due_to_missing_users
                     ? 'Restricted (locked: no allowed users remain)'
-                    : `Restricted (${workflowDetails.allowed_user_count ?? 0} allowed)`
+                    : 'Restricted'
             : workflowDetails.permission_mode === 'everyone'
                 ? 'Everyone can access'
                 : workflowDetails.is_locked_due_to_missing_users
                     ? 'Restricted (locked: no allowed users remain)'
-                    : `Restricted (${workflowDetails.allowed_user_count ?? 0} allowed)`
+                    : 'Restricted'
         : null;
 
     return (

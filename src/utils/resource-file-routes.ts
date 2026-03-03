@@ -15,8 +15,9 @@ interface ResourceFileRouteOptions {
     router: express.Router;
     uploadMiddleware: express.RequestHandler;
     ensureResourceExists: (slug: string) => Promise<void>;
-    getEditorAccess: (slug: string, userId: string, role: string | undefined) => Promise<WorkflowEditorAccessResponse>;
-    assertCanEdit: (slug: string, userId: string, role: string | undefined) => Promise<void>;
+    assertCanView: (slug: string, userId: string) => Promise<void>;
+    getEditorAccess: (slug: string, userId: string) => Promise<WorkflowEditorAccessResponse>;
+    assertCanEdit: (slug: string, userId: string) => Promise<void>;
     listDirectory: (slug: string, rawPath: string | undefined) => WorkflowFileTreeResponse;
     readFileContent: (slug: string, rawPath: string | undefined) => WorkflowFileContentResponse;
     saveFileContent: (slug: string, payload: { path: string; content: string; base_etag: string }) => WorkflowFileSaveResponse;
@@ -31,6 +32,7 @@ export function registerResourceFileRoutes(options: ResourceFileRouteOptions): v
         router,
         uploadMiddleware,
         ensureResourceExists,
+        assertCanView,
         getEditorAccess,
         assertCanEdit,
         listDirectory,
@@ -45,12 +47,14 @@ export function registerResourceFileRoutes(options: ResourceFileRouteOptions): v
     router.get("/:slug/files/access", apiHandler(async (req, res) => {
         const slug = req.params.slug as string;
         const authReq = req as AuthenticatedRequest;
-        const access = await getEditorAccess(slug, authReq.userId!, authReq.role);
+        const access = await getEditorAccess(slug, authReq.userId!);
         res.json(access);
     }, true));
 
     router.get("/:slug/files/tree", apiHandler(async (req, res) => {
         const slug = req.params.slug as string;
+        const authReq = req as AuthenticatedRequest;
+        await assertCanView(slug, authReq.userId!);
         await ensureResourceExists(slug);
         const rawPath = typeof req.query.path === "string" ? req.query.path : undefined;
         const tree = listDirectory(slug, rawPath);
@@ -59,6 +63,8 @@ export function registerResourceFileRoutes(options: ResourceFileRouteOptions): v
 
     router.get("/:slug/files/content", apiHandler(async (req, res) => {
         const slug = req.params.slug as string;
+        const authReq = req as AuthenticatedRequest;
+        await assertCanView(slug, authReq.userId!);
         await ensureResourceExists(slug);
         const rawPath = typeof req.query.path === "string" ? req.query.path : undefined;
         const content = readFileContent(slug, rawPath);
@@ -69,7 +75,7 @@ export function registerResourceFileRoutes(options: ResourceFileRouteOptions): v
     router.put("/:slug/files/content", apiHandler(async (req, res) => {
         const slug = req.params.slug as string;
         const authReq = req as AuthenticatedRequest;
-        await assertCanEdit(slug, authReq.userId!, authReq.role);
+        await assertCanEdit(slug, authReq.userId!);
         const { path, content, base_etag } = req.body as { path?: unknown; content?: unknown; base_etag?: unknown };
         if (typeof path !== "string" || typeof content !== "string" || typeof base_etag !== "string") {
             throw {
@@ -84,7 +90,7 @@ export function registerResourceFileRoutes(options: ResourceFileRouteOptions): v
     router.post("/:slug/files", apiHandler(async (req, res) => {
         const slug = req.params.slug as string;
         const authReq = req as AuthenticatedRequest;
-        await assertCanEdit(slug, authReq.userId!, authReq.role);
+        await assertCanEdit(slug, authReq.userId!);
         const { parent_path, name, kind } = req.body as { parent_path?: unknown; name?: unknown; kind?: unknown };
         if (typeof name !== "string" || (kind !== "file" && kind !== "directory")) {
             throw {
@@ -99,7 +105,7 @@ export function registerResourceFileRoutes(options: ResourceFileRouteOptions): v
     router.post("/:slug/files/upload", uploadMiddleware, apiHandler(async (req, res) => {
         const slug = req.params.slug as string;
         const authReq = req as AuthenticatedRequest;
-        await assertCanEdit(slug, authReq.userId!, authReq.role);
+        await assertCanEdit(slug, authReq.userId!);
         const { parent_path, name } = req.body as { parent_path?: unknown; name?: unknown };
         if (typeof name !== "string") {
             throw {
@@ -126,7 +132,7 @@ export function registerResourceFileRoutes(options: ResourceFileRouteOptions): v
     router.patch("/:slug/files/rename", apiHandler(async (req, res) => {
         const slug = req.params.slug as string;
         const authReq = req as AuthenticatedRequest;
-        await assertCanEdit(slug, authReq.userId!, authReq.role);
+        await assertCanEdit(slug, authReq.userId!);
         const { path, new_name } = req.body as { path?: unknown; new_name?: unknown };
         if (typeof path !== "string" || typeof new_name !== "string") {
             throw {
@@ -141,7 +147,7 @@ export function registerResourceFileRoutes(options: ResourceFileRouteOptions): v
     router.delete("/:slug/files", apiHandler(async (req, res) => {
         const slug = req.params.slug as string;
         const authReq = req as AuthenticatedRequest;
-        await assertCanEdit(slug, authReq.userId!, authReq.role);
+        await assertCanEdit(slug, authReq.userId!);
         const rawPath = typeof req.query.path === "string" ? req.query.path : undefined;
         deletePath(slug, rawPath);
         res.json({ success: true });

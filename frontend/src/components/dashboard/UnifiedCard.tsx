@@ -17,9 +17,9 @@ interface UnifiedCardProps {
     created_by_user_email: string | null;
     approved_by_user_id: string | null;
     is_approved: boolean;
+    can_view: boolean;
+    can_edit: boolean;
     permission_mode: PermissionMode;
-    can_current_user_manage_permissions: boolean;
-    allowed_user_count: number;
     is_locked_due_to_missing_users: boolean;
     can_run: boolean;
     userRole: 'User' | 'Engineer';
@@ -45,9 +45,8 @@ export default function UnifiedCard({
     created_by_user_email,
     approved_by_user_id,
     is_approved,
+    can_edit,
     permission_mode,
-    can_current_user_manage_permissions,
-    allowed_user_count,
     is_locked_due_to_missing_users,
     can_run,
     userRole,
@@ -75,7 +74,7 @@ export default function UnifiedCard({
 
     const creatorUserMissing = created_by_user_id === null || (!created_by_user_name && !created_by_user_email);
     const canDelete = created_by_user_id === currentUserId || (userRole === 'Engineer' && creatorUserMissing);
-    const canManagePermissions = is_approved && can_current_user_manage_permissions;
+    const canManagePermissions = is_approved && can_edit;
     const accessLabel = kind === 'workflow' ? 'Run access' : 'Access';
     const managePermissionsTitle = kind === 'workflow' ? 'Manage Run Permissions' : 'Manage Access Permissions';
 
@@ -220,13 +219,13 @@ export default function UnifiedCard({
 
             {is_approved && (
                 <div className="workflow-approval-section">
-                    <p className="workflow-approval-message">
-                        {permission_mode === 'everyone'
-                            ? `${accessLabel}: Everyone`
-                            : is_locked_due_to_missing_users
-                                ? `${accessLabel}: Restricted (locked - no allowed users remain)`
-                                : `${accessLabel}: Restricted (${allowed_user_count} allowed)`}
-                    </p>
+                        <p className="workflow-approval-message">
+                            {permission_mode === 'everyone'
+                                ? `${accessLabel}: Everyone`
+                                : is_locked_due_to_missing_users
+                                    ? `${accessLabel}: Restricted (locked - no allowed users remain)`
+                                    : `${accessLabel}: Restricted`}
+                        </p>
                     {permissionsError && !showPermissionsEditor && (
                         <p className="workflow-approval-message">{permissionsError}</p>
                     )}
