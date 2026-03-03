@@ -33,6 +33,7 @@ export default function WorkflowCard(props: WorkflowCardProps) {
             currentUserId={props.currentUserId}
             token={props.token}
             viewLabel="View Code"
+            showRunAction={true}
             runLabel="Run Workflow"
             onUpdated={props.onApproved}
             onDeleted={props.onDeleted}

@@ -3,6 +3,7 @@ import { useState } from 'react';
 interface CardActionsProps {
     viewLabel: string;
     onView: () => void;
+    showRunAction: boolean;
     runLabel: string;
     canRun: boolean;
     onRunAi?: () => void;
@@ -16,6 +17,7 @@ interface CardActionsProps {
 export default function CardActions({
     viewLabel,
     onView,
+    showRunAction,
     runLabel,
     canRun,
     onRunAi,
@@ -38,16 +40,18 @@ export default function CardActions({
                     {viewLabel}
                 </button>
 
-                <button
-                    className="workflow-card-run-btn"
-                    disabled={!canRun}
-                    onClick={() => {
-                        if (!supportsRunModes) return;
-                        setShowRunModeModal(true);
-                    }}
-                >
-                    {runLabel}
-                </button>
+                {showRunAction && (
+                    <button
+                        className="workflow-card-run-btn"
+                        disabled={!canRun}
+                        onClick={() => {
+                            if (!supportsRunModes) return;
+                            setShowRunModeModal(true);
+                        }}
+                    >
+                        {runLabel}
+                    </button>
+                )}
 
                 {deleteVisible && (
                     <button

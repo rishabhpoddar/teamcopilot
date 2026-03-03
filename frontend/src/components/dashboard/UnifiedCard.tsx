@@ -26,6 +26,7 @@ interface UnifiedCardProps {
     currentUserId: string | null;
     token: string;
     viewLabel: string;
+    showRunAction: boolean;
     runLabel: string;
     onUpdated: () => void;
     onDeleted: () => void;
@@ -53,6 +54,7 @@ export default function UnifiedCard({
     currentUserId,
     token,
     viewLabel,
+    showRunAction,
     runLabel,
     onUpdated,
     onDeleted,
@@ -190,7 +192,9 @@ export default function UnifiedCard({
                     {is_approved ? 'Approved' : 'Pending Approval'}
                 </span>
             </div>
-            {description && <p className="workflow-card-description">{description}</p>}
+            {kind === 'skill'
+                ? <p className="workflow-card-description">{description.trim() || 'No description available'}</p>
+                : description && <p className="workflow-card-description">{description}</p>}
             <p className="workflow-card-meta">
                 Created by: {created_by_user_name ?? created_by_user_email ?? 'Unknown User'}
             </p>
@@ -339,6 +343,7 @@ export default function UnifiedCard({
             <CardActions
                 viewLabel={viewLabel}
                 onView={() => onOpen(slug)}
+                showRunAction={showRunAction}
                 runLabel={runLabel}
                 canRun={can_run}
                 onRunAi={onRunAi}
