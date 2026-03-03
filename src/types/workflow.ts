@@ -2,6 +2,7 @@
  * Shared workflow types used across the backend.
  * These types mirror the workflow.json schema.
  */
+import type { PermissionMode } from "./permissions";
 
 
 export interface WorkflowInput {
@@ -28,19 +29,6 @@ export interface WorkflowMetadata {
     approved_by_user_id: string | null;
 }
 
-export type WorkflowRunPermissionMode = "restricted" | "everyone";
-
-export interface WorkflowRunPermissionsRestricted {
-    mode: "restricted";
-    allowed_user_ids: string[];
-}
-
-export interface WorkflowRunPermissionsEveryone {
-    mode: "everyone";
-}
-
-export type WorkflowRunPermissions = WorkflowRunPermissionsRestricted | WorkflowRunPermissionsEveryone;
-
 /** Workflow summary for API responses */
 export interface WorkflowSummary {
     slug: string;
@@ -51,7 +39,12 @@ export interface WorkflowSummary {
     created_by_user_email: string | null;
     approved_by_user_id: string | null;
     is_approved: boolean;
-    run_permission_mode: WorkflowRunPermissionMode;
+    permission_mode: PermissionMode;
+    can_current_user_use: boolean;
+    can_current_user_manage_permissions: boolean;
+    allowed_user_count: number;
+    is_locked_due_to_missing_users: boolean;
+    run_permission_mode: PermissionMode;
     can_current_user_run: boolean;
     can_current_user_manage_run_permissions: boolean;
     allowed_runner_count: number;

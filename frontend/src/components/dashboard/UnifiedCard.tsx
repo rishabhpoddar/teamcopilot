@@ -81,7 +81,7 @@ export default function UnifiedCard({
     const resourceLabelTitle = kind === 'workflow' ? 'Workflow' : 'Skill';
     const detailUrl = `/api/${kind === 'workflow' ? 'workflows' : 'skills'}/${slug}`;
     const usersUrl = `/api/${kind === 'workflow' ? 'workflows' : 'skills'}/users`;
-    const updatePermissionsUrl = `/api/${kind === 'workflow' ? 'workflows' : 'skills'}/${slug}/${kind === 'workflow' ? 'run-permissions' : 'access-permissions'}`;
+    const updatePermissionsUrl = `/api/${kind === 'workflow' ? 'workflows' : 'skills'}/${slug}/permissions`;
 
     const loadPermissionsEditorData = async () => {
         setPermissionsLoading(true);
@@ -96,14 +96,13 @@ export default function UnifiedCard({
                 })
             ]);
 
-            const detail = detailResponse.data.workflow as {
+            const detail = (detailResponse.data.workflow ?? detailResponse.data.skill) as {
                 created_by_user_id: string | null;
                 approved_by_user_id: string | null;
-                run_permissions?: { mode: 'everyone' } | { mode: 'restricted'; allowed_user_ids: string[] };
-                access_permissions?: { mode: 'everyone' } | { mode: 'restricted'; allowed_user_ids: string[] };
+                permissions?: { mode: 'everyone' } | { mode: 'restricted'; allowed_user_ids: string[] };
             };
 
-            const permissions = kind === 'workflow' ? detail.run_permissions : detail.access_permissions;
+            const permissions = detail.permissions;
             if (!permissions) {
                 throw new Error('Missing permissions in response');
             }

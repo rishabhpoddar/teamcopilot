@@ -1,6 +1,6 @@
-import { WorkflowMetadata, WorkflowRunPermissionMode, WorkflowRunPermissions } from "../types/workflow";
+import { WorkflowMetadata } from "../types/workflow";
+import { PermissionMode, Permissions } from "../types/permissions";
 import {
-    CommonPermissions,
     ResourcePermissionWithUsers,
     addUserToResourcePermissionsIfRestricted,
     assertCommonPermissionMode,
@@ -15,7 +15,7 @@ import {
 
 type PermissionWithUsers = ResourcePermissionWithUsers;
 
-function assertPermissionMode(mode: string): WorkflowRunPermissionMode {
+function assertPermissionMode(mode: string): PermissionMode {
     return assertCommonPermissionMode(mode, "workflow run");
 }
 
@@ -44,7 +44,7 @@ export async function getWorkflowRunPermissionWithUsers(slug: string): Promise<P
     return getResourcePermissionWithUsers("workflow", slug, "Workflow run");
 }
 
-export function mapPermissionToApi(permission: PermissionWithUsers): WorkflowRunPermissions {
+export function mapPermissionToApi(permission: PermissionWithUsers): Permissions {
     const mode = assertPermissionMode(permission.permission_mode);
     const allowedUserIds = permission.allowedUsers.map((row) => row.user_id);
     return mapPermissionToApiCommon(mode, allowedUserIds);
@@ -59,7 +59,12 @@ export function getPermissionSummaryFields(
     permission: PermissionWithUsers,
     currentUserId: string,
 ): {
-    run_permission_mode: WorkflowRunPermissionMode;
+    permission_mode: PermissionMode;
+    can_current_user_use: boolean;
+    can_current_user_manage_permissions: boolean;
+    allowed_user_count: number;
+    is_locked_due_to_missing_users: boolean;
+    run_permission_mode: PermissionMode;
     can_current_user_run: boolean;
     can_current_user_manage_run_permissions: boolean;
     allowed_runner_count: number;
@@ -73,6 +78,11 @@ export function getPermissionSummaryFields(
     );
 
     return {
+        permission_mode: mode,
+        can_current_user_use: summary.canCurrentUserUse,
+        can_current_user_manage_permissions: summary.canCurrentUserUse,
+        allowed_user_count: summary.allowedUserCount,
+        is_locked_due_to_missing_users: summary.isLockedDueToMissingUsers,
         run_permission_mode: mode,
         can_current_user_run: summary.canCurrentUserUse,
         can_current_user_manage_run_permissions: summary.canCurrentUserUse,
@@ -83,8 +93,8 @@ export function getPermissionSummaryFields(
 
 export async function setWorkflowRunPermissions(
     slug: string,
-    payload: WorkflowRunPermissions,
+    payload: Permissions,
     ownerUserId: string | null,
 ): Promise<PermissionWithUsers> {
-    return setResourcePermissions("workflow", slug, payload as CommonPermissions, ownerUserId);
+    return setResourcePermissions("workflow", slug, payload, ownerUserId);
 }

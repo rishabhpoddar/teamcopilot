@@ -789,7 +789,15 @@ router.get('/:slug', apiHandler(async (req, res) => {
             approved_by_user_name: approver?.name ?? null,
             approved_by_user_email: approver?.email ?? null,
             ...permissionSummary,
+            permissions: mapPermissionToApi(permission),
             run_permissions: mapPermissionToApi(permission),
+            allowed_users_resolved: permission.allowedUsers.map((row) => ({
+                user_id: row.user.id,
+                name: row.user.name,
+                email: row.user.email,
+                is_owner: row.user.id === metadata.created_by_user_id,
+                is_approver: row.user.id === metadata.approved_by_user_id
+            })),
             allowed_runners_resolved: permission.allowedUsers.map((row) => ({
                 user_id: row.user.id,
                 name: row.user.name,
@@ -802,8 +810,7 @@ router.get('/:slug', apiHandler(async (req, res) => {
     });
 }, true));
 
-// PATCH /api/workflows/:slug/run-permissions - Update run permissions
-router.patch('/:slug/run-permissions', apiHandler(async (req, res) => {
+const updateWorkflowPermissionsHandler = apiHandler(async (req, res) => {
     const slug = req.params.slug as string;
     const { metadata } = await readWorkflowManifestAndEnsurePermissions(slug);
 
@@ -846,7 +853,15 @@ router.patch('/:slug/run-permissions', apiHandler(async (req, res) => {
         workflow: {
             slug,
             ...updatedSummary,
+            permissions: mapPermissionToApi(updatedPermission),
             run_permissions: mapPermissionToApi(updatedPermission),
+            allowed_users_resolved: updatedPermission.allowedUsers.map((row) => ({
+                user_id: row.user.id,
+                name: row.user.name,
+                email: row.user.email,
+                is_owner: row.user.id === metadata.created_by_user_id,
+                is_approver: row.user.id === metadata.approved_by_user_id
+            })),
             allowed_runners_resolved: updatedPermission.allowedUsers.map((row) => ({
                 user_id: row.user.id,
                 name: row.user.name,
@@ -856,7 +871,12 @@ router.patch('/:slug/run-permissions', apiHandler(async (req, res) => {
             }))
         }
     });
-}, true));
+}, true);
+
+// PATCH /api/workflows/:slug/permissions - Update permissions (canonical)
+router.patch('/:slug/permissions', updateWorkflowPermissionsHandler);
+// PATCH /api/workflows/:slug/run-permissions - Backward-compatible alias
+router.patch('/:slug/run-permissions', updateWorkflowPermissionsHandler);
 
 // POST /api/workflows/request-permission - Create a tool execution permission request
 router.post('/request-permission', apiHandler(async (req, res) => {

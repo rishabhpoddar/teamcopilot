@@ -24,11 +24,11 @@ export default function WorkflowCard(props: WorkflowCardProps) {
             created_by_user_email={props.created_by_user_email}
             approved_by_user_id={props.approved_by_user_id}
             is_approved={props.is_approved}
-            permission_mode={props.run_permission_mode}
-            can_current_user_manage_permissions={props.can_current_user_manage_run_permissions}
-            allowed_user_count={props.allowed_runner_count}
-            is_locked_due_to_missing_users={props.is_run_locked_due_to_missing_users}
-            can_run={props.is_approved && props.can_current_user_run}
+            permission_mode={props.permission_mode}
+            can_current_user_manage_permissions={props.can_current_user_manage_permissions}
+            allowed_user_count={props.allowed_user_count}
+            is_locked_due_to_missing_users={props.is_locked_due_to_missing_users}
+            can_run={props.is_approved && props.can_current_user_use}
             userRole={props.userRole}
             currentUserId={props.currentUserId}
             token={props.token}

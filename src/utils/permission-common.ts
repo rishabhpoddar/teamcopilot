@@ -1,9 +1,9 @@
 import prisma from "../prisma/client";
+import { PermissionMode, Permissions } from "../types/permissions";
 import { Prisma } from "@prisma/client";
 
-export type CommonPermissionMode = "restricted" | "everyone";
+export type CommonPermissionMode = PermissionMode;
 export type ResourceKind = "workflow" | "skill";
-export type CommonPermissions = { mode: "everyone" } | { mode: "restricted"; allowed_user_ids: string[] };
 
 export type ResourcePermissionWithUsers = {
     resource_kind: string;
@@ -304,7 +304,7 @@ export async function addUserToResourcePermissionsIfRestricted(
 export async function setResourcePermissions(
     resourceKind: ResourceKind,
     slug: string,
-    payload: CommonPermissions,
+    payload: Permissions,
     ownerUserId: string | null,
 ): Promise<ResourcePermissionWithUsers> {
     const now = BigInt(Date.now());

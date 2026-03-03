@@ -197,6 +197,7 @@ router.get("/:slug", apiHandler(async (req, res) => {
             approved_by_user_name: approver?.name ?? null,
             approved_by_user_email: approver?.email ?? null,
             ...permissionSummary,
+            permissions: mapSkillPermissionToApi(permission),
             access_permissions: mapSkillPermissionToApi(permission),
             allowed_users_resolved: permission.allowedUsers.map((row) => ({
                 user_id: row.user.id,
@@ -308,7 +309,7 @@ router.delete("/:slug/files", apiHandler(async (req, res) => {
     res.json({ success: true });
 }, true));
 
-router.patch("/:slug/access-permissions", apiHandler(async (req, res) => {
+const updateSkillPermissionsHandler = apiHandler(async (req, res) => {
     const slug = req.params.slug as string;
     const metadata = await getOrCreateSkillMetadata(slug);
     const hasApprovedSnapshot = await prisma.skill_approved_snapshots.findUnique({
@@ -352,6 +353,7 @@ router.patch("/:slug/access-permissions", apiHandler(async (req, res) => {
         skill: {
             slug,
             ...updatedSummary,
+            permissions: mapSkillPermissionToApi(updatedPermission),
             access_permissions: mapSkillPermissionToApi(updatedPermission),
             allowed_users_resolved: updatedPermission.allowedUsers.map((row) => ({
                 user_id: row.user.id,
@@ -362,7 +364,12 @@ router.patch("/:slug/access-permissions", apiHandler(async (req, res) => {
             }))
         }
     });
-}, true));
+}, true);
+
+// PATCH /api/skills/:slug/permissions - Update permissions (canonical)
+router.patch("/:slug/permissions", updateSkillPermissionsHandler);
+// PATCH /api/skills/:slug/access-permissions - Backward-compatible alias
+router.patch("/:slug/access-permissions", updateSkillPermissionsHandler);
 
 router.delete("/:slug", apiHandler(async (req, res) => {
     const slug = req.params.slug as string;
