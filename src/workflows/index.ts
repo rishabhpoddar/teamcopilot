@@ -167,7 +167,7 @@ router.get('/', apiHandler(async (req, res) => {
         const permission = await getWorkflowRunPermissionWithUsers(slug);
         const permissionSummary = getPermissionSummaryFields(permission, req.userId!);
         const approvalState = await getWorkflowSnapshotApprovalState(slug);
-        const createdByUserId = metadata.created_by_user_id ?? null;
+        const createdByUserId = metadata.created_by_user_id;
         workflows.push({
             slug,
             name: slug,
