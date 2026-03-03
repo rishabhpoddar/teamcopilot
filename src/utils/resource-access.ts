@@ -5,7 +5,7 @@ import { getWorkflowSnapshotApprovalState } from "./workflow-approval-snapshot";
 import { readSkillManifestAndEnsurePermissions } from "./skill";
 import { readWorkflowManifestAndEnsurePermissions } from "./workflow";
 
-export interface ResourceAccessSummary {
+interface ResourceAccessSummary {
     permission_mode: "restricted" | "everyone";
     is_locked_due_to_missing_users: boolean;
     is_approved: boolean;

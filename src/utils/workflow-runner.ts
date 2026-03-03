@@ -7,7 +7,7 @@ import prisma from "../prisma/client";
 import { isWorkflowSessionInterrupted } from "./workflow-interruption";
 
 const MAX_OUTPUT_CHARS = 300_000;
-export const SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 function sanitizeFilenamePart(value: string): string {
     return value.replace(/[^a-zA-Z0-9._-]/g, "_");

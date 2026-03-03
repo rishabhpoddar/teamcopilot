@@ -12,7 +12,7 @@ import { ensureWorkflowRunPermissionsForMetadata } from "./workflow-permissions"
 const WORKSPACE_DIR = assertEnv("WORKSPACE_DIR");
 
 /** Get the absolute path to the workspace directory */
-export function getWorkspacePath(): string {
+function getWorkspacePath(): string {
     if (path.isAbsolute(WORKSPACE_DIR)) {
         return WORKSPACE_DIR;
     }
@@ -25,7 +25,7 @@ export function getWorkflowPath(slug: string): string {
 }
 
 /** Get the path to a workflow's manifest file */
-export function getWorkflowManifestPath(slug: string): string {
+function getWorkflowManifestPath(slug: string): string {
     return path.join(getWorkflowPath(slug), "workflow.json");
 }
 
@@ -41,11 +41,6 @@ export function deleteWorkflowDirectory(slug: string): void {
     }
 
     fs.rmSync(workflowPath, { recursive: true, force: false });
-}
-
-/** Check if a workflow exists */
-export function workflowExists(slug: string): boolean {
-    return fs.existsSync(getWorkflowManifestPath(slug));
 }
 
 /** Read a workflow's manifest */

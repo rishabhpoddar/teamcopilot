@@ -170,7 +170,7 @@ router.get('/', apiHandler(async (req, res) => {
 }, true));
 
 // GET /api/workflows/runs - List workflow run history (last 50, all users)
-router.get('/runs', apiHandler(async (req, res) => {
+router.get('/runs', apiHandler(async (_req, res) => {
     const runs = await prisma.workflow_runs.findMany({
         orderBy: { started_at: 'desc' },
         take: 50,

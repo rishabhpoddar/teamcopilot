@@ -8,7 +8,7 @@ export interface ChatSession {
 }
 
 // Message types from opencode SDK
-export interface UserMessage {
+interface UserMessage {
     id: string;
     sessionID: string;
     role: "user";
@@ -26,7 +26,7 @@ export interface UserMessage {
     };
 }
 
-export interface AssistantMessage {
+interface AssistantMessage {
     id: string;
     sessionID: string;
     role: "assistant";
@@ -57,7 +57,7 @@ export interface AssistantMessage {
     finish?: string;
 }
 
-export interface MessageError {
+interface MessageError {
     name: string;
     data: {
         message?: string;
@@ -68,7 +68,7 @@ export interface MessageError {
 export type Message = UserMessage | AssistantMessage;
 
 // Part types
-export interface TextPart {
+interface TextPart {
     id: string;
     sessionID: string;
     messageID: string;
@@ -82,7 +82,7 @@ export interface TextPart {
     };
 }
 
-export interface ReasoningPart {
+interface ReasoningPart {
     id: string;
     sessionID: string;
     messageID: string;
@@ -94,7 +94,7 @@ export interface ReasoningPart {
     };
 }
 
-export interface FilePart {
+interface FilePart {
     id: string;
     sessionID: string;
     messageID: string;
@@ -104,13 +104,13 @@ export interface FilePart {
     url: string;
 }
 
-export interface ToolStatePending {
+interface ToolStatePending {
     status: "pending";
     input: Record<string, unknown>;
     raw?: string;
 }
 
-export interface ToolStateRunning {
+interface ToolStateRunning {
     status: "running";
     input: Record<string, unknown>;
     title?: string;
@@ -120,7 +120,7 @@ export interface ToolStateRunning {
     };
 }
 
-export interface ToolStateCompleted {
+interface ToolStateCompleted {
     status: "completed";
     input: Record<string, unknown>;
     output: string;
@@ -133,7 +133,7 @@ export interface ToolStateCompleted {
     };
 }
 
-export interface ToolStateError {
+interface ToolStateError {
     status: "error";
     input: Record<string, unknown>;
     error: string;
@@ -144,7 +144,7 @@ export interface ToolStateError {
     };
 }
 
-export type ToolState = ToolStatePending | ToolStateRunning | ToolStateCompleted | ToolStateError;
+type ToolState = ToolStatePending | ToolStateRunning | ToolStateCompleted | ToolStateError;
 
 export interface ToolPart {
     id: string;
@@ -157,7 +157,7 @@ export interface ToolPart {
     metadata?: Record<string, unknown>;
 }
 
-export interface StepStartPart {
+interface StepStartPart {
     id: string;
     sessionID: string;
     messageID: string;
@@ -165,7 +165,7 @@ export interface StepStartPart {
     snapshot?: string;
 }
 
-export interface StepFinishPart {
+interface StepFinishPart {
     id: string;
     sessionID: string;
     messageID: string;
@@ -184,7 +184,7 @@ export interface StepFinishPart {
     };
 }
 
-export interface AgentPart {
+interface AgentPart {
     id: string;
     sessionID: string;
     messageID: string;
@@ -195,14 +195,14 @@ export interface AgentPart {
 export type Part = TextPart | ReasoningPart | FilePart | ToolPart | StepStartPart | StepFinishPart | AgentPart;
 
 // Event types from SSE
-export interface MessageUpdatedEvent {
+interface MessageUpdatedEvent {
     type: "message.updated";
     properties: {
         info: Message;
     };
 }
 
-export interface MessageRemovedEvent {
+interface MessageRemovedEvent {
     type: "message.removed";
     properties: {
         sessionID: string;
@@ -210,7 +210,7 @@ export interface MessageRemovedEvent {
     };
 }
 
-export interface MessagePartUpdatedEvent {
+interface MessagePartUpdatedEvent {
     type: "message.part.updated";
     properties: {
         part: Part;
@@ -218,7 +218,7 @@ export interface MessagePartUpdatedEvent {
     };
 }
 
-export interface MessagePartRemovedEvent {
+interface MessagePartRemovedEvent {
     type: "message.part.removed";
     properties: {
         sessionID: string;
@@ -227,12 +227,12 @@ export interface MessagePartRemovedEvent {
     };
 }
 
-export interface ErrorEvent {
+interface ErrorEvent {
     type: "error";
     message: string;
 }
 
-export interface SessionStatusEvent {
+interface SessionStatusEvent {
     type: "session.status";
     properties: {
         sessionID: string;
@@ -243,7 +243,7 @@ export interface SessionStatusEvent {
     };
 }
 
-export interface SessionErrorEvent {
+interface SessionErrorEvent {
     type: "session.error";
     properties: {
         sessionID: string;
@@ -257,7 +257,7 @@ export interface SessionErrorEvent {
     };
 }
 
-export interface SessionIdleEvent {
+interface SessionIdleEvent {
     type: "session.idle";
     properties: {
         sessionID: string;
@@ -277,12 +277,12 @@ export interface PermissionRequest {
     };
 }
 
-export interface PermissionAskedEvent {
+interface PermissionAskedEvent {
     type: "permission.asked";
     properties: PermissionRequest;
 }
 
-export interface PermissionRepliedEvent {
+interface PermissionRepliedEvent {
     type: "permission.replied";
     properties: {
         sessionID: string;
@@ -302,21 +302,6 @@ export type SSEEvent =
     SessionIdleEvent |
     PermissionAskedEvent |
     PermissionRepliedEvent;
-
-// API response types
-export interface SessionsResponse {
-    sessions: ChatSession[];
-}
-
-export interface SessionResponse {
-    session: ChatSession & {
-        opencode_data?: unknown;
-    };
-}
-
-export interface MessagesResponse {
-    messages: Message[];
-}
 
 // Helper to check message role
 export function isUserMessage(message: Message): message is UserMessage {

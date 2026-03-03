@@ -4,18 +4,18 @@ import prisma from "../prisma/client";
 import { getWorkspaceDirFromEnv } from "./workspace-sync";
 import { ensureResourcePermissions } from "./permission-common";
 
-export interface SkillManifest {
+interface SkillManifest {
     name: string;
     description: string;
 }
 
-export interface SkillMetadata {
+interface SkillMetadata {
     skill_slug: string;
     created_by_user_id: string | null;
     approved_by_user_id: string | null;
 }
 
-export interface CreateSkillInput {
+interface CreateSkillInput {
     slug: string;
     createdByUserId: string;
 }
@@ -41,11 +41,11 @@ export function deleteSkillDirectory(slug: string): void {
     fs.rmSync(skillPath, { recursive: true, force: false });
 }
 
-export function getSkillManifestPath(slug: string): string {
+function getSkillManifestPath(slug: string): string {
     return path.join(getSkillPath(slug), "SKILL.md");
 }
 
-export function assertSkillSlug(slug: string): void {
+function assertSkillSlug(slug: string): void {
     if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
         throw {
             status: 400,
@@ -83,7 +83,7 @@ function extractFrontmatterValue(frontmatter: string, key: string): string | nul
     return match[1]?.trim().replace(/^["']|["']$/g, "") ?? null;
 }
 
-export function readSkillManifest(slug: string): SkillManifest {
+function readSkillManifest(slug: string): SkillManifest {
     const skillManifestPath = getSkillManifestPath(slug);
     if (!fs.existsSync(skillManifestPath)) {
         throw {

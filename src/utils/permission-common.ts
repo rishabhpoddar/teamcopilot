@@ -2,7 +2,6 @@ import prisma from "../prisma/client";
 import { PermissionMode, Permissions } from "../types/permissions";
 import { Prisma } from "@prisma/client";
 
-export type CommonPermissionMode = PermissionMode;
 export type ResourceKind = "workflow" | "skill";
 
 export type ResourcePermissionWithUsers = {
@@ -12,7 +11,7 @@ export type ResourcePermissionWithUsers = {
     allowedUsers: Array<{ user_id: string; user: { id: string; name: string; email: string } }>;
 };
 
-export function assertCommonPermissionMode(mode: string, label: string): CommonPermissionMode {
+export function assertCommonPermissionMode(mode: string, label: string): PermissionMode {
     if (mode !== "restricted" && mode !== "everyone") {
         throw {
             status: 500,
@@ -22,7 +21,7 @@ export function assertCommonPermissionMode(mode: string, label: string): CommonP
     return mode;
 }
 
-export async function getExistingUserIds(userIds: string[]): Promise<string[]> {
+async function getExistingUserIds(userIds: string[]): Promise<string[]> {
     if (userIds.length === 0) return [];
     const users = await prisma.users.findMany({
         where: { id: { in: userIds } },
@@ -31,7 +30,7 @@ export async function getExistingUserIds(userIds: string[]): Promise<string[]> {
     return users.map((user) => user.id);
 }
 
-export async function resolveRestrictedPermissionUserIds(
+async function resolveRestrictedPermissionUserIds(
     allowedUserIds: string[],
     ownerUserId: string | null,
 ): Promise<string[]> {

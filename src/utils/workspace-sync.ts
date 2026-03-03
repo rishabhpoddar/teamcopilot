@@ -22,7 +22,7 @@ export function getWorkspaceDirFromEnv(): string {
     return workspaceDir;
 }
 
-export function getWorkspaceDatabasePath(): string {
+function getWorkspaceDatabasePath(): string {
     return path.join(getWorkspaceDirFromEnv(), WORKSPACE_DB_DIRECTORY, WORKSPACE_DB_FILENAME);
 }
 

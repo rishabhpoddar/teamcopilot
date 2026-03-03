@@ -1,5 +1,5 @@
 import { useSearchParams } from 'react-router-dom';
-import { useAuth } from '../lib/auth.tsx';
+import { useAuth } from '../lib/auth';
 import WorkflowsSection from '../components/dashboard/WorkflowsSection';
 import RunHistorySection from '../components/dashboard/RunHistorySection';
 import AIModeSection from '../components/dashboard/AIModeSection';

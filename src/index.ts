@@ -55,7 +55,7 @@ app.use('/api/auth', authRouter);
 
 const apiRouter = express.Router();
 
-apiRouter.use((req, res, next) => {
+apiRouter.use((_req, res, next) => {
     const originalJson = res.json.bind(res);
     const originalSend = res.send.bind(res);
     const shouldSkipSanitization = () => Boolean((res.locals as { skipResponseSanitization?: boolean }).skipResponseSanitization);
@@ -99,7 +99,7 @@ apiRouter.use((req, res, next) => {
     next();
 });
 
-apiRouter.get("/", (req, res) => {
+apiRouter.get("/", (_req, res) => {
     // for healthcheck
     res.send("Hello from the API!");
 });
@@ -115,7 +115,7 @@ app.use('/api', apiRouter);
 app.use(express.static(path.join(__dirname, "..", "frontend", "dist")));
 
 // SPA fallback: serve index.html for non-API routes (client-side routing)
-app.get("*", (req, res) => {
+app.get("*", (_req, res) => {
     res.sendFile(path.join(__dirname, "..", "frontend", "dist", "index.html"));
 });
 

@@ -33,17 +33,17 @@ export function getOpencodePort(): number {
     return parseIntStrict(assertEnv("OPENCODE_PORT"), "OPENCODE_PORT");
 }
 
-export function getOpencodeBaseUrl(): string {
+function getOpencodeBaseUrl(): string {
     return `http://localhost:${getOpencodePort()}`;
 }
 
-export interface PendingQuestion {
+interface PendingQuestion {
     id: string;
     sessionID: string;
     questions: Array<unknown>;
 }
 
-export interface PendingPermission {
+interface PendingPermission {
     id: string;
     sessionID: string;
     permission: string;

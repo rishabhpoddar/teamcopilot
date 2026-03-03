@@ -287,7 +287,6 @@ const updateSkillPermissionsHandler = apiHandler(async (req, res) => {
         };
     }
 
-    const currentPermission = await getSkillAccessPermissionWithUsers(slug);
     const currentSummary = await getResourceAccessSummary("skill", slug, req.userId!);
     if (!currentSummary.can_edit) {
         throw {
