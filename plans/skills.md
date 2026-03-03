@@ -79,18 +79,14 @@
 
 ### Pending
 
-1. Access model parity checks
-   - Re-check all read/write skill endpoints for strict approval-state parity with workflows.
-   - Ensure any remaining edge-case behavior is identical for skill/workflow when status is pending vs approved.
-
-2. Plugin + agent integration (not started)
+1. Plugin + agent integration (not started)
    - Add `GET /api/skills/available` (session token auth).
    - Add workspace plugin tool `listAvailableSkills`.
    - Add/create parity tools for agent flow (`createSkill`, `findSkill`) if still required.
    - Inject available skills in session-start context.
    - Update workspace `AGENTS.md` with custom-skill discovery rules.
 
-3. API surface cleanup (optional)
+2. API surface cleanup (optional)
    - Consider extracting shared permission API handlers/utilities to remove remaining workflow/skill endpoint duplication.
    - Keep current canonical route naming (`/:slug/permissions`) consistent everywhere.
 
@@ -100,3 +96,5 @@
 2. Current implementation reuses editor, card, and approval-review UI heavily; major remaining gaps are plugin/agent integration.
 3. Permission storage/mode typing and snapshot approval storage are shared between workflows and skills.
 4. `data/` directories are intentionally excluded from approval snapshot storage and diffs.
+5. Access model note: pending resource edit access intentionally allows Engineers and users who already have resource-use permission.
+6. Open security follow-up tracked in issue `#31` (validate skill slugs across all skill routes).
