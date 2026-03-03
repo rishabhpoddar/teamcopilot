@@ -253,7 +253,18 @@ export default function SkillsSection() {
                         <SkillCard
                             key={skill.slug}
                             {...skill}
+                            userRole={user?.role ?? 'User'}
                             currentUserId={user?.userId ?? null}
+                            token={token ?? ''}
+                            onDeleted={() => {
+                                setLoading(true);
+                                void fetchSkills();
+                            }}
+                            onUpdated={() => {
+                                setLoading(true);
+                                void fetchSkills();
+                            }}
+                            onOpenSkill={(skillSlug) => navigate(`/skills/${encodeURIComponent(skillSlug)}`)}
                         />
                     ))}
                 </div>

@@ -29,6 +29,19 @@ export function getSkillPath(slug: string): string {
     return path.join(getSkillsRootPath(), slug);
 }
 
+export function deleteSkillDirectory(slug: string): void {
+    const skillPath = getSkillPath(slug);
+
+    if (!fs.existsSync(skillPath)) {
+        throw {
+            status: 404,
+            message: `Skill not found for slug: ${slug}`
+        };
+    }
+
+    fs.rmSync(skillPath, { recursive: true, force: false });
+}
+
 export function getSkillManifestPath(slug: string): string {
     return path.join(getSkillPath(slug), "SKILL.md");
 }

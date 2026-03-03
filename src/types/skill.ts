@@ -1,5 +1,12 @@
 export type SkillAccessPermissionMode = "restricted";
 
+export interface SkillAccessPermissionsRestricted {
+    mode: "restricted";
+    allowed_user_ids: string[];
+}
+
+export type SkillAccessPermissions = SkillAccessPermissionsRestricted;
+
 export interface SkillSummary {
     slug: string;
     name: string;
@@ -11,6 +18,9 @@ export interface SkillSummary {
     is_approved: boolean;
     access_permission_mode: SkillAccessPermissionMode;
     allowed_user_count: number;
+    can_current_user_use_skill: boolean;
+    can_current_user_manage_access_permissions: boolean;
+    is_access_locked_due_to_missing_users: boolean;
 }
 
 export type Skill = SkillSummary;

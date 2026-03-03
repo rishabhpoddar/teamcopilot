@@ -6,7 +6,13 @@ import multer from "multer";
 import prisma from "../prisma/client";
 import { SkillSummary } from "../types/skill";
 import { apiHandler } from "../utils";
-import { createSkill, getOrCreateSkillMetadata, listSkillSlugs, readSkillManifest } from "../utils/skill";
+import { createSkill, deleteSkillDirectory, getOrCreateSkillMetadata, listSkillSlugs, readSkillManifest } from "../utils/skill";
+import {
+    getSkillAccessPermissionWithUsers,
+    getSkillPermissionSummaryFields,
+    mapSkillPermissionToApi,
+    setSkillAccessPermissions,
+} from "../utils/skill-permissions";
 import {
     createSkillFileOrFolder,
     deleteSkillPath,
@@ -120,9 +126,8 @@ router.get("/", apiHandler(async (req, res) => {
         const manifest = readSkillManifest(slug);
         const metadata = metadataBySlug.get(slug);
         if (!metadata) continue;
-        const allowedUserCount = await prisma.skill_access_permission_users.count({
-            where: { skill_slug: slug }
-        });
+        const permission = await getSkillAccessPermissionWithUsers(slug);
+        const permissionSummary = getSkillPermissionSummaryFields(permission, req.userId!);
         const hasApprovedSnapshot = await prisma.skill_approved_snapshots.findUnique({
             where: { skill_slug: slug },
             select: { skill_slug: true }
@@ -137,12 +142,24 @@ router.get("/", apiHandler(async (req, res) => {
             created_by_user_email: createdByUserId ? (creatorEmailById.get(createdByUserId) ?? null) : null,
             approved_by_user_id: metadata.approved_by_user_id,
             is_approved: Boolean(hasApprovedSnapshot),
-            access_permission_mode: metadata.access_permission_mode,
-            allowed_user_count: allowedUserCount,
+            ...permissionSummary,
         });
     }
 
     res.json({ skills });
+}, true));
+
+router.get("/users", apiHandler(async (_req, res) => {
+    const users = await prisma.users.findMany({
+        orderBy: { name: "asc" },
+        select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true
+        }
+    });
+    res.json({ users });
 }, true));
 
 router.get("/:slug", apiHandler(async (req, res) => {
@@ -162,22 +179,28 @@ router.get("/:slug", apiHandler(async (req, res) => {
     const usersById = new Map(users.map((user) => [user.id, user]));
     const creator = createdByUserId ? (usersById.get(createdByUserId) ?? null) : null;
     const approver = approvedByUserId ? (usersById.get(approvedByUserId) ?? null) : null;
-    const allowedRunnerCount = await prisma.skill_access_permission_users.count({
-        where: { skill_slug: slug }
-    });
+    const permission = await getSkillAccessPermissionWithUsers(slug);
+    const permissionSummary = getSkillPermissionSummaryFields(permission, req.userId!);
 
     res.json({
         workflow: {
             slug,
             name: manifest.name,
+            created_by_user_id: createdByUserId,
             created_by_user_name: creator?.name ?? null,
             created_by_user_email: creator?.email ?? null,
             approved_by_user_id: approvedByUserId,
             approved_by_user_name: approver?.name ?? null,
             approved_by_user_email: approver?.email ?? null,
-            run_permission_mode: "restricted",
-            allowed_runner_count: allowedRunnerCount,
-            is_run_locked_due_to_missing_users: allowedRunnerCount === 0,
+            ...permissionSummary,
+            access_permissions: mapSkillPermissionToApi(permission),
+            allowed_users_resolved: permission.allowedUsers.map((row) => ({
+                user_id: row.user.id,
+                name: row.user.name,
+                email: row.user.email,
+                is_owner: row.user.id === metadata.created_by_user_id,
+                is_approver: row.user.id === metadata.approved_by_user_id
+            })),
         }
     });
 }, true));
@@ -278,6 +301,80 @@ router.delete("/:slug/files", apiHandler(async (req, res) => {
     await assertCanEditSkillFiles(slug, req.userId!, req.role);
     const rawPath = typeof req.query.path === "string" ? req.query.path : undefined;
     deleteSkillPath(slug, rawPath);
+    res.json({ success: true });
+}, true));
+
+router.patch("/:slug/access-permissions", apiHandler(async (req, res) => {
+    const slug = req.params.slug as string;
+    const metadata = await getOrCreateSkillMetadata(slug);
+    const currentPermission = await getSkillAccessPermissionWithUsers(slug);
+    const currentSummary = getSkillPermissionSummaryFields(currentPermission, req.userId!);
+    if (!currentSummary.can_current_user_manage_access_permissions) {
+        throw {
+            status: 403,
+            message: currentSummary.is_access_locked_due_to_missing_users
+                ? "Skill permissions cannot be modified because no allowed users remain"
+                : "You do not have permission to modify skill access permissions"
+        };
+    }
+
+    const { mode, allowed_user_ids } = req.body as { mode?: string; allowed_user_ids?: unknown };
+    if (mode !== "restricted") {
+        throw {
+            status: 400,
+            message: 'mode must be "restricted"'
+        };
+    }
+
+    const updatedPermission = await setSkillAccessPermissions(slug, {
+        mode: "restricted",
+        allowed_user_ids: Array.isArray(allowed_user_ids) ? allowed_user_ids.map((id) => String(id)) : []
+    }, metadata.created_by_user_id);
+    const updatedSummary = getSkillPermissionSummaryFields(updatedPermission, req.userId!);
+    res.json({
+        skill: {
+            slug,
+            ...updatedSummary,
+            access_permissions: mapSkillPermissionToApi(updatedPermission),
+            allowed_users_resolved: updatedPermission.allowedUsers.map((row) => ({
+                user_id: row.user.id,
+                name: row.user.name,
+                email: row.user.email,
+                is_owner: row.user.id === metadata.created_by_user_id,
+                is_approver: row.user.id === metadata.approved_by_user_id
+            }))
+        }
+    });
+}, true));
+
+router.delete("/:slug", apiHandler(async (req, res) => {
+    const slug = req.params.slug as string;
+    const metadata = await getOrCreateSkillMetadata(slug);
+    const creatorUserId = metadata.created_by_user_id ?? null;
+
+    const creator = creatorUserId
+        ? await prisma.users.findUnique({
+            where: { id: creatorUserId },
+            select: { id: true }
+        })
+        : null;
+
+    const isOwner = creatorUserId === req.userId!;
+    const hasNoCreatorUser = creator === null;
+    const isEngineer = req.role === "Engineer";
+
+    if (!isOwner && !(hasNoCreatorUser && isEngineer)) {
+        throw {
+            status: 403,
+            message: "Only the skill owner can delete this skill. Engineers can only delete skills whose owner no longer exists."
+        };
+    }
+
+    await prisma.skill_metadata.deleteMany({
+        where: { skill_slug: slug }
+    });
+    deleteSkillDirectory(slug);
+
     res.json({ success: true });
 }, true));
 

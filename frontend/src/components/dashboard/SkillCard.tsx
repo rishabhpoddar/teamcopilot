@@ -1,39 +1,40 @@
 import type { Skill } from '../../types/skill';
+import UnifiedCard from './UnifiedCard';
 
 interface SkillCardProps extends Skill {
+    userRole: 'User' | 'Engineer';
     currentUserId: string | null;
+    token: string;
+    onDeleted: () => void;
+    onUpdated: () => void;
+    onOpenSkill: (slug: string) => void;
 }
 
-export default function SkillCard({
-    slug,
-    name,
-    description,
-    created_by_user_id,
-    created_by_user_name,
-    created_by_user_email,
-    is_approved,
-    access_permission_mode,
-    allowed_user_count,
-    currentUserId,
-}: SkillCardProps) {
-    const isOwnedByCurrentUser = created_by_user_id === currentUserId;
-
+export default function SkillCard(props: SkillCardProps) {
     return (
-        <div className="workflow-card">
-            <div className="workflow-card-header">
-                <h3 className="workflow-card-title">{name || slug}</h3>
-                <span className={`workflow-approval-badge ${is_approved ? 'approved' : 'pending'}`}>
-                    {is_approved ? 'Approved' : 'Pending Approval'}
-                </span>
-            </div>
-            <p className="workflow-card-meta">Slug: {slug}</p>
-            {description && <p className="workflow-card-description">{description}</p>}
-            <p className="workflow-card-meta">
-                Created by: {created_by_user_name ?? created_by_user_email ?? 'Unknown User'}{isOwnedByCurrentUser ? ' (you)' : ''}
-            </p>
-            <p className="workflow-card-meta">
-                Access: {access_permission_mode === 'restricted' ? `Restricted (${allowed_user_count} allowed)` : access_permission_mode}
-            </p>
-        </div>
+        <UnifiedCard
+            kind="skill"
+            slug={props.slug}
+            name={props.name}
+            description={props.description}
+            created_by_user_id={props.created_by_user_id}
+            created_by_user_name={props.created_by_user_name}
+            created_by_user_email={props.created_by_user_email}
+            approved_by_user_id={props.approved_by_user_id}
+            is_approved={props.is_approved}
+            permission_mode={props.access_permission_mode}
+            can_current_user_manage_permissions={props.can_current_user_manage_access_permissions}
+            allowed_user_count={props.allowed_user_count}
+            is_locked_due_to_missing_users={props.is_access_locked_due_to_missing_users}
+            can_run={false}
+            userRole={props.userRole}
+            currentUserId={props.currentUserId}
+            token={props.token}
+            viewLabel="View Skills"
+            runLabel="Run Workflow"
+            onUpdated={props.onUpdated}
+            onDeleted={props.onDeleted}
+            onOpen={props.onOpenSkill}
+        />
     );
 }
