@@ -87,7 +87,7 @@ async function assertCurrentUserCanRunWorkflow(slug: string, userId: string): Pr
     }
 
     const permissionSummary = await getResourceAccessSummary("workflow", slug, userId);
-    if (!permissionSummary.can_current_user_use) {
+    if (!permissionSummary.can_edit) {
         throw {
             status: 403,
             message: permissionSummary.is_locked_due_to_missing_users
@@ -162,10 +162,9 @@ router.get('/', apiHandler(async (req, res) => {
             created_by_user_email: createdByUserId ? (creatorEmailById.get(createdByUserId) ?? null) : null,
             approved_by_user_id: metadata.approved_by_user_id ?? null,
             is_approved: accessSummary.is_approved,
+            can_view: accessSummary.can_view,
+            can_edit: accessSummary.can_edit,
             permission_mode: accessSummary.permission_mode,
-            can_current_user_use: accessSummary.can_current_user_use,
-            can_current_user_manage_permissions: accessSummary.can_current_user_manage_permissions,
-            allowed_user_count: accessSummary.allowed_user_count,
             is_locked_due_to_missing_users: accessSummary.is_locked_due_to_missing_users
         });
     }
@@ -313,7 +312,7 @@ router.post('/runs/:id/stop', apiHandler(async (req, res) => {
     }
 
     const permissionSummary = await getResourceAccessSummary("workflow", run.workflow_slug, req.userId!);
-    if (!permissionSummary.can_current_user_use) {
+    if (!permissionSummary.can_edit) {
         throw {
             status: 403,
             message: 'You do not have permission to stop this workflow run'
@@ -667,10 +666,9 @@ router.get('/:slug', apiHandler(async (req, res) => {
             is_approved: accessSummary.is_approved,
             approved_by_user_name: approver?.name ?? null,
             approved_by_user_email: approver?.email ?? null,
+            can_view: accessSummary.can_view,
+            can_edit: accessSummary.can_edit,
             permission_mode: accessSummary.permission_mode,
-            can_current_user_use: accessSummary.can_current_user_use,
-            can_current_user_manage_permissions: accessSummary.can_current_user_manage_permissions,
-            allowed_user_count: accessSummary.allowed_user_count,
             is_locked_due_to_missing_users: accessSummary.is_locked_due_to_missing_users,
             permissions,
             allowed_users_resolved: permission.allowedUsers.map((row) => ({
@@ -698,7 +696,7 @@ const updateWorkflowPermissionsHandler = apiHandler(async (req, res) => {
     }
 
     const currentSummary = await getResourceAccessSummary("workflow", slug, req.userId!);
-    if (!currentSummary.can_current_user_manage_permissions) {
+    if (!currentSummary.can_edit) {
         throw {
             status: 403,
             message: currentSummary.is_locked_due_to_missing_users

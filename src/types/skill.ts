@@ -9,10 +9,9 @@ export interface SkillSummary {
     created_by_user_email: string | null;
     approved_by_user_id: string | null;
     is_approved: boolean;
+    can_view: boolean;
+    can_edit: boolean;
     permission_mode: PermissionMode;
-    can_current_user_use: boolean;
-    can_current_user_manage_permissions: boolean;
-    allowed_user_count: number;
     is_locked_due_to_missing_users: boolean;
 }
 

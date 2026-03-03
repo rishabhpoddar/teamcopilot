@@ -7,9 +7,6 @@ import { readWorkflowManifestAndEnsurePermissions } from "./workflow";
 
 export interface ResourceAccessSummary {
     permission_mode: "restricted" | "everyone";
-    can_current_user_use: boolean;
-    can_current_user_manage_permissions: boolean;
-    allowed_user_count: number;
     is_locked_due_to_missing_users: boolean;
     is_approved: boolean;
     can_view: boolean;
@@ -38,7 +35,6 @@ export async function getResourceAccessSummary(
     );
     const allowedUserIds = permission.allowedUsers.map((row) => row.user_id);
     const canCurrentUserUse = mode === "everyone" || allowedUserIds.includes(userId);
-    const allowedUserCount = mode === "restricted" ? allowedUserIds.length : 0;
     const isLockedDueToMissingUsers = mode === "restricted" && allowedUserIds.length === 0;
     const approvalState = resourceType === "workflow"
         ? await getWorkflowSnapshotApprovalState(slug)
@@ -51,9 +47,6 @@ export async function getResourceAccessSummary(
 
     return {
         permission_mode: mode,
-        can_current_user_use: canCurrentUserUse,
-        can_current_user_manage_permissions: canCurrentUserUse,
-        allowed_user_count: allowedUserCount,
         is_locked_due_to_missing_users: isLockedDueToMissingUsers,
         is_approved: approvalState.is_current_code_approved,
         can_view: canView,
