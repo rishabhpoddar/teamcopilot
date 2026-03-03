@@ -20,10 +20,8 @@ model users {
   workflowRuns               workflow_runs[]
   chatSessions               chat_sessions[]
   resourcePermissionUsers    resource_permission_users[]
-  createdWorkflowMetadata    workflow_metadata[]             @relation("WorkflowCreatedBy")
-  approvedWorkflowMetadata   workflow_metadata[]             @relation("WorkflowApprovedBy")
-  createdSkillMetadata       skill_metadata[]                @relation("SkillCreatedBy")
-  approvedSkillMetadata      skill_metadata[]                @relation("SkillApprovedBy")
+  createdResourceMetadata    resource_metadata[]             @relation("ResourceCreatedBy")
+  approvedResourceMetadata   resource_metadata[]             @relation("ResourceApprovedBy")
 }
 
 model workflow_runs {
@@ -77,54 +75,19 @@ model tool_execution_permissions {
   @@index([opencode_session_id, status])
 }
 
-model workflow_metadata {
-  workflow_slug       String                          @id
+model resource_metadata {
+  resource_kind       String
+  resource_slug       String
   created_by_user_id  String?
   approved_by_user_id String?
   created_at          BigInt
   updated_at          BigInt
-  approvedSnapshot    workflow_approved_snapshots?
-  createdByUser       users?                          @relation("WorkflowCreatedBy", fields: [created_by_user_id], references: [id], onDelete: SetNull)
-  approvedByUser      users?                          @relation("WorkflowApprovedBy", fields: [approved_by_user_id], references: [id], onDelete: SetNull)
+  approvedSnapshot    resource_approved_snapshots?
+  createdByUser       users?                       @relation("ResourceCreatedBy", fields: [created_by_user_id], references: [id], onDelete: SetNull)
+  approvedByUser      users?                       @relation("ResourceApprovedBy", fields: [approved_by_user_id], references: [id], onDelete: SetNull)
 
-  @@index([created_by_user_id])
-  @@index([approved_by_user_id])
-}
-
-model workflow_approved_snapshots {
-  workflow_slug String                             @id
-  file_count    Int
-  created_at    BigInt
-  updated_at    BigInt
-  workflow      workflow_metadata                  @relation(fields: [workflow_slug], references: [workflow_slug], onDelete: Cascade)
-  files         workflow_approved_snapshot_files[]
-}
-
-model workflow_approved_snapshot_files {
-  id             String                      @id @default(uuid())
-  workflow_slug  String
-  relative_path  String
-  content_kind   String // "text" | "binary"
-  text_content   String?
-  binary_content Bytes?
-  size_bytes     Int
-  content_sha256 String
-  snapshot       workflow_approved_snapshots @relation(fields: [workflow_slug], references: [workflow_slug], onDelete: Cascade)
-
-  @@unique([workflow_slug, relative_path])
-  @@index([workflow_slug])
-}
-
-model skill_metadata {
-  skill_slug              String                          @id
-  created_by_user_id      String?
-  approved_by_user_id     String?
-  created_at              BigInt
-  updated_at              BigInt
-  approvedSnapshot        skill_approved_snapshots?
-  createdByUser           users?                          @relation("SkillCreatedBy", fields: [created_by_user_id], references: [id], onDelete: SetNull)
-  approvedByUser          users?                          @relation("SkillApprovedBy", fields: [approved_by_user_id], references: [id], onDelete: SetNull)
-
+  @@id([resource_kind, resource_slug])
+  @@index([resource_slug])
   @@index([created_by_user_id])
   @@index([approved_by_user_id])
 }
@@ -154,26 +117,31 @@ model resource_permission_users {
   @@index([resource_kind, resource_slug])
 }
 
-model skill_approved_snapshots {
-  skill_slug String                        @id
-  file_count Int
-  created_at BigInt
-  updated_at BigInt
-  skill      skill_metadata                @relation(fields: [skill_slug], references: [skill_slug], onDelete: Cascade)
-  files      skill_approved_snapshot_files[]
+model resource_approved_snapshots {
+  resource_kind String
+  resource_slug String
+  file_count    Int
+  created_at    BigInt
+  updated_at    BigInt
+  resource      resource_metadata               @relation(fields: [resource_kind, resource_slug], references: [resource_kind, resource_slug], onDelete: Cascade)
+  files         resource_approved_snapshot_files[]
+
+  @@id([resource_kind, resource_slug])
+  @@index([resource_slug])
 }
 
-model skill_approved_snapshot_files {
-  id             String                   @id @default(uuid())
-  skill_slug     String
+model resource_approved_snapshot_files {
+  id             String                      @id @default(uuid())
+  resource_kind  String
+  resource_slug  String
   relative_path  String
   content_kind   String // "text" | "binary"
   text_content   String?
   binary_content Bytes?
   size_bytes     Int
   content_sha256 String
-  snapshot       skill_approved_snapshots @relation(fields: [skill_slug], references: [skill_slug], onDelete: Cascade)
+  snapshot       resource_approved_snapshots @relation(fields: [resource_kind, resource_slug], references: [resource_kind, resource_slug], onDelete: Cascade)
 
-  @@unique([skill_slug, relative_path])
-  @@index([skill_slug])
+  @@unique([resource_kind, resource_slug, relative_path])
+  @@index([resource_kind, resource_slug])
 }

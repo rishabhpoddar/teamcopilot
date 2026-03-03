@@ -588,8 +588,11 @@ router.delete('/:slug', apiHandler(async (req, res) => {
     await prisma.workflow_runs.deleteMany({
         where: { workflow_slug: slug }
     });
-    await prisma.workflow_metadata.deleteMany({
-        where: { workflow_slug: slug }
+    await prisma.resource_metadata.deleteMany({
+        where: {
+            resource_kind: "workflow",
+            resource_slug: slug
+        }
     });
     await prisma.resource_permissions.deleteMany({
         where: {

@@ -83,15 +83,20 @@ export async function setWorkflowCreator(slug: string, userId: string): Promise<
     }
 
     const now = BigInt(Date.now());
-    const row = await prisma.workflow_metadata.update({
-        where: { workflow_slug: slug },
+    const row = await prisma.resource_metadata.update({
+        where: {
+            resource_kind_resource_slug: {
+                resource_kind: "workflow",
+                resource_slug: slug
+            }
+        },
         data: {
             created_by_user_id: userId,
             updated_at: now,
         }
     });
     return {
-        workflow_slug: row.workflow_slug,
+        workflow_slug: row.resource_slug,
         created_by_user_id: row.created_by_user_id,
         approved_by_user_id: row.approved_by_user_id,
     };
@@ -122,12 +127,17 @@ export function listWorkflowSlugs(): string[] {
 
 async function getOrCreateWorkflowMetadataAndEnsurePermission(slug: string): Promise<WorkflowMetadata> {
     readWorkflowManifest(slug);
-    const existing = await prisma.workflow_metadata.findUnique({
-        where: { workflow_slug: slug }
+    const existing = await prisma.resource_metadata.findUnique({
+        where: {
+            resource_kind_resource_slug: {
+                resource_kind: "workflow",
+                resource_slug: slug
+            }
+        }
     });
     if (existing) {
         const metadata: WorkflowMetadata = {
-            workflow_slug: existing.workflow_slug,
+            workflow_slug: existing.resource_slug,
             created_by_user_id: existing.created_by_user_id,
             approved_by_user_id: existing.approved_by_user_id,
         };
@@ -136,15 +146,16 @@ async function getOrCreateWorkflowMetadataAndEnsurePermission(slug: string): Pro
     }
 
     const now = BigInt(Date.now());
-    const row = await prisma.workflow_metadata.create({
+    const row = await prisma.resource_metadata.create({
         data: {
-            workflow_slug: slug,
+            resource_kind: "workflow",
+            resource_slug: slug,
             created_at: now,
             updated_at: now,
         }
     });
     const metadata: WorkflowMetadata = {
-        workflow_slug: row.workflow_slug,
+        workflow_slug: row.resource_slug,
         created_by_user_id: row.created_by_user_id,
         approved_by_user_id: row.approved_by_user_id,
     };

@@ -42,9 +42,14 @@ async function getSkillEditorAccess(slug: string, userId: string, role: string |
     const metadata = await getOrCreateSkillMetadataAndEnsurePermission(slug);
     const permission = await getSkillAccessPermissionWithUsers(slug);
     const permissionSummary = getSkillPermissionSummaryFields(permission, userId);
-    const hasApprovedSnapshot = await prisma.skill_approved_snapshots.findUnique({
-        where: { skill_slug: slug },
-        select: { skill_slug: true }
+    const hasApprovedSnapshot = await prisma.resource_approved_snapshots.findUnique({
+        where: {
+            resource_kind_resource_slug: {
+                resource_kind: "skill",
+                resource_slug: slug
+            }
+        },
+        select: { resource_slug: true }
     });
     const skillStatus = hasApprovedSnapshot ? "approved" : "pending";
     const isEngineer = role === "Engineer";
@@ -133,9 +138,14 @@ router.get("/", apiHandler(async (req, res) => {
         if (!metadata) continue;
         const permission = await getSkillAccessPermissionWithUsers(slug);
         const permissionSummary = getSkillPermissionSummaryFields(permission, req.userId!);
-        const hasApprovedSnapshot = await prisma.skill_approved_snapshots.findUnique({
-            where: { skill_slug: slug },
-            select: { skill_slug: true }
+        const hasApprovedSnapshot = await prisma.resource_approved_snapshots.findUnique({
+            where: {
+                resource_kind_resource_slug: {
+                    resource_kind: "skill",
+                    resource_slug: slug
+                }
+            },
+            select: { resource_slug: true }
         });
         const isApproved = Boolean(hasApprovedSnapshot);
         const canListSkill = isApproved
@@ -323,9 +333,14 @@ router.delete("/:slug/files", apiHandler(async (req, res) => {
 const updateSkillPermissionsHandler = apiHandler(async (req, res) => {
     const slug = req.params.slug as string;
     const metadata = await getOrCreateSkillMetadataAndEnsurePermission(slug);
-    const hasApprovedSnapshot = await prisma.skill_approved_snapshots.findUnique({
-        where: { skill_slug: slug },
-        select: { skill_slug: true }
+    const hasApprovedSnapshot = await prisma.resource_approved_snapshots.findUnique({
+        where: {
+            resource_kind_resource_slug: {
+                resource_kind: "skill",
+                resource_slug: slug
+            }
+        },
+        select: { resource_slug: true }
     });
     if (!hasApprovedSnapshot) {
         throw {
@@ -406,8 +421,11 @@ router.delete("/:slug", apiHandler(async (req, res) => {
         };
     }
 
-    await prisma.skill_metadata.deleteMany({
-        where: { skill_slug: slug }
+    await prisma.resource_metadata.deleteMany({
+        where: {
+            resource_kind: "skill",
+            resource_slug: slug
+        }
     });
     await prisma.resource_permissions.deleteMany({
         where: {

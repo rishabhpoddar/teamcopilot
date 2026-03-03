@@ -128,9 +128,14 @@ export async function createSkill(input: CreateSkillInput): Promise<void> {
         };
     }
 
-    const existingMetadata = await prisma.skill_metadata.findUnique({
-        where: { skill_slug: slug },
-        select: { skill_slug: true }
+    const existingMetadata = await prisma.resource_metadata.findUnique({
+        where: {
+            resource_kind_resource_slug: {
+                resource_kind: "skill",
+                resource_slug: slug
+            }
+        },
+        select: { resource_slug: true }
     });
     if (existingMetadata) {
         throw {
@@ -154,9 +159,10 @@ export async function createSkill(input: CreateSkillInput): Promise<void> {
 
     const now = BigInt(Date.now());
     await prisma.$transaction(async (tx) => {
-        await tx.skill_metadata.create({
+        await tx.resource_metadata.create({
             data: {
-                skill_slug: slug,
+                resource_kind: "skill",
+                resource_slug: slug,
                 created_by_user_id: input.createdByUserId,
                 approved_by_user_id: null,
                 created_at: now,
@@ -185,12 +191,17 @@ export async function createSkill(input: CreateSkillInput): Promise<void> {
 export async function getOrCreateSkillMetadataAndEnsurePermission(slug: string): Promise<SkillMetadata> {
     readSkillManifest(slug);
 
-    const existing = await prisma.skill_metadata.findUnique({
-        where: { skill_slug: slug }
+    const existing = await prisma.resource_metadata.findUnique({
+        where: {
+            resource_kind_resource_slug: {
+                resource_kind: "skill",
+                resource_slug: slug
+            }
+        }
     });
     if (existing) {
         const metadata: SkillMetadata = {
-            skill_slug: existing.skill_slug,
+            skill_slug: existing.resource_slug,
             created_by_user_id: existing.created_by_user_id,
             approved_by_user_id: existing.approved_by_user_id,
         };
@@ -203,16 +214,17 @@ export async function getOrCreateSkillMetadataAndEnsurePermission(slug: string):
     }
 
     const now = BigInt(Date.now());
-    const created = await prisma.skill_metadata.create({
+    const created = await prisma.resource_metadata.create({
         data: {
-            skill_slug: slug,
+            resource_kind: "skill",
+            resource_slug: slug,
             created_at: now,
             updated_at: now,
         }
     });
     await ensureResourcePermissions("skill", slug, []);
     return {
-        skill_slug: created.skill_slug,
+        skill_slug: created.resource_slug,
         created_by_user_id: created.created_by_user_id,
         approved_by_user_id: created.approved_by_user_id,
     };
