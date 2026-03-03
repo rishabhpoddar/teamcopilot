@@ -6,7 +6,7 @@ import multer from "multer";
 import prisma from "../prisma/client";
 import { SkillSummary } from "../types/skill";
 import { apiHandler } from "../utils";
-import { createSkill, deleteSkillDirectory, getOrCreateSkillMetadata, listSkillSlugs, readSkillManifest } from "../utils/skill";
+import { createSkill, deleteSkillDirectory, getOrCreateSkillMetadataAndEnsurePermission, listSkillSlugs, readSkillManifest } from "../utils/skill";
 import {
     getSkillAccessPermissionWithUsers,
     getSkillPermissionSummaryFields,
@@ -39,7 +39,7 @@ function normalizeSkillNameOrSlug(value: string): string {
 }
 
 async function getSkillEditorAccess(slug: string, userId: string, role: string | undefined): Promise<WorkflowEditorAccessResponse> {
-    const metadata = await getOrCreateSkillMetadata(slug);
+    const metadata = await getOrCreateSkillMetadataAndEnsurePermission(slug);
     const permission = await getSkillAccessPermissionWithUsers(slug);
     const permissionSummary = getSkillPermissionSummaryFields(permission, userId);
     const hasApprovedSnapshot = await prisma.skill_approved_snapshots.findUnique({
@@ -100,11 +100,12 @@ router.post("/", apiHandler(async (req, res) => {
 router.get("/", apiHandler(async (req, res) => {
     const slugs = listSkillSlugs();
     const skills: SkillSummary[] = [];
+    const isEngineer = req.role === "Engineer";
     const creatorIds = new Set<string>();
 
-    const metadataBySlug = new Map<string, Awaited<ReturnType<typeof getOrCreateSkillMetadata>>>();
+    const metadataBySlug = new Map<string, Awaited<ReturnType<typeof getOrCreateSkillMetadataAndEnsurePermission>>>();
     for (const slug of slugs) {
-        const metadata = await getOrCreateSkillMetadata(slug);
+        const metadata = await getOrCreateSkillMetadataAndEnsurePermission(slug);
         metadataBySlug.set(slug, metadata);
         if (metadata.created_by_user_id) {
             creatorIds.add(metadata.created_by_user_id);
@@ -136,6 +137,13 @@ router.get("/", apiHandler(async (req, res) => {
             where: { skill_slug: slug },
             select: { skill_slug: true }
         });
+        const isApproved = Boolean(hasApprovedSnapshot);
+        const canListSkill = isApproved
+            ? permissionSummary.can_current_user_use
+            : (permissionSummary.can_current_user_use || isEngineer);
+        if (!canListSkill) {
+            continue;
+        }
         const createdByUserId = metadata.created_by_user_id;
         skills.push({
             slug,
@@ -145,7 +153,7 @@ router.get("/", apiHandler(async (req, res) => {
             created_by_user_name: createdByUserId ? (creatorNameById.get(createdByUserId) ?? null) : null,
             created_by_user_email: createdByUserId ? (creatorEmailById.get(createdByUserId) ?? null) : null,
             approved_by_user_id: metadata.approved_by_user_id,
-            is_approved: Boolean(hasApprovedSnapshot),
+            is_approved: isApproved,
             ...permissionSummary,
         });
     }
@@ -168,7 +176,7 @@ router.get("/users", apiHandler(async (_req, res) => {
 
 router.get("/:slug", apiHandler(async (req, res) => {
     const slug = req.params.slug as string;
-    const metadata = await getOrCreateSkillMetadata(slug);
+    const metadata = await getOrCreateSkillMetadataAndEnsurePermission(slug);
     const manifest = readSkillManifest(slug);
 
     const createdByUserId = metadata.created_by_user_id ?? null;
@@ -221,7 +229,7 @@ router.get("/:slug/files/access", apiHandler(async (req, res) => {
 
 router.get("/:slug/files/tree", apiHandler(async (req, res) => {
     const slug = req.params.slug as string;
-    await getOrCreateSkillMetadata(slug);
+    await getOrCreateSkillMetadataAndEnsurePermission(slug);
     const rawPath = typeof req.query.path === "string" ? req.query.path : undefined;
     const tree = listSkillDirectory(slug, rawPath);
     res.json(tree);
@@ -229,7 +237,7 @@ router.get("/:slug/files/tree", apiHandler(async (req, res) => {
 
 router.get("/:slug/files/content", apiHandler(async (req, res) => {
     const slug = req.params.slug as string;
-    await getOrCreateSkillMetadata(slug);
+    await getOrCreateSkillMetadataAndEnsurePermission(slug);
     const rawPath = typeof req.query.path === "string" ? req.query.path : undefined;
     const content = readSkillFileContent(slug, rawPath);
     (res.locals as { skipResponseSanitization?: boolean }).skipResponseSanitization = true;
@@ -314,7 +322,7 @@ router.delete("/:slug/files", apiHandler(async (req, res) => {
 
 const updateSkillPermissionsHandler = apiHandler(async (req, res) => {
     const slug = req.params.slug as string;
-    const metadata = await getOrCreateSkillMetadata(slug);
+    const metadata = await getOrCreateSkillMetadataAndEnsurePermission(slug);
     const hasApprovedSnapshot = await prisma.skill_approved_snapshots.findUnique({
         where: { skill_slug: slug },
         select: { skill_slug: true }
@@ -377,7 +385,7 @@ router.patch("/:slug/permissions", updateSkillPermissionsHandler);
 
 router.delete("/:slug", apiHandler(async (req, res) => {
     const slug = req.params.slug as string;
-    const metadata = await getOrCreateSkillMetadata(slug);
+    const metadata = await getOrCreateSkillMetadataAndEnsurePermission(slug);
     const creatorUserId = metadata.created_by_user_id ?? null;
 
     const creator = creatorUserId

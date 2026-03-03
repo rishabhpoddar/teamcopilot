@@ -46,10 +46,6 @@ export function getSkillManifestPath(slug: string): string {
     return path.join(getSkillPath(slug), "SKILL.md");
 }
 
-export function getSkillTemplatePath(slug: string): string {
-    return path.join(getSkillPath(slug), "skills.md");
-}
-
 export function assertSkillSlug(slug: string): void {
     if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
         throw {
@@ -71,8 +67,7 @@ export function listSkillSlugs(): string[] {
     for (const entry of entries) {
         if (!entry.isDirectory()) continue;
         const canonicalManifestPath = path.join(skillsDir, entry.name, "SKILL.md");
-        const templateManifestPath = path.join(skillsDir, entry.name, "skills.md");
-        if (fs.existsSync(canonicalManifestPath) || fs.existsSync(templateManifestPath)) {
+        if (fs.existsSync(canonicalManifestPath)) {
             slugs.push(entry.name);
         }
     }
@@ -90,9 +85,7 @@ function extractFrontmatterValue(frontmatter: string, key: string): string | nul
 }
 
 export function readSkillManifest(slug: string): SkillManifest {
-    const canonicalManifestPath = getSkillManifestPath(slug);
-    const templateManifestPath = getSkillTemplatePath(slug);
-    const skillManifestPath = fs.existsSync(canonicalManifestPath) ? canonicalManifestPath : templateManifestPath;
+    const skillManifestPath = getSkillManifestPath(slug);
     if (!fs.existsSync(skillManifestPath)) {
         throw {
             status: 404,
@@ -155,7 +148,7 @@ export async function createSkill(input: CreateSkillInput): Promise<void> {
     }
 
     fs.mkdirSync(skillPath, { recursive: false });
-    const skillMdPath = getSkillTemplatePath(slug);
+    const skillMdPath = getSkillManifestPath(slug);
     const body = `---\nname: ${toSkillFrontmatterValue(name)}\ndescription: ${toSkillFrontmatterValue("")}\n---\n\n# ${name}\n\nDescribe what this skill does.\n\n## Instructions\n\nAdd detailed, actionable instructions for the agent here.\n`;
     fs.writeFileSync(skillMdPath, body, "utf-8");
 
@@ -189,26 +182,18 @@ export async function createSkill(input: CreateSkillInput): Promise<void> {
     });
 }
 
-function mapSkillMetadataRow(row: {
-    skill_slug: string;
-    created_by_user_id: string | null;
-    approved_by_user_id: string | null;
-}): SkillMetadata {
-    return {
-        skill_slug: row.skill_slug,
-        created_by_user_id: row.created_by_user_id,
-        approved_by_user_id: row.approved_by_user_id,
-    };
-}
-
-export async function getOrCreateSkillMetadata(slug: string): Promise<SkillMetadata> {
+export async function getOrCreateSkillMetadataAndEnsurePermission(slug: string): Promise<SkillMetadata> {
     readSkillManifest(slug);
 
     const existing = await prisma.skill_metadata.findUnique({
         where: { skill_slug: slug }
     });
     if (existing) {
-        const metadata = mapSkillMetadataRow(existing);
+        const metadata: SkillMetadata = {
+            skill_slug: existing.skill_slug,
+            created_by_user_id: existing.created_by_user_id,
+            approved_by_user_id: existing.approved_by_user_id,
+        };
         await ensureResourcePermissions(
             "skill",
             slug,
@@ -226,5 +211,9 @@ export async function getOrCreateSkillMetadata(slug: string): Promise<SkillMetad
         }
     });
     await ensureResourcePermissions("skill", slug, []);
-    return mapSkillMetadataRow(created);
+    return {
+        skill_slug: created.skill_slug,
+        created_by_user_id: created.created_by_user_id,
+        approved_by_user_id: created.approved_by_user_id,
+    };
 }

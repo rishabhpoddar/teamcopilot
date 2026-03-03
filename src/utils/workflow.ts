@@ -68,8 +68,7 @@ export async function readWorkflowManifestAndEnsurePermissions(slug: string): Pr
     metadata: WorkflowMetadata;
 }> {
     const manifest = readWorkflowManifest(slug);
-    const metadata = await getOrCreateWorkflowMetadata(slug);
-    await ensureWorkflowRunPermissionsForMetadata(slug, metadata);
+    const metadata = await getOrCreateWorkflowMetadataAndEnsurePermission(slug);
     return { manifest, metadata };
 }
 
@@ -77,7 +76,7 @@ export async function readWorkflowManifestAndEnsurePermissions(slug: string): Pr
 /** Set workflow creator in database metadata */
 export async function setWorkflowCreator(slug: string, userId: string): Promise<WorkflowMetadata> {
     readWorkflowManifest(slug);
-    const existing = await getOrCreateWorkflowMetadata(slug);
+    const existing = await getOrCreateWorkflowMetadataAndEnsurePermission(slug);
     if (existing.created_by_user_id) {
         assertCondition(existing.created_by_user_id === userId, "Workflow creator mismatch");
         return existing;
@@ -91,7 +90,11 @@ export async function setWorkflowCreator(slug: string, userId: string): Promise<
             updated_at: now,
         }
     });
-    return mapWorkflowMetadataRow(row);
+    return {
+        workflow_slug: row.workflow_slug,
+        created_by_user_id: row.created_by_user_id,
+        approved_by_user_id: row.approved_by_user_id,
+    };
 }
 
 /** List all workflow slugs */
@@ -117,32 +120,19 @@ export function listWorkflowSlugs(): string[] {
     return slugs;
 }
 
-function mapWorkflowMetadataRow(row: {
-    workflow_slug: string;
-    created_by_user_id: string | null;
-    approved_by_user_id: string | null;
-}): WorkflowMetadata {
-    return {
-        workflow_slug: row.workflow_slug,
-        created_by_user_id: row.created_by_user_id,
-        approved_by_user_id: row.approved_by_user_id,
-    };
-}
-
-async function getOrCreateWorkflowMetadata(slug: string): Promise<WorkflowMetadata> {
-    async function getWorkflowMetadata(slug: string): Promise<WorkflowMetadata | null> {
-        const row = await prisma.workflow_metadata.findUnique({
-            where: { workflow_slug: slug }
-        });
-        if (!row) {
-            return null;
-        }
-        return mapWorkflowMetadataRow(row);
-    }
+async function getOrCreateWorkflowMetadataAndEnsurePermission(slug: string): Promise<WorkflowMetadata> {
     readWorkflowManifest(slug);
-    const existing = await getWorkflowMetadata(slug);
+    const existing = await prisma.workflow_metadata.findUnique({
+        where: { workflow_slug: slug }
+    });
     if (existing) {
-        return existing;
+        const metadata: WorkflowMetadata = {
+            workflow_slug: existing.workflow_slug,
+            created_by_user_id: existing.created_by_user_id,
+            approved_by_user_id: existing.approved_by_user_id,
+        };
+        await ensureWorkflowRunPermissionsForMetadata(slug, metadata);
+        return metadata;
     }
 
     const now = BigInt(Date.now());
@@ -153,5 +143,11 @@ async function getOrCreateWorkflowMetadata(slug: string): Promise<WorkflowMetada
             updated_at: now,
         }
     });
-    return mapWorkflowMetadataRow(row);
+    const metadata: WorkflowMetadata = {
+        workflow_slug: row.workflow_slug,
+        created_by_user_id: row.created_by_user_id,
+        approved_by_user_id: row.approved_by_user_id,
+    };
+    await ensureWorkflowRunPermissionsForMetadata(slug, metadata);
+    return metadata;
 }
