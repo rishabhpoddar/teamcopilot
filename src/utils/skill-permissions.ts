@@ -8,7 +8,7 @@ type SkillPermissionWithUsers = {
 };
 
 function assertSkillPermissionMode(mode: string): SkillAccessPermissionMode {
-    if (mode !== "restricted") {
+    if (mode !== "restricted" && mode !== "everyone") {
         throw {
             status: 500,
             message: `Invalid skill access permission mode: ${mode}`
@@ -41,7 +41,10 @@ export async function getSkillAccessPermissionWithUsers(slug: string): Promise<S
 }
 
 export function mapSkillPermissionToApi(permission: SkillPermissionWithUsers): SkillAccessPermissions {
-    assertSkillPermissionMode(permission.access_permission_mode);
+    const mode = assertSkillPermissionMode(permission.access_permission_mode);
+    if (mode === "everyone") {
+        return { mode: "everyone" };
+    }
     return {
         mode: "restricted",
         allowed_user_ids: permission.allowedUsers.map((row) => row.user_id),
@@ -49,7 +52,8 @@ export function mapSkillPermissionToApi(permission: SkillPermissionWithUsers): S
 }
 
 export function canUserAccessSkillFromPermission(permission: SkillPermissionWithUsers, userId: string): boolean {
-    assertSkillPermissionMode(permission.access_permission_mode);
+    const mode = assertSkillPermissionMode(permission.access_permission_mode);
+    if (mode === "everyone") return true;
     return permission.allowedUsers.some((row) => row.user_id === userId);
 }
 
@@ -65,8 +69,8 @@ export function getSkillPermissionSummaryFields(
 } {
     const mode = assertSkillPermissionMode(permission.access_permission_mode);
     const canUse = canUserAccessSkillFromPermission(permission, currentUserId);
-    const allowedCount = permission.allowedUsers.length;
-    const isLocked = mode === "restricted" && allowedCount === 0;
+    const allowedCount = mode === "restricted" ? permission.allowedUsers.length : 0;
+    const isLocked = mode === "restricted" && permission.allowedUsers.length === 0;
 
     return {
         access_permission_mode: mode,
@@ -83,6 +87,25 @@ export async function setSkillAccessPermissions(
     ownerUserId: string | null,
 ): Promise<SkillPermissionWithUsers> {
     const now = BigInt(Date.now());
+
+    if (payload.mode === "everyone") {
+        await prisma.$transaction(async (tx) => {
+            await tx.skill_metadata.update({
+                where: { skill_slug: slug },
+                data: {
+                    access_permission_mode: "everyone",
+                    updated_at: now,
+                }
+            });
+
+            await tx.skill_access_permission_users.deleteMany({
+                where: { skill_slug: slug }
+            });
+        });
+
+        return getSkillAccessPermissionWithUsers(slug);
+    }
+
     let dedupedUserIds = Array.from(new Set(payload.allowed_user_ids));
 
     if (ownerUserId && !dedupedUserIds.includes(ownerUserId)) {

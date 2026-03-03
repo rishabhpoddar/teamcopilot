@@ -26,7 +26,7 @@ type WorkflowDetails = {
     run_permission_mode?: 'restricted' | 'everyone';
     allowed_runner_count?: number;
     is_run_locked_due_to_missing_users?: boolean;
-    access_permission_mode?: 'restricted';
+    access_permission_mode?: 'restricted' | 'everyone';
     allowed_user_count?: number;
     is_access_locked_due_to_missing_users?: boolean;
 };
@@ -565,9 +565,11 @@ export default function WorkflowEditorPage({ entity = 'workflow' }: { entity?: E
                 : workflowDetails.is_run_locked_due_to_missing_users
                     ? 'Restricted (locked: no allowed users remain)'
                     : `Restricted (${workflowDetails.allowed_runner_count ?? 0} allowed)`
-            : workflowDetails.is_access_locked_due_to_missing_users
-                ? 'Restricted (locked: no allowed users remain)'
-                : `Restricted (${workflowDetails.allowed_user_count ?? 0} allowed)`
+            : workflowDetails.access_permission_mode === 'everyone'
+                ? 'Everyone can access'
+                : workflowDetails.is_access_locked_due_to_missing_users
+                    ? 'Restricted (locked: no allowed users remain)'
+                    : `Restricted (${workflowDetails.allowed_user_count ?? 0} allowed)`
         : null;
 
     return (

@@ -74,6 +74,8 @@ export default function UnifiedCard({
     const creatorUserMissing = created_by_user_id === null || (!created_by_user_name && !created_by_user_email);
     const canDelete = created_by_user_id === currentUserId || (userRole === 'Engineer' && creatorUserMissing);
     const canManagePermissions = is_approved && can_current_user_manage_permissions;
+    const accessLabel = kind === 'workflow' ? 'Run access' : 'Access';
+    const managePermissionsTitle = kind === 'workflow' ? 'Manage Run Permissions' : 'Manage Access Permissions';
 
     const resourceLabel = kind === 'workflow' ? 'workflow' : 'skill';
     const resourceLabelTitle = kind === 'workflow' ? 'Workflow' : 'Skill';
@@ -98,7 +100,7 @@ export default function UnifiedCard({
                 created_by_user_id: string | null;
                 approved_by_user_id: string | null;
                 run_permissions?: { mode: 'everyone' } | { mode: 'restricted'; allowed_user_ids: string[] };
-                access_permissions?: { mode: 'restricted'; allowed_user_ids: string[] };
+                access_permissions?: { mode: 'everyone' } | { mode: 'restricted'; allowed_user_ids: string[] };
             };
 
             const permissions = kind === 'workflow' ? detail.run_permissions : detail.access_permissions;
@@ -132,7 +134,7 @@ export default function UnifiedCard({
     const handleSavePermissions = async () => {
         setPermissionsSaving(true);
         try {
-            const payload = permissionMode === 'everyone' && kind === 'workflow'
+            const payload = permissionMode === 'everyone'
                 ? { mode: 'everyone' as const }
                 : { mode: 'restricted' as const, allowed_user_ids: Array.from(new Set(selectedUserIds)) };
             await axiosInstance.patch(updatePermissionsUrl, payload, {
@@ -217,10 +219,10 @@ export default function UnifiedCard({
                 <div className="workflow-approval-section">
                     <p className="workflow-approval-message">
                         {permission_mode === 'everyone'
-                            ? 'Run access: Everyone'
+                            ? `${accessLabel}: Everyone`
                             : is_locked_due_to_missing_users
-                                ? 'Run access: Restricted (locked - no allowed users remain)'
-                                : `Run access: Restricted (${allowed_user_count} allowed)`}
+                                ? `${accessLabel}: Restricted (locked - no allowed users remain)`
+                                : `${accessLabel}: Restricted (${allowed_user_count} allowed)`}
                     </p>
                     {permissionsError && !showPermissionsEditor && (
                         <p className="workflow-approval-message">{permissionsError}</p>
@@ -246,23 +248,21 @@ export default function UnifiedCard({
                     {showPermissionsEditor && (
                         <div className="permissions-editor">
                             <div className="permissions-editor-header">
-                                <h4 className="permissions-editor-title">Manage Run Permissions</h4>
-                                {kind === 'workflow' && (
-                                    <div className="permissions-mode-group">
-                                        <label className="permissions-mode-label" htmlFor={`permission-mode-select-${slug}`}>
-                                            Permission Mode
-                                        </label>
-                                        <select
-                                            id={`permission-mode-select-${slug}`}
-                                            className="permissions-mode-select"
-                                            value={permissionMode}
-                                            onChange={(e) => setPermissionMode(e.target.value as PermissionMode)}
-                                        >
-                                            <option value="restricted">Restricted (Specific Users)</option>
-                                            <option value="everyone">Everyone</option>
-                                        </select>
-                                    </div>
-                                )}
+                                <h4 className="permissions-editor-title">{managePermissionsTitle}</h4>
+                                <div className="permissions-mode-group">
+                                    <label className="permissions-mode-label" htmlFor={`permission-mode-select-${slug}`}>
+                                        Permission Mode
+                                    </label>
+                                    <select
+                                        id={`permission-mode-select-${slug}`}
+                                        className="permissions-mode-select"
+                                        value={permissionMode}
+                                        onChange={(e) => setPermissionMode(e.target.value as PermissionMode)}
+                                    >
+                                        <option value="restricted">Restricted (Specific Users)</option>
+                                        <option value="everyone">Everyone</option>
+                                    </select>
+                                </div>
                             </div>
 
                             {permissionMode === 'restricted' && (

@@ -12,7 +12,7 @@ export interface SkillMetadata {
     skill_slug: string;
     created_by_user_id: string | null;
     approved_by_user_id: string | null;
-    access_permission_mode: "restricted";
+    access_permission_mode: "restricted" | "everyone";
 }
 
 export interface CreateSkillInput {
@@ -188,7 +188,7 @@ function mapSkillMetadataRow(row: {
     approved_by_user_id: string | null;
     access_permission_mode: string;
 }): SkillMetadata {
-    if (row.access_permission_mode !== "restricted") {
+    if (row.access_permission_mode !== "restricted" && row.access_permission_mode !== "everyone") {
         throw {
             status: 500,
             message: `Invalid skill access permission mode: ${row.access_permission_mode}`

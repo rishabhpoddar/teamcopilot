@@ -1,11 +1,15 @@
-export type SkillAccessPermissionMode = "restricted";
+export type SkillAccessPermissionMode = "restricted" | "everyone";
 
 export interface SkillAccessPermissionsRestricted {
     mode: "restricted";
     allowed_user_ids: string[];
 }
 
-export type SkillAccessPermissions = SkillAccessPermissionsRestricted;
+export interface SkillAccessPermissionsEveryone {
+    mode: "everyone";
+}
+
+export type SkillAccessPermissions = SkillAccessPermissionsRestricted | SkillAccessPermissionsEveryone;
 
 export interface SkillSummary {
     slug: string;

@@ -146,7 +146,7 @@ model skill_metadata {
   skill_slug              String                          @id
   created_by_user_id      String?
   approved_by_user_id     String?
-  access_permission_mode  String // "restricted"
+  access_permission_mode  String // "restricted" | "everyone"
   created_at              BigInt
   updated_at              BigInt
   allowedUsers            skill_access_permission_users[]

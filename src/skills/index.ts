@@ -40,19 +40,23 @@ function normalizeSkillNameOrSlug(value: string): string {
 
 async function getSkillEditorAccess(slug: string, userId: string, role: string | undefined): Promise<WorkflowEditorAccessResponse> {
     const metadata = await getOrCreateSkillMetadata(slug);
+    const permission = await getSkillAccessPermissionWithUsers(slug);
+    const permissionSummary = getSkillPermissionSummaryFields(permission, userId);
+    const hasApprovedSnapshot = await prisma.skill_approved_snapshots.findUnique({
+        where: { skill_slug: slug },
+        select: { skill_slug: true }
+    });
+    const skillStatus = hasApprovedSnapshot ? "approved" : "pending";
     const isEngineer = role === "Engineer";
-    const canEdit = isEngineer || metadata.created_by_user_id === userId || Boolean(await prisma.skill_access_permission_users.findUnique({
-        where: {
-            skill_slug_user_id: {
-                skill_slug: slug,
-                user_id: userId,
-            }
-        }
-    }));
+    const isOwner = metadata.created_by_user_id === userId;
+    const canEdit = skillStatus === "approved"
+        ? permissionSummary.can_current_user_use_skill
+        : (isOwner || isEngineer);
+
     return {
         can_view: true,
         can_edit: canEdit,
-        workflow_status: "pending",
+        workflow_status: skillStatus,
     };
 }
 
@@ -307,6 +311,17 @@ router.delete("/:slug/files", apiHandler(async (req, res) => {
 router.patch("/:slug/access-permissions", apiHandler(async (req, res) => {
     const slug = req.params.slug as string;
     const metadata = await getOrCreateSkillMetadata(slug);
+    const hasApprovedSnapshot = await prisma.skill_approved_snapshots.findUnique({
+        where: { skill_slug: slug },
+        select: { skill_slug: true }
+    });
+    if (!hasApprovedSnapshot) {
+        throw {
+            status: 403,
+            message: "Skill must be approved before updating access permissions"
+        };
+    }
+
     const currentPermission = await getSkillAccessPermissionWithUsers(slug);
     const currentSummary = getSkillPermissionSummaryFields(currentPermission, req.userId!);
     if (!currentSummary.can_current_user_manage_access_permissions) {
@@ -319,17 +334,19 @@ router.patch("/:slug/access-permissions", apiHandler(async (req, res) => {
     }
 
     const { mode, allowed_user_ids } = req.body as { mode?: string; allowed_user_ids?: unknown };
-    if (mode !== "restricted") {
+    if (mode !== "restricted" && mode !== "everyone") {
         throw {
             status: 400,
-            message: 'mode must be "restricted"'
+            message: 'mode must be "restricted" or "everyone"'
         };
     }
 
-    const updatedPermission = await setSkillAccessPermissions(slug, {
-        mode: "restricted",
-        allowed_user_ids: Array.isArray(allowed_user_ids) ? allowed_user_ids.map((id) => String(id)) : []
-    }, metadata.created_by_user_id);
+    const updatedPermission = mode === "everyone"
+        ? await setSkillAccessPermissions(slug, { mode: "everyone" }, metadata.created_by_user_id)
+        : await setSkillAccessPermissions(slug, {
+            mode: "restricted",
+            allowed_user_ids: Array.isArray(allowed_user_ids) ? allowed_user_ids.map((id) => String(id)) : []
+        }, metadata.created_by_user_id);
     const updatedSummary = getSkillPermissionSummaryFields(updatedPermission, req.userId!);
     res.json({
         skill: {
