@@ -154,7 +154,7 @@ export default function UnifiedCard({
     const openApprovalReview = () => {
         const url = kind === 'workflow'
             ? `/workflows/${encodeURIComponent(slug)}/approval-review`
-            : `/skills/${encodeURIComponent(slug)}`;
+            : `/skills/${encodeURIComponent(slug)}/approval-review`;
         window.open(url, '_blank', 'noopener,noreferrer');
     };
 
