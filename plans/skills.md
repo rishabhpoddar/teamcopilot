@@ -1,146 +1,79 @@
- ## Custom Skill System (Independent of OpenCode Skill Cache)
+## Custom Skill System Plan Status
 
-  ### Summary
+### Completed
 
-  Build a LocalTool-managed skills system under workspace_dir/.custom-skills with workflow-like governance:
+1. Prisma + migration
+   - Added `skill_metadata`, `skill_access_permission_users`, `skill_approved_snapshots`, `skill_approved_snapshot_files`.
+   - Added migration and applied it (`20260303040318_add_skill_tables`).
 
-  1. Skills are files/folders managed by LocalTool (not OpenCode’s native .opencode/skills loader).
-  2. Access uses per-skill allowlist.
-  3. Approval lifecycle matches workflows: pending until Engineer approval.
-  4. A custom tool returns only skills the current user can access (name + description), avoiding OpenCode stale-skill caching.
-  5. Update workspace AGENTS.md so the agent always calls this tool first.
+2. Backend router mounted
+   - Added `src/skills/index.ts`.
+   - Mounted at `/api/skills` from `src/index.ts`.
 
-  ### Public Interfaces / APIs
+3. Workspace initialization
+   - Ensures `<workspace>/.custom-skills` exists at startup.
 
-  1. New REST router: src/skills/index.ts, mounted at /api/skills.
-  2. New endpoints:
-      - GET /api/skills
-          - Returns all skills user can view in dashboard, with approval + permission summary fields.
-      - POST /api/skills
-          - Creates .custom-skills/<slug>/SKILL.md (pending approval by default).
-      - GET /api/skills/:slug
-      - PATCH /api/skills/:slug
-      - DELETE /api/skills/:slug (ownership/Engineer policy aligned with workflows)
-      - POST /api/skills/:slug/approve
-      - POST /api/skills/:slug/reject-restore
-      - PATCH /api/skills/:slug/access-permissions
-      - GET /api/skills/users (picker data)
-  3. New plugin-facing endpoint:
-      - GET /api/skills/available
-          - Auth via session token (Authorization: Bearer <opencode_session_id>)
-          - Returns only approved + allowed skills:
-              - [{ slug, name, description }]
-  4. New custom tool in workspace plugin:
-      - listAvailableSkills
-      - Calls GET /api/skills/available and returns JSON list.
-  5. Add workflow-parity custom tools:
-      - createSkill (similar to createWorkflow)
-      - findSkill (similar to findWorkflow)
+4. Skill filesystem + metadata helpers
+   - Added `src/utils/skill.ts`.
+   - Added `src/utils/skill-files.ts` for editor tree/content/save/create/rename/delete/upload behavior.
+   - Added `src/utils/skill-permissions.ts` for allowlist summary + updates.
 
-  ### Data / Schema Changes (Prisma)
+5. Dashboard and editor UX
+   - Added `Browse skills` tab.
+   - Added skill listing, filters, empty/error states, create-skill modal.
+   - Added skill editor route `/skills/:slug`.
+   - Reused workflow editor page for skills (`WorkflowEditorPage` with `entity="skill"` wrapper page).
 
-  Add skill equivalents of workflow metadata/snapshots/permissions:
+6. Card reuse
+   - Replaced divergent workflow/skill cards with one shared `UnifiedCard` + thin wrappers.
+   - Shared action row + permission management UI logic.
 
-  1. skill_metadata
-      - skill_slug PK
-      - created_by_user_id, approved_by_user_id
-      - access_permission_mode (restricted only for now, optional future everyone)
-      - timestamps
-  2. skill_access_permission_users
-      - unique (skill_slug, user_id)
-  3. skill_approved_snapshots
-  4. skill_approved_snapshot_files
+7. Working skill endpoints (current)
+   - `GET /api/skills`
+   - `POST /api/skills`
+   - `GET /api/skills/:slug`
+   - `DELETE /api/skills/:slug`
+   - `GET /api/skills/users`
+   - `PATCH /api/skills/:slug/access-permissions`
+   - `GET /api/skills/:slug/files/access`
+   - `GET /api/skills/:slug/files/tree`
+   - `GET /api/skills/:slug/files/content`
+   - `PUT /api/skills/:slug/files/content`
+   - `POST /api/skills/:slug/files`
+   - `POST /api/skills/:slug/files/upload`
+   - `PATCH /api/skills/:slug/files/rename`
+   - `DELETE /api/skills/:slug/files`
 
-  Behavior parity:
+### Pending
 
-  - New skill/edit => pending state until engineer approval.
-  - On approve: snapshot current skill folder.
-  - On reject-restore: restore last approved snapshot.
-  - Access checks use allowlist + lifecycle state.
+1. Approval workflow parity for skills
+   - Add backend:
+     - `GET /api/skills/:slug/approval-diff`
+     - `POST /api/skills/:slug/approve`
+     - `POST /api/skills/:slug/reject-restore`
+   - Add frontend route/page:
+     - `/skills/:slug/approval-review` (same UX shape as workflow approval review page).
+   - Ensure status for skills is based on snapshot parity (not just approver field).
 
-  ### Filesystem Contract
+2. Access model parity checks
+   - Enforce skill visibility/use rules exactly like workflow requirements:
+     - non-allowed users should not see/use skill where required.
+     - engineers can review pending skills.
+   - Re-check all read endpoints for consistent permission enforcement.
 
-  1. Root: <workspace>/.custom-skills/
-  2. Each skill: <workspace>/.custom-skills/<slug>/
-  3. Required file: SKILL.md (frontmatter includes name, description)
-  4. Optional supporting files allowed inside skill folder for future use.
+3. Plugin + agent integration (not started)
+   - Add `GET /api/skills/available` (session token auth).
+   - Add workspace plugin tool `listAvailableSkills`.
+   - Add/create parity tools for agent flow (`createSkill`, `findSkill`) if still required.
+   - Inject available skills in session-start context.
+   - Update workspace `AGENTS.md` with custom-skill discovery rules.
 
-  ### Backend Modules
+4. Contract cleanup
+   - Decide and standardize canonical manifest filename:
+     - currently create flow writes `skills.md`; earlier design referenced `SKILL.md`.
+   - Keep one canonical convention across API/plugin/agent docs.
 
-  1. src/utils/skill.ts
-      - path resolution, slug listing, manifest/frontmatter read/write
-  2. src/utils/skill-files.ts
-      - tree/content read/write (same safety model as workflow files)
-  3. src/utils/skill-permissions.ts
-  4. src/utils/skill-approval-snapshot.ts
-  5. src/types/skill.ts
-      - SkillSummary, SkillManifest, permission + approval response types
+### Notes from latest audit
 
-  ### Plugin + Agent Behavior
-
-  1. Add workspace plugin file:
-     src/workspace_files/.opencode/plugins/listAvailableSkills.ts
-  2. Tool result format:
-      - [{ slug, name, description }] only (no full content).
-  3. Tool parity with workflows:
-      - createSkill should mirror createWorkflow semantics for creating a skill package.
-      - findSkill should mirror findWorkflow semantics for locating/selecting a skill.
-  4. Session-start context behavior:
-      - On every new session start, inject the full list of available skills for the current user into context by default.
-  5. Update src/workspace_files/AGENTS.md:
-      - Add rule: before any “use a skill” action, call listAvailableSkills.
-      - If a skill is selected, read its SKILL.md from .custom-skills/<slug>/SKILL.md.
-      - Do not use OpenCode native skill tool for LocalTool custom skills.
-      - Security constraint: the agent must never discover/search skills via bash/filesystem scanning; skill discovery must only use listAvailableSkills or findSkill.
-
-  ### Frontend Changes
-
-  1. Add new dashboard tab: Browse skills.
-  2. New components:
-      - frontend/src/components/dashboard/SkillsSection.tsx
-      - frontend/src/components/dashboard/SkillCard.tsx
-  3. Capabilities:
-      - list/filter skills
-      - create skill
-      - manage approval state
-      - manage allowlist permissions
-      - when viewing/editing a skill, use the same code view + project explorer UI used for workflow view/edit
-      - apply the same masking rules as workflows
-      - apply the same snapshot hash calculation rules as workflows
-  4. Networking rules follow repo conventions:
-      - GET errors inline (setError)
-      - non-GET errors via toast
-      - all calls through axiosInstance + bearer token from useAuth
-
-  ### Migration / Initialization
-
-  1. Add Prisma migration for new skill tables.
-  2. Ensure workspace init creates .custom-skills/ directory.
-  ### Test Scenarios
-  1. Creation:
-      - create skill => pending, creator in allowlist.
-  2. Approval:
-      - Engineer approves => visible to allowed users via listAvailableSkills.
-  3. Permission enforcement:
-      - non-allowed user cannot see skill in available.
-  4. Edit lifecycle:
-      - edit approved skill => pending again.
-  5. Reject restore:
-      - revert to last approved snapshot.
-  6. Duplicate slug/name handling:
-      - 409 conflict.
-  7. Plugin flow:
-      - listAvailableSkills returns only {slug,name,description} for current user.
-  8. UI:
-      - browse/create/approval/permissions paths; empty/error states.
-
-  ### Assumptions / Defaults
-
-  1. Access model is per-skill allowlist (no “everyone” in MVP unless needed for parity).
-  2. Approval lifecycle matches workflows.
-  3. Custom skills live only in workspace_dir/.custom-skills.
-  4. Agent uses LocalTool custom tool + file reads, not OpenCode native skill index.
-
-## Differences between skills and workflows
-- In the browser skill section, people can only see skills that they have access to. If a skill is pending approval, then all engineers can see it and review it. 
-- We have extra tools for the agent to find and list workflows.
+1. `Review & Approve` for skills points to `/skills/:slug/approval-review`, but that page/flow is not implemented yet.
+2. Current implementation reuses editor and card UI heavily; parity gaps are mainly in approval-diff/approve/reject lifecycle and plugin integration.

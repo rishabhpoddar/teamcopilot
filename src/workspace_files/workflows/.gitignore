@@ -2,10 +2,3 @@
 *
 # Keep this .gitignore tracked
 !.gitignore
-
-# Allow the hello-world workflow and its contents
-!hello-world/
-!hello-world/**
-
-!hello-world-repeat/
-!hello-world-repeat/**
