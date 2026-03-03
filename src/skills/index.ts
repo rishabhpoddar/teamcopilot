@@ -10,9 +10,9 @@ import { createSkill, deleteSkillDirectory, getOrCreateSkillMetadata, listSkillS
 import {
     getSkillAccessPermissionWithUsers,
     getSkillPermissionSummaryFields,
-    mapSkillPermissionToApi,
     setSkillAccessPermissions,
 } from "../utils/skill-permissions";
+import { assertCommonPermissionMode } from "../utils/permission-common";
 import {
     createSkillFileOrFolder,
     deleteSkillPath,
@@ -50,7 +50,7 @@ async function getSkillEditorAccess(slug: string, userId: string, role: string |
     const isEngineer = role === "Engineer";
     const isOwner = metadata.created_by_user_id === userId;
     const canEdit = skillStatus === "approved"
-        ? permissionSummary.can_current_user_use_skill
+        ? permissionSummary.can_current_user_use
         : (isOwner || isEngineer);
 
     return {
@@ -185,6 +185,10 @@ router.get("/:slug", apiHandler(async (req, res) => {
     const approver = approvedByUserId ? (usersById.get(approvedByUserId) ?? null) : null;
     const permission = await getSkillAccessPermissionWithUsers(slug);
     const permissionSummary = getSkillPermissionSummaryFields(permission, req.userId!);
+    const permissionMode = assertCommonPermissionMode(permission.permission_mode, "skill access");
+    const permissions = permissionMode === "everyone"
+        ? { mode: "everyone" as const }
+        : { mode: "restricted" as const, allowed_user_ids: permission.allowedUsers.map((row) => row.user_id) };
 
     res.json({
         workflow: {
@@ -197,8 +201,7 @@ router.get("/:slug", apiHandler(async (req, res) => {
             approved_by_user_name: approver?.name ?? null,
             approved_by_user_email: approver?.email ?? null,
             ...permissionSummary,
-            permissions: mapSkillPermissionToApi(permission),
-            access_permissions: mapSkillPermissionToApi(permission),
+            permissions,
             allowed_users_resolved: permission.allowedUsers.map((row) => ({
                 user_id: row.user.id,
                 name: row.user.name,
@@ -325,10 +328,10 @@ const updateSkillPermissionsHandler = apiHandler(async (req, res) => {
 
     const currentPermission = await getSkillAccessPermissionWithUsers(slug);
     const currentSummary = getSkillPermissionSummaryFields(currentPermission, req.userId!);
-    if (!currentSummary.can_current_user_manage_access_permissions) {
+    if (!currentSummary.can_current_user_manage_permissions) {
         throw {
             status: 403,
-            message: currentSummary.is_access_locked_due_to_missing_users
+            message: currentSummary.is_locked_due_to_missing_users
                 ? "Skill permissions cannot be modified because no allowed users remain"
                 : "You do not have permission to modify skill access permissions"
         };
@@ -349,12 +352,15 @@ const updateSkillPermissionsHandler = apiHandler(async (req, res) => {
             allowed_user_ids: Array.isArray(allowed_user_ids) ? allowed_user_ids.map((id) => String(id)) : []
         }, metadata.created_by_user_id);
     const updatedSummary = getSkillPermissionSummaryFields(updatedPermission, req.userId!);
+    const updatedPermissionMode = assertCommonPermissionMode(updatedPermission.permission_mode, "skill access");
+    const permissions = updatedPermissionMode === "everyone"
+        ? { mode: "everyone" as const }
+        : { mode: "restricted" as const, allowed_user_ids: updatedPermission.allowedUsers.map((row) => row.user_id) };
     res.json({
         skill: {
             slug,
             ...updatedSummary,
-            permissions: mapSkillPermissionToApi(updatedPermission),
-            access_permissions: mapSkillPermissionToApi(updatedPermission),
+            permissions,
             allowed_users_resolved: updatedPermission.allowedUsers.map((row) => ({
                 user_id: row.user.id,
                 name: row.user.name,
@@ -368,8 +374,6 @@ const updateSkillPermissionsHandler = apiHandler(async (req, res) => {
 
 // PATCH /api/skills/:slug/permissions - Update permissions (canonical)
 router.patch("/:slug/permissions", updateSkillPermissionsHandler);
-// PATCH /api/skills/:slug/access-permissions - Backward-compatible alias
-router.patch("/:slug/access-permissions", updateSkillPermissionsHandler);
 
 router.delete("/:slug", apiHandler(async (req, res) => {
     const slug = req.params.slug as string;

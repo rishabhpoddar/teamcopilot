@@ -22,19 +22,6 @@ export function assertCommonPermissionMode(mode: string, label: string): CommonP
     return mode;
 }
 
-export function mapPermissionToApiCommon(
-    mode: CommonPermissionMode,
-    allowedUserIds: string[],
-): { mode: "everyone" } | { mode: "restricted"; allowed_user_ids: string[] } {
-    if (mode === "everyone") {
-        return { mode: "everyone" };
-    }
-    return {
-        mode: "restricted",
-        allowed_user_ids: allowedUserIds
-    };
-}
-
 export function canUserUseFromMode(
     mode: CommonPermissionMode,
     allowedUserIds: string[],

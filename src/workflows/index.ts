@@ -28,10 +28,10 @@ import {
     addApproverToWorkflowRunPermissionsIfRestricted,
     getPermissionSummaryFields,
     getWorkflowRunPermissionWithUsers,
-    mapPermissionToApi,
     setWorkflowRunPermissions,
     initializeWorkflowRunPermissionsForCreator,
 } from "../utils/workflow-permissions";
+import { assertCommonPermissionMode } from "../utils/permission-common";
 import {
     approveWorkflowWithSnapshot,
     buildApprovalDiffResponse,
@@ -87,10 +87,10 @@ async function assertCurrentUserCanRunWorkflow(slug: string, userId: string): Pr
 
     const permission = await getWorkflowRunPermissionWithUsers(slug);
     const permissionSummary = getPermissionSummaryFields(permission, userId);
-    if (!permissionSummary.can_current_user_run) {
+    if (!permissionSummary.can_current_user_use) {
         throw {
             status: 403,
-            message: permissionSummary.is_run_locked_due_to_missing_users
+            message: permissionSummary.is_locked_due_to_missing_users
                 ? 'Workflow cannot be run because no allowed users remain'
                 : 'You do not have permission to run this workflow. Please contact the workflow owner to request permission.'
         };
@@ -110,7 +110,7 @@ async function getWorkflowEditorAccess(slug: string, userId: string, role: strin
     if (workflowStatus === "approved") {
         const permission = await getWorkflowRunPermissionWithUsers(slug);
         const permissionSummary = getPermissionSummaryFields(permission, userId);
-        canEdit = permissionSummary.can_current_user_run;
+        canEdit = permissionSummary.can_current_user_use;
     } else {
         canEdit = isOwner || isEngineer;
     }
@@ -324,7 +324,7 @@ router.post('/runs/:id/stop', apiHandler(async (req, res) => {
 
     const permission = await getWorkflowRunPermissionWithUsers(run.workflow_slug);
     const permissionSummary = getPermissionSummaryFields(permission, req.userId!);
-    if (!permissionSummary.can_current_user_run) {
+    if (!permissionSummary.can_current_user_use) {
         throw {
             status: 403,
             message: 'You do not have permission to stop this workflow run'
@@ -776,6 +776,10 @@ router.get('/:slug', apiHandler(async (req, res) => {
     const usersById = new Map(users.map((user) => [user.id, user]));
     const creator = createdByUserId ? (usersById.get(createdByUserId) ?? null) : null;
     const approver = approvedByUserId ? (usersById.get(approvedByUserId) ?? null) : null;
+    const permissionMode = assertCommonPermissionMode(permission.permission_mode, "workflow run");
+    const permissions = permissionMode === "everyone"
+        ? { mode: "everyone" as const }
+        : { mode: "restricted" as const, allowed_user_ids: permission.allowedUsers.map((row) => row.user_id) };
     res.json({
         workflow: {
             slug,
@@ -789,16 +793,8 @@ router.get('/:slug', apiHandler(async (req, res) => {
             approved_by_user_name: approver?.name ?? null,
             approved_by_user_email: approver?.email ?? null,
             ...permissionSummary,
-            permissions: mapPermissionToApi(permission),
-            run_permissions: mapPermissionToApi(permission),
+            permissions,
             allowed_users_resolved: permission.allowedUsers.map((row) => ({
-                user_id: row.user.id,
-                name: row.user.name,
-                email: row.user.email,
-                is_owner: row.user.id === metadata.created_by_user_id,
-                is_approver: row.user.id === metadata.approved_by_user_id
-            })),
-            allowed_runners_resolved: permission.allowedUsers.map((row) => ({
                 user_id: row.user.id,
                 name: row.user.name,
                 email: row.user.email,
@@ -824,10 +820,10 @@ const updateWorkflowPermissionsHandler = apiHandler(async (req, res) => {
 
     const currentPermission = await getWorkflowRunPermissionWithUsers(slug);
     const currentSummary = getPermissionSummaryFields(currentPermission, req.userId!);
-    if (!currentSummary.can_current_user_manage_run_permissions) {
+    if (!currentSummary.can_current_user_manage_permissions) {
         throw {
             status: 403,
-            message: currentSummary.is_run_locked_due_to_missing_users
+            message: currentSummary.is_locked_due_to_missing_users
                 ? 'Workflow permissions cannot be modified because no allowed users remain'
                 : 'You do not have permission to modify workflow run permissions'
         };
@@ -848,21 +844,17 @@ const updateWorkflowPermissionsHandler = apiHandler(async (req, res) => {
             allowed_user_ids: Array.isArray(allowed_user_ids) ? allowed_user_ids.map((id) => String(id)) : []
         }, metadata.created_by_user_id);
     const updatedSummary = getPermissionSummaryFields(updatedPermission, req.userId!);
+    const updatedPermissionMode = assertCommonPermissionMode(updatedPermission.permission_mode, "workflow run");
+    const permissions = updatedPermissionMode === "everyone"
+        ? { mode: "everyone" as const }
+        : { mode: "restricted" as const, allowed_user_ids: updatedPermission.allowedUsers.map((row) => row.user_id) };
 
     res.json({
         workflow: {
             slug,
             ...updatedSummary,
-            permissions: mapPermissionToApi(updatedPermission),
-            run_permissions: mapPermissionToApi(updatedPermission),
+            permissions,
             allowed_users_resolved: updatedPermission.allowedUsers.map((row) => ({
-                user_id: row.user.id,
-                name: row.user.name,
-                email: row.user.email,
-                is_owner: row.user.id === metadata.created_by_user_id,
-                is_approver: row.user.id === metadata.approved_by_user_id
-            })),
-            allowed_runners_resolved: updatedPermission.allowedUsers.map((row) => ({
                 user_id: row.user.id,
                 name: row.user.name,
                 email: row.user.email,
@@ -875,8 +867,6 @@ const updateWorkflowPermissionsHandler = apiHandler(async (req, res) => {
 
 // PATCH /api/workflows/:slug/permissions - Update permissions (canonical)
 router.patch('/:slug/permissions', updateWorkflowPermissionsHandler);
-// PATCH /api/workflows/:slug/run-permissions - Backward-compatible alias
-router.patch('/:slug/run-permissions', updateWorkflowPermissionsHandler);
 
 // POST /api/workflows/request-permission - Create a tool execution permission request
 router.post('/request-permission', apiHandler(async (req, res) => {

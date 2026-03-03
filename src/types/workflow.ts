@@ -44,11 +44,6 @@ export interface WorkflowSummary {
     can_current_user_manage_permissions: boolean;
     allowed_user_count: number;
     is_locked_due_to_missing_users: boolean;
-    run_permission_mode: PermissionMode;
-    can_current_user_run: boolean;
-    can_current_user_manage_run_permissions: boolean;
-    allowed_runner_count: number;
-    is_run_locked_due_to_missing_users: boolean;
 }
 
 /** Alias for frontend compatibility */

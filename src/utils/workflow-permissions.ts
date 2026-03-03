@@ -4,20 +4,14 @@ import {
     ResourcePermissionWithUsers,
     addUserToResourcePermissionsIfRestricted,
     assertCommonPermissionMode,
-    canUserUseFromMode,
     ensureResourcePermissions,
     getCommonPermissionSummary,
     getResourcePermissionWithUsers,
     initializeResourcePermissionsForCreator,
-    mapPermissionToApiCommon,
     setResourcePermissions,
 } from "./permission-common";
 
 type PermissionWithUsers = ResourcePermissionWithUsers;
-
-function assertPermissionMode(mode: string): PermissionMode {
-    return assertCommonPermissionMode(mode, "workflow run");
-}
 
 function getDefaultCandidateUserIds(metadata: WorkflowMetadata): string[] {
     const ids = [metadata.created_by_user_id, metadata.approved_by_user_id].filter((id): id is string => Boolean(id));
@@ -44,17 +38,6 @@ export async function getWorkflowRunPermissionWithUsers(slug: string): Promise<P
     return getResourcePermissionWithUsers("workflow", slug, "Workflow run");
 }
 
-export function mapPermissionToApi(permission: PermissionWithUsers): Permissions {
-    const mode = assertPermissionMode(permission.permission_mode);
-    const allowedUserIds = permission.allowedUsers.map((row) => row.user_id);
-    return mapPermissionToApiCommon(mode, allowedUserIds);
-}
-
-export function canUserRunWorkflowFromPermission(permission: PermissionWithUsers, userId: string): boolean {
-    const mode = assertPermissionMode(permission.permission_mode);
-    return canUserUseFromMode(mode, permission.allowedUsers.map((row) => row.user_id), userId);
-}
-
 export function getPermissionSummaryFields(
     permission: PermissionWithUsers,
     currentUserId: string,
@@ -64,13 +47,8 @@ export function getPermissionSummaryFields(
     can_current_user_manage_permissions: boolean;
     allowed_user_count: number;
     is_locked_due_to_missing_users: boolean;
-    run_permission_mode: PermissionMode;
-    can_current_user_run: boolean;
-    can_current_user_manage_run_permissions: boolean;
-    allowed_runner_count: number;
-    is_run_locked_due_to_missing_users: boolean;
 } {
-    const mode = assertPermissionMode(permission.permission_mode);
+    const mode = assertCommonPermissionMode(permission.permission_mode, "workflow run");
     const summary = getCommonPermissionSummary(
         mode,
         permission.allowedUsers.map((row) => row.user_id),
@@ -82,12 +60,7 @@ export function getPermissionSummaryFields(
         can_current_user_use: summary.canCurrentUserUse,
         can_current_user_manage_permissions: summary.canCurrentUserUse,
         allowed_user_count: summary.allowedUserCount,
-        is_locked_due_to_missing_users: summary.isLockedDueToMissingUsers,
-        run_permission_mode: mode,
-        can_current_user_run: summary.canCurrentUserUse,
-        can_current_user_manage_run_permissions: summary.canCurrentUserUse,
-        allowed_runner_count: summary.allowedUserCount,
-        is_run_locked_due_to_missing_users: summary.isLockedDueToMissingUsers
+        is_locked_due_to_missing_users: summary.isLockedDueToMissingUsers
     };
 }
 
