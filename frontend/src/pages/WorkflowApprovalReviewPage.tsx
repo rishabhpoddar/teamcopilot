@@ -11,10 +11,15 @@ function getErrorMessage(err: unknown, fallback: string): string {
     return err instanceof AxiosError ? String(err.response?.data?.message || err.response?.data || err.message) : fallback;
 }
 
-export default function WorkflowApprovalReviewPage() {
+type ApprovalEntity = 'workflow' | 'skill';
+
+export default function WorkflowApprovalReviewPage({ entity = 'workflow' }: { entity?: ApprovalEntity }) {
     const { slug = '' } = useParams();
     const auth = useAuth();
     const token = auth.loading ? null : auth.token;
+    const apiBase = entity === 'workflow' ? '/api/workflows' : '/api/skills';
+    const entityLabel = entity === 'workflow' ? 'Workflow' : 'Skill';
+    const entityLabelLower = entity === 'workflow' ? 'workflow' : 'skill';
 
     const [loading, setLoading] = useState(true);
     const [approving, setApproving] = useState(false);
@@ -29,7 +34,7 @@ export default function WorkflowApprovalReviewPage() {
         setLoading(true);
         setError(null);
         try {
-            const response = await axiosInstance.get(`/api/workflows/${encodeURIComponent(slug)}/approval-diff`, {
+            const response = await axiosInstance.get(`${apiBase}/${encodeURIComponent(slug)}/approval-diff`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             const data = typeof response.data === 'string'
@@ -47,20 +52,20 @@ export default function WorkflowApprovalReviewPage() {
     useEffect(() => {
         if (!token) return;
         void loadDiff();
-    }, [token, slug]);
+    }, [token, slug, apiBase]);
 
     const handleApprove = async () => {
         if (!token) return;
         setApproving(true);
         try {
-            await axiosInstance.post(`/api/workflows/${encodeURIComponent(slug)}/approve`, {}, {
+            await axiosInstance.post(`${apiBase}/${encodeURIComponent(slug)}/approve`, {}, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             setApproved(true);
-            toast.success('Workflow approved successfully');
+            toast.success(`${entityLabel} approved successfully`);
             await loadDiff();
         } catch (err: unknown) {
-            toast.error(getErrorMessage(err, 'Failed to approve workflow'));
+            toast.error(getErrorMessage(err, `Failed to approve ${entityLabelLower}`));
         } finally {
             setApproving(false);
         }
@@ -70,11 +75,11 @@ export default function WorkflowApprovalReviewPage() {
         if (!token || !diff || !diff.has_previous_snapshot) return;
         setRejecting(true);
         try {
-            await axiosInstance.post(`/api/workflows/${encodeURIComponent(slug)}/reject-restore`, {}, {
+            await axiosInstance.post(`${apiBase}/${encodeURIComponent(slug)}/reject-restore`, {}, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             setApproved(false);
-            toast.success('Workflow files restored to last approved snapshot');
+            toast.success(`${entityLabel} files restored to last approved snapshot`);
             await loadDiff();
         } catch (err: unknown) {
             toast.error(getErrorMessage(err, 'Failed to restore files from approved snapshot'));
@@ -99,7 +104,7 @@ export default function WorkflowApprovalReviewPage() {
                     <p className="approval-review-eyebrow">Approval Review</p>
                     <h1 className="approval-review-title">{slug}</h1>
                     <p className="approval-review-subtitle">
-                        Review code changes against the last approved snapshot before approving.
+                        Review {entityLabelLower} changes against the last approved snapshot before approving.
                     </p>
                 </div>
                 <div className="approval-review-actions">
@@ -128,7 +133,7 @@ export default function WorkflowApprovalReviewPage() {
                             onClick={() => { void handleApprove(); }}
                             disabled={loading || approving || rejecting || diff === null}
                         >
-                            {approving ? 'Approving...' : 'Approve Workflow'}
+                            {approving ? 'Approving...' : `Approve ${entityLabel}`}
                         </button>
                     )}
                 </div>
@@ -136,7 +141,7 @@ export default function WorkflowApprovalReviewPage() {
 
             {approved && (
                 <div className="approval-review-banner success">
-                    Workflow approved. You can close this tab.
+                    {entityLabel} approved. You can close this tab.
                 </div>
             )}
 
