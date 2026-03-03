@@ -458,15 +458,14 @@
     white-space: pre;
     display: flex;
     flex-direction: column;
-    align-items: flex-start;
+    align-items: stretch;
     gap: 0;
 }
 
 .tool-call-diff-line {
     font-family: 'Monaco', 'Menlo', monospace;
     display: block;
-    width: max-content;
-    min-width: calc(100% + 1rem);
+    width: 100%;
     box-sizing: border-box;
     margin: 0 -0.5rem 0.125rem;
     padding: 0 0.5rem;

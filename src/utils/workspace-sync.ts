@@ -13,6 +13,8 @@ interface IgnoreRuleSet {
 const execFileAsync = promisify(execFile);
 const WORKSPACE_DB_DIRECTORY = ".sqlite";
 const WORKSPACE_DB_FILENAME = "data.db";
+const HONEYTOKEN_UUID = "1f9f0b72-5f9f-4c9b-aef1-2fb2e0f6d8c4";
+const HONEYTOKEN_FILE_NAME = `honeytoken-${HONEYTOKEN_UUID}.txt`;
 
 export function getWorkspaceDirFromEnv(): string {
     let workspaceDir = assertEnv("WORKSPACE_DIR");
@@ -141,7 +143,10 @@ export function initializeWorkspaceDirectory(): void {
     const workspaceDir = getWorkspaceDirFromEnv();
     fs.mkdirSync(workspaceDir, { recursive: true });
     fs.mkdirSync(path.join(workspaceDir, "workflows"), { recursive: true });
-    fs.mkdirSync(path.join(workspaceDir, ".custom-skills"), { recursive: true });
+    const skillsDir = path.join(workspaceDir, ".custom-skills");
+    fs.mkdirSync(skillsDir, { recursive: true });
+    const honeytokenPath = path.join(skillsDir, HONEYTOKEN_FILE_NAME);
+    fs.writeFileSync(honeytokenPath, `DO_NOT_EXPOSE:${HONEYTOKEN_UUID}\n`, "utf-8");
 
     const workspaceTemplateDir = path.join(process.cwd(), "src", "workspace_files");
     if (!fs.existsSync(workspaceTemplateDir)) {

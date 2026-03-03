@@ -242,16 +242,24 @@
   font-size: 0.82rem;
 }
 
-.approval-review-patch {
+.approval-review-patch-scroll {
   margin: 0;
   background: #090e16;
   overflow: auto;
+}
+
+.approval-review-patch {
+  display: inline-block;
+  min-width: 100%;
   padding: 0.5rem 0;
   font-size: 0.78rem;
   line-height: 1.35;
 }
 
 .approval-review-line {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
   padding: 0 0.8rem;
   white-space: pre;
   color: #cbd5e1;

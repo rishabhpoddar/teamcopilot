@@ -210,25 +210,27 @@ export default function ApprovalReviewPage({ entity = 'workflow' }: { entity?: A
                                                     )}
 
                                                     {file.patch_lines && (
-                                                        <pre className="approval-review-patch">
-                                                            {file.patch_lines.map((line, index) => {
-                                                                const lineClass = line.startsWith('+')
-                                                                    ? 'added'
-                                                                    : line.startsWith('-')
-                                                                        ? 'removed'
-                                                                        : line.startsWith('@@')
-                                                                            ? 'hunk'
-                                                                            : 'context';
-                                                                return (
-                                                                    <div key={`${file.path}-${index}`} className={`approval-review-line ${lineClass}`}>
-                                                                        {line}
-                                                                    </div>
-                                                                );
-                                                            })}
-                                                            {file.is_truncated && (
-                                                                <div className="approval-review-line truncated">... diff truncated ...</div>
-                                                            )}
-                                                        </pre>
+                                                        <div className="approval-review-patch-scroll">
+                                                            <div className="approval-review-patch">
+                                                                {file.patch_lines.map((line, index) => {
+                                                                    const lineClass = line.startsWith('+')
+                                                                        ? 'added'
+                                                                        : line.startsWith('-')
+                                                                            ? 'removed'
+                                                                            : line.startsWith('@@')
+                                                                                ? 'hunk'
+                                                                                : 'context';
+                                                                    return (
+                                                                        <div key={`${file.path}-${index}`} className={`approval-review-line ${lineClass}`}>
+                                                                            {line}
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                                {file.is_truncated && (
+                                                                    <div className="approval-review-line truncated">... diff truncated ...</div>
+                                                                )}
+                                                            </div>
+                                                        </div>
                                                     )}
                                                 </div>
                                             )}
