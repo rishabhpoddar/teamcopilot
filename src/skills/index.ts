@@ -23,6 +23,7 @@ import {
     uploadSkillFileFromTempPath,
 } from "../utils/skill-files";
 import { WorkflowEditorAccessResponse } from "../types/workflow-files";
+import { registerResourceFileRoutes } from "../utils/resource-file-routes";
 
 const router = express.Router({ mergeParams: true });
 const uploadTmpDir = path.join(os.tmpdir(), "localtool-skill-uploads");
@@ -231,104 +232,22 @@ router.get("/:slug", apiHandler(async (req, res) => {
     });
 }, true));
 
-router.get("/:slug/files/access", apiHandler(async (req, res) => {
-    const slug = req.params.slug as string;
-    const access = await getSkillEditorAccess(slug, req.userId!, req.role);
-    res.json(access);
-}, true));
-
-router.get("/:slug/files/tree", apiHandler(async (req, res) => {
-    const slug = req.params.slug as string;
-    await getOrCreateSkillMetadataAndEnsurePermission(slug);
-    const rawPath = typeof req.query.path === "string" ? req.query.path : undefined;
-    const tree = listSkillDirectory(slug, rawPath);
-    res.json(tree);
-}, true));
-
-router.get("/:slug/files/content", apiHandler(async (req, res) => {
-    const slug = req.params.slug as string;
-    await getOrCreateSkillMetadataAndEnsurePermission(slug);
-    const rawPath = typeof req.query.path === "string" ? req.query.path : undefined;
-    const content = readSkillFileContent(slug, rawPath);
-    (res.locals as { skipResponseSanitization?: boolean }).skipResponseSanitization = true;
-    res.json(content);
-}, true));
-
-router.put("/:slug/files/content", apiHandler(async (req, res) => {
-    const slug = req.params.slug as string;
-    await assertCanEditSkillFiles(slug, req.userId!, req.role);
-    const { path, content, base_etag } = req.body as { path?: unknown; content?: unknown; base_etag?: unknown };
-    if (typeof path !== "string" || typeof content !== "string" || typeof base_etag !== "string") {
-        throw {
-            status: 400,
-            message: "path, content, and base_etag are required"
-        };
-    }
-    const result = saveSkillFileContent(slug, { path, content, base_etag });
-    res.json(result);
-}, true));
-
-router.post("/:slug/files", apiHandler(async (req, res) => {
-    const slug = req.params.slug as string;
-    await assertCanEditSkillFiles(slug, req.userId!, req.role);
-    const { parent_path, name, kind } = req.body as { parent_path?: unknown; name?: unknown; kind?: unknown };
-    if (typeof name !== "string" || (kind !== "file" && kind !== "directory")) {
-        throw {
-            status: 400,
-            message: 'name and kind ("file" or "directory") are required'
-        };
-    }
-    const node = createSkillFileOrFolder(slug, typeof parent_path === "string" ? parent_path : "", name, kind);
-    res.json({ node });
-}, true));
-
-router.post("/:slug/files/upload", skillFileUpload.single("file"), apiHandler(async (req, res) => {
-    const slug = req.params.slug as string;
-    await assertCanEditSkillFiles(slug, req.userId!, req.role);
-    const { parent_path, name } = req.body as { parent_path?: unknown; name?: unknown };
-    if (typeof name !== "string") {
-        throw {
-            status: 400,
-            message: "name is required"
-        };
-    }
-    if (!req.file?.path) {
-        throw {
-            status: 400,
-            message: "file is required"
-        };
-    }
-    try {
-        const node = uploadSkillFileFromTempPath(slug, typeof parent_path === "string" ? parent_path : "", name, req.file.path);
-        res.json({ node });
-    } finally {
-        if (fs.existsSync(req.file.path)) {
-            fs.unlinkSync(req.file.path);
-        }
-    }
-}, true));
-
-router.patch("/:slug/files/rename", apiHandler(async (req, res) => {
-    const slug = req.params.slug as string;
-    await assertCanEditSkillFiles(slug, req.userId!, req.role);
-    const { path, new_name } = req.body as { path?: unknown; new_name?: unknown };
-    if (typeof path !== "string" || typeof new_name !== "string") {
-        throw {
-            status: 400,
-            message: "path and new_name are required"
-        };
-    }
-    const result = renameSkillPath(slug, path, new_name);
-    res.json(result);
-}, true));
-
-router.delete("/:slug/files", apiHandler(async (req, res) => {
-    const slug = req.params.slug as string;
-    await assertCanEditSkillFiles(slug, req.userId!, req.role);
-    const rawPath = typeof req.query.path === "string" ? req.query.path : undefined;
-    deleteSkillPath(slug, rawPath);
-    res.json({ success: true });
-}, true));
+registerResourceFileRoutes({
+    router,
+    uploadMiddleware: skillFileUpload.single("file"),
+    ensureResourceExists: async (slug: string) => {
+        await getOrCreateSkillMetadataAndEnsurePermission(slug);
+    },
+    getEditorAccess: getSkillEditorAccess,
+    assertCanEdit: assertCanEditSkillFiles,
+    listDirectory: listSkillDirectory,
+    readFileContent: readSkillFileContent,
+    saveFileContent: saveSkillFileContent,
+    createFileOrFolder: createSkillFileOrFolder,
+    uploadFileFromTempPath: uploadSkillFileFromTempPath,
+    renamePath: renameSkillPath,
+    deletePath: deleteSkillPath,
+});
 
 const updateSkillPermissionsHandler = apiHandler(async (req, res) => {
     const slug = req.params.slug as string;
