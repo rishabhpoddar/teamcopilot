@@ -16,6 +16,44 @@ export function isLikelySensitiveKey(key: string): boolean {
 export function sanitizeStringContent(input: string): string {
     let text = input;
 
+    // Redact sensitive markdown list/label items such as:
+    // - **password**: value
+    // - **password** = value
+    // > __token__ : "value"
+    text = text.replace(
+        /(^|[\r\n])([ \t>]*(?:[-*+][ \t]+)?)(\*\*|__)[ \t]*([A-Za-z_][A-Za-z0-9_-]*)[ \t]*(\3)([ \t]*(?::|=)[ \t]*)(?:"([^"\n]*)"|'([^'\n]*)'|([^\s#;,)\]}]+))/gm,
+        (
+            full: string,
+            lineLead: string,
+            prefix: string,
+            openMarker: string,
+            key: string,
+            closeMarker: string,
+            separator: string,
+            doubleQuoted: string | undefined,
+            singleQuoted: string | undefined,
+            bare: string | undefined
+        ) => {
+            if (!isLikelySensitiveKey(key)) {
+                return full;
+            }
+
+            const rawValue = doubleQuoted ?? singleQuoted ?? bare ?? "";
+            if (!rawValue) {
+                return full;
+            }
+
+            const masked = maskValue(rawValue);
+            if (doubleQuoted !== undefined) {
+                return `${lineLead}${prefix}${openMarker}${key}${closeMarker}${separator}"${masked}"`;
+            }
+            if (singleQuoted !== undefined) {
+                return `${lineLead}${prefix}${openMarker}${key}${closeMarker}${separator}'${masked}'`;
+            }
+            return `${lineLead}${prefix}${openMarker}${key}${closeMarker}${separator}${masked}`;
+        }
+    );
+
     // Redact sensitive env-style assignments anywhere in text, including multiple
     // assignments per line and text prefixes.
     text = text.replace(
