@@ -100,10 +100,18 @@ async function assertCurrentUserCanRunWorkflow(slug: string, userId: string): Pr
     await ensureWorkflowMatchesApprovedSnapshotForRun(slug);
 }
 
-async function getWorkflowEditorAccess(slug: string, userId: string, role: string | undefined): Promise<WorkflowEditorAccessResponse> {
+async function isEngineerUser(userId: string): Promise<boolean> {
+    const user = await prisma.users.findUnique({
+        where: { id: userId },
+        select: { role: true }
+    });
+    return user?.role === "Engineer";
+}
+
+async function getWorkflowEditorAccess(slug: string, userId: string): Promise<WorkflowEditorAccessResponse> {
     const { metadata } = await readWorkflowManifestAndEnsurePermissions(slug);
     const isOwner = metadata.created_by_user_id === userId;
-    const isEngineer = role === "Engineer";
+    const isEngineer = await isEngineerUser(userId);
     const approvalState = await getWorkflowSnapshotApprovalState(slug);
     const workflowStatus = approvalState.is_current_code_approved ? "approved" : "pending";
 
@@ -123,8 +131,8 @@ async function getWorkflowEditorAccess(slug: string, userId: string, role: strin
     };
 }
 
-async function assertCanEditWorkflowFiles(slug: string, userId: string, role: string | undefined): Promise<void> {
-    const access = await getWorkflowEditorAccess(slug, userId, role);
+async function assertCanEditWorkflowFiles(slug: string, userId: string): Promise<void> {
+    const access = await getWorkflowEditorAccess(slug, userId);
     if (!access.can_edit) {
         throw {
             status: 403,
@@ -629,6 +637,7 @@ router.get('/:slug/approval-diff', apiHandler(async (req, res) => {
 registerResourceFileRoutes({
     router,
     uploadMiddleware: workflowFileUpload.single("file"),
+    assertCanView: async () => Promise.resolve(),
     ensureResourceExists: async (slug: string) => {
         await readWorkflowManifestAndEnsurePermissions(slug);
     },

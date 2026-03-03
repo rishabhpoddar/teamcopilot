@@ -48,27 +48,48 @@ function normalizeSkillNameOrSlug(value: string): string {
         .replace(/-+/g, "-");
 }
 
-async function getSkillEditorAccess(slug: string, userId: string, role: string | undefined): Promise<WorkflowEditorAccessResponse> {
+async function isEngineerUser(userId: string): Promise<boolean> {
+    const user = await prisma.users.findUnique({
+        where: { id: userId },
+        select: { role: true }
+    });
+    return user?.role === "Engineer";
+}
+
+async function getSkillEditorAccess(slug: string, userId: string): Promise<WorkflowEditorAccessResponse> {
     const { metadata } = await readSkillManifestAndEnsurePermissions(slug);
     const permission = await getSkillAccessPermissionWithUsers(slug);
     const permissionSummary = getSkillPermissionSummaryFields(permission, userId);
     const approvalState = await getSkillSnapshotApprovalState(slug);
     const skillStatus = approvalState.is_current_code_approved ? "approved" : "pending";
-    const isEngineer = role === "Engineer";
+    const isEngineer = await isEngineerUser(userId);
     const isOwner = metadata.created_by_user_id === userId;
+    const canView = skillStatus === "approved"
+        ? permissionSummary.can_current_user_use
+        : (permissionSummary.can_current_user_use || isEngineer);
     const canEdit = skillStatus === "approved"
         ? permissionSummary.can_current_user_use
         : (isOwner || isEngineer);
 
     return {
-        can_view: true,
+        can_view: canView,
         can_edit: canEdit,
         workflow_status: skillStatus,
     };
 }
 
-async function assertCanEditSkillFiles(slug: string, userId: string, role: string | undefined): Promise<void> {
-    const access = await getSkillEditorAccess(slug, userId, role);
+async function assertCanViewSkillFiles(slug: string, userId: string): Promise<void> {
+    const access = await getSkillEditorAccess(slug, userId);
+    if (!access.can_view) {
+        throw {
+            status: 403,
+            message: "You do not have permission to view this skill"
+        };
+    }
+}
+
+async function assertCanEditSkillFiles(slug: string, userId: string): Promise<void> {
+    const access = await getSkillEditorAccess(slug, userId);
     if (!access.can_edit) {
         throw {
             status: 403,
@@ -163,6 +184,7 @@ router.get("/", apiHandler(async (req, res) => {
 
 router.get("/:slug", apiHandler(async (req, res) => {
     const slug = req.params.slug as string;
+    await assertCanViewSkillFiles(slug, req.userId!);
     const { metadata, manifest } = await readSkillManifestAndEnsurePermissions(slug);
 
     const createdByUserId = metadata.created_by_user_id ?? null;
@@ -260,6 +282,7 @@ router.get("/:slug/approval-diff", apiHandler(async (req, res) => {
 registerResourceFileRoutes({
     router,
     uploadMiddleware: skillFileUpload.single("file"),
+    assertCanView: async () => Promise.resolve(),
     ensureResourceExists: async (slug: string) => {
         await readSkillManifestAndEnsurePermissions(slug);
     },
