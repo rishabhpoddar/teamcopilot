@@ -217,11 +217,7 @@ export default function WorkflowEditorPage({ entity = 'workflow' }: { entity?: E
         navigate(`/?tab=${backTab}`);
     };
 
-    const editorStatus: 'approved' | 'pending' = entity === 'workflow'
-        ? (access?.workflow_status ?? 'pending')
-        : workflowDetails?.approved_by_user_id
-            ? 'approved'
-            : 'pending';
+    const editorStatus: 'approved' | 'pending' = access?.workflow_status ?? 'pending';
 
     const handleToggleDirectory = async (node: WorkflowFileNode) => {
         if (node.kind !== 'directory') return;
