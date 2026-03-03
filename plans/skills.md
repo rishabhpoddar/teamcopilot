@@ -141,5 +141,6 @@
   3. Custom skills live only in workspace_dir/.custom-skills.
   4. Agent uses LocalTool custom tool + file reads, not OpenCode native skill index.
 
-## Other notes
+## Differences between skills and workflows
 - In the browser skill section, people can only see skills that they have access to. If a skill is pending approval, then all engineers can see it and review it. 
+- We have extra tools for the agent to find and list workflows.

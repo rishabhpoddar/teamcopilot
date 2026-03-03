@@ -1,0 +1,4 @@
+# Ignore everything in this workflows folder
+*
+# Keep this .gitignore tracked
+!.gitignore
