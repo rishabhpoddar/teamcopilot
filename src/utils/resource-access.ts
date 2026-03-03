@@ -1,4 +1,4 @@
-import { ResourceKind, assertCommonPermissionMode, getPermissionSummaryForApi, getResourceAccess, getResourcePermissionWithUsers } from "./permission-common";
+import { ResourceKind, assertCommonPermissionMode, getResourcePermissionWithUsers } from "./permission-common";
 import { isEngineerUser } from "./user-role";
 import { getSkillSnapshotApprovalState } from "./skill-approval-snapshot";
 import { getWorkflowSnapshotApprovalState } from "./workflow-approval-snapshot";
@@ -36,26 +36,27 @@ export async function getResourceAccessSummary(
         permission.permission_mode,
         resourceType === "workflow" ? "workflow run" : "skill access"
     );
-    const permissionSummary = getPermissionSummaryForApi(
-        mode,
-        permission.allowedUsers.map((row) => row.user_id),
-        userId
-    );
+    const allowedUserIds = permission.allowedUsers.map((row) => row.user_id);
+    const canCurrentUserUse = mode === "everyone" || allowedUserIds.includes(userId);
+    const allowedUserCount = mode === "restricted" ? allowedUserIds.length : 0;
+    const isLockedDueToMissingUsers = mode === "restricted" && allowedUserIds.length === 0;
     const approvalState = resourceType === "workflow"
         ? await getWorkflowSnapshotApprovalState(slug)
         : await getSkillSnapshotApprovalState(slug);
     const isEngineer = await isEngineerUser(userId);
-    const access = getResourceAccess(
-        resourceType,
-        approvalState.is_current_code_approved,
-        isEngineer,
-        permissionSummary.can_current_user_use
-    );
+    const canEdit = approvalState.is_current_code_approved
+        ? canCurrentUserUse
+        : (isEngineer || canCurrentUserUse);
+    const canView = resourceType === "workflow" ? true : canEdit;
 
     return {
-        ...permissionSummary,
+        permission_mode: mode,
+        can_current_user_use: canCurrentUserUse,
+        can_current_user_manage_permissions: canCurrentUserUse,
+        allowed_user_count: allowedUserCount,
+        is_locked_due_to_missing_users: isLockedDueToMissingUsers,
         is_approved: approvalState.is_current_code_approved,
-        can_view: access.canView,
-        can_edit: access.canEdit,
+        can_view: canView,
+        can_edit: canEdit,
     };
 }
