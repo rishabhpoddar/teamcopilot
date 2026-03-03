@@ -9,15 +9,12 @@ import {
     restoreResourceToApprovedSnapshot,
 } from "./approval-snapshot-common";
 
-const SKILL_HASH_OPTIONS = { exclude_data_paths: false } as const;
-
 function getSkillSnapshotConfig(slug: string) {
     return {
         resource_kind: "skill" as const,
         slug,
         resource_label: "skill",
         root_path: getSkillPath(slug),
-        hash_options: SKILL_HASH_OPTIONS,
         ensure_resource_exists: async () => {
             await readSkillManifestAndEnsurePermissions(slug);
         }
@@ -29,7 +26,7 @@ export function collectCurrentSkillSnapshot(slug: string): WorkflowSnapshot {
 }
 
 export async function loadApprovedSkillSnapshotFromDb(slug: string): Promise<WorkflowSnapshot | null> {
-    return loadApprovedSnapshotFromDbCommon("skill", slug, SKILL_HASH_OPTIONS);
+    return loadApprovedSnapshotFromDbCommon("skill", slug);
 }
 
 export async function approveSkillWithSnapshot(slug: string, userId: string): Promise<{ approved_by_user_id: string; snapshot_hash: string; snapshot_file_count: number }> {

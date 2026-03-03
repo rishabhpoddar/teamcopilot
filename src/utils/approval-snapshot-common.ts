@@ -15,15 +15,10 @@ import { ResourceKind } from "./permission-common";
 const MAX_INLINE_DIFF_FILE_BYTES = 200 * 1024;
 const MAX_PATCH_LINES_PER_FILE = 5000;
 
-interface SnapshotHashOptions {
-    exclude_data_paths: boolean;
-}
-
 interface CollectSnapshotOptions {
     slug: string;
     resource_label: string;
     root_path: string;
-    hash_options: SnapshotHashOptions;
 }
 
 interface ResourceSnapshotConfig {
@@ -31,7 +26,6 @@ interface ResourceSnapshotConfig {
     slug: string;
     resource_label: string;
     root_path: string;
-    hash_options: SnapshotHashOptions;
     ensure_resource_exists: () => Promise<void>;
 }
 
@@ -69,13 +63,11 @@ function shouldIgnoreRelativePath(relativePath: string): boolean {
         if (segment === "__pycache__") {
             return true;
         }
+        if (segment === "data") {
+            return true;
+        }
     }
     return false;
-}
-
-function isDataPath(relativePath: string): boolean {
-    const segments = relativePath.split("/").filter(Boolean);
-    return segments.includes("data");
 }
 
 function assertNoSymlink(absolutePath: string, resourceLabel: string): void {
@@ -186,10 +178,9 @@ function pruneEmptyNonIgnoredDirectories(
     }
 }
 
-export function computeSnapshotHash(files: WorkflowSnapshotFile[], options: SnapshotHashOptions): string {
+function computeSnapshotHash(files: WorkflowSnapshotFile[]): string {
     const hash = crypto.createHash("sha256");
     const sorted = files
-        .filter((file) => !options.exclude_data_paths || !isDataPath(file.relative_path))
         .sort((a, b) => a.relative_path.localeCompare(b.relative_path));
     for (const file of sorted) {
         hash.update(file.relative_path);
@@ -203,7 +194,7 @@ export function computeSnapshotHash(files: WorkflowSnapshotFile[], options: Snap
 }
 
 export function collectCurrentResourceSnapshot(options: CollectSnapshotOptions): WorkflowSnapshot {
-    const { root_path: rootPath, slug, resource_label: resourceLabel, hash_options: hashOptions } = options;
+    const { root_path: rootPath, slug, resource_label: resourceLabel } = options;
 
     if (!fs.existsSync(rootPath)) {
         throw {
@@ -227,7 +218,7 @@ export function collectCurrentResourceSnapshot(options: CollectSnapshotOptions):
         workflow_slug: slug,
         files,
         file_count: files.length,
-        snapshot_hash: computeSnapshotHash(files, hashOptions),
+        snapshot_hash: computeSnapshotHash(files),
     };
 }
 
@@ -300,7 +291,6 @@ async function writeApprovedSnapshotInTx(
 export async function loadApprovedSnapshotFromDb(
     resourceKind: ResourceKind,
     slug: string,
-    hashOptions: SnapshotHashOptions,
 ): Promise<WorkflowSnapshot | null> {
     const row = await prisma.resource_approved_snapshots.findUnique({
         where: {
@@ -315,19 +305,22 @@ export async function loadApprovedSnapshotFromDb(
         return null;
     }
 
-    const files: WorkflowSnapshotFile[] = row.files.map((file): WorkflowSnapshotFile => ({
-        relative_path: file.relative_path,
-        content_kind: (file.content_kind === "binary" ? "binary" : "text") as SnapshotContentKind,
-        text_content: file.text_content,
-        binary_content: file.binary_content ? Buffer.from(file.binary_content) : null,
-        size_bytes: file.size_bytes,
-        content_sha256: file.content_sha256,
-    })).sort((a, b) => a.relative_path.localeCompare(b.relative_path));
+    const files: WorkflowSnapshotFile[] = row.files
+        .filter((file) => !shouldIgnoreRelativePath(file.relative_path))
+        .map((file): WorkflowSnapshotFile => ({
+            relative_path: file.relative_path,
+            content_kind: (file.content_kind === "binary" ? "binary" : "text") as SnapshotContentKind,
+            text_content: file.text_content,
+            binary_content: file.binary_content ? Buffer.from(file.binary_content) : null,
+            size_bytes: file.size_bytes,
+            content_sha256: file.content_sha256,
+        }))
+        .sort((a, b) => a.relative_path.localeCompare(b.relative_path));
 
     return {
         workflow_slug: slug,
-        snapshot_hash: computeSnapshotHash(files, hashOptions),
-        file_count: row.file_count,
+        snapshot_hash: computeSnapshotHash(files),
+        file_count: files.length,
         files,
     };
 }
@@ -398,7 +391,7 @@ export async function restoreResourceToApprovedSnapshot(
     }
 
     await config.ensure_resource_exists();
-    const snapshot = await loadApprovedSnapshotFromDb(config.resource_kind, config.slug, config.hash_options);
+    const snapshot = await loadApprovedSnapshotFromDb(config.resource_kind, config.slug);
     if (!snapshot) {
         throw {
             status: 409,
@@ -436,12 +429,12 @@ export async function restoreResourceToApprovedSnapshot(
 
     return {
         restored_file_count: snapshot.file_count,
-        snapshot_hash: computeSnapshotHash(snapshot.files, config.hash_options),
+        snapshot_hash: computeSnapshotHash(snapshot.files),
     };
 }
 
 export async function getResourceSnapshotApprovalState(config: ResourceSnapshotConfig): Promise<WorkflowSnapshotApprovalState> {
-    const approvedSnapshot = await loadApprovedSnapshotFromDb(config.resource_kind, config.slug, config.hash_options);
+    const approvedSnapshot = await loadApprovedSnapshotFromDb(config.resource_kind, config.slug);
     if (!approvedSnapshot) {
         return {
             has_approved_snapshot: false,
@@ -450,7 +443,7 @@ export async function getResourceSnapshotApprovalState(config: ResourceSnapshotC
     }
 
     const currentSnapshot = collectCurrentResourceSnapshot(config);
-    const approvedSnapshotHash = computeSnapshotHash(approvedSnapshot.files, config.hash_options);
+    const approvedSnapshotHash = computeSnapshotHash(approvedSnapshot.files);
     const matches = approvedSnapshotHash === currentSnapshot.snapshot_hash;
 
     return {
@@ -693,7 +686,8 @@ export function buildApprovalDiffResponse(previous: WorkflowSnapshot | null, cur
         files,
         ignored_rules: [
             'Any hidden file or directory (path segment starting with ".")',
-            'Any "__pycache__" directory'
+            'Any "__pycache__" directory',
+            'Any "data" directory'
         ],
     };
 }

@@ -10,15 +10,12 @@ import {
     restoreResourceToApprovedSnapshot,
 } from "./approval-snapshot-common";
 
-const WORKFLOW_HASH_OPTIONS = { exclude_data_paths: true } as const;
-
 function getWorkflowSnapshotConfig(slug: string) {
     return {
         resource_kind: "workflow" as const,
         slug,
         resource_label: "workflow",
         root_path: getWorkflowPath(slug),
-        hash_options: WORKFLOW_HASH_OPTIONS,
         ensure_resource_exists: async () => {
             await readWorkflowManifestAndEnsurePermissions(slug);
         }
@@ -30,7 +27,7 @@ export function collectCurrentWorkflowSnapshot(slug: string): WorkflowSnapshot {
 }
 
 export async function loadApprovedSnapshotFromDb(slug: string): Promise<WorkflowSnapshot | null> {
-    return loadApprovedSnapshotFromDbCommon("workflow", slug, WORKFLOW_HASH_OPTIONS);
+    return loadApprovedSnapshotFromDbCommon("workflow", slug);
 }
 
 export async function approveWorkflowWithSnapshot(slug: string, userId: string): Promise<{ approved_by_user_id: string; snapshot_hash: string; snapshot_file_count: number }> {
