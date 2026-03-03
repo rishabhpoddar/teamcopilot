@@ -4,6 +4,7 @@ import Login from './pages/Login.tsx'
 import ResetPassword from './pages/ResetPassword.tsx'
 import Home from './pages/Home.tsx'
 import WorkflowEditorPage from './pages/WorkflowEditorPage.tsx'
+import SkillEditorPage from './pages/SkillEditorPage.tsx'
 import WorkflowApprovalReviewPage from './pages/WorkflowApprovalReviewPage.tsx'
 import RunDetailsPage from './pages/RunDetailsPage.tsx'
 import ManualRunPage from './pages/ManualRunPage.tsx'
@@ -33,6 +34,7 @@ function App() {
         <Route path="/runs/:id" element={<ProtectedRoute><RunDetailsPage /></ProtectedRoute>} />
         <Route path="/workflows/:slug/manual-run" element={<ProtectedRoute><ManualRunPage /></ProtectedRoute>} />
         <Route path="/workflows/:slug" element={<ProtectedRoute><WorkflowEditorPage /></ProtectedRoute>} />
+        <Route path="/skills/:slug" element={<ProtectedRoute><SkillEditorPage /></ProtectedRoute>} />
         <Route path="/workflows/:slug/approval-review" element={<ProtectedRoute><WorkflowApprovalReviewPage /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

@@ -87,6 +87,32 @@
   transition: border-color 0.25s;
 }
 
+.workflow-filter-group input {
+  width: 100%;
+  min-width: 180px;
+  background: #1a1a1a;
+  color: inherit;
+  border: 1px solid #444;
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+  font-family: inherit;
+  transition: border-color 0.25s;
+}
+
+.workflow-filter-group input::placeholder {
+  color: #888;
+}
+
+.workflow-filter-group input:hover {
+  border-color: #646cff;
+}
+
+.workflow-filter-group input:focus {
+  outline: 4px auto -webkit-focus-ring-color;
+  border-color: transparent;
+}
+
 .workflow-filter-group select:hover {
   border-color: #646cff;
 }
@@ -122,6 +148,64 @@
   font-size: 1rem;
   font-family: inherit;
   transition: border-color 0.25s;
+}
+
+.skills-create-btn {
+  margin-left: auto;
+  min-height: 42px;
+}
+
+.skills-create-form {
+  display: flex;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+  align-items: end;
+  padding: 0.9rem;
+  border: 1px solid #333;
+  border-radius: 8px;
+  background: transparent;
+}
+
+.skills-create-submit-btn {
+  min-height: 42px;
+}
+
+.skills-create-modal {
+  max-width: 520px;
+  overflow: hidden;
+}
+
+.skills-create-modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.skills-create-modal-field label {
+  font-size: 0.8rem;
+  color: #888;
+  font-weight: 500;
+}
+
+.skills-create-modal-field input {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  background: #1a1a1a;
+  color: inherit;
+  border: 1px solid #444;
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+  font-family: inherit;
+}
+
+.skills-create-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 0.4rem;
 }
 
 .workflow-filter-search-wrap input::placeholder {

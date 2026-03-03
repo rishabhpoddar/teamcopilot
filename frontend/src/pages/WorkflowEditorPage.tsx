@@ -12,6 +12,7 @@ import type {
 } from '../types/workflow-files';
 import './WorkflowEditorPage.css';
 
+type EditorEntity = 'workflow' | 'skill';
 type DirectoryChildrenMap = Record<string, WorkflowFileNode[]>;
 
 type WorkflowDetails = {
@@ -106,10 +107,15 @@ function displayUser(name: string | null, email: string | null): string {
     return 'Unknown';
 }
 
-export default function WorkflowEditorPage() {
+export default function WorkflowEditorPage({ entity = 'workflow' }: { entity?: EditorEntity }) {
     const { slug = '' } = useParams();
     const navigate = useNavigate();
     const auth = useAuth();
+    const apiBase = entity === 'workflow' ? '/api/workflows' : '/api/skills';
+    const entityLabel = entity === 'workflow' ? 'workflow' : 'skill';
+    const backTab = entity === 'workflow' ? 'workflows' : 'skills';
+    const infoTitle = entity === 'workflow' ? 'Workflow Info' : 'Skill Info';
+    const explorerCaption = entity === 'workflow' ? 'Workflow project explorer' : 'Skill project explorer';
 
     const token = auth.loading ? null : auth.token;
 
@@ -144,7 +150,7 @@ export default function WorkflowEditorPage() {
         setLoadingDirs((prev) => ({ ...prev, [dirPath]: true }));
         setDirErrors((prev) => ({ ...prev, [dirPath]: '' }));
         try {
-            const response = await axiosInstance.get('/api/workflows/' + encodeURIComponent(slug) + '/files/tree', {
+            const response = await axiosInstance.get(`${apiBase}/` + encodeURIComponent(slug) + '/files/tree', {
                 params: dirPath ? { path: dirPath } : {},
                 headers: authHeader
             });
@@ -158,7 +164,7 @@ export default function WorkflowEditorPage() {
         } finally {
             setLoadingDirs((prev) => ({ ...prev, [dirPath]: false }));
         }
-    }, [authHeader, slug]);
+    }, [apiBase, authHeader, slug]);
 
     useEffect(() => {
         if (!token) return;
@@ -168,8 +174,8 @@ export default function WorkflowEditorPage() {
         void (async () => {
             try {
                 const [accessResponse, workflowResponse] = await Promise.all([
-                    axiosInstance.get(`/api/workflows/${encodeURIComponent(slug)}/files/access`, { headers: authHeader }),
-                    axiosInstance.get(`/api/workflows/${encodeURIComponent(slug)}`, { headers: authHeader }),
+                    axiosInstance.get(`${apiBase}/${encodeURIComponent(slug)}/files/access`, { headers: authHeader }),
+                    axiosInstance.get(`${apiBase}/${encodeURIComponent(slug)}`, { headers: authHeader }),
                 ]);
                 if (cancelled) return;
                 setAccess(accessResponse.data as WorkflowEditorAccessResponse);
@@ -179,7 +185,7 @@ export default function WorkflowEditorPage() {
                 await refreshDir('');
             } catch (err: unknown) {
                 if (cancelled) return;
-                setPageError(getErrorMessage(err, 'Failed to load workflow editor'));
+                setPageError(getErrorMessage(err, `Failed to load ${entityLabel} editor`));
             } finally {
                 if (!cancelled) {
                     setPageLoading(false);
@@ -189,7 +195,7 @@ export default function WorkflowEditorPage() {
         return () => {
             cancelled = true;
         };
-    }, [authHeader, refreshDir, slug, token]);
+    }, [apiBase, authHeader, entityLabel, refreshDir, slug, token]);
 
     useEffect(() => {
         const onBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -208,7 +214,7 @@ export default function WorkflowEditorPage() {
 
     const handleBack = () => {
         if (!confirmDiscardIfNeeded()) return;
-        navigate('/?tab=workflows');
+        navigate(`/?tab=${backTab}`);
     };
 
     const handleToggleDirectory = async (node: WorkflowFileNode) => {
@@ -227,7 +233,7 @@ export default function WorkflowEditorPage() {
         setSelectedPath(node.path);
         setActiveFile({ path: node.path, name: node.name, kind: 'loading' });
         try {
-            const response = await axiosInstance.get(`/api/workflows/${encodeURIComponent(slug)}/files/content`, {
+            const response = await axiosInstance.get(`${apiBase}/${encodeURIComponent(slug)}/files/content`, {
                 params: { path: node.path },
                 headers: authHeader
             });
@@ -264,7 +270,7 @@ export default function WorkflowEditorPage() {
     const handleSaveActiveFile = useCallback(async () => {
         if (!activeTextFile || !authHeader || !canEdit) return;
         try {
-            const response = await axiosInstance.put(`/api/workflows/${encodeURIComponent(slug)}/files/content`, {
+            const response = await axiosInstance.put(`${apiBase}/${encodeURIComponent(slug)}/files/content`, {
                 path: activeTextFile.path,
                 content: activeTextFile.content,
                 base_etag: activeTextFile.etag,
@@ -287,7 +293,7 @@ export default function WorkflowEditorPage() {
         } catch (err: unknown) {
             toast.error(getErrorMessage(err, 'Failed to save file'));
         }
-    }, [activeTextFile, authHeader, canEdit, slug, refreshDir]);
+    }, [activeTextFile, apiBase, authHeader, canEdit, slug, refreshDir]);
 
     useEffect(() => {
         const onKeydown = (event: KeyboardEvent) => {
@@ -309,7 +315,7 @@ export default function WorkflowEditorPage() {
         const name = window.prompt(kind === 'file' ? 'New file name' : 'New folder name');
         if (!name) return;
         try {
-            await axiosInstance.post(`/api/workflows/${encodeURIComponent(slug)}/files`, {
+            await axiosInstance.post(`${apiBase}/${encodeURIComponent(slug)}/files`, {
                 parent_path: parentPath,
                 name,
                 kind
@@ -328,7 +334,7 @@ export default function WorkflowEditorPage() {
         const newName = window.prompt('Rename to', node.name);
         if (!newName || newName === node.name) return;
         try {
-            const response = await axiosInstance.patch(`/api/workflows/${encodeURIComponent(slug)}/files/rename`, {
+            const response = await axiosInstance.patch(`${apiBase}/${encodeURIComponent(slug)}/files/rename`, {
                 path: node.path,
                 new_name: newName
             }, {
@@ -387,7 +393,7 @@ export default function WorkflowEditorPage() {
         const confirmed = window.confirm(`Delete ${node.kind} "${node.name}"? This cannot be undone.`);
         if (!confirmed) return;
         try {
-            await axiosInstance.delete(`/api/workflows/${encodeURIComponent(slug)}/files`, {
+            await axiosInstance.delete(`${apiBase}/${encodeURIComponent(slug)}/files`, {
                 params: { path: node.path },
                 headers: authHeader
             });
@@ -429,7 +435,7 @@ export default function WorkflowEditorPage() {
             formData.append('parent_path', targetDir);
             formData.append('name', file.name);
             formData.append('file', file, file.name);
-            await axiosUploadInstance.post(`/api/workflows/${encodeURIComponent(slug)}/files/upload`, formData, {
+            await axiosUploadInstance.post(`${apiBase}/${encodeURIComponent(slug)}/files/upload`, formData, {
                 headers: authHeader,
                 onUploadProgress: (progressEvent) => {
                     const total = progressEvent.total ?? file.size;
@@ -582,7 +588,7 @@ export default function WorkflowEditorPage() {
             </header>
 
             {pageLoading ? (
-                <div className="workflow-editor-loading">Loading workflow editor...</div>
+                <div className="workflow-editor-loading">Loading {entityLabel} editor...</div>
             ) : pageError ? (
                 <div className="workflow-editor-error">{pageError}</div>
             ) : (
@@ -590,7 +596,7 @@ export default function WorkflowEditorPage() {
                     <aside className="workflow-editor-sidebar">
                         {workflowDetails && (
                             <div className="wf-workflow-meta-card">
-                                <div className="wf-workflow-meta-title">Workflow Info</div>
+                                <div className="wf-workflow-meta-title">{infoTitle}</div>
                                 <div className="wf-workflow-meta-grid">
                                     <div className="wf-workflow-meta-label">Status</div>
                                     <div className="wf-workflow-meta-value">
@@ -618,7 +624,7 @@ export default function WorkflowEditorPage() {
                         <div className="wf-sidebar-header">
                             <div>
                                 <div className="wf-sidebar-title">Files</div>
-                                <div className="wf-sidebar-caption">Workflow project explorer</div>
+                                <div className="wf-sidebar-caption">{explorerCaption}</div>
                             </div>
                             {canEdit && (
                                 <div className="wf-sidebar-actions">
@@ -653,7 +659,7 @@ export default function WorkflowEditorPage() {
                         {!activeFile && (
                             <div className="wf-editor-empty">
                                 <h2>Select a file</h2>
-                                <p>Choose a file from the workflow explorer to view or edit it.</p>
+                                <p>Choose a file from the {entityLabel} explorer to view or edit it.</p>
                             </div>
                         )}
 
