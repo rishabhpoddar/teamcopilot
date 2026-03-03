@@ -3,7 +3,7 @@
 ### Completed
 
 1. Prisma + migration
-   - Added `skill_metadata`, `skill_approved_snapshots`, `skill_approved_snapshot_files`.
+   - Added shared metadata/snapshot tables: `resource_metadata`, `resource_approved_snapshots`, `resource_approved_snapshot_files`.
    - Added shared permission tables `resource_permissions` + `resource_permission_users` for both workflows and skills.
 
 2. Backend router mounted
@@ -23,7 +23,7 @@
    - Added `Browse skills` tab.
    - Added skill listing, filters, empty/error states, create-skill modal.
    - Added skill editor route `/skills/:slug`.
-   - Reused workflow editor page for skills (`WorkflowEditorPage` with `entity="skill"` wrapper page).
+   - Added shared `EditorPage` with thin wrappers (`WorkflowEditorPage`, `SkillEditorPage`).
 
 6. Card reuse
    - Replaced divergent workflow/skill cards with one shared `UnifiedCard` + thin wrappers.
@@ -39,7 +39,6 @@
    - `POST /api/skills`
    - `GET /api/skills/:slug`
    - `DELETE /api/skills/:slug`
-   - `GET /api/skills/users`
    - `PATCH /api/skills/:slug/permissions`
    - `GET /api/skills/:slug/files/access`
    - `GET /api/skills/:slug/files/tree`
@@ -49,6 +48,12 @@
    - `POST /api/skills/:slug/files/upload`
    - `PATCH /api/skills/:slug/files/rename`
    - `DELETE /api/skills/:slug/files`
+   - Shared users picker endpoint for both skills/workflows:
+     - `GET /api/users`
+
+9. Skill approval-state helper parity
+   - Added `getSkillSnapshotApprovalState` helper in `src/utils/skill-approval-snapshot.ts`.
+   - Skill approval checks now use helper-based snapshot state consistently.
 
 ### Pending
 
@@ -59,7 +64,8 @@
      - `POST /api/skills/:slug/reject-restore`
    - Add frontend route/page:
      - `/skills/:slug/approval-review` (same UX shape as workflow approval review page).
-   - Ensure status for skills is based on snapshot parity (not just approver field).
+   - Ensure frontend approval review flow exists for skills and uses skill snapshot diff APIs.
+   - Ensure skills approval state is calculated based on snapshot hash parity and not based on the approved_by_user_id field (should be exactly how workflow approval state is calculated).
 
 2. Access model parity checks
    - Re-check all read/write skill endpoints for strict approval-state parity with workflows.
