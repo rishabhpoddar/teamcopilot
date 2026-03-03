@@ -11,6 +11,7 @@ import {
     getSkillAccessPermissionWithUsers,
     getSkillPermissionSummaryFields,
     setSkillAccessPermissions,
+    addApproverToSkillAccessPermissionsIfRestricted,
 } from "../utils/skill-permissions";
 import { assertCommonPermissionMode } from "../utils/permission-common";
 import {
@@ -24,7 +25,14 @@ import {
 } from "../utils/skill-files";
 import { WorkflowEditorAccessResponse } from "../types/workflow-files";
 import { registerResourceFileRoutes } from "../utils/resource-file-routes";
-import { getSkillSnapshotApprovalState } from "../utils/skill-approval-snapshot";
+import {
+    approveSkillWithSnapshot,
+    buildSkillApprovalDiffResponse,
+    collectCurrentSkillSnapshot,
+    getSkillSnapshotApprovalState,
+    loadApprovedSkillSnapshotFromDb,
+    restoreSkillToApprovedSnapshot,
+} from "../utils/skill-approval-snapshot";
 
 const router = express.Router({ mergeParams: true });
 const uploadTmpDir = path.join(os.tmpdir(), "localtool-skill-uploads");
@@ -171,6 +179,7 @@ router.get("/:slug", apiHandler(async (req, res) => {
     const approver = approvedByUserId ? (usersById.get(approvedByUserId) ?? null) : null;
     const permission = await getSkillAccessPermissionWithUsers(slug);
     const permissionSummary = getSkillPermissionSummaryFields(permission, req.userId!);
+    const approvalState = await getSkillSnapshotApprovalState(slug);
     const permissionMode = assertCommonPermissionMode(permission.permission_mode, "skill access");
     const permissions = permissionMode === "everyone"
         ? { mode: "everyone" as const }
@@ -184,6 +193,7 @@ router.get("/:slug", apiHandler(async (req, res) => {
             created_by_user_name: creator?.name ?? null,
             created_by_user_email: creator?.email ?? null,
             approved_by_user_id: approvedByUserId,
+            is_approved: approvalState.is_current_code_approved,
             approved_by_user_name: approver?.name ?? null,
             approved_by_user_email: approver?.email ?? null,
             ...permissionSummary,
@@ -197,6 +207,54 @@ router.get("/:slug", apiHandler(async (req, res) => {
             })),
         }
     });
+}, true));
+
+router.post("/:slug/approve", apiHandler(async (req, res) => {
+    const slug = req.params.slug as string;
+
+    const approvalResult = await approveSkillWithSnapshot(slug, req.userId!);
+    const { metadata: approvedMetadata } = await readSkillManifestAndEnsurePermissions(slug);
+    await addApproverToSkillAccessPermissionsIfRestricted(slug, req.userId!, approvedMetadata.created_by_user_id);
+
+    res.json({
+        skill: {
+            slug,
+            approved_by_user_id: approvalResult.approved_by_user_id,
+            is_approved: true,
+            snapshot_hash: approvalResult.snapshot_hash,
+            snapshot_file_count: approvalResult.snapshot_file_count
+        }
+    });
+}, true));
+
+router.post("/:slug/reject-restore", apiHandler(async (req, res) => {
+    const slug = req.params.slug as string;
+    const result = await restoreSkillToApprovedSnapshot(slug, req.userId!);
+    res.json({
+        skill: {
+            slug,
+            restored_file_count: result.restored_file_count,
+            snapshot_hash: result.snapshot_hash,
+        }
+    });
+}, true));
+
+router.get("/:slug/approval-diff", apiHandler(async (req, res) => {
+    const slug = req.params.slug as string;
+
+    if (req.role !== "Engineer") {
+        throw {
+            status: 403,
+            message: "Only Engineers can review approval diffs"
+        };
+    }
+
+    await readSkillManifestAndEnsurePermissions(slug);
+    const previousSnapshot = await loadApprovedSkillSnapshotFromDb(slug);
+    const currentSnapshot = collectCurrentSkillSnapshot(slug);
+    const diff = buildSkillApprovalDiffResponse(previousSnapshot, currentSnapshot);
+    (res.locals as { skipResponseSanitization?: boolean }).skipResponseSanitization = true;
+    res.json(diff);
 }, true));
 
 registerResourceFileRoutes({

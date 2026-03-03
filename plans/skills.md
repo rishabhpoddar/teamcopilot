@@ -57,30 +57,33 @@
 
 ### Pending
 
-1. Approval workflow parity for skills
-   - Add backend:
-     - `GET /api/skills/:slug/approval-diff`
-     - `POST /api/skills/:slug/approve`
-     - `POST /api/skills/:slug/reject-restore`
-   - Add frontend route/page:
-     - `/skills/:slug/approval-review` (same UX shape as workflow approval review page).
-   - Ensure frontend approval review flow exists for skills and uses skill snapshot diff APIs.
-   - Ensure skills approval state is calculated based on snapshot hash parity and not based on the approved_by_user_id field (should be exactly how workflow approval state is calculated).
-
-2. Access model parity checks
+1. Access model parity checks
    - Re-check all read/write skill endpoints for strict approval-state parity with workflows.
    - Ensure any remaining edge-case behavior is identical for skill/workflow when status is pending vs approved.
 
-3. Plugin + agent integration (not started)
+2. Plugin + agent integration (not started)
    - Add `GET /api/skills/available` (session token auth).
    - Add workspace plugin tool `listAvailableSkills`.
    - Add/create parity tools for agent flow (`createSkill`, `findSkill`) if still required.
    - Inject available skills in session-start context.
    - Update workspace `AGENTS.md` with custom-skill discovery rules.
 
-4. API surface cleanup (optional)
+3. API surface cleanup (optional)
    - Consider extracting shared permission API handlers/utilities to remove remaining workflow/skill endpoint duplication.
    - Keep current canonical route naming (`/:slug/permissions`) consistent everywhere.
+
+### Newly Completed
+
+1. Approval workflow parity for skills
+   - Added backend:
+     - `GET /api/skills/:slug/approval-diff`
+     - `POST /api/skills/:slug/approve`
+     - `POST /api/skills/:slug/reject-restore`
+   - Added frontend route/page:
+     - `/skills/:slug/approval-review`
+   - Refactored approval snapshot logic into a shared backend helper (`src/utils/approval-snapshot-common.ts`) reused by workflows and skills.
+   - Refactored approval review UI into one shared page implementation reused by workflows and skills.
+   - Skills approval state now uses snapshot hash parity (same behavior model as workflows).
 
 ### Notes from latest audit
 

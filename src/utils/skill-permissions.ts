@@ -1,6 +1,7 @@
 import { PermissionMode, Permissions } from "../types/permissions";
 import {
     ResourcePermissionWithUsers,
+    addUserToResourcePermissionsIfRestricted,
     assertCommonPermissionMode,
     getCommonPermissionSummary,
     getResourcePermissionWithUsers,
@@ -45,4 +46,12 @@ export async function setSkillAccessPermissions(
     ownerUserId: string | null,
 ): Promise<SkillPermissionWithUsers> {
     return setResourcePermissions("skill", slug, payload, ownerUserId);
+}
+
+export async function addApproverToSkillAccessPermissionsIfRestricted(
+    slug: string,
+    approverUserId: string,
+    ownerUserId: string | null,
+): Promise<void> {
+    await addUserToResourcePermissionsIfRestricted("skill", slug, approverUserId, ownerUserId);
 }
