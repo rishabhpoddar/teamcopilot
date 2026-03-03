@@ -37,7 +37,7 @@ export const ListAvailableSkillsPlugin: Plugin = async (_ctx) => {
     tool: {
       listAvailableSkills: tool({
         description:
-          "List custom skills that are available for this user to use. Returns only approved skills that the current user has permission to edit.",
+          "List custom skills that are available for this user to use. Returns only approved skills that the current user has permission to run.",
         args: {},
         async execute(_args, context) {
           const { sessionID } = context
@@ -61,7 +61,7 @@ export const ListAvailableSkillsPlugin: Plugin = async (_ctx) => {
           }
 
           const availableSkills = (payload.skills ?? [])
-            .filter((skill) => skill.can_edit && skill.is_approved)
+            .filter((skill) => skill.is_approved)
             .map((skill) => ({
               slug: skill.slug,
               name: skill.name,
