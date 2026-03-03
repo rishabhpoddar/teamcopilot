@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import prisma from "../prisma/client";
 import { getWorkspaceDirFromEnv } from "./workspace-sync";
+import { ensureResourcePermissions } from "./permission-common";
 
 export interface SkillManifest {
     name: string;
@@ -12,7 +13,6 @@ export interface SkillMetadata {
     skill_slug: string;
     created_by_user_id: string | null;
     approved_by_user_id: string | null;
-    access_permission_mode: "restricted" | "everyone";
 }
 
 export interface CreateSkillInput {
@@ -166,17 +166,24 @@ export async function createSkill(input: CreateSkillInput): Promise<void> {
                 skill_slug: slug,
                 created_by_user_id: input.createdByUserId,
                 approved_by_user_id: null,
-                access_permission_mode: "restricted",
                 created_at: now,
                 updated_at: now,
             }
         });
 
-        await tx.skill_access_permission_users.create({
+        await tx.resource_permissions.create({
             data: {
-                skill_slug: slug,
-                user_id: input.createdByUserId,
+                resource_kind: "skill",
+                resource_slug: slug,
+                permission_mode: "restricted",
                 created_at: now,
+                updated_at: now,
+                allowedUsers: {
+                    create: {
+                        user_id: input.createdByUserId,
+                        created_at: now
+                    }
+                }
             }
         });
     });
@@ -186,20 +193,11 @@ function mapSkillMetadataRow(row: {
     skill_slug: string;
     created_by_user_id: string | null;
     approved_by_user_id: string | null;
-    access_permission_mode: string;
 }): SkillMetadata {
-    if (row.access_permission_mode !== "restricted" && row.access_permission_mode !== "everyone") {
-        throw {
-            status: 500,
-            message: `Invalid skill access permission mode: ${row.access_permission_mode}`
-        };
-    }
-
     return {
         skill_slug: row.skill_slug,
         created_by_user_id: row.created_by_user_id,
         approved_by_user_id: row.approved_by_user_id,
-        access_permission_mode: row.access_permission_mode,
     };
 }
 
@@ -210,18 +208,23 @@ export async function getOrCreateSkillMetadata(slug: string): Promise<SkillMetad
         where: { skill_slug: slug }
     });
     if (existing) {
-        return mapSkillMetadataRow(existing);
+        const metadata = mapSkillMetadataRow(existing);
+        await ensureResourcePermissions(
+            "skill",
+            slug,
+            [metadata.created_by_user_id, metadata.approved_by_user_id].filter((id): id is string => Boolean(id))
+        );
+        return metadata;
     }
 
     const now = BigInt(Date.now());
     const created = await prisma.skill_metadata.create({
         data: {
             skill_slug: slug,
-            access_permission_mode: "restricted",
             created_at: now,
             updated_at: now,
         }
     });
-
+    await ensureResourcePermissions("skill", slug, []);
     return mapSkillMetadataRow(created);
 }

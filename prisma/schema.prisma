@@ -19,10 +19,9 @@ model users {
   reset_token_expires_at     BigInt?
   workflowRuns               workflow_runs[]
   chatSessions               chat_sessions[]
-  workflowRunPermissionUsers workflow_run_permission_users[]
+  resourcePermissionUsers    resource_permission_users[]
   createdWorkflowMetadata    workflow_metadata[]             @relation("WorkflowCreatedBy")
   approvedWorkflowMetadata   workflow_metadata[]             @relation("WorkflowApprovedBy")
-  skillAccessPermissionUsers skill_access_permission_users[]
   createdSkillMetadata       skill_metadata[]                @relation("SkillCreatedBy")
   approvedSkillMetadata      skill_metadata[]                @relation("SkillApprovedBy")
 }
@@ -78,26 +77,12 @@ model tool_execution_permissions {
   @@index([opencode_session_id, status])
 }
 
-model workflow_run_permission_users {
-  id            String            @id @default(uuid())
-  workflow_slug String
-  user_id       String
-  created_at    BigInt
-  permission    workflow_metadata @relation(fields: [workflow_slug], references: [workflow_slug], onDelete: Cascade)
-  user          users             @relation(fields: [user_id], references: [id], onDelete: Cascade)
-
-  @@unique([workflow_slug, user_id])
-  @@index([workflow_slug])
-}
-
 model workflow_metadata {
   workflow_slug       String                          @id
   created_by_user_id  String?
   approved_by_user_id String?
-  run_permission_mode String // "restricted" | "everyone"
   created_at          BigInt
   updated_at          BigInt
-  allowedUsers        workflow_run_permission_users[]
   approvedSnapshot    workflow_approved_snapshots?
   createdByUser       users?                          @relation("WorkflowCreatedBy", fields: [created_by_user_id], references: [id], onDelete: SetNull)
   approvedByUser      users?                          @relation("WorkflowApprovedBy", fields: [approved_by_user_id], references: [id], onDelete: SetNull)
@@ -130,32 +115,43 @@ model workflow_approved_snapshot_files {
   @@index([workflow_slug])
 }
 
-model skill_access_permission_users {
-  id         String         @id @default(uuid())
-  skill_slug String
-  user_id    String
-  created_at BigInt
-  permission skill_metadata @relation(fields: [skill_slug], references: [skill_slug], onDelete: Cascade)
-  user       users          @relation(fields: [user_id], references: [id], onDelete: Cascade)
-
-  @@unique([skill_slug, user_id])
-  @@index([skill_slug])
-}
-
 model skill_metadata {
   skill_slug              String                          @id
   created_by_user_id      String?
   approved_by_user_id     String?
-  access_permission_mode  String // "restricted" | "everyone"
   created_at              BigInt
   updated_at              BigInt
-  allowedUsers            skill_access_permission_users[]
   approvedSnapshot        skill_approved_snapshots?
   createdByUser           users?                          @relation("SkillCreatedBy", fields: [created_by_user_id], references: [id], onDelete: SetNull)
   approvedByUser          users?                          @relation("SkillApprovedBy", fields: [approved_by_user_id], references: [id], onDelete: SetNull)
 
   @@index([created_by_user_id])
   @@index([approved_by_user_id])
+}
+
+model resource_permissions {
+  resource_kind   String
+  resource_slug   String
+  permission_mode String // "restricted" | "everyone"
+  created_at      BigInt
+  updated_at      BigInt
+  allowedUsers    resource_permission_users[]
+
+  @@id([resource_kind, resource_slug])
+  @@index([resource_slug])
+}
+
+model resource_permission_users {
+  id            String               @id @default(uuid())
+  resource_kind String
+  resource_slug String
+  user_id       String
+  created_at    BigInt
+  permission    resource_permissions @relation(fields: [resource_kind, resource_slug], references: [resource_kind, resource_slug], onDelete: Cascade)
+  user          users                @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([resource_kind, resource_slug, user_id])
+  @@index([resource_kind, resource_slug])
 }
 
 model skill_approved_snapshots {

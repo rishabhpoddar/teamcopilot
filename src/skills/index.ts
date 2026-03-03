@@ -390,6 +390,12 @@ router.delete("/:slug", apiHandler(async (req, res) => {
     await prisma.skill_metadata.deleteMany({
         where: { skill_slug: slug }
     });
+    await prisma.resource_permissions.deleteMany({
+        where: {
+            resource_kind: "skill",
+            resource_slug: slug
+        }
+    });
     deleteSkillDirectory(slug);
 
     res.json({ success: true });

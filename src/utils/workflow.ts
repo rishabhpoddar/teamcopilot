@@ -121,19 +121,11 @@ function mapWorkflowMetadataRow(row: {
     workflow_slug: string;
     created_by_user_id: string | null;
     approved_by_user_id: string | null;
-    run_permission_mode: string;
 }): WorkflowMetadata {
-    if (row.run_permission_mode !== "restricted" && row.run_permission_mode !== "everyone") {
-        throw {
-            status: 500,
-            message: `Invalid workflow run permission mode: ${row.run_permission_mode}`
-        };
-    }
     return {
         workflow_slug: row.workflow_slug,
         created_by_user_id: row.created_by_user_id,
         approved_by_user_id: row.approved_by_user_id,
-        run_permission_mode: row.run_permission_mode,
     };
 }
 
@@ -157,7 +149,6 @@ async function getOrCreateWorkflowMetadata(slug: string): Promise<WorkflowMetada
     const row = await prisma.workflow_metadata.create({
         data: {
             workflow_slug: slug,
-            run_permission_mode: "restricted",
             created_at: now,
             updated_at: now,
         }
