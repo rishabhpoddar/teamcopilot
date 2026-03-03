@@ -1,5 +1,5 @@
-import WorkflowApprovalReviewPage from './WorkflowApprovalReviewPage';
+import ApprovalReviewPage from './ApprovalReviewPage';
 
 export default function SkillApprovalReviewPage() {
-    return <WorkflowApprovalReviewPage entity="skill" />;
+    return <ApprovalReviewPage entity="skill" />;
 }
