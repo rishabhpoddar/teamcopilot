@@ -55,6 +55,28 @@
    - Added `getSkillSnapshotApprovalState` helper in `src/utils/skill-approval-snapshot.ts`.
    - Skill approval checks now use helper-based snapshot state consistently.
 
+10. Approval workflow parity for skills
+   - Added backend:
+     - `GET /api/skills/:slug/approval-diff`
+     - `POST /api/skills/:slug/approve`
+     - `POST /api/skills/:slug/reject-restore`
+   - Added frontend route/page:
+     - `/skills/:slug/approval-review`
+   - Refactored approval snapshot logic into a shared backend helper (`src/utils/approval-snapshot-common.ts`) reused by workflows and skills.
+   - Refactored approval review UI into one shared page implementation.
+   - Skills approval state now uses snapshot hash parity (same behavior model as workflows).
+
+11. Approval review page wrapper refactor
+   - Shared implementation now lives in `frontend/src/pages/ApprovalReviewPage.tsx`.
+   - `frontend/src/pages/WorkflowApprovalReviewPage.tsx` is a thin workflow wrapper.
+   - `frontend/src/pages/SkillApprovalReviewPage.tsx` is a thin skill wrapper.
+
+12. Snapshot data-folder policy finalization
+   - Removed resource-specific hash option plumbing (`exclude_data_paths` is gone).
+   - `data/` is globally excluded from approval snapshots for both workflows and skills.
+   - Snapshot diff/state/restore flows now ignore `data/` paths consistently.
+   - Newly stored approved snapshots do not write `data/` directory contents into snapshot rows.
+
 ### Pending
 
 1. Access model parity checks
@@ -72,21 +94,9 @@
    - Consider extracting shared permission API handlers/utilities to remove remaining workflow/skill endpoint duplication.
    - Keep current canonical route naming (`/:slug/permissions`) consistent everywhere.
 
-### Newly Completed
-
-1. Approval workflow parity for skills
-   - Added backend:
-     - `GET /api/skills/:slug/approval-diff`
-     - `POST /api/skills/:slug/approve`
-     - `POST /api/skills/:slug/reject-restore`
-   - Added frontend route/page:
-     - `/skills/:slug/approval-review`
-   - Refactored approval snapshot logic into a shared backend helper (`src/utils/approval-snapshot-common.ts`) reused by workflows and skills.
-   - Refactored approval review UI into one shared page implementation reused by workflows and skills.
-   - Skills approval state now uses snapshot hash parity (same behavior model as workflows).
-
 ### Notes from latest audit
 
 1. `Review & Approve` now works for both workflows and skills via the same approval-review UI implementation.
 2. Current implementation reuses editor, card, and approval-review UI heavily; major remaining gaps are plugin/agent integration.
 3. Permission storage/mode typing and snapshot approval storage are shared between workflows and skills.
+4. `data/` directories are intentionally excluded from approval snapshot storage and diffs.
