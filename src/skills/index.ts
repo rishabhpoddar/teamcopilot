@@ -6,7 +6,7 @@ import multer from "multer";
 import prisma from "../prisma/client";
 import { SkillSummary } from "../types/skill";
 import { apiHandler } from "../utils";
-import { createSkill, deleteSkillDirectory, getOrCreateSkillMetadataAndEnsurePermission, listSkillSlugs, readSkillManifestAndEnsurePermissions } from "../utils/skill";
+import { createSkill, deleteSkill, getOrCreateSkillMetadataAndEnsurePermission, listSkillSlugs, readSkillManifestAndEnsurePermissions } from "../utils/skill";
 import {
     getSkillAccessPermissionWithUsers,
     setSkillAccessPermissions,
@@ -358,19 +358,7 @@ router.delete("/:slug", apiHandler(async (req, res) => {
         };
     }
 
-    await prisma.resource_metadata.deleteMany({
-        where: {
-            resource_kind: "skill",
-            resource_slug: slug
-        }
-    });
-    await prisma.resource_permissions.deleteMany({
-        where: {
-            resource_kind: "skill",
-            resource_slug: slug
-        }
-    });
-    deleteSkillDirectory(slug);
+    await deleteSkill(slug);
 
     res.json({ success: true });
 }, true));

@@ -28,7 +28,7 @@ export function getSkillPath(slug: string): string {
     return path.join(getSkillsRootPath(), slug);
 }
 
-export function deleteSkillDirectory(slug: string): void {
+function deleteSkillDirectory(slug: string): void {
     const skillPath = getSkillPath(slug);
 
     if (!fs.existsSync(skillPath)) {
@@ -39,6 +39,25 @@ export function deleteSkillDirectory(slug: string): void {
     }
 
     fs.rmSync(skillPath, { recursive: true, force: false });
+}
+
+export async function deleteSkill(slug: string): Promise<void> {
+    await prisma.resource_metadata.deleteMany({
+        where: {
+            resource_kind: "skill",
+            resource_slug: slug
+        }
+    });
+    await prisma.resource_permissions.deleteMany({
+        where: {
+            resource_kind: "skill",
+            resource_slug: slug
+        }
+    });
+
+    if (fs.existsSync(getSkillPath(slug))) {
+        deleteSkillDirectory(slug);
+    }
 }
 
 function getSkillManifestPath(slug: string): string {
