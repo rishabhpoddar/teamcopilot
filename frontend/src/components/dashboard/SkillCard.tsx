@@ -30,7 +30,7 @@ export default function SkillCard(props: SkillCardProps) {
             userRole={props.userRole}
             currentUserId={props.currentUserId}
             token={props.token}
-            viewLabel="View Skills"
+            viewLabel="View Skill"
             showRunAction={false}
             runLabel="Run Workflow"
             onUpdated={props.onUpdated}
