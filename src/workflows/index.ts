@@ -419,37 +419,46 @@ router.post('/execute', apiHandler(async (req, res) => {
         };
     }
 
-    const workspaceDir = getWorkspaceDirFromEnv();
-    await assertCurrentUserCanRunWorkflow(body.slug, req.userId!);
-    const startedRun = await startWorkflowRunViaBackend({
-        workspaceDir,
-        slug: body.slug,
-        inputs: body.inputs as Record<string, unknown>,
-        authUserId: req.userId!,
-        sessionId: req.opencode_session_id,
-        messageId: body.message_id,
-        callId: body.call_id,
-        requirePermissionPrompt: true,
-    });
+    try {
+        const workspaceDir = getWorkspaceDirFromEnv();
+        await assertCurrentUserCanRunWorkflow(body.slug, req.userId!);
+        const startedRun = await startWorkflowRunViaBackend({
+            workspaceDir,
+            slug: body.slug,
+            inputs: body.inputs as Record<string, unknown>,
+            authUserId: req.userId!,
+            sessionId: req.opencode_session_id,
+            messageId: body.message_id,
+            callId: body.call_id,
+            requirePermissionPrompt: true,
+        });
 
-    const result = await startedRun.completion;
-    const responsePayload = {
-        status: result.status,
-        output: result.output,
-        workflow: body.slug,
-        timeout_seconds: startedRun.timeoutSeconds,
-        run_id: startedRun.runId,
-    };
+        const result = await startedRun.completion;
+        const responsePayload = {
+            status: result.status,
+            output: result.output,
+            workflow: body.slug,
+            timeout_seconds: startedRun.timeoutSeconds,
+            run_id: startedRun.runId,
+        };
 
-    if (result.status !== 'success') {
+        if (result.status !== 'success') {
+            throw {
+                status: 500,
+                message: "Workflow execution failed: " + JSON.stringify(responsePayload),
+                doLogging: false,
+                maskErrorMessage: false,
+            };
+        }
+        res.json(responsePayload);
+    } catch (err) {
         throw {
             status: 500,
-            message: "Workflow execution failed: " + JSON.stringify(responsePayload),
+            message: "Workflow execution failed: " + (err instanceof Error ? err.message : JSON.stringify(err)),
             doLogging: false,
             maskErrorMessage: false,
         };
     }
-    res.json(responsePayload);
 }, true));
 
 // PATCH /api/workflows/runs/:id - Update run status
