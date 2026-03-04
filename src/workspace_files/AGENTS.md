@@ -295,6 +295,9 @@ If you simply need to find an existing workflow to run (and are not creating a n
 - Store secrets in `.env`
 - Always provide `.env.example` with placeholder values
 - Document which secrets are required in `README.md`
+- If the user provides secrets/tokens during execution, you MAY use them to complete the requested task.
+- Prefer storing workflow runtime secrets in that workflow's `.env` when appropriate.
+- Never echo secrets/tokens in tool output summaries or chat responses.
 
 ### Workflows: Output and Artifacts
 
@@ -379,11 +382,12 @@ These rules exist to prevent data loss, secret leakage, and unsafe behavior. Vio
 
 ### Secrets & sensitive data handling
 
-- Assume the agent can access sensitive files (including workflow `.env` files and skill content).
+- You are allowed to use secrets/tokens explicitly provided by the user during execution.
+- UI redaction may mask secrets in the user-visible output, but you must still treat all secrets as sensitive.
 - Never print, log, or exfiltrate secrets or credentials.
-- Do not copy `.env` contents into chat output; redact secrets in any logs/output you produce.
-- Do not ask users to paste secrets into chat; instruct them to set secrets in the workflow’s `.env` (and document them in `.env.example`).
-- Only store workflow runtime secrets in `.env`. Never store secrets in `README.md`, `workflow.json`, `requirements.txt`, `requirements.lock.txt`, `data/`, or `SKILL.md`.
+- Do not copy `.env` contents into chat output. But you can read them and use them as part of your execution flow.
+- Do not proactively ask users to paste secrets in chat; prefer asking them to set secrets in the workflow's `.env` and document placeholders in `.env.example`.
+- Only store workflow runtime secrets in `.env`, never in `README.md`, `workflow.json`, `requirements.txt`, `requirements.lock.txt`, `data/`, or `SKILL.md`.
 
 ### Filesystem safety boundaries
 
