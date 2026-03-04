@@ -566,6 +566,22 @@ router.post('/sessions/:id/permission-response', apiHandler(async (req, res) => 
         };
     }
 
+    // Try direct opencode reply first when permission_id is provided.
+    // This avoids list/match races where pending IDs can be temporarily out of sync.
+    if (typeof permission_id === 'string') {
+        try {
+            await replyToPendingPermission(session.opencode_session_id, permission_id, response);
+            await prisma.chat_sessions.update({
+                where: { id },
+                data: { updated_at: Date.now() }
+            });
+            res.json({ success: true });
+            return;
+        } catch {
+            // Fall through to existing resolution logic (list-based opencode match, then custom permissions).
+        }
+    }
+
     // First check for opencode's native permissions
     const opencodePendingPermissions = await listPendingPermissions();
     const matchingOpencodePermissions = opencodePendingPermissions
