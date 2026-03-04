@@ -117,6 +117,16 @@ async function assertCanEditWorkflowFiles(slug: string, userId: string): Promise
     }
 }
 
+async function assertCanViewWorkflowFiles(slug: string, userId: string): Promise<void> {
+    const access = await getWorkflowEditorAccess(slug, userId);
+    if (!access.can_view) {
+        throw {
+            status: 403,
+            message: "You do not have permission to view this workflow"
+        };
+    }
+}
+
 // GET /api/workflows - List available workflows from filesystem
 router.get('/', apiHandler(async (req, res) => {
     const slugs = listWorkflowSlugs();
@@ -149,6 +159,9 @@ router.get('/', apiHandler(async (req, res) => {
         if (!manifest) continue;
         if (!metadata) continue;
         const accessSummary = await getResourceAccessSummary("workflow", slug, req.userId!);
+        if (!accessSummary.can_view) {
+            continue;
+        }
         const createdByUserId = metadata.created_by_user_id;
         workflows.push({
             slug,
@@ -613,7 +626,7 @@ router.get('/:slug/approval-diff', apiHandler(async (req, res) => {
 registerResourceFileRoutes({
     router,
     uploadMiddleware: workflowFileUpload.single("file"),
-    assertCanView: async () => Promise.resolve(),
+    assertCanView: assertCanViewWorkflowFiles,
     ensureResourceExists: async (slug: string) => {
         await readWorkflowManifestAndEnsurePermissions(slug);
     },
@@ -631,6 +644,7 @@ registerResourceFileRoutes({
 // GET /api/workflows/:slug - Get workflow details from filesystem
 router.get('/:slug', apiHandler(async (req, res) => {
     const slug = req.params.slug as string;
+    await assertCanViewWorkflowFiles(slug, req.userId!);
     const { manifest, metadata } = await readWorkflowManifestAndEnsurePermissions(slug);
     const permission = await getWorkflowRunPermissionWithUsers(slug);
     const accessSummary = await getResourceAccessSummary("workflow", slug, req.userId!);
