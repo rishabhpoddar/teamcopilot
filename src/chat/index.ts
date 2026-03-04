@@ -4,7 +4,7 @@ import { apiHandler } from "../utils/index";
 import {
     getOpencodeClient,
     getPendingQuestionForSession,
-    listPendingPermissionForSession,
+    listPendingPermissionsForSession,
     listPendingPermissions,
     getWorkspaceDir,
     getOpencodePort,
@@ -317,7 +317,7 @@ router.post('/sessions/:id/messages', apiHandler(async (req, res) => {
             message: 'A tool is waiting for input. Reply through the tool-answer endpoint.'
         };
     }
-    const pendingPermission = await listPendingPermissionForSession(session.opencode_session_id);
+    const pendingPermission = await listPendingPermissionsForSession(session.opencode_session_id);
     if (pendingPermission.length > 0) {
         throw {
             status: 409,

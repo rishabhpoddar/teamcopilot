@@ -82,7 +82,7 @@ export async function getPendingQuestionForSession(opencodeSessionId: string): P
     return match ?? null;
 }
 
-export async function listPendingPermissionForSession(opencodeSessionId: string): Promise<PendingPermission[]> {
+export async function listPendingPermissionsForSession(opencodeSessionId: string): Promise<PendingPermission[]> {
     const permissions = await listPendingPermissions();
     const match = permissions.filter((permission) => permission.sessionID === opencodeSessionId);
     return match;

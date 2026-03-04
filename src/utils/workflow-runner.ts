@@ -160,26 +160,13 @@ function inputsToArgs(inputs: Record<string, string | number | boolean>): string
 }
 
 async function requestWorkflowPermission(opencodeSessionId: string, messageId: string, callId: string): Promise<void> {
-    const now = BigInt(Date.now());
-    const permission = await prisma.tool_execution_permissions.upsert({
-        where: {
-            opencode_session_id_message_id_call_id: {
-                opencode_session_id: opencodeSessionId,
-                message_id: messageId,
-                call_id: callId
-            }
-        },
-        create: {
+    const permission = await prisma.tool_execution_permissions.create({
+        data: {
             opencode_session_id: opencodeSessionId,
             message_id: messageId,
             call_id: callId,
             status: "pending",
-            created_at: now
-        },
-        update: {
-            status: "pending",
-            created_at: now,
-            responded_at: null
+            created_at: BigInt(Date.now())
         }
     });
 
