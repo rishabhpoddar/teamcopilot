@@ -5,7 +5,7 @@ import path from "path";
 import multer from "multer";
 import prisma from "../prisma/client";
 import { SkillSummary } from "../types/skill";
-import { apiHandler } from "../utils";
+import { apiHandler } from "../utils/index";
 import { createSkill, deleteSkill, getOrCreateSkillMetadataAndEnsurePermission, listSkillSlugs, readSkillManifestAndEnsurePermissions } from "../utils/skill";
 import {
     getSkillAccessPermissionWithUsers,

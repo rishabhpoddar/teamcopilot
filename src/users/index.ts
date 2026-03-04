@@ -1,6 +1,6 @@
 import express from "express";
 import prisma from "../prisma/client";
-import { apiHandler } from "../utils";
+import { apiHandler } from "../utils/index";
 
 const router = express.Router({ mergeParams: true });
 
