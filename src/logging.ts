@@ -18,12 +18,11 @@ export function logError({ err, apiPath, apiMethod, customMeta }: { err: any, ap
         };
     }
     const status = err.status || 500;
-    const clientMessage = status === 500 ? "Internal server error" : (err.message || "Unknown error");
-    let loggingMessage = err.message || "Unknown error";
-    if (typeof loggingMessage !== "string") {
-        loggingMessage = JSON.stringify(loggingMessage);
+    let message = err.message || "Unknown error";
+    if (typeof message !== "string") {
+        message = JSON.stringify(message);
     }
     const ourCodeStack = new Error("Our code stack").stack;
-    const meta = { status, loggingMessage, clientMessage, stack: err.stack, ourCodeStack, apiPath, apiMethod, ...customMeta };
-    console.error(loggingMessage, meta);
+    const meta = { status, stack: err.stack, ourCodeStack, apiPath, apiMethod, ...customMeta };
+    console.error(message, meta);
 }

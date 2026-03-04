@@ -51,6 +51,10 @@ async function readErrorMessageFromResponse(
   }
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 export const RunWorkflowPlugin: Plugin = async (_ctx) => {
   return {
     tool: {
@@ -85,7 +89,7 @@ export const RunWorkflowPlugin: Plugin = async (_ctx) => {
             throw new Error("Could not determine call id from tool context.")
           }
 
-          const response = await fetch("http://localhost:3000/api/workflows/execute", {
+          const startResponse = await fetch("http://localhost:3000/api/workflows/execute", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -99,16 +103,53 @@ export const RunWorkflowPlugin: Plugin = async (_ctx) => {
             }),
           })
 
-          if (!response.ok) {
+          if (!startResponse.ok) {
             const errorMessage = await readErrorMessageFromResponse(
-              response,
-              `Failed to execute workflow (HTTP ${response.status})`
+              startResponse,
+              `Failed to execute workflow (HTTP ${startResponse.status})`
             )
             throw new Error(errorMessage)
           }
 
-          const payload = await response.json()
-          return JSON.stringify(payload)
+          const startedPayload = (await startResponse.json()) as {
+            execution_id?: unknown
+          }
+          const executionId = startedPayload.execution_id
+          if (typeof executionId !== "string" || executionId.trim().length === 0) {
+            throw new Error("Workflow execute start response did not include execution_id.")
+          }
+
+          while (true) {
+            const resultResponse = await fetch(
+              `http://localhost:3000/api/workflows/execute/${encodeURIComponent(executionId)}`,
+              {
+                method: "GET",
+                headers: {
+                  Authorization: `Bearer ${sessionID}`,
+                },
+              }
+            )
+
+            if (!resultResponse.ok) {
+              const errorMessage = await readErrorMessageFromResponse(
+                resultResponse,
+                `Failed to fetch workflow execution result (HTTP ${resultResponse.status})`
+              )
+              throw new Error(errorMessage)
+            }
+
+            const resultPayload = (await resultResponse.json()) as {
+              status?: unknown
+            }
+            if (resultPayload.status === "running") {
+              await sleep(500)
+              continue
+            }
+            if (resultPayload.status !== "success") {
+              throw new Error(JSON.stringify(resultPayload))
+            }
+            return JSON.stringify(resultPayload)
+          }
         },
       }),
     },

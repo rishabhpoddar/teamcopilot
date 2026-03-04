@@ -127,6 +127,19 @@ async function assertCanViewWorkflowFiles(slug: string, userId: string): Promise
     }
 }
 
+type WorkflowExecutionStatus = "running" | "success" | "error" | "timeout" | "aborted";
+
+type WorkflowExecutionRecord = {
+    slug: string;
+    runId: string;
+    timeoutSeconds: number;
+    status: WorkflowExecutionStatus;
+    output: string | null;
+    errorMessage: string | null;
+};
+
+const workflowExecutions = new Map<string, WorkflowExecutionRecord>();
+
 // GET /api/workflows - List available workflows from filesystem
 router.get('/', apiHandler(async (req, res) => {
     const slugs = listWorkflowSlugs();
@@ -380,38 +393,8 @@ router.post('/:slug/manual-run', apiHandler(async (req, res) => {
     });
 }, true));
 
-// POST /api/workflows/execute - Execute workflow from runWorkflow tool (backend-owned logic)
+// POST /api/workflows/execute - Start workflow execution without blocking on completion.
 router.post('/execute', apiHandler(async (req, res) => {
-    const body = req.body as {
-        slug?: unknown;
-        inputs?: unknown;
-        message_id?: unknown;
-        call_id?: unknown;
-    };
-    if (typeof body.slug !== 'string' || !body.slug.trim()) {
-        throw {
-            status: 400,
-            message: 'slug is required'
-        };
-    }
-    if (!body.inputs || typeof body.inputs !== 'object' || Array.isArray(body.inputs)) {
-        throw {
-            status: 400,
-            message: 'inputs must be an object'
-        };
-    }
-    if (typeof body.message_id !== 'string' || !body.message_id.trim()) {
-        throw {
-            status: 400,
-            message: 'message_id is required'
-        };
-    }
-    if (typeof body.call_id !== 'string' || !body.call_id.trim()) {
-        throw {
-            status: 400,
-            message: 'call_id is required'
-        };
-    }
     if (!req.opencode_session_id) {
         throw {
             status: 400,
@@ -419,46 +402,107 @@ router.post('/execute', apiHandler(async (req, res) => {
         };
     }
 
-    try {
-        const workspaceDir = getWorkspaceDirFromEnv();
-        await assertCurrentUserCanRunWorkflow(body.slug, req.userId!);
-        const startedRun = await startWorkflowRunViaBackend({
-            workspaceDir,
-            slug: body.slug,
-            inputs: body.inputs as Record<string, unknown>,
-            authUserId: req.userId!,
-            sessionId: req.opencode_session_id,
-            messageId: body.message_id,
-            callId: body.call_id,
-            requirePermissionPrompt: true,
+    const body = req.body as {
+        slug: string;
+        inputs: Record<string, unknown>;
+        message_id: string;
+        call_id: string;
+    };
+    if (typeof body.slug !== "string") {
+        throw { status: 400, message: "slug is required" };
+    }
+    if (typeof body.message_id !== "string") {
+        throw { status: 400, message: "message_id is required" };
+    }
+    if (typeof body.call_id !== "string") {
+        throw { status: 400, message: "call_id is required" };
+    }
+    const slug = body.slug;
+    const inputs = body.inputs ?? {};
+    const messageId = body.message_id;
+    const callId = body.call_id;
+    const workspaceDir = getWorkspaceDirFromEnv();
+    await assertCurrentUserCanRunWorkflow(slug, req.userId!);
+    const startedRun = await startWorkflowRunViaBackend({
+        workspaceDir,
+        slug,
+        inputs,
+        authUserId: req.userId!,
+        sessionId: req.opencode_session_id,
+        messageId,
+        callId,
+        requirePermissionPrompt: true,
+    });
+
+    const executionId = randomUUID();
+    const executionRecord: WorkflowExecutionRecord = {
+        slug,
+        runId: startedRun.runId,
+        timeoutSeconds: startedRun.timeoutSeconds,
+        status: "running",
+        output: null,
+        errorMessage: null,
+    };
+
+    workflowExecutions.set(executionId, executionRecord);
+    void startedRun.completion
+        .then((result) => {
+            executionRecord.output = result.output;
+            executionRecord.status = result.status as WorkflowExecutionStatus;
+            executionRecord.errorMessage = result.status === "success" ? null : `Workflow execution ${result.status}`;
+        })
+        .catch((err) => {
+            const errorOutput = err instanceof Error ? err.message : JSON.stringify(err);
+            executionRecord.status = "error";
+            executionRecord.errorMessage = errorOutput;
+            executionRecord.output = errorOutput;
         });
 
-        const result = await startedRun.completion;
-        const responsePayload = {
-            status: result.status,
-            output: result.output,
-            workflow: body.slug,
-            timeout_seconds: startedRun.timeoutSeconds,
-            run_id: startedRun.runId,
-        };
+    res.json({
+        execution_id: executionId,
+        status: "running",
+    });
+}, true));
 
-        if (result.status !== 'success') {
-            throw {
-                status: 500,
-                message: "Workflow execution failed: " + JSON.stringify(responsePayload),
-                doLogging: false,
-                maskErrorMessage: false,
-            };
-        }
-        res.json(responsePayload);
-    } catch (err) {
+// GET /api/workflows/execute/:executionId - Get execution status/result.
+router.get('/execute/:executionId', apiHandler(async (req, res) => {
+    const executionId = req.params.executionId as string;
+    const execution = workflowExecutions.get(executionId);
+    if (!execution) {
+        throw {
+            status: 404,
+            message: 'Execution not found'
+        };
+    }
+
+    if (execution.status === "running") {
+        res.json({
+            execution_id: executionId,
+            status: "running" as const,
+        });
+        return;
+    }
+
+    const responsePayload = {
+        status: execution.status,
+        output: execution.output,
+        workflow: execution.slug,
+        timeout_seconds: execution.timeoutSeconds,
+        run_id: execution.runId,
+    };
+
+    workflowExecutions.delete(executionId);
+
+    if (execution.status !== "success") {
         throw {
             status: 500,
-            message: "Workflow execution failed: " + (err instanceof Error ? err.message : JSON.stringify(err)),
+            message: "Workflow execution failed: " + JSON.stringify(responsePayload),
             doLogging: false,
             maskErrorMessage: false,
         };
     }
+
+    res.json(responsePayload);
 }, true));
 
 // PATCH /api/workflows/runs/:id - Update run status
