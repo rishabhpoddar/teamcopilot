@@ -8,9 +8,9 @@ interface MessageListProps {
     isStreaming: boolean;
     isWaitingForInput: boolean;
     onAnswer: (answer: string) => void;
-    pendingPermission: PermissionRequest | null;
-    onPermissionRespond: (response: "once" | "always" | "reject") => void;
-    isRespondingToPermission: boolean;
+    pendingPermissions: PermissionRequest[];
+    onPermissionRespond: (permissionId: string, response: "once" | "always" | "reject") => void;
+    respondingPermissionIds: Record<string, boolean>;
 }
 
 export default function MessageList({
@@ -19,9 +19,9 @@ export default function MessageList({
     isStreaming,
     isWaitingForInput,
     onAnswer,
-    pendingPermission,
+    pendingPermissions,
     onPermissionRespond,
-    isRespondingToPermission
+    respondingPermissionIds
 }: MessageListProps) {
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -46,9 +46,9 @@ export default function MessageList({
                     message={message}
                     parts={parts}
                     onAnswer={onAnswer}
-                    pendingPermission={pendingPermission}
+                    pendingPermissions={pendingPermissions}
                     onPermissionRespond={onPermissionRespond}
-                    isRespondingToPermission={isRespondingToPermission}
+                    respondingPermissionIds={respondingPermissionIds}
                 />
             ))}
             {isStreaming && !isWaitingForInput && (

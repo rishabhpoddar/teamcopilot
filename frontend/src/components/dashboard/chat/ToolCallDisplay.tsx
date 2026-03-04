@@ -7,9 +7,9 @@ import PermissionPrompt from './PermissionPrompt';
 
 interface ToolCallDisplayProps {
     part: ToolPart;
-    pendingPermission: PermissionRequest | null;
-    onPermissionRespond: (response: "once" | "always" | "reject") => void;
-    isRespondingToPermission: boolean;
+    pendingPermissions: PermissionRequest[];
+    onPermissionRespond: (permissionId: string, response: "once" | "always" | "reject") => void;
+    respondingPermissionIds: Record<string, boolean>;
 }
 
 type ToolDisplaySection = {
@@ -24,9 +24,9 @@ type DiffLine = {
 
 export default function ToolCallDisplay({
     part,
-    pendingPermission,
+    pendingPermissions,
     onPermissionRespond,
-    isRespondingToPermission
+    respondingPermissionIds
 }: ToolCallDisplayProps) {
     const auth = useAuth();
     const [expanded, setExpanded] = useState(false);
@@ -38,14 +38,18 @@ export default function ToolCallDisplay({
     const { state } = part;
     const token = auth.loading ? null : auth.token;
     const isRunWorkflowTool = part.tool === 'runWorkflow';
-    const permissionMessageId = pendingPermission?.tool?.messageID;
-    const permissionCallId = pendingPermission?.tool?.callID;
-    const isPermissionForThisTool = Boolean(
-        pendingPermission &&
-        pendingPermission.sessionID === part.sessionID &&
-        ((permissionCallId && permissionCallId === part.callID) ||
-            (permissionMessageId && permissionMessageId === part.messageID))
-    );
+    const permissionsForThisTool = pendingPermissions.filter((permission) => {
+        if (permission.sessionID !== part.sessionID) {
+            return false;
+        }
+        const permissionMessageId = permission.tool?.messageID;
+        const permissionCallId = permission.tool?.callID;
+        if (permissionCallId) {
+            return permissionCallId === part.callID;
+        }
+        return Boolean(permissionMessageId && permissionMessageId === part.messageID);
+    });
+    const hasPermissionForThisTool = permissionsForThisTool.length > 0;
 
     useEffect(() => {
         setLogs(null);
@@ -61,10 +65,10 @@ export default function ToolCallDisplay({
     }, [isRunWorkflowTool, state.status]);
 
     useEffect(() => {
-        if (isPermissionForThisTool) {
+        if (hasPermissionForThisTool) {
             setExpanded(true);
         }
-    }, [isPermissionForThisTool]);
+    }, [hasPermissionForThisTool]);
 
     useEffect(() => {
         if (!expanded || !isRunWorkflowTool || !logsContainerRef.current) {
@@ -444,13 +448,14 @@ export default function ToolCallDisplay({
                             </pre>
                         </div>
                     )}
-                    {isPermissionForThisTool && pendingPermission && (
+                    {permissionsForThisTool.map((permission) => (
                         <PermissionPrompt
-                            permission={pendingPermission}
-                            submitting={isRespondingToPermission}
-                            onRespond={onPermissionRespond}
+                            key={permission.id}
+                            permission={permission}
+                            submitting={Boolean(respondingPermissionIds[permission.id])}
+                            onRespond={(response) => onPermissionRespond(permission.id, response)}
                         />
-                    )}
+                    ))}
                 </div>
             )}
         </div>

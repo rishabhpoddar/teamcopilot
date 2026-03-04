@@ -83,6 +83,12 @@ export async function getPendingQuestionForSession(opencodeSessionId: string): P
 }
 
 export async function getPendingPermissionForSession(opencodeSessionId: string): Promise<PendingPermission | null> {
+    const permissions = await listPendingPermissions();
+    const match = permissions.find((permission) => permission.sessionID === opencodeSessionId);
+    return match ?? null;
+}
+
+export async function listPendingPermissions(): Promise<PendingPermission[]> {
     const workspaceDir = getWorkspaceDir();
     const response = await fetch(
         `${getOpencodeBaseUrl()}/permission?directory=${encodeURIComponent(workspaceDir)}`
@@ -95,9 +101,7 @@ export async function getPendingPermissionForSession(opencodeSessionId: string):
 
     const permissions = await response.json() as PendingPermission[];
     assertCondition(Array.isArray(permissions), "Pending permission response is not an array");
-
-    const match = permissions.find((permission) => permission.sessionID === opencodeSessionId);
-    return match ?? null;
+    return permissions;
 }
 
 export async function replyToPendingQuestion(questionId: string, answers: Array<Array<string>>): Promise<void> {

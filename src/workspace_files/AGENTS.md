@@ -348,8 +348,9 @@ These rules exist to prevent data loss, secret leakage, and unsafe behavior. Vio
 
 ### Scope limitation (workflows and custom skills)
 
-- Keep the conversation strictly restricted to **creating, managing, and running workflows and custom skills** in this workspace.
-- Do **not** entertain requests outside that scope.
+- Primary execution scope remains **creating, managing, and running workflows and custom skills** in this workspace.
+- You MAY also handle user requests for requirement gathering, discovery, analysis, and explanation that reference files outside the workspace.
+- For such out-of-workspace requests, treat access as **read-only context gathering** unless the user explicitly asks for broader actions.
 
 ### Never delete workflows
 
@@ -379,8 +380,7 @@ These rules exist to prevent data loss, secret leakage, and unsafe behavior. Vio
 
 ### Filesystem safety boundaries
 
-- Never read/write/create files outside managed workspace areas unless explicitly required for workflow/skill management.
-- Do not perform or suggest path traversal patterns (e.g., `../`) that escape `workflows/<slug>/` or `custom-skills/<slug>/`.
+- You MAY read files outside managed workspace areas when needed to understand user requirements, gather context, or answer questions.
 - Keep any cloned repos, downloaded assets, fixtures, or vendored code **inside** `workflows/<slug>/` only.
 - Keep skill artifacts and instruction files inside `custom-skills/<slug>/` only.
 
