@@ -2,3 +2,4 @@ workflow-runs/
 .env
 .venv/
 .sqlite/
+node_modules/

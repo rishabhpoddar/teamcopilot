@@ -1,4 +1,11 @@
-FROM node:20-alpine
+FROM python:3.14.3-alpine3.22 AS python-runtime
+
+FROM node:20-alpine3.22
+
+# Install fixed Python runtime (3.14.3) and pip from official Python image
+COPY --from=python-runtime /usr/local /usr/local
+RUN ln -sf /usr/local/bin/python3 /usr/local/bin/python \
+    && ln -sf /usr/local/bin/pip3 /usr/local/bin/pip
 
 WORKDIR /app
 
