@@ -127,7 +127,7 @@ async function assertCanViewWorkflowFiles(slug: string, userId: string): Promise
     }
 }
 
-type WorkflowExecutionStatus = "running" | "success" | "failed";
+type WorkflowExecutionStatus = "running" | "success" | "error" | "timeout" | "aborted";
 
 type WorkflowExecutionRecord = {
     slug: string;
@@ -448,12 +448,12 @@ router.post('/execute', apiHandler(async (req, res) => {
     void startedRun.completion
         .then((result) => {
             executionRecord.output = result.output;
-            executionRecord.status = result.status === "success" ? "success" : "failed";
+            executionRecord.status = result.status as WorkflowExecutionStatus;
             executionRecord.errorMessage = result.status === "success" ? null : `Workflow execution ${result.status}`;
         })
         .catch((err) => {
             const errorOutput = err instanceof Error ? err.message : JSON.stringify(err);
-            executionRecord.status = "failed";
+            executionRecord.status = "error";
             executionRecord.errorMessage = errorOutput;
             executionRecord.output = errorOutput;
         });
