@@ -452,9 +452,10 @@ router.post('/execute', apiHandler(async (req, res) => {
             executionRecord.errorMessage = result.status === "success" ? null : `Workflow execution ${result.status}`;
         })
         .catch((err) => {
+            const errorOutput = err instanceof Error ? err.message : JSON.stringify(err);
             executionRecord.status = "failed";
-            executionRecord.errorMessage = err instanceof Error ? err.message : JSON.stringify(err);
-            executionRecord.output = null;
+            executionRecord.errorMessage = errorOutput;
+            executionRecord.output = errorOutput;
         });
 
     res.json({
