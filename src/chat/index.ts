@@ -516,38 +516,7 @@ router.post('/sessions/:id/permission-response', apiHandler(async (req, res) => 
         };
     }
 
-    // Try direct opencode reply first.
-    // This avoids list/match races where pending IDs can be temporarily out of sync.
-    try {
-        await replyToPendingPermission(session.opencode_session_id, permission_id, response);
-        await prisma.chat_sessions.update({
-            where: { id },
-            data: { updated_at: Date.now() }
-        });
-        res.json({ success: true });
-        return;
-    } catch {
-        // Fall through to existing resolution logic (list-based opencode match, then custom permissions).
-    }
-
-    // First check for opencode's native permissions
-    const opencodePendingPermissions = await listPendingPermissions();
-    const matchingOpencodePermissions = opencodePendingPermissions
-        .filter((permission) => permission.sessionID === session.opencode_session_id);
-    const opencodePermissionToReply = matchingOpencodePermissions
-        .find((permission) => permission.id === permission_id) ?? null;
-
-    if (opencodePermissionToReply) {
-        await replyToPendingPermission(session.opencode_session_id, opencodePermissionToReply.id, response);
-        await prisma.chat_sessions.update({
-            where: { id },
-            data: { updated_at: Date.now() }
-        });
-        res.json({ success: true });
-        return;
-    }
-
-    // Then check for our custom tool execution permissions
+    // First check our custom tool execution permissions by explicit permission_id.
     const customPendingPermission = await prisma.tool_execution_permissions.findFirst({
         where: {
             id: permission_id,
@@ -556,21 +525,27 @@ router.post('/sessions/:id/permission-response', apiHandler(async (req, res) => 
         }
     });
 
-    if (!customPendingPermission) {
-        throw {
-            status: 409,
-            message: 'No pending permission request for this session'
-        };
+    if (customPendingPermission) {
+        // Update our custom permission status
+        await prisma.tool_execution_permissions.update({
+            where: { id: customPendingPermission.id },
+            data: {
+                status: response === 'reject' ? 'rejected' : 'approved',
+                responded_at: BigInt(Date.now())
+            }
+        });
+
+        await prisma.chat_sessions.update({
+            where: { id },
+            data: { updated_at: Date.now() }
+        });
+
+        res.json({ success: true });
+        return;
     }
 
-    // Update our custom permission status
-    await prisma.tool_execution_permissions.update({
-        where: { id: customPendingPermission.id },
-        data: {
-            status: response === 'reject' ? 'rejected' : 'approved',
-            responded_at: BigInt(Date.now())
-        }
-    });
+    // Otherwise treat it as an opencode-native permission ID and reply directly.
+    await replyToPendingPermission(session.opencode_session_id, permission_id, response);
 
     await prisma.chat_sessions.update({
         where: { id },
