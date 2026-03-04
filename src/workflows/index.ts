@@ -130,21 +130,15 @@ async function assertCanViewWorkflowFiles(slug: string, userId: string): Promise
 type WorkflowExecutionStatus = "running" | "success" | "failed";
 
 type WorkflowExecutionRecord = {
+    slug: string;
+    runId: string;
+    timeoutSeconds: number;
     status: WorkflowExecutionStatus;
     output: string | null;
     errorMessage: string | null;
 };
 
 const workflowExecutions = new Map<string, WorkflowExecutionRecord>();
-
-function serializeWorkflowExecution(executionId: string, record: WorkflowExecutionRecord) {
-    return {
-        execution_id: executionId,
-        status: record.status,
-        output: record.output,
-        error_message: record.errorMessage,
-    };
-}
 
 // GET /api/workflows - List available workflows from filesystem
 router.get('/', apiHandler(async (req, res) => {
@@ -442,6 +436,9 @@ router.post('/execute', apiHandler(async (req, res) => {
 
     const executionId = randomUUID();
     const executionRecord: WorkflowExecutionRecord = {
+        slug,
+        runId: startedRun.runId,
+        timeoutSeconds: startedRun.timeoutSeconds,
         status: "running",
         output: null,
         errorMessage: null,
@@ -477,11 +474,34 @@ router.get('/execute/:executionId', apiHandler(async (req, res) => {
         };
     }
 
-    const payload = serializeWorkflowExecution(executionId, execution);
-    if (execution.status !== "running") {
-        workflowExecutions.delete(executionId);
+    if (execution.status === "running") {
+        res.json({
+            execution_id: executionId,
+            status: "running" as const,
+        });
+        return;
     }
-    res.json(payload);
+
+    const responsePayload = {
+        status: execution.status,
+        output: execution.output,
+        workflow: execution.slug,
+        timeout_seconds: execution.timeoutSeconds,
+        run_id: execution.runId,
+    };
+
+    workflowExecutions.delete(executionId);
+
+    if (execution.status !== "success") {
+        throw {
+            status: 500,
+            message: "Workflow execution failed: " + JSON.stringify(responsePayload),
+            doLogging: false,
+            maskErrorMessage: false,
+        };
+    }
+
+    res.json(responsePayload);
 }, true));
 
 // PATCH /api/workflows/runs/:id - Update run status
