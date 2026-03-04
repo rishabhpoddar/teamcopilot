@@ -41,6 +41,7 @@
     "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
+    "cron": "^4.4.0",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "ignore": "^7.0.5",

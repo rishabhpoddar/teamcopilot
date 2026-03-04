@@ -30,7 +30,7 @@ function getWorkflowManifestPath(slug: string): string {
 }
 
 /** Delete a workflow directory and all of its contents */
-export function deleteWorkflowDirectory(slug: string): void {
+function deleteWorkflowDirectory(slug: string): void {
     const workflowPath = getWorkflowPath(slug);
 
     if (!fs.existsSync(workflowPath)) {
@@ -41,6 +41,28 @@ export function deleteWorkflowDirectory(slug: string): void {
     }
 
     fs.rmSync(workflowPath, { recursive: true, force: false });
+}
+
+export async function deleteWorkflow(slug: string): Promise<void> {
+    await prisma.workflow_runs.deleteMany({
+        where: { workflow_slug: slug }
+    });
+    await prisma.resource_metadata.deleteMany({
+        where: {
+            resource_kind: "workflow",
+            resource_slug: slug
+        }
+    });
+    await prisma.resource_permissions.deleteMany({
+        where: {
+            resource_kind: "workflow",
+            resource_slug: slug
+        }
+    });
+
+    if (fs.existsSync(getWorkflowPath(slug))) {
+        deleteWorkflowDirectory(slug);
+    }
 }
 
 /** Read a workflow's manifest */
