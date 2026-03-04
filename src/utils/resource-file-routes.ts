@@ -1,6 +1,6 @@
 import express from "express";
 import fs from "fs";
-import { WorkflowEditorAccessResponse, WorkflowFileContentResponse, WorkflowFileNode, WorkflowFileSaveResponse, WorkflowFileTreeResponse } from "../types/workflow-files";
+import { EditorAccessResponse, FileContentResponse, FileNode, FileSaveResponse, FileTreeResponse } from "../types/workflow-files";
 import { apiHandler } from "./index";
 
 type AuthenticatedRequest = express.Request & {
@@ -16,14 +16,14 @@ interface ResourceFileRouteOptions {
     uploadMiddleware: express.RequestHandler;
     ensureResourceExists: (slug: string) => Promise<void>;
     assertCanView: (slug: string, userId: string) => Promise<void>;
-    getEditorAccess: (slug: string, userId: string) => Promise<WorkflowEditorAccessResponse>;
+    getEditorAccess: (slug: string, userId: string) => Promise<EditorAccessResponse>;
     assertCanEdit: (slug: string, userId: string) => Promise<void>;
-    listDirectory: (slug: string, rawPath: string | undefined) => WorkflowFileTreeResponse;
-    readFileContent: (slug: string, rawPath: string | undefined) => WorkflowFileContentResponse;
-    saveFileContent: (slug: string, payload: { path: string; content: string; base_etag: string }) => WorkflowFileSaveResponse;
-    createFileOrFolder: (slug: string, parentPath: string, name: string, kind: "file" | "directory") => WorkflowFileNode;
-    uploadFileFromTempPath: (slug: string, parentPath: string, name: string, tempFilePath: string) => WorkflowFileNode;
-    renamePath: (slug: string, path: string, newName: string) => { old_path: string; new_path: string; node: WorkflowFileNode };
+    listDirectory: (slug: string, rawPath: string | undefined) => FileTreeResponse;
+    readFileContent: (slug: string, rawPath: string | undefined) => FileContentResponse;
+    saveFileContent: (slug: string, payload: { path: string; content: string; base_etag: string }) => FileSaveResponse;
+    createFileOrFolder: (slug: string, parentPath: string, name: string, kind: "file" | "directory") => FileNode;
+    uploadFileFromTempPath: (slug: string, parentPath: string, name: string, tempFilePath: string) => FileNode;
+    renamePath: (slug: string, path: string, newName: string) => { old_path: string; new_path: string; node: FileNode };
     deletePath: (slug: string, rawPath: string | undefined) => void;
 }
 

@@ -97,7 +97,9 @@ export default function UnifiedCard({
                 })
             ]);
 
-            const detail = (detailResponse.data.workflow ?? detailResponse.data.skill) as {
+            const detail = (kind === 'workflow'
+                ? detailResponse.data.workflow
+                : detailResponse.data.skill) as {
                 created_by_user_id: string | null;
                 approved_by_user_id: string | null;
                 permissions?: { mode: 'everyone' } | { mode: 'restricted'; allowed_user_ids: string[] };

@@ -10,7 +10,7 @@ interface SkillFileContentResponse {
 }
 
 interface SkillDetailsResponse {
-  workflow?: {
+  skill?: {
     is_approved?: boolean
   }
 }
@@ -77,7 +77,7 @@ export const GetSkillContentPlugin: Plugin = async (_ctx) => {
 
           const skillDetailsPayload =
             (await skillDetailsResponse.json()) as SkillDetailsResponse
-          const isApproved = skillDetailsPayload.workflow?.is_approved === true
+          const isApproved = skillDetailsPayload.skill?.is_approved === true
 
           if (!isApproved) {
             throw new Error(

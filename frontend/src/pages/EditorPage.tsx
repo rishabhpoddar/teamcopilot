@@ -6,16 +6,16 @@ import MonacoEditor from '../components/workflow-editor/MonacoEditor';
 import { useAuth } from '../lib/auth';
 import { axiosInstance, axiosUploadInstance } from '../utils';
 import type {
-    WorkflowEditorAccessResponse,
-    WorkflowFileContentResponse,
-    WorkflowFileNode,
+    EditorAccessResponse,
+    FileContentResponse,
+    FileNode,
 } from '../types/workflow-files';
 import './WorkflowEditorPage.css';
 
 type EditorEntity = 'workflow' | 'skill';
-type DirectoryChildrenMap = Record<string, WorkflowFileNode[]>;
+type DirectoryChildrenMap = Record<string, FileNode[]>;
 
-type WorkflowDetails = {
+type ResourceDetails = {
     slug: string;
     name: string;
     created_by_user_name: string | null;
@@ -120,9 +120,9 @@ export default function EditorPage({ entity = 'workflow' }: { entity?: EditorEnt
 
     const [pageLoading, setPageLoading] = useState(true);
     const [pageError, setPageError] = useState<string | null>(null);
-    const [workflowTitle, setWorkflowTitle] = useState<string>(slug);
-    const [workflowDetails, setWorkflowDetails] = useState<WorkflowDetails | null>(null);
-    const [access, setAccess] = useState<WorkflowEditorAccessResponse | null>(null);
+    const [resourceTitle, setResourceTitle] = useState<string>(slug);
+    const [resourceDetails, setResourceDetails] = useState<ResourceDetails | null>(null);
+    const [access, setAccess] = useState<EditorAccessResponse | null>(null);
 
     const [childrenByDir, setChildrenByDir] = useState<DirectoryChildrenMap>({});
     const [expandedDirs, setExpandedDirs] = useState<Record<string, boolean>>({ '': true });
@@ -153,7 +153,7 @@ export default function EditorPage({ entity = 'workflow' }: { entity?: EditorEnt
                 params: dirPath ? { path: dirPath } : {},
                 headers: authHeader
             });
-            setChildrenByDir((prev) => ({ ...prev, [dirPath]: response.data.entries as WorkflowFileNode[] }));
+            setChildrenByDir((prev) => ({ ...prev, [dirPath]: response.data.entries as FileNode[] }));
         } catch (err: unknown) {
             const message = getErrorMessage(err, 'Failed to load files');
             setDirErrors((prev) => ({ ...prev, [dirPath]: message }));
@@ -172,15 +172,17 @@ export default function EditorPage({ entity = 'workflow' }: { entity?: EditorEnt
         setPageError(null);
         void (async () => {
             try {
-                const [accessResponse, workflowResponse] = await Promise.all([
+                const [accessResponse, detailResponse] = await Promise.all([
                     axiosInstance.get(`${apiBase}/${encodeURIComponent(slug)}/files/access`, { headers: authHeader }),
                     axiosInstance.get(`${apiBase}/${encodeURIComponent(slug)}`, { headers: authHeader }),
                 ]);
                 if (cancelled) return;
-                setAccess(accessResponse.data as WorkflowEditorAccessResponse);
-                const workflow = workflowResponse.data.workflow as WorkflowDetails;
-                setWorkflowDetails(workflow);
-                setWorkflowTitle(workflow.name || workflow.slug);
+                setAccess(accessResponse.data as EditorAccessResponse);
+                const details = (entity === 'workflow'
+                    ? detailResponse.data.workflow
+                    : detailResponse.data.skill) as ResourceDetails;
+                setResourceDetails(details);
+                setResourceTitle(details.name || details.slug);
                 await refreshDir('');
             } catch (err: unknown) {
                 if (cancelled) return;
@@ -216,9 +218,9 @@ export default function EditorPage({ entity = 'workflow' }: { entity?: EditorEnt
         navigate(`/?tab=${backTab}`);
     };
 
-    const editorStatus: 'approved' | 'pending' = access?.workflow_status ?? 'pending';
+    const editorStatus: 'approved' | 'pending' = access?.editor_status ?? 'pending';
 
-    const handleToggleDirectory = async (node: WorkflowFileNode) => {
+    const handleToggleDirectory = async (node: FileNode) => {
         if (node.kind !== 'directory') return;
         const nextExpanded = !expandedDirs[node.path];
         setExpandedDirs((prev) => ({ ...prev, [node.path]: nextExpanded }));
@@ -227,7 +229,7 @@ export default function EditorPage({ entity = 'workflow' }: { entity?: EditorEnt
         }
     };
 
-    const openFile = async (node: WorkflowFileNode) => {
+    const openFile = async (node: FileNode) => {
         if (node.kind !== 'file') return;
         if (!confirmDiscardIfNeeded()) return;
 
@@ -238,7 +240,7 @@ export default function EditorPage({ entity = 'workflow' }: { entity?: EditorEnt
                 params: { path: node.path },
                 headers: authHeader
             });
-            const data = response.data as WorkflowFileContentResponse;
+            const data = response.data as FileContentResponse;
             if (data.kind === 'binary') {
                 setActiveFile({
                     path: data.path,
@@ -330,7 +332,7 @@ export default function EditorPage({ entity = 'workflow' }: { entity?: EditorEnt
         }
     };
 
-    const handleRename = async (node: WorkflowFileNode) => {
+    const handleRename = async (node: FileNode) => {
         if (!authHeader || !canEdit) return;
         const newName = window.prompt('Rename to', node.name);
         if (!newName || newName === node.name) return;
@@ -389,7 +391,7 @@ export default function EditorPage({ entity = 'workflow' }: { entity?: EditorEnt
         }
     };
 
-    const handleDelete = async (node: WorkflowFileNode) => {
+    const handleDelete = async (node: FileNode) => {
         if (!authHeader || !canEdit) return;
         const confirmed = window.confirm(`Delete ${node.kind} "${node.name}"? This cannot be undone.`);
         if (!confirmed) return;
@@ -463,7 +465,7 @@ export default function EditorPage({ entity = 'workflow' }: { entity?: EditorEnt
         }
     };
 
-    const renderTree = (entries: WorkflowFileNode[], depth: number) => {
+    const renderTree = (entries: FileNode[], depth: number) => {
         return entries.map((node) => {
             const isExpanded = node.kind === 'directory' && Boolean(expandedDirs[node.path]);
             const isSelected = selectedPath === node.path;
@@ -550,16 +552,16 @@ export default function EditorPage({ entity = 'workflow' }: { entity?: EditorEnt
 
     if (auth.loading) return null;
 
-    const permissionSummaryText = workflowDetails
+    const permissionSummaryText = resourceDetails
         ? entity === 'workflow'
-            ? workflowDetails.permission_mode === 'everyone'
+            ? resourceDetails.permission_mode === 'everyone'
                 ? 'Everyone can run'
-                : workflowDetails.is_locked_due_to_missing_users
+                : resourceDetails.is_locked_due_to_missing_users
                     ? 'Restricted (locked: no allowed users remain)'
                     : 'Restricted'
-            : workflowDetails.permission_mode === 'everyone'
+            : resourceDetails.permission_mode === 'everyone'
                 ? 'Everyone can access'
-                : workflowDetails.is_locked_due_to_missing_users
+                : resourceDetails.is_locked_due_to_missing_users
                     ? 'Restricted (locked: no allowed users remain)'
                     : 'Restricted'
         : null;
@@ -570,7 +572,7 @@ export default function EditorPage({ entity = 'workflow' }: { entity?: EditorEnt
                 <div className="workflow-editor-header-left">
                     <button type="button" className="secondary" onClick={handleBack}>Back</button>
                     <div>
-                        <h1>{workflowTitle}</h1>
+                        <h1>{resourceTitle}</h1>
                         {access && (
                             <p className="workflow-editor-subtitle">
                                 {slug} · {editorStatus} · {canEdit ? 'Editable' : 'Read only'}
@@ -601,7 +603,7 @@ export default function EditorPage({ entity = 'workflow' }: { entity?: EditorEnt
             ) : (
                 <div className="workflow-editor-layout">
                     <aside className="workflow-editor-sidebar">
-                        {workflowDetails && (
+                        {resourceDetails && (
                             <div className="wf-workflow-meta-card">
                                 <div className="wf-workflow-meta-title">{infoTitle}</div>
                                 <div className="wf-workflow-meta-grid">
@@ -615,13 +617,13 @@ export default function EditorPage({ entity = 'workflow' }: { entity?: EditorEnt
 
                                     <div className="wf-workflow-meta-label">Creator</div>
                                     <div className="wf-workflow-meta-value">
-                                        {displayUser(workflowDetails.created_by_user_name, workflowDetails.created_by_user_email)}
+                                        {displayUser(resourceDetails.created_by_user_name, resourceDetails.created_by_user_email)}
                                     </div>
 
                                     <div className="wf-workflow-meta-label">Approver</div>
                                     <div className="wf-workflow-meta-value">
-                                        {workflowDetails.approved_by_user_id
-                                            ? displayUser(workflowDetails.approved_by_user_name, workflowDetails.approved_by_user_email)
+                                        {resourceDetails.approved_by_user_id
+                                            ? displayUser(resourceDetails.approved_by_user_name, resourceDetails.approved_by_user_email)
                                             : 'Not approved yet'}
                                     </div>
 
