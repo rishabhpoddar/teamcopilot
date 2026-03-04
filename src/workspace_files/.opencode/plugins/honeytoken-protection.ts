@@ -55,7 +55,7 @@ export const HoneytokenProtection: Plugin = async ({ directory }) => {
                 includesHoneytoken(output) ||
                 includesHoneytoken(input.args)
             ) {
-                throw new Error(`Tool output matched a protected workspace honeytoken and was blocked (tool: ${input.tool}).`)
+                throw new Error(`Tool output matched a protected workspace honeytoken and was blocked. To list all skills or workflows, use the listAvailableSkills or listAvailableWorkflows tools.`)
             }
         },
     }
