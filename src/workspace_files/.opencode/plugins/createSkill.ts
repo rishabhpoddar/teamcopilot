@@ -192,7 +192,7 @@ export const CreateSkillPlugin: Plugin = async (_ctx) => {
         args: {
           slug: tool.schema
             .string()
-            .describe("Skill slug (lowercase letters/numbers with hyphens)") ,
+            .describe("Skill slug (lowercase letters/numbers with hyphens)"),
           description: tool.schema
             .string()
             .describe("Short description of what this skill does"),
@@ -230,7 +230,7 @@ export const CreateSkillPlugin: Plugin = async (_ctx) => {
             throw new Error("Could not determine call id from tool context.")
           }
 
-          const skillsDir = path.join(directory, ".custom-skills")
+          const skillsDir = path.join(directory, "custom-skills")
           const skillDir = path.join(skillsDir, slug)
 
           if (!isPathInside(skillDir, skillsDir)) {
@@ -316,7 +316,7 @@ export const CreateSkillPlugin: Plugin = async (_ctx) => {
               skill: {
                 slug,
                 description,
-                file_path: `.custom-skills/${slug}/SKILL.md`,
+                file_path: `custom-skills/${slug}/SKILL.md`,
               },
             },
             null,

@@ -63,7 +63,7 @@ Before implementing custom instructions or creating new workflow logic, you MUST
 
 ### What is a Custom Skill?
 
-A **custom skill** is a reusable instruction package for the agent that lives in `.custom-skills/<slug>/`.
+A **custom skill** is a reusable instruction package for the agent that lives in `custom-skills/<slug>/`.
 Each custom skill:
 - Has a unique slug (lowercase, hyphenated, e.g., `triage-support-ticket`)
 - Uses `SKILL.md` as the canonical manifest/instruction file
@@ -355,7 +355,7 @@ These rules exist to prevent data loss, secret leakage, and unsafe behavior. Vio
 
 ### Never delete custom skills
 
-- You must **NEVER delete a custom skill** (folders or files under `.custom-skills/<slug>/`).
+- You must **NEVER delete a custom skill** (folders or files under `custom-skills/<slug>/`).
 - Custom skill deletions are only supposed to happen via the **UI**.
 - If cleanup is requested, prefer **deprecating** or updating skill instructions rather than deleting anything.
 
@@ -376,9 +376,9 @@ These rules exist to prevent data loss, secret leakage, and unsafe behavior. Vio
 ### Filesystem safety boundaries
 
 - Never read/write/create files outside managed workspace areas unless explicitly required for workflow/skill management.
-- Do not perform or suggest path traversal patterns (e.g., `../`) that escape `workflows/<slug>/` or `.custom-skills/<slug>/`.
+- Do not perform or suggest path traversal patterns (e.g., `../`) that escape `workflows/<slug>/` or `custom-skills/<slug>/`.
 - Keep any cloned repos, downloaded assets, fixtures, or vendored code **inside** `workflows/<slug>/` only.
-- Keep skill artifacts and instruction files inside `.custom-skills/<slug>/` only.
+- Keep skill artifacts and instruction files inside `custom-skills/<slug>/` only.
 
 ### No destructive shell actions
 

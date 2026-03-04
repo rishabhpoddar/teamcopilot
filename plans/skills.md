@@ -11,7 +11,7 @@
    - Mounted at `/api/skills` from `src/index.ts`.
 
 3. Workspace initialization
-   - Ensures `<workspace>/.custom-skills` exists at startup.
+   - Ensures `<workspace>/custom-skills` exists at startup.
 
 4. Skill filesystem + metadata helpers
    - Added `src/utils/skill.ts`.

@@ -38,7 +38,7 @@ function normalizeRelativePath(relativePath: string): string {
 
 const MANAGED_WORKSPACE_DIRECTORIES = new Set([
     "workflows",
-    ".custom-skills",
+    "custom-skills",
 ]);
 
 function shouldSkipManagedDirectoryContent(relativePath: string): boolean {
@@ -143,7 +143,7 @@ export function initializeWorkspaceDirectory(): void {
     const workspaceDir = getWorkspaceDirFromEnv();
     fs.mkdirSync(workspaceDir, { recursive: true });
     fs.mkdirSync(path.join(workspaceDir, "workflows"), { recursive: true });
-    const skillsDir = path.join(workspaceDir, ".custom-skills");
+    const skillsDir = path.join(workspaceDir, "custom-skills");
     fs.mkdirSync(skillsDir, { recursive: true });
     const honeytokenPath = path.join(skillsDir, HONEYTOKEN_FILE_NAME);
     fs.writeFileSync(honeytokenPath, `DO_NOT_EXPOSE:${HONEYTOKEN_UUID}\n`, "utf-8");

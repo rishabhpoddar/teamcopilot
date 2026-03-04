@@ -11,7 +11,7 @@ async function ensureHoneytokenFile(workspaceDirectory: string): Promise<void> {
         return
     }
 
-    const skillsDirectory = path.join(workspaceDirectory, ".custom-skills")
+    const skillsDirectory = path.join(workspaceDirectory, "custom-skills")
     await fs.mkdir(skillsDirectory, { recursive: true })
     const honeytokenPath = path.join(skillsDirectory, HONEYTOKEN_FILE_NAME)
     await fs.writeFile(honeytokenPath, `DO_NOT_EXPOSE:${HONEYTOKEN_UUID}\n`, "utf-8")
