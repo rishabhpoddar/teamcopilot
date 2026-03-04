@@ -146,56 +146,6 @@ function serializeWorkflowExecution(executionId: string, record: WorkflowExecuti
     };
 }
 
-function parseExecuteRequestBody(body: unknown): {
-    slug: string;
-    inputs: Record<string, unknown>;
-    messageId: string;
-    callId: string;
-} {
-    if (!body || typeof body !== "object" || Array.isArray(body)) {
-        throw {
-            status: 400,
-            message: "request body must be an object",
-        };
-    }
-    const parsedBody = body as {
-        slug?: unknown;
-        inputs?: unknown;
-        message_id?: unknown;
-        call_id?: unknown;
-    };
-    if (typeof parsedBody.slug !== "string" || !parsedBody.slug.trim()) {
-        throw {
-            status: 400,
-            message: "slug is required",
-        };
-    }
-    if (!parsedBody.inputs || typeof parsedBody.inputs !== "object" || Array.isArray(parsedBody.inputs)) {
-        throw {
-            status: 400,
-            message: "inputs must be an object",
-        };
-    }
-    if (typeof parsedBody.message_id !== "string" || !parsedBody.message_id.trim()) {
-        throw {
-            status: 400,
-            message: "message_id is required",
-        };
-    }
-    if (typeof parsedBody.call_id !== "string" || !parsedBody.call_id.trim()) {
-        throw {
-            status: 400,
-            message: "call_id is required",
-        };
-    }
-    return {
-        slug: parsedBody.slug,
-        inputs: parsedBody.inputs as Record<string, unknown>,
-        messageId: parsedBody.message_id,
-        callId: parsedBody.call_id,
-    };
-}
-
 // GET /api/workflows - List available workflows from filesystem
 router.get('/', apiHandler(async (req, res) => {
     const slugs = listWorkflowSlugs();
@@ -458,7 +408,25 @@ router.post('/execute', apiHandler(async (req, res) => {
         };
     }
 
-    const { slug, inputs, messageId, callId } = parseExecuteRequestBody(req.body);
+    const body = req.body as {
+        slug: string;
+        inputs: Record<string, unknown>;
+        message_id: string;
+        call_id: string;
+    };
+    if (typeof body.slug !== "string") {
+        throw { status: 400, message: "slug is required" };
+    }
+    if (typeof body.message_id !== "string") {
+        throw { status: 400, message: "message_id is required" };
+    }
+    if (typeof body.call_id !== "string") {
+        throw { status: 400, message: "call_id is required" };
+    }
+    const slug = body.slug;
+    const inputs = body.inputs ?? {};
+    const messageId = body.message_id;
+    const callId = body.call_id;
     const workspaceDir = getWorkspaceDirFromEnv();
     await assertCurrentUserCanRunWorkflow(slug, req.userId!);
     const startedRun = await startWorkflowRunViaBackend({
