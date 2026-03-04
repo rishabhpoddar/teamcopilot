@@ -4,7 +4,7 @@ import { apiHandler } from "../utils/index";
 import {
     getOpencodeClient,
     getPendingQuestionForSession,
-    getPendingPermissionForSession,
+    listPendingPermissionForSession,
     listPendingPermissions,
     getWorkspaceDir,
     getOpencodePort,
@@ -317,11 +317,11 @@ router.post('/sessions/:id/messages', apiHandler(async (req, res) => {
             message: 'A tool is waiting for input. Reply through the tool-answer endpoint.'
         };
     }
-    const pendingPermission = await getPendingPermissionForSession(session.opencode_session_id);
-    if (pendingPermission) {
+    const pendingPermission = await listPendingPermissionForSession(session.opencode_session_id);
+    if (pendingPermission.length > 0) {
         throw {
             status: 409,
-            message: 'A permission request is waiting for input. Reply through the permission-response endpoint.'
+            message: 'At least one permission request is waiting for input. Reply through the permission-response endpoint.'
         };
     }
 

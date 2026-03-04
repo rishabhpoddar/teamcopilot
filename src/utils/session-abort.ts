@@ -2,7 +2,7 @@ import prisma from "../prisma/client";
 import { assertCondition } from "./assert";
 import {
     getOpencodeClient,
-    getPendingPermissionForSession,
+    listPendingPermissionForSession,
     getPendingQuestionForSession,
     replyToPendingPermission,
     replyToPendingQuestion
@@ -26,8 +26,8 @@ export async function abortOpencodeSession(opencodeSessionId: string): Promise<v
         await replyToPendingQuestion(pendingQuestion.id, answers);
     }
 
-    const pendingPermission = await getPendingPermissionForSession(opencodeSessionId);
-    if (pendingPermission) {
+    const pendingPermissions = await listPendingPermissionForSession(opencodeSessionId);
+    for (const pendingPermission of pendingPermissions) {
         await replyToPendingPermission(opencodeSessionId, pendingPermission.id, "reject");
     }
 
