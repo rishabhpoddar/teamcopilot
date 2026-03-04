@@ -1,4 +1,5 @@
 import { exec } from "child_process";
+import path from "path";
 import { promisify } from "util";
 import { assertEnv, assertCondition, parseIntStrict } from "./utils/assert";
 
@@ -11,7 +12,17 @@ type OpencodeServerInstance = {
 
 let server: OpencodeServerInstance | null = null;
 
+function ensureLocalNodeBinInPath(): void {
+    const localBin = path.resolve(__dirname, "../node_modules/.bin");
+    const currentPath = process.env.PATH || "";
+    const entries = currentPath.split(":");
+    if (!entries.includes(localBin)) {
+        process.env.PATH = `${localBin}:${currentPath}`;
+    }
+}
+
 async function loadCreateOpencodeServer() {
+    ensureLocalNodeBinInPath();
     const sdk = await import("@opencode-ai/sdk");
     return sdk.createOpencodeServer;
 }
