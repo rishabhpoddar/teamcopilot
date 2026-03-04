@@ -26,14 +26,14 @@ All workflow execution performed by the agent **must** go through the `runWorkfl
 - Only workflows that have been **approved by an engineer user** can be executed. This check (among other checks) is performed by the `runWorkflow` tool.
 - The `runWorkflow` can throw an error for various reasons. If it does, read the error message and report it to the user accurately.
 
-Workflows must still be fully executable end-to-end by the platform tooling (given correct deps + env), but direct Python/Node execution is not allowed.
+Workflows must still be fully executable end-to-end by the platform tooling (given correct deps + env), but direct Python/Node execution is not allowed (except the explicit `.venv` creation command described below).
 
 **Forbidden actions (for the agent):**
 - ❌ `python run.py`
 - ❌ `cd workflows/xxx && python run.py`
 - ❌ `python3 run.py`, `python3.x run.py`, `python2 run.py`, `py run.py`, `pypy run.py`
 - ❌ `/usr/bin/python ...`, `/usr/bin/python3 ...`, `.venv/bin/python ...`, `env python ...`, `env python3 ...`
-- ❌ `python -m ...`, `python3 -m ...`, `py -m ...` (including module-based launch paths)
+- ❌ `python -m ...`, `python3 -m ...`, `py -m ...` (including module-based launch paths), **except** creating a workflow-local virtualenv with `python -m venv .venv` or `python3 -m venv .venv`
 - ❌ Any alias, symlink, wrapper, or alternative interpreter invocation that executes Python code
 - ❌ `node script.js`, `nodejs script.js`, `npx node ...`, `/usr/bin/node ...`
 - ❌ `node -e ...`, `node --eval ...`, `node -p ...` (including eval/inline execution)
@@ -42,6 +42,11 @@ Workflows must still be fully executable end-to-end by the platform tooling (giv
 
 **Required action:**
 - ✅ Use the `runWorkflow` tool to execute any workflow
+- ✅ After `createWorkflow`, immediately create `workflows/<slug>/.venv` using `python -m venv .venv` (or `python3 -m venv .venv`) from inside that workflow folder
+
+**Allowed shell commands (only for setup, never for running workflow scripts):**
+- ✅ `cd workflows/<slug> && python -m venv .venv`
+- ✅ `cd workflows/<slug> && python3 -m venv .venv`
 
 Violating this constraint bypasses safety checks and is not permitted.
 
@@ -250,7 +255,9 @@ data/
    - `intent_summary`: Description of what the workflow does
    - `inputs`: (optional) Input parameter schema
    - `timeout_seconds`: (optional, default 300) Max execution time
-3. **Implement the workflow** — After the tool creates the skeleton:
+3. **Create the virtual environment immediately** — Right after `createWorkflow`, create a workflow-local virtualenv:
+   - `cd workflows/<slug> && python -m venv .venv` (or `python3 -m venv .venv`)
+4. **Implement the workflow** — After the tool creates the skeleton and `.venv`:
    - Edit `run.py` — Implement the logic with argparse for inputs
    - Edit `requirements.txt` — Add Python dependencies (no version specifiers)
    - Edit `.env` — Add runtime secrets
@@ -258,7 +265,7 @@ data/
    - Edit `README.md` — Document the workflow
    - Create `.venv/` — Create a per-workflow virtualenv
    - Update `requirements.lock.txt` — Run `pip freeze > requirements.lock.txt` after installing deps
-4. **Optionally create `data/`** — If the workflow needs to persist state between runs (document structure in README)
+5. **Optionally create `data/`** — If the workflow needs to persist state between runs (document structure in README)
 
 ### Workflows: Updating an Existing Workflow
 
@@ -412,7 +419,7 @@ When asked to "Create a workflow that checks Stripe for failed payments":
    - Edit `requirements.txt` — Add `stripe` dependency (no version specifier)
    - Edit `.env` — Add `STRIPE_API_KEY` (never commit)
    - Edit `.env.example` — Template with `STRIPE_API_KEY=sk_test_...`
-   - Create `.venv/` — Use approved platform tooling only; do not invoke Python/Node directly from shell
+   - Create `.venv/` immediately after `createWorkflow` — run `cd workflows/failed-stripe-payments && python -m venv .venv` (or `python3 -m venv .venv`)
    - Update `requirements.lock.txt` — Run `pip freeze > requirements.lock.txt` after installing
    - Edit `README.md` — Document usage and required secrets
 4. If unsure about Stripe API details, ask the user for help or search the web using your tools.

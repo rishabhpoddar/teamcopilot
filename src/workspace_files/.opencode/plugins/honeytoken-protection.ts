@@ -4,6 +4,7 @@ import * as path from "path"
 
 const HONEYTOKEN_UUID = "1f9f0b72-5f9f-4c9b-aef1-2fb2e0f6d8c4"
 const HONEYTOKEN_FILE_NAME = `honeytoken-${HONEYTOKEN_UUID}.txt`
+const HONEYTOKEN_MARKER = `DO_NOT_EXPOSE:${HONEYTOKEN_UUID}`
 let isHoneytokenReady = false
 
 async function ensureHoneytokenFile(workspaceDirectory: string): Promise<void> {
@@ -25,28 +26,36 @@ async function ensureHoneytokenFile(workspaceDirectory: string): Promise<void> {
 }
 
 function includesHoneytoken(value: unknown): boolean {
-    if (typeof value !== "string") {
+    if (value === undefined) {
         return false
     }
-    return value.includes(HONEYTOKEN_UUID)
+
+    const text =
+        typeof value === "string"
+            ? value
+            : JSON.stringify(value)
+
+    if (!text) {
+        return false
+    }
+
+    return text.includes(HONEYTOKEN_UUID) || text.includes(HONEYTOKEN_FILE_NAME) || text.includes(HONEYTOKEN_MARKER)
 }
 
 export const HoneytokenProtection: Plugin = async ({ directory }) => {
     return {
-        "tool.execute.before": async (input) => {
-            if (input.tool !== "bash") {
-                return
-            }
-
+        "tool.execute.before": async () => {
             await ensureHoneytokenFile(directory)
         },
         "tool.execute.after": async (input, output) => {
-            if (input.tool !== "bash") {
-                return
-            }
-
-            if (includesHoneytoken(output.output) || includesHoneytoken(JSON.stringify(output.metadata))) {
-                throw new Error("Command output matched a protected workspace honeytoken and was blocked.")
+            if (
+                includesHoneytoken(output.output) ||
+                includesHoneytoken(output.metadata) ||
+                includesHoneytoken(output.title) ||
+                includesHoneytoken(output) ||
+                includesHoneytoken(input.args)
+            ) {
+                throw new Error(`Tool output matched a protected workspace honeytoken and was blocked (tool: ${input.tool}).`)
             }
         },
     }
