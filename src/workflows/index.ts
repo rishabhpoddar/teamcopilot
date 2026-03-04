@@ -130,44 +130,20 @@ async function assertCanViewWorkflowFiles(slug: string, userId: string): Promise
 type WorkflowExecutionStatus = "running" | "success" | "failed";
 
 type WorkflowExecutionRecord = {
-    id: string;
-    opencodeSessionId: string;
-    slug: string;
-    runId: string;
-    timeoutSeconds: number;
-    startedAt: number;
-    completedAt: number | null;
     status: WorkflowExecutionStatus;
     output: string | null;
     errorMessage: string | null;
-    completionPromise: Promise<void>;
 };
 
 const workflowExecutions = new Map<string, WorkflowExecutionRecord>();
-const MAX_WAIT_MS = 25_000;
 
-function serializeWorkflowExecution(record: WorkflowExecutionRecord) {
+function serializeWorkflowExecution(executionId: string, record: WorkflowExecutionRecord) {
     return {
-        execution_id: record.id,
-        run_id: record.runId,
-        workflow: record.slug,
-        timeout_seconds: record.timeoutSeconds,
+        execution_id: executionId,
         status: record.status,
-        started_at: record.startedAt,
-        completed_at: record.completedAt,
         output: record.output,
         error_message: record.errorMessage,
     };
-}
-
-async function waitForWorkflowExecution(record: WorkflowExecutionRecord, waitMs: number): Promise<void> {
-    if (record.status !== "running" || waitMs <= 0) {
-        return;
-    }
-    await Promise.race([
-        record.completionPromise,
-        new Promise<void>((resolve) => setTimeout(resolve, waitMs)),
-    ]);
 }
 
 function parseExecuteRequestBody(body: unknown): {
@@ -498,52 +474,32 @@ router.post('/execute', apiHandler(async (req, res) => {
 
     const executionId = randomUUID();
     const executionRecord: WorkflowExecutionRecord = {
-        id: executionId,
-        opencodeSessionId: req.opencode_session_id,
-        slug,
-        runId: startedRun.runId,
-        timeoutSeconds: startedRun.timeoutSeconds,
-        startedAt: Date.now(),
-        completedAt: null,
         status: "running",
         output: null,
         errorMessage: null,
-        completionPromise: Promise.resolve(),
     };
 
-    executionRecord.completionPromise = startedRun.completion
+    workflowExecutions.set(executionId, executionRecord);
+    void startedRun.completion
         .then((result) => {
-            executionRecord.completedAt = Date.now();
             executionRecord.output = result.output;
             executionRecord.status = result.status === "success" ? "success" : "failed";
             executionRecord.errorMessage = result.status === "success" ? null : `Workflow execution ${result.status}`;
         })
         .catch((err) => {
-            executionRecord.completedAt = Date.now();
             executionRecord.status = "failed";
             executionRecord.errorMessage = err instanceof Error ? err.message : JSON.stringify(err);
             executionRecord.output = null;
         });
 
-    workflowExecutions.set(executionId, executionRecord);
-
     res.json({
         execution_id: executionId,
-        run_id: startedRun.runId,
         status: "running",
-        workflow: slug,
-        timeout_seconds: startedRun.timeoutSeconds,
     });
 }, true));
 
-// GET /api/workflows/execute/:executionId - Get execution result, optionally long-poll.
+// GET /api/workflows/execute/:executionId - Get execution status/result.
 router.get('/execute/:executionId', apiHandler(async (req, res) => {
-    if (!req.opencode_session_id) {
-        throw {
-            status: 400,
-            message: 'This endpoint requires an opencode session token'
-        };
-    }
     const executionId = req.params.executionId as string;
     const execution = workflowExecutions.get(executionId);
     if (!execution) {
@@ -552,23 +508,10 @@ router.get('/execute/:executionId', apiHandler(async (req, res) => {
             message: 'Execution not found'
         };
     }
-    if (execution.opencodeSessionId !== req.opencode_session_id) {
-        throw {
-            status: 403,
-            message: 'Execution does not belong to this session'
-        };
-    }
 
-    const waitParamRaw = req.query.wait_ms;
-    const waitParam = typeof waitParamRaw === "string" ? Number(waitParamRaw) : 0;
-    const waitMs = Number.isFinite(waitParam) && waitParam > 0
-        ? Math.min(Math.floor(waitParam), MAX_WAIT_MS)
-        : 0;
-    await waitForWorkflowExecution(execution, waitMs);
-
-    const payload = serializeWorkflowExecution(execution);
+    const payload = serializeWorkflowExecution(executionId, execution);
     if (execution.status !== "running") {
-        workflowExecutions.delete(execution.id);
+        workflowExecutions.delete(executionId);
     }
     res.json(payload);
 }, true));

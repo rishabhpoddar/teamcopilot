@@ -51,6 +51,10 @@ async function readErrorMessageFromResponse(
   }
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 export const RunWorkflowPlugin: Plugin = async (_ctx) => {
   return {
     tool: {
@@ -117,7 +121,7 @@ export const RunWorkflowPlugin: Plugin = async (_ctx) => {
 
           while (true) {
             const resultResponse = await fetch(
-              `http://localhost:3000/api/workflows/execute/${encodeURIComponent(executionId)}?wait_ms=25000`,
+              `http://localhost:3000/api/workflows/execute/${encodeURIComponent(executionId)}`,
               {
                 method: "GET",
                 headers: {
@@ -138,6 +142,7 @@ export const RunWorkflowPlugin: Plugin = async (_ctx) => {
               status?: unknown
             }
             if (resultPayload.status === "running") {
+              await sleep(500)
               continue
             }
             if (resultPayload.status !== "success") {
