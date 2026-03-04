@@ -26,7 +26,7 @@ All workflow execution performed by the agent **must** go through the `runWorkfl
 - Only workflows that have been **approved by an engineer user** can be executed. This check (among other checks) is performed by the `runWorkflow` tool.
 - The `runWorkflow` can throw an error for various reasons. If it does, read the error message and report it to the user accurately.
 
-Workflows must still be fully executable end-to-end by the platform tooling (given correct deps + env), but direct Python execution is not allowed.
+Workflows must still be fully executable end-to-end by the platform tooling (given correct deps + env), but direct Python/Node execution is not allowed.
 
 **Forbidden actions (for the agent):**
 - ❌ `python run.py`
@@ -35,6 +35,9 @@ Workflows must still be fully executable end-to-end by the platform tooling (giv
 - ❌ `/usr/bin/python ...`, `/usr/bin/python3 ...`, `.venv/bin/python ...`, `env python ...`, `env python3 ...`
 - ❌ `python -m ...`, `python3 -m ...`, `py -m ...` (including module-based launch paths)
 - ❌ Any alias, symlink, wrapper, or alternative interpreter invocation that executes Python code
+- ❌ `node script.js`, `nodejs script.js`, `npx node ...`, `/usr/bin/node ...`
+- ❌ `node -e ...`, `node --eval ...`, `node -p ...` (including eval/inline execution)
+- ❌ Any alias, symlink, wrapper, or alternative interpreter invocation that executes Node.js code
 - ❌ Any shell command that runs a workflow script
 
 **Required action:**
@@ -84,7 +87,7 @@ A **workflow** is a self-contained automation package that lives in `workflows/<
 - Must be **approved by an engineer user** before it can be executed
 - Internally runs through approved platform runtime entrypoints
   - **Agent execution**: must be invoked via `runWorkflow` (never via shell)
-  - **Human execution**: must also go through approved platform tooling (no direct Python execution)
+  - **Human execution**: must also go through approved platform tooling (no direct Python/Node execution)
 
 ---
 
@@ -314,7 +317,7 @@ days_back = args.days_back
 
 ## Shared Best Practices
 
-1. **Never run scripts directly with Python** — Always use the `runWorkflow` tool or other approved platform tooling
+1. **Never run scripts directly with Python or Node** — Always use the `runWorkflow` tool or other approved platform tooling
 2. **Always check for existing skills first** — you MUST try `findSkill` and check whether a custom skill can fulfill the request before creating new workflow logic.
 3. **Always check for existing workflows** before creating new ones — you MUST use the `findSimilarWorkflow` tool to do this. Use `listAvailableWorkflows` if you need a full inventory first. Only create new ones if no existing workflow can fit the request. If needed, modify the existing workflow to fit the request WITHOUT losing older functionality.
    - If you find a similar workflow, **study it and follow its business logic and conventions**.
@@ -409,7 +412,7 @@ When asked to "Create a workflow that checks Stripe for failed payments":
    - Edit `requirements.txt` — Add `stripe` dependency (no version specifier)
    - Edit `.env` — Add `STRIPE_API_KEY` (never commit)
    - Edit `.env.example` — Template with `STRIPE_API_KEY=sk_test_...`
-   - Create `.venv/` — Use approved platform tooling only; do not invoke Python directly from shell
+   - Create `.venv/` — Use approved platform tooling only; do not invoke Python/Node directly from shell
    - Update `requirements.lock.txt` — Run `pip freeze > requirements.lock.txt` after installing
    - Edit `README.md` — Document usage and required secrets
 4. If unsure about Stripe API details, ask the user for help or search the web using your tools.
@@ -419,11 +422,12 @@ When asked to "Create a workflow that checks Stripe for failed payments":
 
 When asked to "Run the failed-stripe-payments workflow for customer cus_123":
 
-1. **DO NOT** run `python run.py` or any shell command
+1. **DO NOT** run `python run.py`, `node script.js`, or any shell command
 2. **DO NOT** run any Python interpreter command (`python`, `python3`, `python3.x`, `py`, `pypy`, absolute/interpreter-path variants, or `-m` module invocations)
-3. Use the `runWorkflow` tool.
-4. If the workflow is not approved, inform the user about the error and that they need to wait for an engineer's approval
-5. If the workflow runs successfully, report the output to the user
+3. **DO NOT** run any Node interpreter command (`node`, `nodejs`, absolute/interpreter-path variants, or `-e`/`--eval`/`-p` inline execution)
+4. Use the `runWorkflow` tool.
+5. If the workflow is not approved, inform the user about the error and that they need to wait for an engineer's approval
+6. If the workflow runs successfully, report the output to the user
 
 ## Example: Finding a workflow to run
 When the user does not specify a workflow to run, you MUST use the `findSimilarWorkflow` tool to find a workflow to run. You may use `listAvailableWorkflows` first when you need to quickly inspect all accessible options. For example, if the user asks "How many users do I have in my app?"
