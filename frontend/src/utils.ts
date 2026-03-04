@@ -29,8 +29,8 @@ function attachAuthRedirectInterceptor(instance: typeof axiosInstance) {
 attachAuthRedirectInterceptor(axiosInstance)
 attachAuthRedirectInterceptor(axiosUploadInstance)
 
-export type SessionStatus = 'busy' | 'retry' | 'idle'
-export type MessagesPayload = Array<{ info: Message; parts: Part[] }>
+type SessionStatus = 'busy' | 'retry' | 'idle'
+type MessagesPayload = Array<{ info: Message; parts: Part[] }>
 
 export function assertSessionStatus(value: unknown): SessionStatus {
     if (value === 'busy' || value === 'retry' || value === 'idle') {

@@ -13,6 +13,8 @@ interface IgnoreRuleSet {
 const execFileAsync = promisify(execFile);
 const WORKSPACE_DB_DIRECTORY = ".sqlite";
 const WORKSPACE_DB_FILENAME = "data.db";
+const HONEYTOKEN_UUID = "1f9f0b72-5f9f-4c9b-aef1-2fb2e0f6d8c4";
+const HONEYTOKEN_FILE_NAME = `honeytoken-${HONEYTOKEN_UUID}.txt`;
 
 export function getWorkspaceDirFromEnv(): string {
     let workspaceDir = assertEnv("WORKSPACE_DIR");
@@ -22,7 +24,7 @@ export function getWorkspaceDirFromEnv(): string {
     return workspaceDir;
 }
 
-export function getWorkspaceDatabasePath(): string {
+function getWorkspaceDatabasePath(): string {
     return path.join(getWorkspaceDirFromEnv(), WORKSPACE_DB_DIRECTORY, WORKSPACE_DB_FILENAME);
 }
 
@@ -34,8 +36,14 @@ function normalizeRelativePath(relativePath: string): string {
     return relativePath.split(path.sep).join("/");
 }
 
-function shouldSkipWorkflowContent(relativePath: string): boolean {
-    return relativePath === "workflows" || relativePath.startsWith("workflows/");
+const MANAGED_WORKSPACE_DIRECTORIES = new Set([
+    "workflows",
+    "custom-skills",
+]);
+
+function shouldSkipManagedDirectoryContent(relativePath: string): boolean {
+    const [topLevelSegment] = relativePath.split("/");
+    return MANAGED_WORKSPACE_DIRECTORIES.has(topLevelSegment);
 }
 
 function evaluateIgnoreRuleSets(
@@ -111,7 +119,7 @@ function syncTemplateDirectory(
             relativePath.length > 0 ? path.join(relativePath, entry.name) : entry.name
         );
 
-        if (shouldSkipWorkflowContent(relativeEntryPath)) {
+        if (shouldSkipManagedDirectoryContent(relativeEntryPath)) {
             continue;
         }
 
@@ -134,6 +142,11 @@ function syncTemplateDirectory(
 export function initializeWorkspaceDirectory(): void {
     const workspaceDir = getWorkspaceDirFromEnv();
     fs.mkdirSync(workspaceDir, { recursive: true });
+    fs.mkdirSync(path.join(workspaceDir, "workflows"), { recursive: true });
+    const skillsDir = path.join(workspaceDir, "custom-skills");
+    fs.mkdirSync(skillsDir, { recursive: true });
+    const honeytokenPath = path.join(skillsDir, HONEYTOKEN_FILE_NAME);
+    fs.writeFileSync(honeytokenPath, `DO_NOT_EXPOSE:${HONEYTOKEN_UUID}\n`, "utf-8");
 
     const workspaceTemplateDir = path.join(process.cwd(), "src", "workspace_files");
     if (!fs.existsSync(workspaceTemplateDir)) {
@@ -141,7 +154,6 @@ export function initializeWorkspaceDirectory(): void {
     }
 
     syncTemplateDirectory(workspaceTemplateDir, workspaceDir, "", []);
-    fs.mkdirSync(path.join(workspaceDir, "workflows"), { recursive: true });
 }
 
 export async function ensureWorkspaceDatabase(): Promise<void> {

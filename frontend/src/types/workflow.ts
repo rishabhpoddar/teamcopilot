@@ -4,12 +4,8 @@
  */
 export type {
     WorkflowInput,
-    WorkflowManifest,
-    WorkflowSummary,
     Workflow,
     WorkflowRunStatus,
     WorkflowRun,
-    WorkflowApprovalDiffFile,
-    WorkflowApprovalDiffSummary,
     WorkflowApprovalDiffResponse,
-} from "../../../src/types/workflow";
+} from "../../../src/types/shared/workflow";

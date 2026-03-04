@@ -1,10 +1,10 @@
-export interface WorkflowEditorAccessResponse {
-    can_view: true;
+export interface EditorAccessResponse {
+    can_view: boolean;
     can_edit: boolean;
-    workflow_status: "approved" | "pending";
+    editor_status: "approved" | "pending";
 }
 
-export interface WorkflowFileNode {
+export interface FileNode {
     path: string;
     name: string;
     kind: "file" | "directory";
@@ -14,12 +14,12 @@ export interface WorkflowFileNode {
     readable: boolean;
 }
 
-export interface WorkflowFileTreeResponse {
+export interface FileTreeResponse {
     path: string;
-    entries: WorkflowFileNode[];
+    entries: FileNode[];
 }
 
-export interface WorkflowFileContentTextResponse {
+export interface FileContentTextResponse {
     path: string;
     name: string;
     kind: "text";
@@ -30,7 +30,7 @@ export interface WorkflowFileContentTextResponse {
     modified_at_ms: number;
 }
 
-export interface WorkflowFileContentBinaryResponse {
+export interface FileContentBinaryResponse {
     path: string;
     name: string;
     kind: "binary";
@@ -40,15 +40,15 @@ export interface WorkflowFileContentBinaryResponse {
     message: string;
 }
 
-export type WorkflowFileContentResponse = WorkflowFileContentTextResponse | WorkflowFileContentBinaryResponse;
+export type FileContentResponse = FileContentTextResponse | FileContentBinaryResponse;
 
-export interface WorkflowFileSaveRequest {
+export interface FileSaveRequest {
     path: string;
     content: string;
     base_etag: string;
 }
 
-export interface WorkflowFileSaveResponse {
+export interface FileSaveResponse {
     path: string;
     etag: string;
     modified_at_ms: number;

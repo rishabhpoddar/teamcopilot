@@ -7,7 +7,7 @@ import { randomUUID } from "crypto";
 import multer from "multer";
 import prisma from "../prisma/client";
 import { WorkflowManifest, WorkflowMetadata, WorkflowSummary } from "../types/workflow";
-import { WorkflowEditorAccessResponse } from "../types/workflow-files";
+import { EditorAccessResponse } from "../types/workflow-files";
 import { apiHandler } from "../utils/index";
 import {
     listWorkflowSlugs,
@@ -26,17 +26,15 @@ import {
 } from "../utils/workflow-files";
 import {
     addApproverToWorkflowRunPermissionsIfRestricted,
-    getPermissionSummaryFields,
     getWorkflowRunPermissionWithUsers,
-    mapPermissionToApi,
     setWorkflowRunPermissions,
     initializeWorkflowRunPermissionsForCreator,
 } from "../utils/workflow-permissions";
+import { assertCommonPermissionMode } from "../utils/permission-common";
 import {
     approveWorkflowWithSnapshot,
     buildApprovalDiffResponse,
     collectCurrentWorkflowSnapshot,
-    ensureWorkflowMatchesApprovedSnapshotForRun,
     getWorkflowSnapshotApprovalState,
     loadApprovedSnapshotFromDb,
     restoreWorkflowToApprovedSnapshot,
@@ -45,6 +43,8 @@ import { getWorkspaceDirFromEnv } from "../utils/workspace-sync";
 import { startWorkflowRunViaBackend } from "../utils/workflow-runner";
 import { isWorkflowSessionInterrupted, markWorkflowSessionAborted } from "../utils/workflow-interruption";
 import { abortOpencodeSession } from "../utils/session-abort";
+import { registerResourceFileRoutes } from "../utils/resource-file-routes";
+import { getResourceAccessSummary } from "../utils/resource-access";
 
 const router = express.Router({ mergeParams: true });
 
@@ -85,45 +85,30 @@ async function assertCurrentUserCanRunWorkflow(slug: string, userId: string): Pr
         };
     }
 
-    const permission = await getWorkflowRunPermissionWithUsers(slug);
-    const permissionSummary = getPermissionSummaryFields(permission, userId);
-    if (!permissionSummary.can_current_user_run) {
+    const permissionSummary = await getResourceAccessSummary("workflow", slug, userId);
+    if (!permissionSummary.can_edit) {
         throw {
             status: 403,
-            message: permissionSummary.is_run_locked_due_to_missing_users
+            message: permissionSummary.is_locked_due_to_missing_users
                 ? 'Workflow cannot be run because no allowed users remain'
                 : 'You do not have permission to run this workflow. Please contact the workflow owner to request permission.'
         };
     }
-
-    await ensureWorkflowMatchesApprovedSnapshotForRun(slug);
 }
 
-async function getWorkflowEditorAccess(slug: string, userId: string, role: string | undefined): Promise<WorkflowEditorAccessResponse> {
-    const { metadata } = await readWorkflowManifestAndEnsurePermissions(slug);
-    const isOwner = metadata.created_by_user_id === userId;
-    const isEngineer = role === "Engineer";
-    const approvalState = await getWorkflowSnapshotApprovalState(slug);
-    const workflowStatus = approvalState.is_current_code_approved ? "approved" : "pending";
-
-    let canEdit = false;
-    if (workflowStatus === "approved") {
-        const permission = await getWorkflowRunPermissionWithUsers(slug);
-        const permissionSummary = getPermissionSummaryFields(permission, userId);
-        canEdit = permissionSummary.can_current_user_run;
-    } else {
-        canEdit = isOwner || isEngineer;
-    }
+async function getWorkflowEditorAccess(slug: string, userId: string): Promise<EditorAccessResponse> {
+    const accessSummary = await getResourceAccessSummary("workflow", slug, userId);
+    const workflowStatus = accessSummary.is_approved ? "approved" : "pending";
 
     return {
-        can_view: true,
-        can_edit: canEdit,
-        workflow_status: workflowStatus,
+        can_view: accessSummary.can_view,
+        can_edit: accessSummary.can_edit,
+        editor_status: workflowStatus,
     };
 }
 
-async function assertCanEditWorkflowFiles(slug: string, userId: string, role: string | undefined): Promise<void> {
-    const access = await getWorkflowEditorAccess(slug, userId, role);
+async function assertCanEditWorkflowFiles(slug: string, userId: string): Promise<void> {
+    const access = await getWorkflowEditorAccess(slug, userId);
     if (!access.can_edit) {
         throw {
             status: 403,
@@ -163,10 +148,8 @@ router.get('/', apiHandler(async (req, res) => {
         const metadata = metadataBySlug.get(slug);
         if (!manifest) continue;
         if (!metadata) continue;
-        const permission = await getWorkflowRunPermissionWithUsers(slug);
-        const permissionSummary = getPermissionSummaryFields(permission, req.userId!);
-        const approvalState = await getWorkflowSnapshotApprovalState(slug);
-        const createdByUserId = metadata.created_by_user_id ?? null;
+        const accessSummary = await getResourceAccessSummary("workflow", slug, req.userId!);
+        const createdByUserId = metadata.created_by_user_id;
         workflows.push({
             slug,
             name: slug,
@@ -175,8 +158,11 @@ router.get('/', apiHandler(async (req, res) => {
             created_by_user_name: createdByUserId ? (creatorNameById.get(createdByUserId) ?? null) : null,
             created_by_user_email: createdByUserId ? (creatorEmailById.get(createdByUserId) ?? null) : null,
             approved_by_user_id: metadata.approved_by_user_id ?? null,
-            is_approved: approvalState.is_current_code_approved,
-            ...permissionSummary
+            is_approved: accessSummary.is_approved,
+            can_view: accessSummary.can_view,
+            can_edit: accessSummary.can_edit,
+            permission_mode: accessSummary.permission_mode,
+            is_locked_due_to_missing_users: accessSummary.is_locked_due_to_missing_users
         });
     }
 
@@ -184,7 +170,7 @@ router.get('/', apiHandler(async (req, res) => {
 }, true));
 
 // GET /api/workflows/runs - List workflow run history (last 50, all users)
-router.get('/runs', apiHandler(async (req, res) => {
+router.get('/runs', apiHandler(async (_req, res) => {
     const runs = await prisma.workflow_runs.findMany({
         orderBy: { started_at: 'desc' },
         take: 50,
@@ -322,9 +308,8 @@ router.post('/runs/:id/stop', apiHandler(async (req, res) => {
         return;
     }
 
-    const permission = await getWorkflowRunPermissionWithUsers(run.workflow_slug);
-    const permissionSummary = getPermissionSummaryFields(permission, req.userId!);
-    if (!permissionSummary.can_current_user_run) {
+    const permissionSummary = await getResourceAccessSummary("workflow", run.workflow_slug, req.userId!);
+    if (!permissionSummary.can_edit) {
         throw {
             status: 403,
             message: 'You do not have permission to stop this workflow run'
@@ -588,28 +573,22 @@ router.delete('/:slug', apiHandler(async (req, res) => {
     await prisma.workflow_runs.deleteMany({
         where: { workflow_slug: slug }
     });
-    await prisma.workflow_metadata.deleteMany({
-        where: { workflow_slug: slug }
+    await prisma.resource_metadata.deleteMany({
+        where: {
+            resource_kind: "workflow",
+            resource_slug: slug
+        }
+    });
+    await prisma.resource_permissions.deleteMany({
+        where: {
+            resource_kind: "workflow",
+            resource_slug: slug
+        }
     });
 
     deleteWorkflowDirectory(slug);
 
     res.json({ success: true });
-}, true));
-
-// GET /api/workflows/users - List users for permission picker
-router.get('/users', apiHandler(async (_req, res) => {
-    const users = await prisma.users.findMany({
-        orderBy: { name: 'asc' },
-        select: {
-            id: true,
-            name: true,
-            email: true,
-            role: true
-        }
-    });
-
-    res.json({ users });
 }, true));
 
 // GET /api/workflows/:slug/approval-diff - Preview current code diff vs approved snapshot
@@ -631,132 +610,30 @@ router.get('/:slug/approval-diff', apiHandler(async (req, res) => {
     res.json(diff);
 }, true));
 
-// GET /api/workflows/:slug/files/access - Get workflow editor access capabilities
-router.get('/:slug/files/access', apiHandler(async (req, res) => {
-    const slug = req.params.slug as string;
-    const access = await getWorkflowEditorAccess(slug, req.userId!, req.role);
-    res.json(access);
-}, true));
-
-// GET /api/workflows/:slug/files/tree - List a workflow directory (lazy)
-router.get('/:slug/files/tree', apiHandler(async (req, res) => {
-    const slug = req.params.slug as string;
-    await readWorkflowManifestAndEnsurePermissions(slug);
-    const rawPath = typeof req.query.path === "string" ? req.query.path : undefined;
-    const tree = listWorkflowDirectory(slug, rawPath);
-    res.json(tree);
-}, true));
-
-// GET /api/workflows/:slug/files/content - Read a workflow file
-router.get('/:slug/files/content', apiHandler(async (req, res) => {
-    const slug = req.params.slug as string;
-    await readWorkflowManifestAndEnsurePermissions(slug);
-    const rawPath = typeof req.query.path === "string" ? req.query.path : undefined;
-    const content = readWorkflowFileContent(slug, rawPath);
-    (res.locals as { skipResponseSanitization?: boolean }).skipResponseSanitization = true;
-    res.json(content);
-}, true));
-
-// PUT /api/workflows/:slug/files/content - Save a workflow file
-router.put('/:slug/files/content', apiHandler(async (req, res) => {
-    const slug = req.params.slug as string;
-    await assertCanEditWorkflowFiles(slug, req.userId!, req.role);
-    const { path, content, base_etag } = req.body as {
-        path?: unknown;
-        content?: unknown;
-        base_etag?: unknown;
-    };
-    if (typeof path !== "string" || typeof content !== "string" || typeof base_etag !== "string") {
-        throw {
-            status: 400,
-            message: "path, content, and base_etag are required"
-        };
-    }
-    const result = saveWorkflowFileContent(slug, {
-        path,
-        content,
-        base_etag,
-    });
-    res.json(result);
-}, true));
-
-// POST /api/workflows/:slug/files - Create a file or folder
-router.post('/:slug/files', apiHandler(async (req, res) => {
-    const slug = req.params.slug as string;
-    await assertCanEditWorkflowFiles(slug, req.userId!, req.role);
-    const { parent_path, name, kind } = req.body as { parent_path?: unknown; name?: unknown; kind?: unknown };
-    if (typeof name !== "string" || (kind !== "file" && kind !== "directory")) {
-        throw {
-            status: 400,
-            message: 'name and kind ("file" or "directory") are required'
-        };
-    }
-    const node = createWorkflowFileOrFolder(slug, typeof parent_path === "string" ? parent_path : "", name, kind);
-    res.json({ node });
-}, true));
-
-// POST /api/workflows/:slug/files/upload - Upload a file to a workflow folder
-router.post('/:slug/files/upload', workflowFileUpload.single("file"), apiHandler(async (req, res) => {
-    const slug = req.params.slug as string;
-    await assertCanEditWorkflowFiles(slug, req.userId!, req.role);
-    const { parent_path, name } = req.body as {
-        parent_path?: unknown;
-        name?: unknown;
-    };
-    if (typeof name !== "string") {
-        throw {
-            status: 400,
-            message: "name is required"
-        };
-    }
-    if (!req.file?.path) {
-        throw {
-            status: 400,
-            message: "file is required"
-        };
-    }
-
-    try {
-        const node = uploadWorkflowFileFromTempPath(slug, typeof parent_path === "string" ? parent_path : "", name, req.file.path);
-        res.json({ node });
-    } finally {
-        if (fs.existsSync(req.file.path)) {
-            fs.unlinkSync(req.file.path);
-        }
-    }
-}, true));
-
-// PATCH /api/workflows/:slug/files/rename - Rename a file or folder
-router.patch('/:slug/files/rename', apiHandler(async (req, res) => {
-    const slug = req.params.slug as string;
-    await assertCanEditWorkflowFiles(slug, req.userId!, req.role);
-    const { path, new_name } = req.body as { path?: unknown; new_name?: unknown };
-    if (typeof path !== "string" || typeof new_name !== "string") {
-        throw {
-            status: 400,
-            message: "path and new_name are required"
-        };
-    }
-    const result = renameWorkflowPath(slug, path, new_name);
-    res.json(result);
-}, true));
-
-// DELETE /api/workflows/:slug/files - Delete a file or folder
-router.delete('/:slug/files', apiHandler(async (req, res) => {
-    const slug = req.params.slug as string;
-    await assertCanEditWorkflowFiles(slug, req.userId!, req.role);
-    const rawPath = typeof req.query.path === "string" ? req.query.path : undefined;
-    deleteWorkflowPath(slug, rawPath);
-    res.json({ success: true });
-}, true));
+registerResourceFileRoutes({
+    router,
+    uploadMiddleware: workflowFileUpload.single("file"),
+    assertCanView: async () => Promise.resolve(),
+    ensureResourceExists: async (slug: string) => {
+        await readWorkflowManifestAndEnsurePermissions(slug);
+    },
+    getEditorAccess: getWorkflowEditorAccess,
+    assertCanEdit: assertCanEditWorkflowFiles,
+    listDirectory: listWorkflowDirectory,
+    readFileContent: readWorkflowFileContent,
+    saveFileContent: saveWorkflowFileContent,
+    createFileOrFolder: createWorkflowFileOrFolder,
+    uploadFileFromTempPath: uploadWorkflowFileFromTempPath,
+    renamePath: renameWorkflowPath,
+    deletePath: deleteWorkflowPath,
+});
 
 // GET /api/workflows/:slug - Get workflow details from filesystem
 router.get('/:slug', apiHandler(async (req, res) => {
     const slug = req.params.slug as string;
     const { manifest, metadata } = await readWorkflowManifestAndEnsurePermissions(slug);
     const permission = await getWorkflowRunPermissionWithUsers(slug);
-    const permissionSummary = getPermissionSummaryFields(permission, req.userId!);
-    const approvalState = await getWorkflowSnapshotApprovalState(slug);
+    const accessSummary = await getResourceAccessSummary("workflow", slug, req.userId!);
 
     const createdByUserId = metadata.created_by_user_id ?? null;
     const approvedByUserId = metadata.approved_by_user_id ?? null;
@@ -770,6 +647,10 @@ router.get('/:slug', apiHandler(async (req, res) => {
     const usersById = new Map(users.map((user) => [user.id, user]));
     const creator = createdByUserId ? (usersById.get(createdByUserId) ?? null) : null;
     const approver = approvedByUserId ? (usersById.get(approvedByUserId) ?? null) : null;
+    const permissionMode = assertCommonPermissionMode(permission.permission_mode, "workflow run");
+    const permissions = permissionMode === "everyone"
+        ? { mode: "everyone" as const }
+        : { mode: "restricted" as const, allowed_user_ids: permission.allowedUsers.map((row) => row.user_id) };
     res.json({
         workflow: {
             slug,
@@ -779,12 +660,15 @@ router.get('/:slug', apiHandler(async (req, res) => {
             created_by_user_name: creator?.name ?? null,
             created_by_user_email: creator?.email ?? null,
             approved_by_user_id: approvedByUserId,
-            is_approved: approvalState.is_current_code_approved,
+            is_approved: accessSummary.is_approved,
             approved_by_user_name: approver?.name ?? null,
             approved_by_user_email: approver?.email ?? null,
-            ...permissionSummary,
-            run_permissions: mapPermissionToApi(permission),
-            allowed_runners_resolved: permission.allowedUsers.map((row) => ({
+            can_view: accessSummary.can_view,
+            can_edit: accessSummary.can_edit,
+            permission_mode: accessSummary.permission_mode,
+            is_locked_due_to_missing_users: accessSummary.is_locked_due_to_missing_users,
+            permissions,
+            allowed_users_resolved: permission.allowedUsers.map((row) => ({
                 user_id: row.user.id,
                 name: row.user.name,
                 email: row.user.email,
@@ -796,8 +680,7 @@ router.get('/:slug', apiHandler(async (req, res) => {
     });
 }, true));
 
-// PATCH /api/workflows/:slug/run-permissions - Update run permissions
-router.patch('/:slug/run-permissions', apiHandler(async (req, res) => {
+const updateWorkflowPermissionsHandler = apiHandler(async (req, res) => {
     const slug = req.params.slug as string;
     const { metadata } = await readWorkflowManifestAndEnsurePermissions(slug);
 
@@ -809,12 +692,11 @@ router.patch('/:slug/run-permissions', apiHandler(async (req, res) => {
         };
     }
 
-    const currentPermission = await getWorkflowRunPermissionWithUsers(slug);
-    const currentSummary = getPermissionSummaryFields(currentPermission, req.userId!);
-    if (!currentSummary.can_current_user_manage_run_permissions) {
+    const currentSummary = await getResourceAccessSummary("workflow", slug, req.userId!);
+    if (!currentSummary.can_edit) {
         throw {
             status: 403,
-            message: currentSummary.is_run_locked_due_to_missing_users
+            message: currentSummary.is_locked_due_to_missing_users
                 ? 'Workflow permissions cannot be modified because no allowed users remain'
                 : 'You do not have permission to modify workflow run permissions'
         };
@@ -834,14 +716,18 @@ router.patch('/:slug/run-permissions', apiHandler(async (req, res) => {
             mode: 'restricted',
             allowed_user_ids: Array.isArray(allowed_user_ids) ? allowed_user_ids.map((id) => String(id)) : []
         }, metadata.created_by_user_id);
-    const updatedSummary = getPermissionSummaryFields(updatedPermission, req.userId!);
+    const updatedSummary = await getResourceAccessSummary("workflow", slug, req.userId!);
+    const updatedPermissionMode = assertCommonPermissionMode(updatedPermission.permission_mode, "workflow run");
+    const permissions = updatedPermissionMode === "everyone"
+        ? { mode: "everyone" as const }
+        : { mode: "restricted" as const, allowed_user_ids: updatedPermission.allowedUsers.map((row) => row.user_id) };
 
     res.json({
         workflow: {
             slug,
             ...updatedSummary,
-            run_permissions: mapPermissionToApi(updatedPermission),
-            allowed_runners_resolved: updatedPermission.allowedUsers.map((row) => ({
+            permissions,
+            allowed_users_resolved: updatedPermission.allowedUsers.map((row) => ({
                 user_id: row.user.id,
                 name: row.user.name,
                 email: row.user.email,
@@ -850,7 +736,10 @@ router.patch('/:slug/run-permissions', apiHandler(async (req, res) => {
             }))
         }
     });
-}, true));
+}, true);
+
+// PATCH /api/workflows/:slug/permissions - Update permissions (canonical)
+router.patch('/:slug/permissions', updateWorkflowPermissionsHandler);
 
 // POST /api/workflows/request-permission - Create a tool execution permission request
 router.post('/request-permission', apiHandler(async (req, res) => {

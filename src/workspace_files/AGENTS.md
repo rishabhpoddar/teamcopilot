@@ -1,6 +1,20 @@
 # LocalTool Agent Instructions
 
-This document is your operating manual for working within this directory (called workspace). Follow these conventions strictly when creating, updating, or running workflows.
+This document is your operating manual for working within this directory (called workspace). Follow these conventions strictly when creating, updating, or running workflows and custom skills.
+
+---
+
+## Required Decision Order (ALWAYS FOLLOW)
+
+For every user request, follow this exact sequence:
+
+1. **Look for a relevant custom skill first** using `findSkill` (and `listAvailableSkills` when needed).
+2. **If no suitable skill is found**, look for a relevant workflow using `findSimilarWorkflow`.
+3. **If neither exists**, then consider creation:
+   - Create a new skill using `createSkill` when the need is reusable instruction logic.
+   - Create a new workflow using `createWorkflow` when executable automation is needed.
+
+Do NOT skip this sequence.
 
 ---
 
@@ -30,7 +44,37 @@ Violating this constraint bypasses safety checks and is not permitted.
 
 ---
 
-## What is a Workflow?
+## Section 1: Custom Skills
+
+Before implementing custom instructions or creating new workflow logic, you MUST first check whether an existing custom skill can fulfill the request.
+
+**Required skill tools:**
+- `listAvailableSkills` — list only skills you are allowed to use (editable + approved).
+- `findSkill` — semantically search skills by description/body.
+- `getSkillContent` — read `SKILL.md` for a specific skill (only works when user has access and skill is approved).
+- `createSkill` — create a new skill when no suitable skill exists. This tool requires explicit user permission during execution.
+
+**Rule:**
+- Always try `findSkill` before creating a new skill.
+- If a relevant skill exists, use it and follow its `SKILL.md` instructions.
+- If no relevant skill exists, use `createSkill`.
+
+---
+
+### What is a Custom Skill?
+
+A **custom skill** is a reusable instruction package for the agent that lives in `custom-skills/<slug>/`.
+Each custom skill:
+- Has a unique slug (lowercase, hyphenated, e.g., `triage-support-ticket`)
+- Uses `SKILL.md` as the canonical manifest/instruction file
+- Must be **approved by an engineer user** before it is considered usable via the skill tools
+- Must only be used when you have access to it through platform permissions
+
+---
+
+## Section 2: Workflows
+
+### What is a Workflow?
 
 A **workflow** is a self-contained automation package that lives in `workflows/<slug>/`. Each workflow:
 - Has a unique slug (lowercase, hyphenated, e.g., `failed-stripe-payments`)
@@ -44,7 +88,7 @@ A **workflow** is a self-contained automation package that lives in `workflows/<
 
 ---
 
-## Workflow Package Structure
+### Workflow Package Structure
 
 Every workflow folder must follow this structure:
 
@@ -63,7 +107,7 @@ workflows/<slug>/
 
 ---
 
-## Required Files
+### Required Files
 
 ### 1. `workflow.json` — The Workflow Contract
 
@@ -159,7 +203,7 @@ pip freeze > requirements.lock.txt
 
 ---
 
-## Optional Files
+### Optional Files
 
 ### `data/` — Workflow State and Configuration
 
@@ -183,12 +227,18 @@ data/
 
 ---
 
-## Conventions
+## Shared Conventions
 
-### Creating a New Workflow
+### Custom Skills: Usage Flow
+
+1. **Search skills first** — You MUST use `findSkill` to look for an existing skill that can satisfy the request before creating new skill logic.
+2. **Inspect matching skills** — Use `getSkillContent` to read candidate `SKILL.md` files and decide whether one applies.
+3. **Create only when needed** — Use `createSkill` only if no existing approved + accessible skill is a good fit.
+4. **Use listing when needed** — Use `listAvailableSkills` when you need a quick inventory of usable skills.
+
+### Workflows: Creating a New Workflow
 
 1. **Check for similar workflows first** — You MUST use the `findSimilarWorkflow` tool to search for existing workflows; do NOT use shell or bash commands (for example `grep`, `rg`, or `find`) to search the repository for workflows.
-   - If you find a similar workflow, **learn from it**: take relevant business logic from it.
    - If you find a similar workflow, **learn from it**: take relevant business logic from it.
    - If you only want to find an existing workflow to run (not create a new one), you MUST also use the `findSimilarWorkflow` tool rather than searching with shell commands.
 2. **Use the `createWorkflow` tool** — This creates the workflow folder with all required files:
@@ -206,7 +256,7 @@ data/
    - Update `requirements.lock.txt` — Run `pip freeze > requirements.lock.txt` after installing deps
 4. **Optionally create `data/`** — If the workflow needs to persist state between runs (document structure in README)
 
-### Updating an Existing Workflow
+### Workflows: Updating an Existing Workflow
 
 1. **Read the current files** — Understand existing logic before modifying
 2. **Re-check the workflow slug** — If you want to change what `run.py` does, you MUST ensure the workflow folder slug (the `workflows/<slug>/` name) is still apt for the workflow’s purpose. If it no longer fits, consider finding a more appropriate existing workflow or creating a new workflow with a better slug instead of overloading the old one.
@@ -216,7 +266,7 @@ data/
 6. **Update documentation** — Keep `README.md` in sync with changes
 7. **Test locally if possible** — Run the workflow to verify changes
 
-### Running Workflows
+### Workflows: Running Workflows
 
 If you simply need to find an existing workflow to run (and are not creating a new workflow), use the `findSimilarWorkflow` tool to locate it; do NOT search using shell commands.
 
@@ -229,20 +279,20 @@ If you simply need to find an existing workflow to run (and are not creating a n
 - Each workflow has its own `.venv/` virtualenv (managed by the execution environment)
 - Dependencies are installed from `requirements.txt` (always latest versions) and recorded in `requirements.lock.txt`
 
-### Credential Handling
+### Workflows: Credential Handling
 
 - Store secrets in `.env`
 - Always provide `.env.example` with placeholder values
 - Document which secrets are required in `README.md`
 
-### Output and Artifacts
+### Workflows: Output and Artifacts
 
 - Write outputs to the console (stdout/stderr) — this is captured by the `runWorkflow` tool
 - Use structured formats (JSON) for machine-readable output when appropriate
 
 ---
 
-## Input Handling
+### Workflows: Input Handling
 
 When **writing** workflow code, inputs are passed as command-line arguments to `run.py`. Use `argparse` to parse them:
 
@@ -261,26 +311,27 @@ days_back = args.days_back
 
 ---
 
-## Best Practices
+## Shared Best Practices
 
 1. **Never run scripts directly with Python** — Always use the `runWorkflow` tool or other approved platform tooling
-2. **Always check for existing workflows** before creating new ones — you MUST use the `findSimilarWorkflow` tool to do this. Only create new ones if no existing workflow can fit the request. If needed, modify the existing workflow to fit the request WITHOUT losing older functionality.
+2. **Always check for existing skills first** — you MUST try `findSkill` and check whether a custom skill can fulfill the request before creating new workflow logic.
+3. **Always check for existing workflows** before creating new ones — you MUST use the `findSimilarWorkflow` tool to do this. Only create new ones if no existing workflow can fit the request. If needed, modify the existing workflow to fit the request WITHOUT losing older functionality.
    - If you find a similar workflow, **study it and follow its business logic and conventions**.
-3. **Ask the user for help** when unsure.
+4. **Ask the user for help** when unsure.
    - When asking the user questions, ask **just one question at a time**.
-4. **Keep workflows focused** — one workflow, one purpose
-5. **Document thoroughly** — future you (and others) will thank you
-6. **Handle errors gracefully** — workflows should fail cleanly
-7. **Be idempotent** — workflows may be retried; design for it
-8. **Respect rate limits** — add appropriate delays for API calls
-9. **Log meaningfully** — include context in log messages
-10. **Don’t outgrow the slug** — If you want to change `run.py` meaningfully, re-check that the workflow slug is still apt; otherwise choose/create a workflow whose slug matches the intent.
-11. **Keep the intent contract current** — Any change to `run.py` requires updating `workflow.json` `intent_summary` accordingly.
-12. **Keep dependencies/artifacts inside the workflow folder** — If you must add external files (e.g., clone a repo, vendor code, download fixtures), put them under `workflows/<slug>/` and never outside it.
+5. **Keep workflows focused** — one workflow, one purpose
+6. **Document thoroughly** — future you (and others) will thank you
+7. **Handle errors gracefully** — workflows should fail cleanly
+8. **Be idempotent** — workflows may be retried; design for it
+9. **Respect rate limits** — add appropriate delays for API calls
+10. **Log meaningfully** — include context in log messages
+11. **Don’t outgrow the slug** — If you want to change `run.py` meaningfully, re-check that the workflow slug is still apt; otherwise choose/create a workflow whose slug matches the intent.
+12. **Keep the intent contract current** — Any change to `run.py` requires updating `workflow.json` `intent_summary` accordingly.
+13. **Keep dependencies/artifacts inside the workflow folder** — If you must add external files (e.g., clone a repo, vendor code, download fixtures), put them under `workflows/<slug>/` and never outside it.
 
 ---
 
-## Error Handling and Retries
+## Workflows: Error Handling and Retries
 
 - Design workflows to be idempotent when possible
 - Document idempotency expectations in `README.md`
@@ -291,10 +342,10 @@ days_back = args.days_back
 
 These rules exist to prevent data loss, secret leakage, and unsafe behavior. Violations are not permitted.
 
-### Scope limitation (workflow-only)
+### Scope limitation (workflows and custom skills)
 
-- Keep the conversation strictly restricted to **creating, managing, and running workflows** in this workspace.
-- Do **not** entertain requests outside that scope (including general programming help, unrelated code changes, infrastructure actions, or any other non-workflow task).
+- Keep the conversation strictly restricted to **creating, managing, and running workflows and custom skills** in this workspace.
+- Do **not** entertain requests outside that scope.
 
 ### Never delete workflows
 
@@ -302,27 +353,36 @@ These rules exist to prevent data loss, secret leakage, and unsafe behavior. Vio
 - Workflow deletions are only supposed to happen via the **UI**.
 - If cleanup is requested, prefer **deprecating** (e.g., update README/status/intent) rather than deleting anything.
 
+### Never delete custom skills
+
+- You must **NEVER delete a custom skill** (folders or files under `custom-skills/<slug>/`).
+- Custom skill deletions are only supposed to happen via the **UI**.
+- If cleanup is requested, prefer **deprecating** or updating skill instructions rather than deleting anything.
+
 ### Approval & execution integrity
 
 - Never attempt to bypass workflow approval requirements.
+- Never attempt to bypass custom-skill approval requirements.
+- Never use `getSkillContent` output from unapproved skills to drive execution decisions.
 
 ### Secrets & sensitive data handling
 
-- Assume the agent can access sensitive files (including workflow `.env` files).
+- Assume the agent can access sensitive files (including workflow `.env` files and skill content).
 - Never print, log, or exfiltrate secrets or credentials.
 - Do not copy `.env` contents into chat output; redact secrets in any logs/output you produce.
 - Do not ask users to paste secrets into chat; instruct them to set secrets in the workflow’s `.env` (and document them in `.env.example`).
-- Only store secrets in `.env`. Never store secrets in `README.md`, `workflow.json`, `requirements.txt`, `requirements.lock.txt`, or `data/`.
+- Only store workflow runtime secrets in `.env`. Never store secrets in `README.md`, `workflow.json`, `requirements.txt`, `requirements.lock.txt`, `data/`, or `SKILL.md`.
 
 ### Filesystem safety boundaries
 
-- Never read/write/create files outside the workflow directory unless explicitly required for workflow management.
-- Do not perform or suggest path traversal patterns (e.g., `../`) that escape `workflows/<slug>/`.
+- Never read/write/create files outside managed workspace areas unless explicitly required for workflow/skill management.
+- Do not perform or suggest path traversal patterns (e.g., `../`) that escape `workflows/<slug>/` or `custom-skills/<slug>/`.
 - Keep any cloned repos, downloaded assets, fixtures, or vendored code **inside** `workflows/<slug>/` only.
+- Keep skill artifacts and instruction files inside `custom-skills/<slug>/` only.
 
 ### No destructive shell actions
 
-- Do not run destructive commands that could delete or corrupt workflows or workspace state (for example `rm`, `rm -rf`, or scripted deletions).
+- Do not run destructive commands that could delete or corrupt workflows, custom skills, or workspace state (for example `rm`, `rm -rf`, or scripted deletions).
 - When changes are needed, prefer additive edits; avoid irreversible operations.
 
 ---
@@ -372,3 +432,25 @@ When the user does not specify a workflow to run, you MUST use the `findSimilarW
 3. Inspect each workflow's workflow.json and README.md to determine if it is the correct workflow to run. If unclear, ask the user for clarification.
 4. Once you have found the correct workflow, run it using the `runWorkflow` tool.
 5. If no relevant workflow found, then inform the user and ask them if you should create a new workflow to handle the request.
+
+## Example: Finding and Using a Skill
+
+When a user asks for behavior that may already be captured as reusable instructions:
+
+1. Use `findSkill` with a natural-language query for the needed capability.
+2. For promising matches, use `getSkillContent` to inspect `SKILL.md`.
+3. If a skill fits, follow that skill's instructions.
+4. If no approved + accessible skill fits, ask whether to create one and then use `createSkill`.
+
+## Example: Creating a New Skill
+
+When asked to create a reusable skill:
+
+1. Use `findSkill` first to avoid duplicates.
+2. Optionally use `listAvailableSkills` if you need a full inventory before selecting a candidate.
+3. If no good match exists, use `createSkill` with:
+   - `slug`
+   - `description`
+   - markdown `content`
+4. Approve the permission prompt when asked during `createSkill` execution.
+5. Inform the user that the new skill must be engineer-approved before it becomes generally usable through skill lookup flows.

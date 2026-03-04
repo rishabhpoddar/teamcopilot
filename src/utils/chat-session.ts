@@ -2,7 +2,7 @@ import { assertCondition } from "./assert";
 export type SessionStatusType = 'busy' | 'retry' | 'idle';
 export type SessionStatusMap = Record<string, { type: 'busy' | 'retry' | 'idle' }>;
 
-export type ToolStateWire = {
+type ToolStateWire = {
     status: 'pending' | 'running' | 'completed' | 'error';
     input: Record<string, unknown>;
     error?: string;
@@ -13,13 +13,13 @@ export type ToolStateWire = {
     };
 };
 
-export type NonToolPartWire = {
+type NonToolPartWire = {
     id: string;
     type: "text" | "reasoning" | "file" | "step-start" | "step-finish" | "agent";
     messageID: string;
 };
 
-export type ToolPartWire = {
+type ToolPartWire = {
     id: string;
     type: "tool";
     tool: string;
@@ -27,7 +27,7 @@ export type ToolPartWire = {
     state: ToolStateWire;
 };
 
-export type MessagePartWire = NonToolPartWire | ToolPartWire;
+type MessagePartWire = NonToolPartWire | ToolPartWire;
 
 export type SessionMessageWire = {
     info: {

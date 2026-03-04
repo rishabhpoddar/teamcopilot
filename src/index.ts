@@ -14,6 +14,8 @@ import { logError } from "./logging";
 import authRouter from "./auth";
 import workflowsRouter from "./workflows";
 import chatRouter from "./chat";
+import skillsRouter from "./skills";
+import usersRouter from "./users";
 import { startCronJobs } from "./cronjob";
 import { startOpencodeServer, stopOpencodeServer } from "./opencode-server";
 import path from 'path';
@@ -53,7 +55,7 @@ app.use('/api/auth', authRouter);
 
 const apiRouter = express.Router();
 
-apiRouter.use((req, res, next) => {
+apiRouter.use((_req, res, next) => {
     const originalJson = res.json.bind(res);
     const originalSend = res.send.bind(res);
     const shouldSkipSanitization = () => Boolean((res.locals as { skipResponseSanitization?: boolean }).skipResponseSanitization);
@@ -97,13 +99,15 @@ apiRouter.use((req, res, next) => {
     next();
 });
 
-apiRouter.get("/", (req, res) => {
+apiRouter.get("/", (_req, res) => {
     // for healthcheck
     res.send("Hello from the API!");
 });
 
 apiRouter.use('/workflows', workflowsRouter);
 apiRouter.use('/chat', chatRouter);
+apiRouter.use('/skills', skillsRouter);
+apiRouter.use('/users', usersRouter);
 
 app.use('/api', apiRouter);
 
@@ -111,7 +115,7 @@ app.use('/api', apiRouter);
 app.use(express.static(path.join(__dirname, "..", "frontend", "dist")));
 
 // SPA fallback: serve index.html for non-API routes (client-side routing)
-app.get("*", (req, res) => {
+app.get("*", (_req, res) => {
     res.sendFile(path.join(__dirname, "..", "frontend", "dist", "index.html"));
 });
 

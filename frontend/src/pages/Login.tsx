@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { useAuth } from '../lib/auth.tsx';
+import { useAuth } from '../lib/auth';
 import './Auth.css';
 
 type AuthStep = 'signin' | 'change-password';

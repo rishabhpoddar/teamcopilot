@@ -13,11 +13,11 @@ function createPrismaClient(): PrismaClient {
     });
 
     // Enable WAL mode for better SQLite concurrency (allows reads during writes)
-    client.$executeRawUnsafe('PRAGMA journal_mode = WAL;').catch(() => {});
+    client.$executeRawUnsafe('PRAGMA journal_mode = WAL;').catch(() => { });
     return client;
 }
 
-export function getPrismaClient(): PrismaClient {
+function getPrismaClient(): PrismaClient {
     if (!prismaClient) {
         prismaClient = createPrismaClient();
     }

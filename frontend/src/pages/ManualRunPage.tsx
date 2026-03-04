@@ -179,14 +179,14 @@ export default function ManualRunPage() {
                                         <div className="manual-run-boolean-group" role="group" aria-label={`${key} boolean input`}>
                                             <button
                                                 type="button"
-                                                className={`manual-run-boolean-btn ${Boolean(formValues[key]) ? 'active' : ''}`}
+                                                className={`manual-run-boolean-btn ${formValues[key] === true ? 'active' : ''}`}
                                                 onClick={() => handleChange(key, true)}
                                             >
                                                 Yes
                                             </button>
                                             <button
                                                 type="button"
-                                                className={`manual-run-boolean-btn ${!Boolean(formValues[key]) ? 'active' : ''}`}
+                                                className={`manual-run-boolean-btn ${formValues[key] !== true ? 'active' : ''}`}
                                                 onClick={() => handleChange(key, false)}
                                             >
                                                 No
