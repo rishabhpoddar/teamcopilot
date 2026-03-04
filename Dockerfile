@@ -7,19 +7,18 @@ COPY package*.json ./
 COPY tsconfig.json ./
 RUN npm install
 
+# Install frontend dependencies
+COPY frontend/package*.json ./frontend/
+RUN cd frontend && npm install
+
 # Copy prisma schema and generate client
 COPY prisma ./prisma
 RUN npx prisma generate
 
-# Copy backend source and compile TypeScript
+# Copy source and compile (root build also builds frontend)
 COPY src ./src
-RUN npm run build
-
-# Copy and build frontend
-COPY frontend/package*.json ./frontend/
-RUN cd frontend && npm install
 COPY frontend ./frontend
-RUN cd frontend && npm run build
+RUN npm run build
 
 # Workspace directory stores both workflows and the SQLite database
 RUN mkdir -p /app/workspaces
