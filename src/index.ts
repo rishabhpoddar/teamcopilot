@@ -121,13 +121,11 @@ app.get("*", (_req, res) => {
 
 app.use(async (err: any, req: express.Request, res: express.Response, _: express.NextFunction) => {
     let status = err.status || 500;
-    let maskErrorMessage = err.maskErrorMessage !== false;
-    let clientMessage = status === 500 && maskErrorMessage ? 'Internal server error' : (err.message || 'Unknown error');
     let doLogging = err.doLogging !== false;
     if (status !== 404 && doLogging) {
         logError({ err, apiPath: req.path, apiMethod: req.method });
     }
-    res.status(status).json({ message: clientMessage });
+    res.status(status).json({ message: err.message || 'Unknown error' });
 })
 
 let httpServer: Server | null = null;
