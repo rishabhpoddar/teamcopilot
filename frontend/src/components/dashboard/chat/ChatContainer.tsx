@@ -24,6 +24,7 @@ interface ChatContainerProps {
 
 export default function ChatContainer({ initialDraftMessage, forceNewChat, onDraftHandled }: ChatContainerProps) {
     const PENDING_SESSION_ID = 'pending';
+    const PERMISSION_POLL_INTERVAL_MS = 1000;
     const auth = useAuth();
     const [sessions, setSessions] = useState<ChatSession[]>([]);
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -605,11 +606,20 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
             return;
         }
 
-        const intervalId = window.setInterval(() => {
-            void loadPendingPermissions(activeSessionId);
-        }, 1000);
+        let cancelled = false;
 
-        return () => window.clearInterval(intervalId);
+        const poll = async () => {
+            while (!cancelled) {
+                await loadPendingPermissions(activeSessionId);
+                await new Promise((resolve) => window.setTimeout(resolve, PERMISSION_POLL_INTERVAL_MS));
+            }
+        };
+
+        void poll();
+
+        return () => {
+            cancelled = true;
+        };
     }, [activeSessionId, isStreaming, loadPendingPermissions]);
 
     const activeDraftMessage = activeSessionId ? (draftMessagesBySessionId[activeSessionId] ?? '') : '';
