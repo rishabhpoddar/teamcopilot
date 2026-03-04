@@ -151,7 +151,7 @@ async function shutdown(exitCode: number) {
 }
 
 async function bootstrap() {
-    initializeWorkspaceDirectory();
+    await initializeWorkspaceDirectory();
     await ensureWorkspaceDatabase();
     await startOpencodeServer();
     startCronJobs();
