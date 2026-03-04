@@ -435,10 +435,7 @@ router.get('/sessions/:id/pending-permission', apiHandler(async (req, res) => {
         });
     }
 
-    res.json({
-        permission: permissions[0] ?? null,
-        permissions
-    });
+    res.json({ permissions });
 }, true));
 
 // POST /api/chat/sessions/:id/tool-answer - Reply to a pending tool question
@@ -490,7 +487,7 @@ router.post('/sessions/:id/tool-answer', apiHandler(async (req, res) => {
 // POST /api/chat/sessions/:id/permission-response - Reply to a pending permission request
 router.post('/sessions/:id/permission-response', apiHandler(async (req, res) => {
     const id = req.params.id as string;
-    const { response, permission_id } = req.body as { response: unknown; permission_id?: unknown };
+    const { response, permission_id } = req.body as { response: unknown; permission_id: unknown };
 
     if (response !== 'once' && response !== 'always' && response !== 'reject') {
         throw {
@@ -498,10 +495,10 @@ router.post('/sessions/:id/permission-response', apiHandler(async (req, res) => 
             message: 'response is required and must be one of: once, always, reject'
         };
     }
-    if (permission_id !== undefined && typeof permission_id !== 'string') {
+    if (typeof permission_id !== 'string') {
         throw {
             status: 400,
-            message: 'permission_id must be a string when provided'
+            message: 'permission_id is required and must be a string'
         };
     }
 
@@ -519,29 +516,26 @@ router.post('/sessions/:id/permission-response', apiHandler(async (req, res) => 
         };
     }
 
-    // Try direct opencode reply first when permission_id is provided.
+    // Try direct opencode reply first.
     // This avoids list/match races where pending IDs can be temporarily out of sync.
-    if (typeof permission_id === 'string') {
-        try {
-            await replyToPendingPermission(session.opencode_session_id, permission_id, response);
-            await prisma.chat_sessions.update({
-                where: { id },
-                data: { updated_at: Date.now() }
-            });
-            res.json({ success: true });
-            return;
-        } catch {
-            // Fall through to existing resolution logic (list-based opencode match, then custom permissions).
-        }
+    try {
+        await replyToPendingPermission(session.opencode_session_id, permission_id, response);
+        await prisma.chat_sessions.update({
+            where: { id },
+            data: { updated_at: Date.now() }
+        });
+        res.json({ success: true });
+        return;
+    } catch {
+        // Fall through to existing resolution logic (list-based opencode match, then custom permissions).
     }
 
     // First check for opencode's native permissions
     const opencodePendingPermissions = await listPendingPermissions();
     const matchingOpencodePermissions = opencodePendingPermissions
         .filter((permission) => permission.sessionID === session.opencode_session_id);
-    const opencodePermissionToReply = permission_id
-        ? matchingOpencodePermissions.find((permission) => permission.id === permission_id) ?? null
-        : matchingOpencodePermissions[0] ?? null;
+    const opencodePermissionToReply = matchingOpencodePermissions
+        .find((permission) => permission.id === permission_id) ?? null;
 
     if (opencodePermissionToReply) {
         await replyToPendingPermission(session.opencode_session_id, opencodePermissionToReply.id, response);
@@ -554,23 +548,13 @@ router.post('/sessions/:id/permission-response', apiHandler(async (req, res) => 
     }
 
     // Then check for our custom tool execution permissions
-    const customPendingPermission = permission_id
-        ? await prisma.tool_execution_permissions.findFirst({
-            where: {
-                id: permission_id,
-                opencode_session_id: session.opencode_session_id,
-                status: 'pending'
-            }
-        })
-        : await prisma.tool_execution_permissions.findFirst({
-            where: {
-                opencode_session_id: session.opencode_session_id,
-                status: 'pending'
-            },
-            orderBy: {
-                created_at: 'asc'
-            }
-        });
+    const customPendingPermission = await prisma.tool_execution_permissions.findFirst({
+        where: {
+            id: permission_id,
+            opencode_session_id: session.opencode_session_id,
+            status: 'pending'
+        }
+    });
 
     if (!customPendingPermission) {
         throw {

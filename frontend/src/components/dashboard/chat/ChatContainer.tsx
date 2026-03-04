@@ -314,9 +314,10 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                 headers: { Authorization: `Bearer ${token}` }
             });
             const permissionsPayload = response.data?.permissions;
-            const normalizedPermissions = Array.isArray(permissionsPayload)
-                ? permissionsPayload as PermissionRequest[]
-                : ((response.data?.permission ? [response.data.permission] : []) as PermissionRequest[]);
+            if (!Array.isArray(permissionsPayload)) {
+                throw new Error('Missing permissions array in pending-permission response');
+            }
+            const normalizedPermissions = permissionsPayload as PermissionRequest[];
             setPendingPermissions(normalizedPermissions.map(assertPermissionHasToolCall));
         } catch (err: unknown) {
             const errorMessage = err instanceof AxiosError
