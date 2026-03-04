@@ -196,7 +196,7 @@ export default function EditorPage({ entity = 'workflow' }: { entity?: EditorEnt
         return () => {
             cancelled = true;
         };
-    }, [apiBase, authHeader, entityLabel, refreshDir, slug, token]);
+    }, [apiBase, authHeader, entity, entityLabel, refreshDir, slug, token]);
 
     useEffect(() => {
         const onBeforeUnload = (event: BeforeUnloadEvent) => {

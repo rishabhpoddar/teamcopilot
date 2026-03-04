@@ -1,5 +1,5 @@
 import { AxiosError } from 'axios';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import type { WorkflowApprovalDiffResponse } from '../types/workflow';
@@ -29,7 +29,7 @@ export default function ApprovalReviewPage({ entity = 'workflow' }: { entity?: A
     const [approved, setApproved] = useState(false);
     const [collapsedFiles, setCollapsedFiles] = useState<Record<string, boolean>>({});
 
-    const loadDiff = async () => {
+    const loadDiff = useCallback(async () => {
         if (!token) return;
         setLoading(true);
         setError(null);
@@ -47,12 +47,11 @@ export default function ApprovalReviewPage({ entity = 'workflow' }: { entity?: A
         } finally {
             setLoading(false);
         }
-    };
+    }, [apiBase, slug, token]);
 
     useEffect(() => {
-        if (!token) return;
         void loadDiff();
-    }, [token, slug, apiBase]);
+    }, [loadDiff]);
 
     const handleApprove = async () => {
         if (!token) return;
