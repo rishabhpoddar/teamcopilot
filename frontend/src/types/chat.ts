@@ -271,7 +271,7 @@ export interface PermissionRequest {
     patterns: string[];
     metadata: Record<string, unknown>;
     always: string[];
-    tool?: {
+    tool: {
         messageID: string;
         callID: string;
     };

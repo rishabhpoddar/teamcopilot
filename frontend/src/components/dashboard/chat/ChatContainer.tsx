@@ -44,6 +44,14 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
 
     const token = auth.loading ? null : auth.token;
 
+    const assertPermissionHasToolCall = useCallback((permission: PermissionRequest): PermissionRequest => {
+        const tool = permission.tool as { messageID?: unknown; callID?: unknown };
+        if (!tool || typeof tool.messageID !== 'string' || typeof tool.callID !== 'string') {
+            throw new Error(`Permission '${permission.id}' is missing required tool.messageID/callID`);
+        }
+        return permission;
+    }, []);
+
     // Detect if there's a question tool waiting for user input
     const isWaitingForInput = useMemo(() => {
         const toolParts = parts.filter((p): p is ToolPart => p.type === 'tool');
@@ -147,12 +155,13 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
             }
 
             case 'permission.asked': {
+                const normalizedPermission = assertPermissionHasToolCall(event.properties);
                 setPendingPermissions((prev) => {
-                    const exists = prev.some((permission) => permission.id === event.properties.id);
+                    const exists = prev.some((permission) => permission.id === normalizedPermission.id);
                     if (exists) {
-                        return prev.map((permission) => permission.id === event.properties.id ? event.properties : permission);
+                        return prev.map((permission) => permission.id === normalizedPermission.id ? normalizedPermission : permission);
                     }
-                    return [...prev, event.properties];
+                    return [...prev, normalizedPermission];
                 });
                 break;
             }
@@ -171,7 +180,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                 break;
             }
         }
-    }, []);
+    }, [assertPermissionHasToolCall]);
 
     const startSSE = useCallback((sessionId: string) => {
         if (!token) return;
@@ -308,14 +317,14 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
             const normalizedPermissions = Array.isArray(permissionsPayload)
                 ? permissionsPayload as PermissionRequest[]
                 : ((response.data?.permission ? [response.data.permission] : []) as PermissionRequest[]);
-            setPendingPermissions(normalizedPermissions);
+            setPendingPermissions(normalizedPermissions.map(assertPermissionHasToolCall));
         } catch (err: unknown) {
             const errorMessage = err instanceof AxiosError
                 ? err.response?.data?.message || err.response?.data || err.message
                 : 'Failed to load permission state';
             setError(`${errorMessage}. Please reload the page.`);
         }
-    }, [token]);
+    }, [token, assertPermissionHasToolCall]);
 
     // Load sessions on mount
     useEffect(() => {

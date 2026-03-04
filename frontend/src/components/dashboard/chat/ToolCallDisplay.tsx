@@ -42,12 +42,7 @@ export default function ToolCallDisplay({
         if (permission.sessionID !== part.sessionID) {
             return false;
         }
-        const permissionMessageId = permission.tool?.messageID;
-        const permissionCallId = permission.tool?.callID;
-        if (permissionCallId) {
-            return permissionCallId === part.callID;
-        }
-        return Boolean(permissionMessageId && permissionMessageId === part.messageID);
+        return permission.tool.callID === part.callID;
     });
     const hasPermissionForThisTool = permissionsForThisTool.length > 0;
 

@@ -385,7 +385,7 @@ router.get('/sessions/:id/pending-permission', apiHandler(async (req, res) => {
         patterns: string[];
         metadata: Record<string, unknown>;
         always: string[];
-        tool?: {
+        tool: {
             messageID: string;
             callID: string;
         };
@@ -393,7 +393,20 @@ router.get('/sessions/:id/pending-permission', apiHandler(async (req, res) => {
 
     // Include opencode native pending permissions
     const opencodePendingPermissions = (await listPendingPermissions())
-        .filter((permission) => permission.sessionID === session.opencode_session_id);
+        .filter((permission) => permission.sessionID === session.opencode_session_id)
+        .map((permission) => {
+            assertCondition(
+                typeof permission.tool?.messageID === 'string' && typeof permission.tool?.callID === 'string',
+                `Pending opencode permission '${permission.id}' is missing tool.messageID/callID`
+            );
+            return {
+                ...permission,
+                tool: {
+                    messageID: permission.tool.messageID,
+                    callID: permission.tool.callID
+                }
+            };
+        });
     permissions.push(...opencodePendingPermissions);
 
     // Include custom tool execution pending permissions
