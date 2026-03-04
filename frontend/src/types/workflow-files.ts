@@ -1,5 +1,5 @@
 export type {
-    WorkflowEditorAccessResponse,
-    WorkflowFileNode,
-    WorkflowFileContentResponse,
+    EditorAccessResponse,
+    FileNode,
+    FileContentResponse,
 } from "../../../src/types/shared/workflow-files";

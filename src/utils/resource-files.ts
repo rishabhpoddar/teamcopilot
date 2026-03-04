@@ -2,13 +2,13 @@ import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import {
-    WorkflowFileContentBinaryResponse,
-    WorkflowFileContentResponse,
-    WorkflowFileContentTextResponse,
-    WorkflowFileNode,
-    WorkflowFileSaveRequest,
-    WorkflowFileSaveResponse,
-    WorkflowFileTreeResponse,
+    FileContentBinaryResponse,
+    FileContentResponse,
+    FileContentTextResponse,
+    FileNode,
+    FileSaveRequest,
+    FileSaveResponse,
+    FileTreeResponse,
 } from "../types/workflow-files";
 import { isLikelySensitiveKey, maskValue, sanitizeStringContent } from "./redact";
 
@@ -19,12 +19,12 @@ interface ResourceFileManagerOptions {
 }
 
 interface ResourceFileManager {
-    listDirectory: (slug: string, rawPath: string | undefined) => WorkflowFileTreeResponse;
-    readFileContent: (slug: string, rawPath: string | undefined) => WorkflowFileContentResponse;
-    saveFileContent: (slug: string, request: WorkflowFileSaveRequest) => WorkflowFileSaveResponse;
-    createFileOrFolder: (slug: string, rawParentPath: string | undefined, name: string, kind: "file" | "directory") => WorkflowFileNode;
-    uploadFileFromTempPath: (slug: string, rawParentPath: string | undefined, name: string, tempFilePath: string) => WorkflowFileNode;
-    renamePath: (slug: string, rawPath: string | undefined, newName: string) => { old_path: string; new_path: string; node: WorkflowFileNode };
+    listDirectory: (slug: string, rawPath: string | undefined) => FileTreeResponse;
+    readFileContent: (slug: string, rawPath: string | undefined) => FileContentResponse;
+    saveFileContent: (slug: string, request: FileSaveRequest) => FileSaveResponse;
+    createFileOrFolder: (slug: string, rawParentPath: string | undefined, name: string, kind: "file" | "directory") => FileNode;
+    uploadFileFromTempPath: (slug: string, rawParentPath: string | undefined, name: string, tempFilePath: string) => FileNode;
+    renamePath: (slug: string, rawPath: string | undefined, newName: string) => { old_path: string; new_path: string; node: FileNode };
     deletePath: (slug: string, rawPath: string | undefined) => void;
 }
 
@@ -194,7 +194,7 @@ export function createResourceFileManager(options: ResourceFileManagerOptions): 
         return -1;
     }
 
-    function toFileNode(parentRelativePath: string, name: string, absolutePath: string): WorkflowFileNode {
+    function toFileNode(parentRelativePath: string, name: string, absolutePath: string): FileNode {
         const lstat = fs.lstatSync(absolutePath);
         const isDir = lstat.isDirectory();
         let readable = true;
@@ -228,7 +228,7 @@ export function createResourceFileManager(options: ResourceFileManagerOptions): 
         };
     }
 
-    function compareNodes(a: WorkflowFileNode, b: WorkflowFileNode): number {
+    function compareNodes(a: FileNode, b: FileNode): number {
         if (a.kind !== b.kind) {
             return a.kind === "directory" ? -1 : 1;
         }
@@ -389,7 +389,7 @@ export function createResourceFileManager(options: ResourceFileManagerOptions): 
         return output.join("");
     }
 
-    function listDirectory(slug: string, rawPath: string | undefined): WorkflowFileTreeResponse {
+    function listDirectory(slug: string, rawPath: string | undefined): FileTreeResponse {
         const relativePath = normalizeRelativePath(rawPath ?? "", true);
         const absolutePath = resolveTarget(slug, relativePath);
         if (!fs.existsSync(absolutePath)) {
@@ -427,7 +427,7 @@ export function createResourceFileManager(options: ResourceFileManagerOptions): 
         };
     }
 
-    function readFileContent(slug: string, rawPath: string | undefined): WorkflowFileContentResponse {
+    function readFileContent(slug: string, rawPath: string | undefined): FileContentResponse {
         const relativePath = normalizeRelativePath(rawPath ?? "", false);
         const absolutePath = resolveTarget(slug, relativePath);
         if (!fs.existsSync(absolutePath)) {
@@ -450,7 +450,7 @@ export function createResourceFileManager(options: ResourceFileManagerOptions): 
         const name = path.basename(relativePath);
 
         if (looksBinary(bytes)) {
-            const response: WorkflowFileContentBinaryResponse = {
+            const response: FileContentBinaryResponse = {
                 path: relativePath,
                 name,
                 kind: "binary",
@@ -465,7 +465,7 @@ export function createResourceFileManager(options: ResourceFileManagerOptions): 
         const rawContent = bytes.toString("utf-8");
         const isDotenv = name === ".env";
         const content = isDotenv ? sanitizeStringContent(rawContent) : rawContent;
-        const response: WorkflowFileContentTextResponse = {
+        const response: FileContentTextResponse = {
             path: relativePath,
             name,
             kind: "text",
@@ -478,7 +478,7 @@ export function createResourceFileManager(options: ResourceFileManagerOptions): 
         return response;
     }
 
-    function saveFileContent(slug: string, request: WorkflowFileSaveRequest): WorkflowFileSaveResponse {
+    function saveFileContent(slug: string, request: FileSaveRequest): FileSaveResponse {
         const relativePath = normalizeRelativePath(request.path, false);
         const absolutePath = resolveTarget(slug, relativePath);
         if (!fs.existsSync(absolutePath)) {
@@ -523,7 +523,7 @@ export function createResourceFileManager(options: ResourceFileManagerOptions): 
         };
     }
 
-    function createFileOrFolder(slug: string, rawParentPath: string | undefined, name: string, kind: "file" | "directory"): WorkflowFileNode {
+    function createFileOrFolder(slug: string, rawParentPath: string | undefined, name: string, kind: "file" | "directory"): FileNode {
         assertValidName(name);
         const parentRelativePath = normalizeRelativePath(rawParentPath ?? "", true);
         const parentAbsolutePath = resolveTarget(slug, parentRelativePath);
@@ -558,7 +558,7 @@ export function createResourceFileManager(options: ResourceFileManagerOptions): 
         return toFileNode(parentRelativePath, name, targetAbsolutePath);
     }
 
-    function uploadFileFromTempPath(slug: string, rawParentPath: string | undefined, name: string, tempFilePath: string): WorkflowFileNode {
+    function uploadFileFromTempPath(slug: string, rawParentPath: string | undefined, name: string, tempFilePath: string): FileNode {
         assertValidName(name);
         const parentRelativePath = normalizeRelativePath(rawParentPath ?? "", true);
         const parentAbsolutePath = resolveTarget(slug, parentRelativePath);
@@ -595,7 +595,7 @@ export function createResourceFileManager(options: ResourceFileManagerOptions): 
         return toFileNode(parentRelativePath, name, targetAbsolutePath);
     }
 
-    function renamePath(slug: string, rawPath: string | undefined, newName: string): { old_path: string; new_path: string; node: WorkflowFileNode } {
+    function renamePath(slug: string, rawPath: string | undefined, newName: string): { old_path: string; new_path: string; node: FileNode } {
         assertValidName(newName);
         const relativePath = normalizeRelativePath(rawPath ?? "", false);
         const absolutePath = resolveTarget(slug, relativePath);

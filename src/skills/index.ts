@@ -22,7 +22,7 @@ import {
     saveSkillFileContent,
     uploadSkillFileFromTempPath,
 } from "../utils/skill-files";
-import { WorkflowEditorAccessResponse } from "../types/workflow-files";
+import { EditorAccessResponse } from "../types/workflow-files";
 import { registerResourceFileRoutes } from "../utils/resource-file-routes";
 import {
     approveSkillWithSnapshot,
@@ -48,14 +48,14 @@ function normalizeSkillNameOrSlug(value: string): string {
         .replace(/-+/g, "-");
 }
 
-async function getSkillEditorAccess(slug: string, userId: string): Promise<WorkflowEditorAccessResponse> {
+async function getSkillEditorAccess(slug: string, userId: string): Promise<EditorAccessResponse> {
     const accessSummary = await getResourceAccessSummary("skill", slug, userId);
     const skillStatus = accessSummary.is_approved ? "approved" : "pending";
 
     return {
         can_view: accessSummary.can_view,
         can_edit: accessSummary.can_edit,
-        workflow_status: skillStatus,
+        editor_status: skillStatus,
     };
 }
 
@@ -184,7 +184,7 @@ router.get("/:slug", apiHandler(async (req, res) => {
         : { mode: "restricted" as const, allowed_user_ids: permission.allowedUsers.map((row) => row.user_id) };
 
     res.json({
-        workflow: {
+        skill: {
             slug,
             name: manifest.name,
             created_by_user_id: createdByUserId,

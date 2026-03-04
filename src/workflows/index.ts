@@ -7,7 +7,7 @@ import { randomUUID } from "crypto";
 import multer from "multer";
 import prisma from "../prisma/client";
 import { WorkflowManifest, WorkflowMetadata, WorkflowSummary } from "../types/workflow";
-import { WorkflowEditorAccessResponse } from "../types/workflow-files";
+import { EditorAccessResponse } from "../types/workflow-files";
 import { apiHandler } from "../utils/index";
 import {
     listWorkflowSlugs,
@@ -96,14 +96,14 @@ async function assertCurrentUserCanRunWorkflow(slug: string, userId: string): Pr
     }
 }
 
-async function getWorkflowEditorAccess(slug: string, userId: string): Promise<WorkflowEditorAccessResponse> {
+async function getWorkflowEditorAccess(slug: string, userId: string): Promise<EditorAccessResponse> {
     const accessSummary = await getResourceAccessSummary("workflow", slug, userId);
     const workflowStatus = accessSummary.is_approved ? "approved" : "pending";
 
     return {
         can_view: accessSummary.can_view,
         can_edit: accessSummary.can_edit,
-        workflow_status: workflowStatus,
+        editor_status: workflowStatus,
     };
 }
 
