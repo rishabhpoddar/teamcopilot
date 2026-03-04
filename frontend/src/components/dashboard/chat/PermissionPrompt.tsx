@@ -7,7 +7,10 @@ interface PermissionPromptProps {
 }
 
 export default function PermissionPrompt({ permission, submitting, onRespond }: PermissionPromptProps) {
-    const description = `${permission.permission} permission requested for ${permission.patterns.join(", ")}`;
+    const hasPatterns = permission.patterns.length > 0;
+    const description = hasPatterns
+        ? `${permission.permission} permission requested for ${permission.patterns.join(", ")}`
+        : `${permission.permission} permission requested`;
 
     return (
         <div className="permission-prompt">

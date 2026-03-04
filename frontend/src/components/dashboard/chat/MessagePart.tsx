@@ -8,17 +8,17 @@ import QuestionToolDisplay from './QuestionToolDisplay';
 interface MessagePartProps {
     part: Part;
     onAnswer: (answer: string) => void;
-    pendingPermission: PermissionRequest | null;
-    onPermissionRespond: (response: "once" | "always" | "reject") => void;
-    isRespondingToPermission: boolean;
+    pendingPermissions: PermissionRequest[];
+    onPermissionRespond: (permissionId: string, response: "once" | "always" | "reject") => void;
+    respondingPermissionIds: Record<string, boolean>;
 }
 
 export default function MessagePart({
     part,
     onAnswer,
-    pendingPermission,
+    pendingPermissions,
     onPermissionRespond,
-    isRespondingToPermission
+    respondingPermissionIds
 }: MessagePartProps) {
     if (isTextPart(part)) {
         return (
@@ -38,9 +38,9 @@ export default function MessagePart({
         return (
             <ToolCallDisplay
                 part={part}
-                pendingPermission={pendingPermission}
+                pendingPermissions={pendingPermissions}
                 onPermissionRespond={onPermissionRespond}
-                isRespondingToPermission={isRespondingToPermission}
+                respondingPermissionIds={respondingPermissionIds}
             />
         );
     }

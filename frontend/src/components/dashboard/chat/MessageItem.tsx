@@ -6,18 +6,18 @@ interface MessageItemProps {
     message: Message;
     parts: Part[];
     onAnswer: (answer: string) => void;
-    pendingPermission: PermissionRequest | null;
-    onPermissionRespond: (response: "once" | "always" | "reject") => void;
-    isRespondingToPermission: boolean;
+    pendingPermissions: PermissionRequest[];
+    onPermissionRespond: (permissionId: string, response: "once" | "always" | "reject") => void;
+    respondingPermissionIds: Record<string, boolean>;
 }
 
 export default function MessageItem({
     message,
     parts,
     onAnswer,
-    pendingPermission,
+    pendingPermissions,
     onPermissionRespond,
-    isRespondingToPermission
+    respondingPermissionIds
 }: MessageItemProps) {
     const isUser = isUserMessage(message);
     const isAssistant = isAssistantMessage(message);
@@ -47,9 +47,9 @@ export default function MessageItem({
                             key={part.id}
                             part={part}
                             onAnswer={onAnswer}
-                            pendingPermission={pendingPermission}
+                            pendingPermissions={pendingPermissions}
                             onPermissionRespond={onPermissionRespond}
-                            isRespondingToPermission={isRespondingToPermission}
+                            respondingPermissionIds={respondingPermissionIds}
                         />
                     ))}
             </div>
