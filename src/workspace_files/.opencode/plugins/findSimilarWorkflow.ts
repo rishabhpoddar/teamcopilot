@@ -1,20 +1,11 @@
 import { type Plugin, tool } from "@opencode-ai/plugin"
 import { pipeline } from "@huggingface/transformers"
-import * as fs from "fs/promises"
-import * as path from "path"
+
+const API_BASE_URL = "http://localhost:3000"
 
 // ============================================================================
 // Types
 // ============================================================================
-
-interface WorkflowJson {
-  intent_summary: string
-  inputs?: Record<string, unknown>
-  triggers?: Record<string, unknown>
-  runtime?: {
-    timeout_seconds?: number
-  }
-}
 
 interface WorkflowMatch {
   path: string
@@ -22,30 +13,31 @@ interface WorkflowMatch {
   summary: string
 }
 
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-/**
- * Reads and parses workflow.json from a workflow directory.
- */
-async function readWorkflowJson(
-  workflowPath: string
-): Promise<WorkflowJson> {
-  const workflowJsonPath = path.join(workflowPath, "workflow.json")
-  const content = await fs.readFile(workflowJsonPath, "utf-8")
-  return JSON.parse(content) as WorkflowJson
+interface WorkflowSummary {
+  slug: string
+  intent_summary: string
 }
 
-/**
- * Gets all workflow directories from the workflows/ folder.
- */
-async function getWorkflowDirs(workspaceDir: string): Promise<string[]> {
-  const workflowsDir = path.join(workspaceDir, "workflows")
-  const entries = await fs.readdir(workflowsDir, { withFileTypes: true })
-  return entries
-    .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
-    .map((entry) => path.join(workflowsDir, entry.name))
+async function readErrorMessageFromResponse(
+  response: Response,
+  fallbackMessage: string
+): Promise<string> {
+  try {
+    const text = await response.text()
+    if (!text) return fallbackMessage
+    try {
+      const parsed: unknown = JSON.parse(text)
+      if (parsed && typeof parsed === "object" && "message" in parsed) {
+        const msg = (parsed as { message?: unknown }).message
+        if (typeof msg === "string" && msg.trim().length > 0) return msg
+      }
+    } catch {
+      // fall back to plain text
+    }
+    return text.trim().length > 0 ? text : fallbackMessage
+  } catch {
+    return fallbackMessage
+  }
 }
 
 // ============================================================================
@@ -104,16 +96,38 @@ export const FindSimilarWorkflowPlugin: Plugin = async (_ctx) => {
             .describe("Maximum number of results to return (default: 5)"),
         },
         async execute(args, context) {
-          const { directory } = context
+          const { sessionID } = context
           const { description, limit = 5 } = args
 
-          const workflowDirs = await getWorkflowDirs(directory)
+          const workflowsResponse = await fetch(`${API_BASE_URL}/api/workflows`, {
+            headers: {
+              Authorization: `Bearer ${sessionID}`,
+            },
+          })
 
-          if (workflowDirs.length === 0) {
-            return JSON.stringify({
-              matches: [],
-              message: "No workflows found in the workflows/ directory",
-            })
+          if (!workflowsResponse.ok) {
+            const errorMessage = await readErrorMessageFromResponse(
+              workflowsResponse,
+              `Failed to list workflows (HTTP ${workflowsResponse.status})`
+            )
+            throw new Error(errorMessage)
+          }
+
+          const workflowsPayload = (await workflowsResponse.json()) as {
+            workflows?: WorkflowSummary[]
+          }
+          const candidateWorkflows = workflowsPayload.workflows ?? []
+
+          if (candidateWorkflows.length === 0) {
+            return JSON.stringify(
+              {
+                matches: [],
+                message:
+                  "No workflows available for this user with access permissions.",
+              },
+              null,
+              2
+            )
           }
 
           // Get embedding for the query description
@@ -121,10 +135,8 @@ export const FindSimilarWorkflowPlugin: Plugin = async (_ctx) => {
 
           const matches: WorkflowMatch[] = []
 
-          for (const workflowPath of workflowDirs) {
-            const workflowJson = await readWorkflowJson(workflowPath)
-
-            const summary = workflowJson.intent_summary
+          for (const workflow of candidateWorkflows) {
+            const summary = workflow.intent_summary
 
             // Get embedding for the workflow's intent_summary
             const workflowEmbedding = await getEmbedding(summary)
@@ -133,7 +145,7 @@ export const FindSimilarWorkflowPlugin: Plugin = async (_ctx) => {
             const similarity = cosineSimilarity(queryEmbedding, workflowEmbedding)
 
             matches.push({
-              path: path.relative(directory, workflowPath),
+              path: `workflows/${workflow.slug}`,
               similarity: Math.round(similarity * 100) / 100,
               summary,
             })

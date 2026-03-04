@@ -43,7 +43,7 @@ export async function getResourceAccessSummary(
     const canEdit = approvalState.is_current_code_approved
         ? canCurrentUserUse
         : (isEngineer || canCurrentUserUse);
-    const canView = resourceType === "workflow" ? true : canEdit;
+    const canView = canEdit;
 
     return {
         permission_mode: mode,

@@ -142,11 +142,13 @@ function syncTemplateDirectory(
 export function initializeWorkspaceDirectory(): void {
     const workspaceDir = getWorkspaceDirFromEnv();
     fs.mkdirSync(workspaceDir, { recursive: true });
-    fs.mkdirSync(path.join(workspaceDir, "workflows"), { recursive: true });
+    const workflowsDir = path.join(workspaceDir, "workflows");
+    fs.mkdirSync(workflowsDir, { recursive: true });
     const skillsDir = path.join(workspaceDir, "custom-skills");
     fs.mkdirSync(skillsDir, { recursive: true });
-    const honeytokenPath = path.join(skillsDir, HONEYTOKEN_FILE_NAME);
-    fs.writeFileSync(honeytokenPath, `DO_NOT_EXPOSE:${HONEYTOKEN_UUID}\n`, "utf-8");
+    const honeytokenValue = `DO_NOT_EXPOSE:${HONEYTOKEN_UUID}\n`;
+    fs.writeFileSync(path.join(workflowsDir, HONEYTOKEN_FILE_NAME), honeytokenValue, "utf-8");
+    fs.writeFileSync(path.join(skillsDir, HONEYTOKEN_FILE_NAME), honeytokenValue, "utf-8");
 
     const workspaceTemplateDir = path.join(process.cwd(), "src", "workspace_files");
     if (!fs.existsSync(workspaceTemplateDir)) {

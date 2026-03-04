@@ -9,7 +9,7 @@ This document is your operating manual for working within this directory (called
 For every user request, follow this exact sequence:
 
 1. **Look for a relevant custom skill first** using `findSkill` (and `listAvailableSkills` when needed).
-2. **If no suitable skill is found**, look for a relevant workflow using `findSimilarWorkflow`.
+2. **If no suitable skill is found**, look for a relevant workflow using `findSimilarWorkflow` (and `listAvailableWorkflows` when needed).
 3. **If neither exists**, then consider creation:
    - Create a new skill using `createSkill` when the need is reusable instruction logic.
    - Create a new workflow using `createWorkflow` when executable automation is needed.
@@ -241,6 +241,7 @@ data/
 1. **Check for similar workflows first** — You MUST use the `findSimilarWorkflow` tool to search for existing workflows; do NOT use shell or bash commands (for example `grep`, `rg`, or `find`) to search the repository for workflows.
    - If you find a similar workflow, **learn from it**: take relevant business logic from it.
    - If you only want to find an existing workflow to run (not create a new one), you MUST also use the `findSimilarWorkflow` tool rather than searching with shell commands.
+   - Use `listAvailableWorkflows` when you need a quick inventory of all accessible workflows before narrowing down.
 2. **Use the `createWorkflow` tool** — This creates the workflow folder with all required files:
    - `slug`: The workflow name (lowercase, hyphens, e.g., `failed-stripe-payments`)
    - `intent_summary`: Description of what the workflow does
@@ -268,7 +269,7 @@ data/
 
 ### Workflows: Running Workflows
 
-If you simply need to find an existing workflow to run (and are not creating a new workflow), use the `findSimilarWorkflow` tool to locate it; do NOT search using shell commands.
+If you simply need to find an existing workflow to run (and are not creating a new workflow), use `findSimilarWorkflow` (and `listAvailableWorkflows` when useful) to locate it; do NOT search using shell commands.
 
 **⚠️ CRITICAL: Never run workflows directly via shell commands. Always use the `runWorkflow` tool.**
 
@@ -315,7 +316,7 @@ days_back = args.days_back
 
 1. **Never run scripts directly with Python** — Always use the `runWorkflow` tool or other approved platform tooling
 2. **Always check for existing skills first** — you MUST try `findSkill` and check whether a custom skill can fulfill the request before creating new workflow logic.
-3. **Always check for existing workflows** before creating new ones — you MUST use the `findSimilarWorkflow` tool to do this. Only create new ones if no existing workflow can fit the request. If needed, modify the existing workflow to fit the request WITHOUT losing older functionality.
+3. **Always check for existing workflows** before creating new ones — you MUST use the `findSimilarWorkflow` tool to do this. Use `listAvailableWorkflows` if you need a full inventory first. Only create new ones if no existing workflow can fit the request. If needed, modify the existing workflow to fit the request WITHOUT losing older functionality.
    - If you find a similar workflow, **study it and follow its business logic and conventions**.
 4. **Ask the user for help** when unsure.
    - When asking the user questions, ask **just one question at a time**.
@@ -425,13 +426,21 @@ When asked to "Run the failed-stripe-payments workflow for customer cus_123":
 5. If the workflow runs successfully, report the output to the user
 
 ## Example: Finding a workflow to run
-When the user does not specify a workflow to run, you MUST use the `findSimilarWorkflow` tool to find a workflow to run. For example, if the user asks "How many users do I have in my app?"
+When the user does not specify a workflow to run, you MUST use the `findSimilarWorkflow` tool to find a workflow to run. You may use `listAvailableWorkflows` first when you need to quickly inspect all accessible options. For example, if the user asks "How many users do I have in my app?"
 
 1. **DO NOT** search using shell commands (for example `grep`, `rg`, or `find`) to search the repository for workflows.
 2. Use the `findSimilarWorkflow` tool with an argument like "Count number of users in the app", which will return a list of similar workflows based on semantic similarity to the query.
 3. Inspect each workflow's workflow.json and README.md to determine if it is the correct workflow to run. If unclear, ask the user for clarification.
 4. Once you have found the correct workflow, run it using the `runWorkflow` tool.
 5. If no relevant workflow found, then inform the user and ask them if you should create a new workflow to handle the request.
+
+## Example: Listing Available Workflows
+
+When you need a quick inventory before semantic search or selection:
+
+1. Use `listAvailableWorkflows` to get all accessible workflows.
+2. If needed, then use `findSimilarWorkflow` to rank by semantic relevance.
+3. Choose the best candidate and proceed with `runWorkflow` (or update/create flow as needed).
 
 ## Example: Finding and Using a Skill
 
