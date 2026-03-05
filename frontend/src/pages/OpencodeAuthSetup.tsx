@@ -27,6 +27,13 @@ type OauthAuthorizeResponse = {
     instructions: string;
 };
 
+function isVisibleAuthMethod(method: ProviderAuthMethod): boolean {
+    if (method.type !== 'oauth') {
+        return true;
+    }
+    return !method.label.toLowerCase().includes('headless');
+}
+
 export default function OpencodeAuthSetup() {
     const auth = useAuth();
     const token = auth.loading ? null : auth.token;
@@ -41,7 +48,7 @@ export default function OpencodeAuthSetup() {
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(true);
 
-    const methods = status?.methods || [];
+    const methods = useMemo(() => (status?.methods || []).filter(isVisibleAuthMethod), [status?.methods]);
     const authHeaders = token ? { Authorization: `Bearer ${token}` } : undefined;
 
     function getAxiosErrorMessage(err: unknown, fallback: string): string {
@@ -73,14 +80,18 @@ export default function OpencodeAuthSetup() {
             const response = await axiosInstance.get<StatusResponse>('/api/opencode-auth/status', {
                 headers: authHeaders
             });
-            setStatus(response.data);
+            const visibleMethods = response.data.methods.filter(isVisibleAuthMethod);
+            setStatus({
+                ...response.data,
+                methods: visibleMethods,
+            });
             setError('');
 
             setSelectedMethod((current) => {
-                if (current !== null && response.data.methods.some((method) => method.index === current)) {
+                if (current !== null && visibleMethods.some((method) => method.index === current)) {
                     return current;
                 }
-                return response.data.methods[0]?.index ?? null;
+                return visibleMethods[0]?.index ?? null;
             });
         } catch (err: unknown) {
             setError(getAxiosErrorMessage(err, 'Failed to load opencode auth status'));
