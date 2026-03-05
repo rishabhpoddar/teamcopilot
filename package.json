@@ -20,7 +20,8 @@
     "prisma:migrate:dev": "npm run prisma -- migrate dev",
     "prisma:migrate:reset": "npm run prisma -- migrate reset",
     "prisma:migrate:deploy": "npm run prisma -- migrate deploy",
-    "prisma:studio": "npm run prisma -- studio"
+    "prisma:studio": "npm run prisma -- studio",
+    "test": "node -r ts-node/register tests/run-tests.ts"
   },
   "keywords": [],
   "author": "",

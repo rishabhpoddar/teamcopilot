@@ -16,12 +16,19 @@ export function isLikelySensitiveKey(key: string): boolean {
 export function sanitizeStringContent(input: string): string {
     let text = input;
 
+    // Redact Authorization header bearer tokens before generic key/value masking so
+    // "Authorization: Bearer <token>" doesn't get partially masked as "***rer".
+    text = text.replace(
+        /(\bAuthorization\s*[:=]\s*)(Bearer\s+)([A-Za-z0-9._~+/=-]{8,})/gi,
+        (_full: string, prefix: string, bearer: string, token: string) => `${prefix}${bearer}${maskValue(token)}`
+    );
+
     // Redact sensitive markdown list/label items such as:
     // - **password**: value
     // - **password** = value
     // > __token__ : "value"
     text = text.replace(
-        /(^|[\r\n])([ \t>]*(?:[-*+][ \t]+)?)(\*\*|__)[ \t]*([A-Za-z_][A-Za-z0-9_-]*)[ \t]*(\3)([ \t]*(?::|=)[ \t]*)(?:"([^"\n]*)"|'([^'\n]*)'|([^\s#;,)\]}]+))/gm,
+        /(^|[\r\n])([ \t>]*(?:[-*+][ \t]+)?)(\*\*|__)[ \t]*([A-Za-z_][A-Za-z0-9_-]*)[ \t]*(\3)([ \t]*(?::|=)[ \t]*)(?:"([^"\n]*)"|'([^'\n]*)'|([^\s"'#;,)\]}]+))/gm,
         (
             full: string,
             lineLead: string,
@@ -57,7 +64,7 @@ export function sanitizeStringContent(input: string): string {
     // Redact sensitive env-style assignments anywhere in text, including multiple
     // assignments per line and text prefixes.
     text = text.replace(
-        /(^|[^A-Za-z0-9_])((?:export[ \t]+)?([A-Za-z_][A-Za-z0-9_-]*)[ \t]*(?:=|:)[ \t]*)(?:"([^"\n]*)"|'([^'\n]*)'|([^\s#;,)\]}]+))/gm,
+        /(^|[^A-Za-z0-9_])((?:export[ \t]+)?([A-Za-z_][A-Za-z0-9_-]*)[ \t]*(?:=|:)[ \t]*)(?:"([^"\n]*)"|'([^'\n]*)'|([^\s"'#;,)\]}]+))/gm,
         (
             full: string,
             lead: string,
@@ -74,6 +81,24 @@ export function sanitizeStringContent(input: string): string {
             const rawValue = doubleQuoted ?? singleQuoted ?? bare ?? "";
             if (!rawValue) {
                 return full;
+            }
+
+            if (key.toLowerCase() === "authorization" && /^bearer$/i.test(rawValue)) {
+                return full;
+            }
+
+            const authorizationMatch = rawValue.match(/^([Bb]earer\s+)([^\s"']+)$/);
+            if (key.toLowerCase() === "authorization" && authorizationMatch) {
+                const bearerPrefix = authorizationMatch[1];
+                const bearerToken = authorizationMatch[2];
+                const maskedBearer = `${bearerPrefix}${maskValue(bearerToken)}`;
+                if (doubleQuoted !== undefined) {
+                    return `${lead}${assignmentPrefix}"${maskedBearer}"`;
+                }
+                if (singleQuoted !== undefined) {
+                    return `${lead}${assignmentPrefix}'${maskedBearer}'`;
+                }
+                return `${lead}${assignmentPrefix}${maskedBearer}`;
             }
 
             const masked = maskValue(rawValue);
