@@ -57,7 +57,7 @@ export function sanitizeStringContent(input: string): string {
     // Redact sensitive env-style assignments anywhere in text, including multiple
     // assignments per line and text prefixes.
     text = text.replace(
-        /(^|[^A-Za-z0-9_-])((?:export[ \t]+)?([A-Za-z_][A-Za-z0-9_-]*)[ \t]*(?:=|:|[ \t]+)[ \t]*)(?:"([^"\n]*)"|'([^'\n]*)'|([^\s#;,)\]}]+))/gm,
+        /(^|[^A-Za-z0-9_])((?:export[ \t]+)?([A-Za-z_][A-Za-z0-9_-]*)[ \t]*(?:=|:)[ \t]*)(?:"([^"\n]*)"|'([^'\n]*)'|([^\s#;,)\]}]+))/gm,
         (
             full: string,
             lead: string,
