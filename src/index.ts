@@ -23,6 +23,8 @@ import { Server } from "http";
 import { assertEnv, parseIntStrict } from "./utils/assert";
 import { sanitizeForClient, sanitizeStringContent } from "./utils/redact";
 import { ensureWorkspaceDatabase, initializeWorkspaceDirectory } from "./utils/workspace-sync";
+import { initializeOpencodeAuthStorage } from "./utils/opencode-auth";
+import opencodeAuthRouter from "./opencode-auth";
 const app = express();
 
 app.use(express.json());
@@ -108,6 +110,7 @@ apiRouter.use('/workflows', workflowsRouter);
 apiRouter.use('/chat', chatRouter);
 apiRouter.use('/skills', skillsRouter);
 apiRouter.use('/users', usersRouter);
+apiRouter.use('/opencode-auth', opencodeAuthRouter);
 
 app.use('/api', apiRouter);
 
@@ -150,6 +153,7 @@ async function shutdown(exitCode: number) {
 
 async function bootstrap() {
     await initializeWorkspaceDirectory();
+    await initializeOpencodeAuthStorage();
     await ensureWorkspaceDatabase();
     await startOpencodeServer();
     startCronJobs();

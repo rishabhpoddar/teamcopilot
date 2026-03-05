@@ -1,0 +1,28 @@
+.opencode-auth-complete-page {
+  max-width: 560px;
+  margin: 0 auto;
+}
+
+.opencode-auth-complete-card {
+  border: 1px solid #2e2e2e;
+  border-radius: 14px;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.opencode-auth-complete-card h1,
+.opencode-auth-complete-card p {
+  margin: 0;
+}
+
+.opencode-auth-complete-card button {
+  align-self: flex-start;
+}
+
+@media (prefers-color-scheme: light) {
+  .opencode-auth-complete-card {
+    border-color: #e5e7eb;
+  }
+}

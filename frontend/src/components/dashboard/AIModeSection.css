@@ -1,3 +1,19 @@
+.ai-mode-header-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.75rem;
+}
+
+.ai-mode-secondary-btn {
+  background: transparent;
+  border: 1px solid #666;
+  color: inherit;
+}
+
+.ai-mode-secondary-btn:hover {
+  border-color: #888;
+}
+
 /* AI Mode Chat Interface */
 .ai-mode-container {
   display: flex;
