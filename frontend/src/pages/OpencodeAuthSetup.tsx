@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import type { KeyboardEvent } from 'react';
 import { AxiosError } from 'axios';
 import { toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom';
@@ -36,6 +37,7 @@ export default function OpencodeAuthSetup() {
     const [apiKey, setApiKey] = useState('');
     const [oauthAuthorization, setOauthAuthorization] = useState<OauthAuthorizeResponse | null>(null);
     const [oauthCode, setOauthCode] = useState('');
+    const [isAutoOauthCompleting, setIsAutoOauthCompleting] = useState(false);
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(true);
 
@@ -53,6 +55,13 @@ export default function OpencodeAuthSetup() {
         }
         return methods.find((method) => method.index === selectedMethod) || null;
     }, [methods, selectedMethod]);
+    const isManualCodeStep = oauthAuthorization?.method === 'code';
+
+    function resetOauthFlowState() {
+        setOauthAuthorization(null);
+        setOauthCode('');
+        setIsAutoOauthCompleting(false);
+    }
 
     async function loadStatus() {
         if (!token) {
@@ -67,17 +76,12 @@ export default function OpencodeAuthSetup() {
             setStatus(response.data);
             setError('');
 
-            if (response.data.has_credentials) {
-                navigate('/', { replace: true });
-                return;
-            }
-
-            const firstMethod = response.data.methods[0];
-            if (firstMethod) {
-                setSelectedMethod(firstMethod.index);
-            } else {
-                setSelectedMethod(null);
-            }
+            setSelectedMethod((current) => {
+                if (current !== null && response.data.methods.some((method) => method.index === current)) {
+                    return current;
+                }
+                return response.data.methods[0]?.index ?? null;
+            });
         } catch (err: unknown) {
             setError(getAxiosErrorMessage(err, 'Failed to load opencode auth status'));
         } finally {
@@ -105,7 +109,8 @@ export default function OpencodeAuthSetup() {
                 { headers: authHeaders }
             );
             setApiKey('');
-            await loadStatus();
+            toast.success('API key saved');
+            navigate('/opencode-auth/complete', { replace: true });
         } catch (err: unknown) {
             toast.error(getAxiosErrorMessage(err, 'Failed to save API key'));
         }
@@ -124,6 +129,24 @@ export default function OpencodeAuthSetup() {
             );
             setOauthAuthorization(response.data);
             window.open(response.data.url, '_blank', 'noopener,noreferrer');
+
+            if (response.data.method === 'auto') {
+                setIsAutoOauthCompleting(true);
+                try {
+                    await axiosInstance.post(
+                        '/api/opencode-auth/oauth/callback',
+                        { method: selectedMethod },
+                        { headers: authHeaders, timeout: 120000 }
+                    );
+                    resetOauthFlowState();
+                    toast.success('OAuth connected');
+                    navigate('/opencode-auth/complete', { replace: true });
+                } catch (err: unknown) {
+                    toast.error(getAxiosErrorMessage(err, 'Failed to complete OAuth flow'));
+                } finally {
+                    setIsAutoOauthCompleting(false);
+                }
+            }
         } catch (err: unknown) {
             toast.error(getAxiosErrorMessage(err, 'Failed to start OAuth flow'));
         }
@@ -148,23 +171,33 @@ export default function OpencodeAuthSetup() {
                 },
                 { headers: authHeaders }
             );
-            setOauthAuthorization(null);
-            setOauthCode('');
-            await loadStatus();
+            resetOauthFlowState();
+            toast.success('OAuth connected');
+            navigate('/opencode-auth/complete', { replace: true });
         } catch (err: unknown) {
             toast.error(getAxiosErrorMessage(err, 'Failed to complete OAuth flow'));
         }
     };
 
+    const handleManualCodeKeyDown = async (event: KeyboardEvent<HTMLInputElement>) => {
+        if (event.key !== 'Enter') {
+            return;
+        }
+        event.preventDefault();
+        await handleCompleteOAuth();
+    };
+
     if (isLoading) {
-        return <div className="opencode-auth-setup-container"><p>Checking opencode credentials...</p></div>;
+        return <div className="opencode-auth-page"><p className="opencode-auth-loading">Checking opencode credentials...</p></div>;
     }
 
     if (error) {
         return (
-            <div className="opencode-auth-setup-container">
-                <h1>Set Up Model Authentication</h1>
-                <p className="opencode-auth-error">{error}</p>
+            <div className="opencode-auth-page">
+                <section className="opencode-auth-panel">
+                    <h1>Model Authentication Setup</h1>
+                    <p className="opencode-auth-error">{error}</p>
+                </section>
             </div>
         );
     }
@@ -174,88 +207,119 @@ export default function OpencodeAuthSetup() {
     }
 
     return (
-        <div className="opencode-auth-setup-container">
-            <h1>Set Up Model Authentication</h1>
-            <p>
-                Your configured model is <strong>{status.model}</strong> (<code>{status.provider_id}</code> provider).
-            </p>
-            <p>You must connect credentials before accessing the dashboard.</p>
+        <div className="opencode-auth-page">
+            <section className="opencode-auth-panel">
+                <header className="opencode-auth-header">
+                    <div>
+                        <h1>Model Authentication Setup</h1>
+                        <p className="opencode-auth-subtitle">
+                            Configure credentials for <strong>{status.model}</strong>
+                        </p>
+                        <p className="opencode-auth-meta">Provider: <code>{status.provider_id}</code></p>
+                    </div>
+                    <div className={`opencode-auth-badge ${status.has_credentials ? 'is-connected' : 'is-required'}`}>
+                        {status.has_credentials ? 'Connected' : 'Setup Required'}
+                    </div>
+                </header>
 
-            {methods.length === 0 && (
-                <p className="opencode-auth-error">
-                    No auth methods are available for provider <code>{status.provider_id}</code>.
-                </p>
-            )}
-
-            {methods.length > 0 && (
-                <div className="opencode-auth-methods">
-                    <label htmlFor="opencode-auth-method">Auth method</label>
-                    <select
-                        id="opencode-auth-method"
-                        value={selectedMethod ?? ''}
-                        onChange={(event) => {
-                            setSelectedMethod(event.target.value === '' ? null : Number(event.target.value));
-                            setOauthAuthorization(null);
-                            setOauthCode('');
-                        }}
-                    >
-                        {methods.map((method) => (
-                            <option key={method.index} value={method.index}>
-                                {method.label} ({method.type})
-                            </option>
-                        ))}
-                    </select>
-                </div>
-            )}
-
-            {selectedAuthMethod?.type === 'api' && (
-                <div className="opencode-auth-card">
-                    <label htmlFor="opencode-api-key">API Key</label>
-                    <input
-                        id="opencode-api-key"
-                        type="password"
-                        value={apiKey}
-                        onChange={(event) => setApiKey(event.target.value)}
-                        placeholder="Paste API key"
-                    />
-                    <button type="button" onClick={handleSaveApiKey}>Save API Key</button>
-                </div>
-            )}
-
-            {selectedAuthMethod?.type === 'oauth' && (
-                <div className="opencode-auth-card">
-                    <button type="button" onClick={handleStartOAuth}>Start OAuth</button>
-
-                    {oauthAuthorization && (
-                        <>
-                            <p>{oauthAuthorization.instructions}</p>
-                            <p>
-                                Authorization URL:{' '}
-                                <a href={oauthAuthorization.url} target="_blank" rel="noreferrer">
-                                    Open Link
-                                </a>
-                            </p>
-
-                            {oauthAuthorization.method === 'code' && (
-                                <>
-                                    <label htmlFor="opencode-oauth-code">Authorization Code</label>
-                                    <input
-                                        id="opencode-oauth-code"
-                                        type="text"
-                                        value={oauthCode}
-                                        onChange={(event) => setOauthCode(event.target.value)}
-                                        placeholder="Paste authorization code"
-                                    />
-                                </>
-                            )}
-
+                {isManualCodeStep && (
+                    <section className="opencode-auth-section">
+                        <h2>Enter Authorization Code</h2>
+                        <div className="opencode-auth-card">
+                            <label htmlFor="opencode-oauth-code">Authorization Code</label>
+                            <input
+                                id="opencode-oauth-code"
+                                type="text"
+                                value={oauthCode}
+                                onChange={(event) => setOauthCode(event.target.value)}
+                                onKeyDown={handleManualCodeKeyDown}
+                                placeholder="Paste authorization code and press Enter"
+                            />
                             <button type="button" onClick={handleCompleteOAuth}>
-                                Complete OAuth
+                                Submit code
                             </button>
-                        </>
+                            <button type="button" className="opencode-auth-secondary" onClick={resetOauthFlowState}>
+                                Go back
+                            </button>
+                        </div>
+                    </section>
+                )}
+
+                {!isManualCodeStep && (
+                <section className="opencode-auth-section">
+                    <h2>Choose auth method</h2>
+                    {methods.length === 0 && (
+                        <p className="opencode-auth-error">
+                            No auth methods are available for provider <code>{status.provider_id}</code>.
+                        </p>
                     )}
-                </div>
-            )}
+
+                    {methods.length > 0 && (
+                        <div className="opencode-auth-method-grid">
+                            {methods.map((method) => (
+                                <button
+                                    key={method.index}
+                                    type="button"
+                                    className={`opencode-auth-method ${selectedMethod === method.index ? 'is-selected' : ''}`}
+                                    onClick={() => {
+                                        setSelectedMethod(method.index);
+                                        setOauthAuthorization(null);
+                                        setOauthCode('');
+                                    }}
+                                >
+                                    <span className="opencode-auth-method-label">{method.label}</span>
+                                    <span className="opencode-auth-method-type">{method.type.toUpperCase()}</span>
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </section>
+                )}
+
+                {!isManualCodeStep && selectedAuthMethod?.type === 'api' && (
+                    <section className="opencode-auth-section">
+                        <h2>API key</h2>
+                        <p className="opencode-auth-help">Paste the API key for your selected provider and save it.</p>
+                        <div className="opencode-auth-card">
+                            <label htmlFor="opencode-api-key">Provider API Key</label>
+                            <input
+                                id="opencode-api-key"
+                                type="password"
+                                value={apiKey}
+                                onChange={(event) => setApiKey(event.target.value)}
+                                placeholder="Paste API key"
+                            />
+                            <button type="button" onClick={handleSaveApiKey}>Save API Key</button>
+                        </div>
+                    </section>
+                )}
+
+                {!isManualCodeStep && selectedAuthMethod?.type === 'oauth' && (
+                    <section className="opencode-auth-section">
+                        <h2>OAuth</h2>
+                        <p className="opencode-auth-help">Use OAuth login for subscription-backed access (for example Pro/Max plans).</p>
+                        <div className="opencode-auth-card">
+                            <button type="button" onClick={handleStartOAuth}>Start OAuth</button>
+
+                            {oauthAuthorization && (
+                                <div className="opencode-auth-oauth-state">
+                                    <p>{oauthAuthorization.instructions}</p>
+                                    <p>
+                                        Authorization URL:{' '}
+                                        <a href={oauthAuthorization.url} target="_blank" rel="noreferrer">
+                                            Open Link
+                                        </a>
+                                    </p>
+
+                                    {oauthAuthorization.method === 'auto' && isAutoOauthCompleting && (
+                                        <p>Waiting for OAuth completion...</p>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </section>
+                )}
+            </section>
         </div>
     );
 }

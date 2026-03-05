@@ -13,6 +13,7 @@ import SkillApprovalReviewPage from './pages/SkillApprovalReviewPage'
 import RunDetailsPage from './pages/RunDetailsPage'
 import ManualRunPage from './pages/ManualRunPage'
 import OpencodeAuthSetup from './pages/OpencodeAuthSetup'
+import OpencodeAuthComplete from './pages/OpencodeAuthComplete'
 import './App.css'
 
 type OpencodeAuthStatus = {
@@ -70,11 +71,20 @@ function CredentialedRoute({ children }: { children: React.ReactNode }) {
 function OpencodeSetupRoute() {
   const auth = useAuth()
   const token = auth.loading ? null : auth.token
+  const { loading } = useOpencodeCredentialStatus(token)
+
+  if (loading) return null
+  return <OpencodeAuthSetup />
+}
+
+function OpencodeSetupCompleteRoute() {
+  const auth = useAuth()
+  const token = auth.loading ? null : auth.token
   const { loading, hasCredentials } = useOpencodeCredentialStatus(token)
 
   if (loading) return null
-  if (hasCredentials) return <Navigate to="/" replace />
-  return <OpencodeAuthSetup />
+  if (!hasCredentials) return <Navigate to="/opencode-auth" replace />
+  return <OpencodeAuthComplete />
 }
 
 function GuestRoute({ children }: { children: React.ReactNode }) {
@@ -91,6 +101,7 @@ function App() {
         <Route path="/login" element={<GuestRoute><Login /></GuestRoute>} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/opencode-auth" element={<ProtectedRoute><OpencodeSetupRoute /></ProtectedRoute>} />
+        <Route path="/opencode-auth/complete" element={<ProtectedRoute><OpencodeSetupCompleteRoute /></ProtectedRoute>} />
         <Route path="/" element={<ProtectedRoute><CredentialedRoute><Home /></CredentialedRoute></ProtectedRoute>} />
         <Route path="/runs/:id" element={<ProtectedRoute><CredentialedRoute><RunDetailsPage /></CredentialedRoute></ProtectedRoute>} />
         <Route path="/workflows/:slug/manual-run" element={<ProtectedRoute><CredentialedRoute><ManualRunPage /></CredentialedRoute></ProtectedRoute>} />
