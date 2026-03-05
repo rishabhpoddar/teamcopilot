@@ -19,49 +19,7 @@ type OpencodeAuthStatus = {
   has_credentials: boolean
 }
 
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const auth = useAuth()
-  if (auth.loading) return null
-  if (!auth.user) return <Navigate to="/login" replace />
-  return <>{children}</>
-}
-
-function CredentialedRoute({ children }: { children: React.ReactNode }) {
-  const auth = useAuth()
-  const token = auth.loading ? null : auth.token
-  const [loading, setLoading] = useState(true)
-  const [hasCredentials, setHasCredentials] = useState(false)
-
-  useEffect(() => {
-    if (!token) {
-      setLoading(false)
-      setHasCredentials(false)
-      return
-    }
-
-    setLoading(true)
-    axiosInstance.get<OpencodeAuthStatus>('/api/opencode-auth/status', {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-      .then((response) => {
-        setHasCredentials(response.data.has_credentials)
-      })
-      .catch((_err: unknown) => {
-        setHasCredentials(false)
-      })
-      .finally(() => {
-        setLoading(false)
-      })
-  }, [token])
-
-  if (loading) return null
-  if (!hasCredentials) return <Navigate to="/opencode-auth" replace />
-  return <>{children}</>
-}
-
-function OpencodeSetupRoute() {
-  const auth = useAuth()
-  const token = auth.loading ? null : auth.token
+function useOpencodeCredentialStatus(token: string | null) {
   const [loading, setLoading] = useState(true)
   const [hasCredentials, setHasCredentials] = useState(false)
 
@@ -88,6 +46,31 @@ function OpencodeSetupRoute() {
         setLoading(false)
       })
   }, [token])
+
+  return { loading, hasCredentials }
+}
+
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const auth = useAuth()
+  if (auth.loading) return null
+  if (!auth.user) return <Navigate to="/login" replace />
+  return <>{children}</>
+}
+
+function CredentialedRoute({ children }: { children: React.ReactNode }) {
+  const auth = useAuth()
+  const token = auth.loading ? null : auth.token
+  const { loading, hasCredentials } = useOpencodeCredentialStatus(token)
+
+  if (loading) return null
+  if (!hasCredentials) return <Navigate to="/opencode-auth" replace />
+  return <>{children}</>
+}
+
+function OpencodeSetupRoute() {
+  const auth = useAuth()
+  const token = auth.loading ? null : auth.token
+  const { loading, hasCredentials } = useOpencodeCredentialStatus(token)
 
   if (loading) return null
   if (hasCredentials) return <Navigate to="/" replace />

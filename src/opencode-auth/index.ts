@@ -3,7 +3,6 @@ import { apiHandler } from "../utils/index";
 import {
     getConfiguredModelProviderId,
     getRuntimeProviderAuth,
-    hasRuntimeProviderAuth,
     setRuntimeProviderAuth,
 } from "../utils/opencode-auth";
 import { getOpencodePort, getWorkspaceDir } from "../utils/opencode-client";
@@ -26,17 +25,31 @@ function getOpencodeBaseUrl(): string {
     return `http://localhost:${getOpencodePort()}`;
 }
 
-async function fetchProviderAuthMethods(providerId: string): Promise<ProviderAuthMethod[]> {
-    const directory = encodeURIComponent(getWorkspaceDir());
-    const response = await fetch(`${getOpencodeBaseUrl()}/provider/auth?directory=${directory}`);
-
+async function opencodeRequest(
+    input: string,
+    init: RequestInit | undefined,
+    errorMessagePrefix: string,
+    status: number,
+): Promise<Response> {
+    const response = await fetch(input, init);
     if (!response.ok) {
         const errorMessage = await response.text();
         throw {
-            status: 500,
-            message: `Failed to fetch provider auth methods from opencode: ${errorMessage}`,
+            status,
+            message: `${errorMessagePrefix}: ${errorMessage}`,
         };
     }
+    return response;
+}
+
+async function fetchProviderAuthMethods(providerId: string): Promise<ProviderAuthMethod[]> {
+    const directory = encodeURIComponent(getWorkspaceDir());
+    const response = await opencodeRequest(
+        `${getOpencodeBaseUrl()}/provider/auth?directory=${directory}`,
+        undefined,
+        "Failed to fetch provider auth methods from opencode",
+        500,
+    );
 
     const data = await response.json() as Record<string, Array<{ type: "api" | "oauth"; label: string }>>;
     const methods = data[providerId] || [];
@@ -56,7 +69,7 @@ router.get("/status", apiHandler(async (_req, res) => {
     res.json({
         provider_id: providerId,
         model,
-        has_credentials: await hasRuntimeProviderAuth(providerId),
+        has_credentials: Boolean(auth),
         configured_auth_type: auth?.type,
         methods,
     });
@@ -93,7 +106,7 @@ router.post("/oauth/authorize", apiHandler(async (req, res) => {
     }
 
     const directory = encodeURIComponent(getWorkspaceDir());
-    const response = await fetch(
+    const response = await opencodeRequest(
         `${getOpencodeBaseUrl()}/provider/${encodeURIComponent(providerId)}/oauth/authorize?directory=${directory}`,
         {
             method: "POST",
@@ -102,15 +115,9 @@ router.post("/oauth/authorize", apiHandler(async (req, res) => {
             },
             body: JSON.stringify({ method }),
         },
+        "Failed to initiate OAuth flow",
+        400,
     );
-
-    if (!response.ok) {
-        const errorMessage = await response.text();
-        throw {
-            status: 400,
-            message: `Failed to initiate OAuth flow: ${errorMessage}`,
-        };
-    }
 
     const data = await response.json() as AuthorizeResponse | null;
     if (!data) {
@@ -143,7 +150,7 @@ router.post("/oauth/callback", apiHandler(async (req, res) => {
     }
 
     const directory = encodeURIComponent(getWorkspaceDir());
-    const response = await fetch(
+    await opencodeRequest(
         `${getOpencodeBaseUrl()}/provider/${encodeURIComponent(providerId)}/oauth/callback?directory=${directory}`,
         {
             method: "POST",
@@ -152,17 +159,11 @@ router.post("/oauth/callback", apiHandler(async (req, res) => {
             },
             body: JSON.stringify({ method, code }),
         },
+        "Failed to complete OAuth callback",
+        400,
     );
 
-    if (!response.ok) {
-        const errorMessage = await response.text();
-        throw {
-            status: 400,
-            message: `Failed to complete OAuth callback: ${errorMessage}`,
-        };
-    }
-
-    if (!(await hasRuntimeProviderAuth(providerId))) {
+    if (!await getRuntimeProviderAuth(providerId)) {
         throw {
             status: 400,
             message: `OAuth callback completed but no credentials were stored for provider ${providerId}`,

@@ -15,11 +15,6 @@ type ProviderAuthInfo =
         expires: number;
         accountId?: string;
         enterpriseUrl?: string;
-    }
-    | {
-        type: "wellknown";
-        key: string;
-        token: string;
     };
 
 type AuthRecord = Record<string, ProviderAuthInfo>;
@@ -69,10 +64,6 @@ function isValidProviderAuthInfo(value: unknown): value is ProviderAuthInfo {
             && hasOptionalAccountId
             && hasOptionalEnterpriseUrl
         );
-    }
-
-    if (candidate.type === "wellknown") {
-        return isNonEmptyString(candidate.key) && isNonEmptyString(candidate.token);
     }
 
     return false;
@@ -130,8 +121,16 @@ function configureOpencodeDataHome(): string {
 export async function initializeOpencodeAuthStorage(): Promise<void> {
     configureOpencodeDataHome();
     await fs.mkdir(getWorkspaceOpencodeDir(), { recursive: true });
-    const runtimeRecord = await readAuthRecord(getRuntimeAuthPath());
-    await writeAuthRecord(getRuntimeAuthPath(), runtimeRecord);
+    const runtimeAuthPath = getRuntimeAuthPath();
+    try {
+        await fs.access(runtimeAuthPath);
+    } catch (err) {
+        const nodeError = err as NodeJS.ErrnoException;
+        if (nodeError.code !== "ENOENT") {
+            throw err;
+        }
+        await writeAuthRecord(runtimeAuthPath, {});
+    }
 }
 
 function getAuthForProvider(record: AuthRecord, providerId: string): ProviderAuthInfo | undefined {
@@ -142,11 +141,6 @@ function getAuthForProvider(record: AuthRecord, providerId: string): ProviderAut
 export async function getRuntimeProviderAuth(providerId: string): Promise<ProviderAuthInfo | undefined> {
     const record = await readAuthRecord(getRuntimeAuthPath());
     return getAuthForProvider(record, providerId);
-}
-
-export async function hasRuntimeProviderAuth(providerId: string): Promise<boolean> {
-    const info = await getRuntimeProviderAuth(providerId);
-    return Boolean(info);
 }
 
 export async function setRuntimeProviderAuth(providerId: string, info: ProviderAuthInfo): Promise<void> {

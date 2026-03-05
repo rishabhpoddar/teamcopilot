@@ -16,7 +16,7 @@ type StatusResponse = {
     provider_id: string;
     model: string;
     has_credentials: boolean;
-    configured_auth_type?: 'api' | 'oauth' | 'wellknown';
+    configured_auth_type?: 'api' | 'oauth';
     methods: ProviderAuthMethod[];
 };
 
@@ -40,6 +40,13 @@ export default function OpencodeAuthSetup() {
     const [isLoading, setIsLoading] = useState(true);
 
     const methods = status?.methods || [];
+    const authHeaders = token ? { Authorization: `Bearer ${token}` } : undefined;
+
+    function getAxiosErrorMessage(err: unknown, fallback: string): string {
+        const errorMessage = err instanceof AxiosError ? err.response?.data?.message || err.response?.data || err.message : fallback;
+        return typeof errorMessage === 'string' ? errorMessage : fallback;
+    }
+
     const selectedAuthMethod = useMemo(() => {
         if (selectedMethod === null) {
             return null;
@@ -55,7 +62,7 @@ export default function OpencodeAuthSetup() {
         setIsLoading(true);
         try {
             const response = await axiosInstance.get<StatusResponse>('/api/opencode-auth/status', {
-                headers: { Authorization: `Bearer ${token}` }
+                headers: authHeaders
             });
             setStatus(response.data);
             setError('');
@@ -72,8 +79,7 @@ export default function OpencodeAuthSetup() {
                 setSelectedMethod(null);
             }
         } catch (err: unknown) {
-            const errorMessage = err instanceof AxiosError ? err.response?.data?.message || err.response?.data || err.message : 'Failed to load opencode auth status';
-            setError(typeof errorMessage === 'string' ? errorMessage : 'Failed to load opencode auth status');
+            setError(getAxiosErrorMessage(err, 'Failed to load opencode auth status'));
         } finally {
             setIsLoading(false);
         }
@@ -96,13 +102,12 @@ export default function OpencodeAuthSetup() {
         try {
             await axiosInstance.post('/api/opencode-auth/api',
                 { key: apiKey },
-                { headers: { Authorization: `Bearer ${token}` } }
+                { headers: authHeaders }
             );
             setApiKey('');
             await loadStatus();
         } catch (err: unknown) {
-            const errorMessage = err instanceof AxiosError ? err.response?.data?.message || err.response?.data || err.message : 'Failed to save API key';
-            toast.error(typeof errorMessage === 'string' ? errorMessage : 'Failed to save API key');
+            toast.error(getAxiosErrorMessage(err, 'Failed to save API key'));
         }
     };
 
@@ -115,13 +120,12 @@ export default function OpencodeAuthSetup() {
             const response = await axiosInstance.post<OauthAuthorizeResponse>(
                 '/api/opencode-auth/oauth/authorize',
                 { method: selectedMethod },
-                { headers: { Authorization: `Bearer ${token}` } }
+                { headers: authHeaders }
             );
             setOauthAuthorization(response.data);
             window.open(response.data.url, '_blank', 'noopener,noreferrer');
         } catch (err: unknown) {
-            const errorMessage = err instanceof AxiosError ? err.response?.data?.message || err.response?.data || err.message : 'Failed to start OAuth flow';
-            toast.error(typeof errorMessage === 'string' ? errorMessage : 'Failed to start OAuth flow');
+            toast.error(getAxiosErrorMessage(err, 'Failed to start OAuth flow'));
         }
     };
 
@@ -142,14 +146,13 @@ export default function OpencodeAuthSetup() {
                     method: selectedMethod,
                     code: oauthAuthorization.method === 'code' ? oauthCode : undefined,
                 },
-                { headers: { Authorization: `Bearer ${token}` } }
+                { headers: authHeaders }
             );
             setOauthAuthorization(null);
             setOauthCode('');
             await loadStatus();
         } catch (err: unknown) {
-            const errorMessage = err instanceof AxiosError ? err.response?.data?.message || err.response?.data || err.message : 'Failed to complete OAuth flow';
-            toast.error(typeof errorMessage === 'string' ? errorMessage : 'Failed to complete OAuth flow');
+            toast.error(getAxiosErrorMessage(err, 'Failed to complete OAuth flow'));
         }
     };
 
