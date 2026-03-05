@@ -166,16 +166,6 @@
   color: #9ca3af;
 }
 
-.opencode-auth-footer {
-  padding-top: 0.5rem;
-  border-top: 1px solid #2e2e2e;
-}
-
-.opencode-auth-footer p {
-  margin: 0;
-  color: #9ca3af;
-}
-
 .opencode-auth-loading {
   margin: 0;
 }
@@ -207,8 +197,7 @@
 
   .opencode-auth-meta,
   .opencode-auth-help,
-  .opencode-auth-method-type,
-  .opencode-auth-footer p {
+  .opencode-auth-method-type {
     color: #6b7280;
   }
 
@@ -221,7 +210,4 @@
     border-color: #cbd5e1;
   }
 
-  .opencode-auth-footer {
-    border-color: #e5e7eb;
-  }
 }

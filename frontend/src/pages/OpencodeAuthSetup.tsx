@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { AxiosError } from 'axios';
 import { toast } from 'react-toastify';
@@ -54,6 +54,7 @@ export default function OpencodeAuthSetup() {
     const [oauthCode, setOauthCode] = useState('');
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(true);
+    const autoOauthRequestRef = useRef<AbortController | null>(null);
 
     const methods = useMemo(() => (status?.methods || []).filter(isVisibleAuthMethod), [status?.methods]);
     const authHeaders = token ? { Authorization: `Bearer ${token}` } : undefined;
@@ -74,6 +75,10 @@ export default function OpencodeAuthSetup() {
     const deviceCode = oauthAuthorization ? extractDeviceCode(oauthAuthorization.instructions) : '';
 
     function resetOauthFlowState() {
+        if (autoOauthRequestRef.current) {
+            autoOauthRequestRef.current.abort();
+            autoOauthRequestRef.current = null;
+        }
         setOauthAuthorization(null);
         setOauthCode('');
     }
@@ -111,6 +116,15 @@ export default function OpencodeAuthSetup() {
     useEffect(() => {
         void loadStatus();
     }, [token]);
+
+    useEffect(() => {
+        return () => {
+            if (autoOauthRequestRef.current) {
+                autoOauthRequestRef.current.abort();
+                autoOauthRequestRef.current = null;
+            }
+        };
+    }, []);
 
     const handleSaveApiKey = async () => {
         if (!token || selectedMethod === null) {
@@ -150,17 +164,26 @@ export default function OpencodeAuthSetup() {
             window.open(response.data.url, '_blank', 'noopener,noreferrer');
 
             if (response.data.method === 'auto') {
+                const controller = new AbortController();
+                autoOauthRequestRef.current = controller;
                 try {
                     await axiosInstance.post(
                         '/api/opencode-auth/oauth/callback',
                         { method: selectedMethod },
-                        { headers: authHeaders, timeout: 120000 }
+                        { headers: authHeaders, timeout: 120000, signal: controller.signal }
                     );
                     resetOauthFlowState();
                     toast.success('OAuth connected');
                     navigate('/opencode-auth/complete', { replace: true });
                 } catch (err: unknown) {
+                    if (err instanceof AxiosError && err.code === 'ERR_CANCELED') {
+                        return;
+                    }
                     toast.error(getAxiosErrorMessage(err, 'Failed to complete OAuth flow'));
+                } finally {
+                    if (autoOauthRequestRef.current === controller) {
+                        autoOauthRequestRef.current = null;
+                    }
                 }
             }
         } catch (err: unknown) {
