@@ -388,6 +388,10 @@
     border-radius: 9999px;
     font-size: 0.75rem;
     font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 160px;
 }
 
 .tool-call-status.pending {

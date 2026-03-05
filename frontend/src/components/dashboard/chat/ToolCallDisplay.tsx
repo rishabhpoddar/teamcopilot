@@ -144,9 +144,9 @@ export default function ToolCallDisplay({
             case 'pending':
                 return 'Pending';
             case 'running':
-                return state.title || 'Running...';
+                return 'Running';
             case 'completed':
-                return state.title || 'Completed';
+                return 'Completed';
             case 'error':
                 return 'Error';
             default:
