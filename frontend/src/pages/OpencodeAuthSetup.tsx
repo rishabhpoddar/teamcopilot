@@ -27,11 +27,19 @@ type OauthAuthorizeResponse = {
     instructions: string;
 };
 
+function extractDeviceCode(instructions: string): string {
+    const match = instructions.match(/enter code:\s*(.+)$/i);
+    if (!match || !match[1]) {
+        return '';
+    }
+    return match[1].trim();
+}
+
 function isVisibleAuthMethod(method: ProviderAuthMethod): boolean {
     if (method.type !== 'oauth') {
         return true;
     }
-    return !method.label.toLowerCase().includes('headless');
+    return !method.label.toLowerCase().includes('browser');
 }
 
 export default function OpencodeAuthSetup() {
@@ -44,7 +52,6 @@ export default function OpencodeAuthSetup() {
     const [apiKey, setApiKey] = useState('');
     const [oauthAuthorization, setOauthAuthorization] = useState<OauthAuthorizeResponse | null>(null);
     const [oauthCode, setOauthCode] = useState('');
-    const [isAutoOauthCompleting, setIsAutoOauthCompleting] = useState(false);
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(true);
 
@@ -63,11 +70,12 @@ export default function OpencodeAuthSetup() {
         return methods.find((method) => method.index === selectedMethod) || null;
     }, [methods, selectedMethod]);
     const isManualCodeStep = oauthAuthorization?.method === 'code';
+    const isAutoCodeStep = oauthAuthorization?.method === 'auto';
+    const deviceCode = oauthAuthorization ? extractDeviceCode(oauthAuthorization.instructions) : '';
 
     function resetOauthFlowState() {
         setOauthAuthorization(null);
         setOauthCode('');
-        setIsAutoOauthCompleting(false);
     }
 
     async function loadStatus() {
@@ -142,7 +150,6 @@ export default function OpencodeAuthSetup() {
             window.open(response.data.url, '_blank', 'noopener,noreferrer');
 
             if (response.data.method === 'auto') {
-                setIsAutoOauthCompleting(true);
                 try {
                     await axiosInstance.post(
                         '/api/opencode-auth/oauth/callback',
@@ -154,8 +161,6 @@ export default function OpencodeAuthSetup() {
                     navigate('/opencode-auth/complete', { replace: true });
                 } catch (err: unknown) {
                     toast.error(getAxiosErrorMessage(err, 'Failed to complete OAuth flow'));
-                } finally {
-                    setIsAutoOauthCompleting(false);
                 }
             }
         } catch (err: unknown) {
@@ -215,6 +220,34 @@ export default function OpencodeAuthSetup() {
 
     if (!status) {
         return null;
+    }
+
+    if (isAutoCodeStep) {
+        return (
+            <div className="opencode-auth-page">
+                <section className="opencode-auth-panel opencode-auth-panel-minimal">
+                    <header className="opencode-auth-header opencode-auth-header-minimal">
+                        <div>
+                            <h1>Model Authentication Setup</h1>
+                            <p className="opencode-auth-subtitle">Enter this device code in the opened OAuth page.</p>
+                        </div>
+                    </header>
+                    <div className="opencode-auth-oauth-state">
+                        <label htmlFor="opencode-device-code">Device Code</label>
+                        <input
+                            id="opencode-device-code"
+                            type="text"
+                            value={deviceCode}
+                            readOnly
+                        />
+                        <p className="opencode-auth-waiting">Waiting for OAuth completion...</p>
+                        <button type="button" className="opencode-auth-secondary" onClick={resetOauthFlowState}>
+                            Go back
+                        </button>
+                    </div>
+                </section>
+            </div>
+        );
     }
 
     return (
@@ -308,24 +341,12 @@ export default function OpencodeAuthSetup() {
                 {!isManualCodeStep && selectedAuthMethod?.type === 'oauth' && (
                     <section className="opencode-auth-section">
                         <h2>OAuth</h2>
-                        <p className="opencode-auth-help">Use OAuth login for subscription-backed access (for example Pro/Max plans).</p>
+                        {!isAutoCodeStep && (
+                            <p className="opencode-auth-help">Use OAuth login for subscription-backed access (for example Pro/Max plans).</p>
+                        )}
                         <div className="opencode-auth-card">
-                            <button type="button" onClick={handleStartOAuth}>Start OAuth</button>
-
-                            {oauthAuthorization && (
-                                <div className="opencode-auth-oauth-state">
-                                    <p>{oauthAuthorization.instructions}</p>
-                                    <p>
-                                        Authorization URL:{' '}
-                                        <a href={oauthAuthorization.url} target="_blank" rel="noreferrer">
-                                            Open Link
-                                        </a>
-                                    </p>
-
-                                    {oauthAuthorization.method === 'auto' && isAutoOauthCompleting && (
-                                        <p>Waiting for OAuth completion...</p>
-                                    )}
-                                </div>
+                            {!isAutoCodeStep && (
+                                <button type="button" onClick={handleStartOAuth}>Start OAuth</button>
                             )}
                         </div>
                     </section>

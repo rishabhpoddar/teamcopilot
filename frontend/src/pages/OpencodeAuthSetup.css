@@ -13,6 +13,20 @@
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.02) 0%, rgba(255, 255, 255, 0) 100%);
 }
 
+.opencode-auth-panel-minimal {
+  max-width: 420px;
+  margin: 0 auto;
+  gap: 1rem;
+}
+
+.opencode-auth-header-minimal {
+  align-items: flex-start;
+}
+
+.opencode-auth-header-minimal h1 {
+  font-size: 1.4rem;
+}
+
 .opencode-auth-header {
   display: flex;
   justify-content: space-between;
@@ -140,6 +154,16 @@
 
 .opencode-auth-oauth-state p {
   margin: 0;
+}
+
+.opencode-auth-oauth-state input[readonly] {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  font-size: 1.05rem;
+}
+
+.opencode-auth-waiting {
+  color: #9ca3af;
 }
 
 .opencode-auth-footer {
