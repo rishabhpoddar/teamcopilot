@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Message, Part, PermissionRequest } from '../../../types/chat';
 import MessageItem from './MessageItem';
 
@@ -23,11 +23,30 @@ export default function MessageList({
     onPermissionRespond,
     respondingPermissionIds
 }: MessageListProps) {
+    const BOTTOM_THRESHOLD_PX = 24;
+    const messagesContainerRef = useRef<HTMLDivElement>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
+
+    const isAtBottom = useCallback(() => {
+        const container = messagesContainerRef.current;
+        if (!container) {
+            return true;
+        }
+        const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+        return distanceFromBottom <= BOTTOM_THRESHOLD_PX;
+    }, []);
+
+    const handleScroll = useCallback(() => {
+        setShouldAutoScroll(isAtBottom());
+    }, [isAtBottom]);
 
     useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [messages, parts]);
+        if (!shouldAutoScroll) {
+            return;
+        }
+        messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+    }, [messages, parts, isStreaming, isWaitingForInput, shouldAutoScroll]);
 
     if (messages.length === 0) {
         return (
@@ -39,7 +58,7 @@ export default function MessageList({
     }
 
     return (
-        <div className="chat-messages">
+        <div className="chat-messages" ref={messagesContainerRef} onScroll={handleScroll}>
             {messages.map(message => (
                 <MessageItem
                     key={message.id}
