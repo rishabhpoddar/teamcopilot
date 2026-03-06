@@ -39,6 +39,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
 
     const abortControllerRef = useRef<AbortController | null>(null);
     const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
+    const completedAssistantMessageIdsRef = useRef<Set<string>>(new Set());
     const lastEscapePressRef = useRef<number>(0);
     // const currentSessionInfoRef = useRef<{ id: string; isEmpty: boolean } | null>(null);
     const handledComposeKeyRef = useRef<string | null>(null);
@@ -77,6 +78,15 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
         switch (event.type) {
             case 'message.updated': {
                 const { info } = event.properties;
+                if (info.role === 'assistant') {
+                    if (info.time.completed) {
+                        completedAssistantMessageIdsRef.current.add(info.id);
+                    } else if (completedAssistantMessageIdsRef.current.has(info.id)) {
+                        // Ignore stale out-of-order updates that regress a completed assistant message.
+                        break;
+                    }
+                }
+
                 setMessages(prev => {
                     const exists = prev.find(m => m.id === info.id);
                     if (exists) {
@@ -287,6 +297,11 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
 
             setMessages(loadedMessages);
             setParts(loadedParts);
+            completedAssistantMessageIdsRef.current = new Set(
+                loadedMessages
+                    .filter((message) => message.role === 'assistant' && Boolean(message.time.completed))
+                    .map((message) => message.id)
+            );
             const isSessionBusy = sessionStatus === 'busy' || sessionStatus === 'retry';
             if (!isSessionBusy) {
                 setIsStreaming(false);
@@ -338,6 +353,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
     useEffect(() => {
         // Reset streaming state when switching sessions
         setIsStreaming(false);
+        completedAssistantMessageIdsRef.current = new Set();
 
         if (activeSessionId && activeSessionId !== PENDING_SESSION_ID) {
             loadMessages(activeSessionId);
