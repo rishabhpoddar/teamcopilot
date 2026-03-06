@@ -22,6 +22,11 @@ type DiffLine = {
     text: string;
 };
 
+type PatchDiff = {
+    key: string | null;
+    lines: DiffLine[];
+};
+
 export default function ToolCallDisplay({
     part,
     pendingPermissions,
@@ -306,6 +311,63 @@ export default function ToolCallDisplay({
         return diff;
     };
 
+    const isLikelyApplyPatchPayload = (value: string): boolean => {
+        if (value.includes('*** Begin Patch')) {
+            return true;
+        }
+
+        return /(^|\n)@@\s/.test(value) && /(^|\n)[+-]/.test(value);
+    };
+
+    const computePatchLines = (patchText: string): DiffLine[] => {
+        const lines = patchText.split('\n');
+        return lines.map((line) => {
+            if (line.startsWith('+') && !line.startsWith('+++')) {
+                return { type: 'added', text: line.slice(1) };
+            }
+            if (line.startsWith('-') && !line.startsWith('---')) {
+                return { type: 'removed', text: line.slice(1) };
+            }
+            return { type: 'context', text: line };
+        });
+    };
+
+    const extractApplyPatchDiff = (value: unknown): PatchDiff | null => {
+        if (typeof value === 'string') {
+            const normalized = renderEscapedWhitespace(value);
+            if (!isLikelyApplyPatchPayload(normalized)) {
+                return null;
+            }
+            return {
+                key: null,
+                lines: computePatchLines(normalized)
+            };
+        }
+
+        if (!value || typeof value !== 'object' || Array.isArray(value)) {
+            return null;
+        }
+
+        const inputObject = value as Record<string, unknown>;
+        for (const [key, rawValue] of Object.entries(inputObject)) {
+            if (typeof rawValue !== 'string') {
+                continue;
+            }
+
+            const normalized = renderEscapedWhitespace(rawValue);
+            if (!isLikelyApplyPatchPayload(normalized)) {
+                continue;
+            }
+
+            return {
+                key,
+                lines: computePatchLines(normalized)
+            };
+        }
+
+        return null;
+    };
+
     const getOutputValue = (): unknown | null => {
         if (state.status === 'completed') {
             if (isRunWorkflowTool) {
@@ -335,9 +397,13 @@ export default function ToolCallDisplay({
 
     const inputValue = parseJsonIfString(state.input);
     const inputSections = toDisplaySections(inputValue);
-    const isEditTool = part.tool.toLowerCase() === 'edit';
+    const normalizedToolName = part.tool.toLowerCase();
+    const isEditTool = normalizedToolName === 'edit';
+    const isApplyPatchTool = normalizedToolName === 'apply_patch' || normalizedToolName === 'applypatch';
     let editDiff: { oldKey: string; newKey: string; lines: DiffLine[] } | null = null;
+    let applyPatchDiff: PatchDiff | null = null;
     let remainingInputSections = inputSections;
+    let shouldHideRawInput = false;
 
     if (
         isEditTool &&
@@ -366,9 +432,46 @@ export default function ToolCallDisplay({
         }
     }
 
+    if (isApplyPatchTool) {
+        applyPatchDiff = extractApplyPatchDiff(inputValue);
+        if (applyPatchDiff && inputSections && applyPatchDiff.key) {
+            const filteredSections = inputSections.filter((section) => section.key !== applyPatchDiff?.key);
+            remainingInputSections = filteredSections.length > 0 ? filteredSections : null;
+        }
+
+        if (applyPatchDiff && !remainingInputSections) {
+            shouldHideRawInput = true;
+        }
+    }
+
     const outputValue = getOutputValue();
     const parsedOutputValue = outputValue === null ? null : parseJsonIfString(outputValue);
-    const outputSections = parsedOutputValue === null ? null : toDisplaySections(parsedOutputValue);
+    let readOutputContent: string | null = null;
+    let outputSections = parsedOutputValue === null ? null : toDisplaySections(parsedOutputValue);
+
+    if (normalizedToolName === 'read' && parsedOutputValue !== null) {
+        if (typeof parsedOutputValue === 'string') {
+            const xmlSections = parseXmlSections(parsedOutputValue);
+            if (xmlSections) {
+                const contentSection = xmlSections.find((section) => section.key.toLowerCase() === 'content');
+                if (contentSection) {
+                    readOutputContent = contentSection.content;
+                }
+            } else {
+                readOutputContent = formatValueForDisplay(parsedOutputValue);
+            }
+        } else if (typeof parsedOutputValue === 'object' && !Array.isArray(parsedOutputValue)) {
+            const outputObject = parsedOutputValue as Record<string, unknown>;
+            const contentKey = findKeyCaseInsensitive(outputObject, ['content', 'text', 'file_content', 'fileContent']);
+            if (contentKey) {
+                readOutputContent = formatValueForDisplay(outputObject[contentKey]);
+            }
+        }
+
+        if (readOutputContent !== null) {
+            outputSections = null;
+        }
+    }
 
     return (
         <div className="tool-call">
@@ -390,16 +493,37 @@ export default function ToolCallDisplay({
                             <div className="tool-call-field">
                                 <div className="tool-call-label">{editDiff.oldKey}{' -> '}{editDiff.newKey} (Diff)</div>
                                 <div className="tool-call-content tool-call-diff-content">
-                                    {editDiff.lines.length > 0 ? editDiff.lines.map((line, index) => {
-                                        const prefix = line.type === 'added' ? '+' : line.type === 'removed' ? '-' : ' ';
-                                        return (
-                                            <div key={`${line.type}-${index}`} className={`tool-call-diff-line ${line.type}`}>
-                                                {prefix} {line.text}
-                                            </div>
-                                        );
-                                    }) : (
-                                        <div className="tool-call-diff-line context">  (No changes)</div>
-                                    )}
+                                    <div className="tool-call-diff-inner">
+                                        {editDiff.lines.length > 0 ? editDiff.lines.map((line, index) => {
+                                            const prefix = line.type === 'added' ? '+' : line.type === 'removed' ? '-' : ' ';
+                                            return (
+                                                <div key={`${line.type}-${index}`} className={`tool-call-diff-line ${line.type}`}>
+                                                    {prefix} {line.text}
+                                                </div>
+                                            );
+                                        }) : (
+                                            <div className="tool-call-diff-line context">  (No changes)</div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                        {applyPatchDiff && (
+                            <div className="tool-call-field">
+                                <div className="tool-call-label">{applyPatchDiff.key ? `${applyPatchDiff.key} (Diff)` : 'Patch (Diff)'}</div>
+                                <div className="tool-call-content tool-call-diff-content">
+                                    <div className="tool-call-diff-inner">
+                                        {applyPatchDiff.lines.length > 0 ? applyPatchDiff.lines.map((line, index) => {
+                                            const prefix = line.type === 'added' ? '+' : line.type === 'removed' ? '-' : ' ';
+                                            return (
+                                                <div key={`${line.type}-${index}`} className={`tool-call-diff-line ${line.type}`}>
+                                                    {prefix} {line.text}
+                                                </div>
+                                            );
+                                        }) : (
+                                            <div className="tool-call-diff-line context">  (No changes)</div>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         )}
@@ -412,16 +536,18 @@ export default function ToolCallDisplay({
                                     </div>
                                 ))}
                             </div>
-                        ) : (
+                        ) : !shouldHideRawInput ? (
                             <pre className="tool-call-content">{formatValueForDisplay(inputValue)}</pre>
-                        )}
+                        ) : null}
                     </div>
                     {parsedOutputValue !== null && (
                         <div className="tool-call-output">
                             <div className="tool-call-label">
                                 {state.status === 'error' ? 'Error' : 'Output'}
                             </div>
-                            {outputSections ? (
+                            {readOutputContent !== null ? (
+                                <pre className="tool-call-content">{readOutputContent}</pre>
+                            ) : outputSections ? (
                                 <div className="tool-call-fields">
                                     {outputSections.map((section) => (
                                         <div key={section.key} className="tool-call-field">
