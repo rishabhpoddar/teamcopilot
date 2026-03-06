@@ -80,7 +80,6 @@ docker run -d \
   --name localtool \
   -p 5124:5124 \
   -v my_workspaces:/app/workspaces \
-  -e EXTERNAL_SERVICE_URL="http://localhost:5124" \
   -e JWT_SECRET="your-secret-key" \
   localtool
 ```
@@ -103,7 +102,6 @@ Data is persisted in Docker named volumes. Even if you remove and recreate the c
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `EXTERNAL_SERVICE_URL` | URL where the service is accessible | `http://localhost:5124` |
 | `JWT_SECRET` | Secret for JWT tokens | - |
 | `WORKSPACE_DIR` | Path to workspace directory | `./my_workspaces` |
 | `HOST` | Hostname for the main server | `0.0.0.0` |

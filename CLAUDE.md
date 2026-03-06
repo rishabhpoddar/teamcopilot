@@ -89,7 +89,7 @@ SQLite via Prisma ORM. Schema is at `prisma/schema.prisma`. Currently two tables
 
 ## Environment Variables
 
-Required: `JWT_SECRET`, `EXTERNAL_SERVICE_URL` (default `http://localhost:5124`)
+Required: `JWT_SECRET`
 Optional: `WORKSPACE_DIR` (absolute path or relative to project root, default `./my_workspaces`)
 
 ### Server
