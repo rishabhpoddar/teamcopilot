@@ -47,6 +47,9 @@ export async function startOpencodeServer() {
         return server;
     }
 
+    // Ensure plugins running inside opencode can resolve backend base URL from PORT.
+    process.env.PORT = assertEnv("PORT");
+
     const createOpencodeServer = await loadCreateOpencodeServer();
     const port = parseIntStrict(assertEnv("OPENCODE_PORT"), "OPENCODE_PORT");
     const model = assertEnv("OPENCODE_MODEL");

@@ -1,5 +1,14 @@
 import { type Plugin, tool } from "@opencode-ai/plugin"
 
+function getApiBaseUrl(): string {
+  const port = process.env.PORT?.trim()
+  if (!port) {
+    throw new Error("PORT must be set.")
+  }
+  return `http://localhost:${port}`
+}
+
+
 function extractMessageId(context: unknown): string | null {
   if (!context || typeof context !== "object") {
     return null
@@ -89,7 +98,7 @@ export const RunWorkflowPlugin: Plugin = async (_ctx) => {
             throw new Error("Could not determine call id from tool context.")
           }
 
-          const startResponse = await fetch("http://localhost:3000/api/workflows/execute", {
+          const startResponse = await fetch(`${getApiBaseUrl()}/api/workflows/execute`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -121,7 +130,7 @@ export const RunWorkflowPlugin: Plugin = async (_ctx) => {
 
           while (true) {
             const resultResponse = await fetch(
-              `http://localhost:3000/api/workflows/execute/${encodeURIComponent(executionId)}`,
+              `${getApiBaseUrl()}/api/workflows/execute/${encodeURIComponent(executionId)}`,
               {
                 method: "GET",
                 headers: {

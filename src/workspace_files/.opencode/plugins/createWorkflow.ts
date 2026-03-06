@@ -2,6 +2,15 @@ import { type Plugin, tool } from "@opencode-ai/plugin"
 import * as fs from "fs/promises"
 import * as path from "path"
 
+function getApiBaseUrl(): string {
+  const port = process.env.PORT?.trim()
+  if (!port) {
+    throw new Error("PORT must be set.")
+  }
+  return `http://localhost:${port}`
+}
+
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -33,7 +42,6 @@ interface PermissionResponse {
 // ============================================================================
 
 const SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
-const API_BASE_URL = "http://localhost:3000"
 
 // ============================================================================
 // Helper Functions
@@ -109,7 +117,7 @@ async function rejectWorkflowPermission(
   sessionID: string,
   permissionId: string
 ): Promise<void> {
-  await fetch(`${API_BASE_URL}/api/workflows/permission-reject/${permissionId}`, {
+  await fetch(`${getApiBaseUrl()}/api/workflows/permission-reject/${permissionId}`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${sessionID}`,
@@ -122,7 +130,7 @@ async function requestWorkflowPermission(
   messageID: string,
   callID: string
 ): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/api/workflows/request-permission`, {
+  const response = await fetch(`${getApiBaseUrl()}/api/workflows/request-permission`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -151,7 +159,7 @@ async function requestWorkflowPermission(
     await new Promise((resolve) => setTimeout(resolve, 1000))
 
     const statusResponse = await fetch(
-      `${API_BASE_URL}/api/workflows/permission-status/${permissionId}`,
+      `${getApiBaseUrl()}/api/workflows/permission-status/${permissionId}`,
       {
         headers: {
           Authorization: `Bearer ${sessionID}`,
@@ -303,7 +311,7 @@ export const CreateWorkflowPlugin: Plugin = async (_ctx) => {
           await fs.writeFile(path.join(workflowDir, "README.md"), "", "utf-8")
 
           const creatorResponse = await fetch(
-            `${API_BASE_URL}/api/workflows/${encodeURIComponent(slug)}/creator`,
+            `${getApiBaseUrl()}/api/workflows/${encodeURIComponent(slug)}/creator`,
             {
               method: "POST",
               headers: {

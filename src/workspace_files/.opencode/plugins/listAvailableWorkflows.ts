@@ -1,6 +1,14 @@
 import { type Plugin, tool } from "@opencode-ai/plugin"
 
-const API_BASE_URL = "http://localhost:3000"
+function getApiBaseUrl(): string {
+  const port = process.env.PORT?.trim()
+  if (!port) {
+    throw new Error("PORT must be set.")
+  }
+  return `http://localhost:${port}`
+}
+
+
 
 interface WorkflowSummary {
   slug: string
@@ -42,7 +50,7 @@ export const ListAvailableWorkflowsPlugin: Plugin = async (_ctx) => {
         async execute(_args, context) {
           const { sessionID } = context
 
-          const response = await fetch(`${API_BASE_URL}/api/workflows`, {
+          const response = await fetch(`${getApiBaseUrl()}/api/workflows`, {
             headers: {
               Authorization: `Bearer ${sessionID}`,
             },

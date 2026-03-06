@@ -1,7 +1,15 @@
 import { type Plugin, tool } from "@opencode-ai/plugin"
 import { pipeline } from "@huggingface/transformers"
 
-const API_BASE_URL = "http://localhost:3000"
+function getApiBaseUrl(): string {
+  const port = process.env.PORT?.trim()
+  if (!port) {
+    throw new Error("PORT must be set.")
+  }
+  return `http://localhost:${port}`
+}
+
+
 
 interface SkillSummary {
   slug: string
@@ -86,7 +94,7 @@ async function readSkillMarkdown(
   slug: string
 ): Promise<string> {
   const response = await fetch(
-    `${API_BASE_URL}/api/skills/${encodeURIComponent(slug)}/files/content?path=${encodeURIComponent("SKILL.md")}`,
+    `${getApiBaseUrl()}/api/skills/${encodeURIComponent(slug)}/files/content?path=${encodeURIComponent("SKILL.md")}`,
     {
       headers: {
         Authorization: `Bearer ${sessionID}`,
@@ -135,7 +143,7 @@ export const FindSkillPlugin: Plugin = async (_ctx) => {
             throw new Error("description is required")
           }
 
-          const skillsResponse = await fetch(`${API_BASE_URL}/api/skills`, {
+          const skillsResponse = await fetch(`${getApiBaseUrl()}/api/skills`, {
             headers: {
               Authorization: `Bearer ${sessionID}`,
             },

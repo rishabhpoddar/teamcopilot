@@ -1,6 +1,14 @@
 import { type Plugin, tool } from "@opencode-ai/plugin"
 
-const API_BASE_URL = "http://localhost:3000"
+function getApiBaseUrl(): string {
+  const port = process.env.PORT?.trim()
+  if (!port) {
+    throw new Error("PORT must be set.")
+  }
+  return `http://localhost:${port}`
+}
+
+
 const SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
 interface SkillFileContentResponse {
@@ -59,7 +67,7 @@ export const GetSkillContentPlugin: Plugin = async (_ctx) => {
           }
 
           const skillDetailsResponse = await fetch(
-            `${API_BASE_URL}/api/skills/${encodeURIComponent(slug)}`,
+            `${getApiBaseUrl()}/api/skills/${encodeURIComponent(slug)}`,
             {
               headers: {
                 Authorization: `Bearer ${sessionID}`,
@@ -86,7 +94,7 @@ export const GetSkillContentPlugin: Plugin = async (_ctx) => {
           }
 
           const response = await fetch(
-            `${API_BASE_URL}/api/skills/${encodeURIComponent(slug)}/files/content?path=${encodeURIComponent("SKILL.md")}`,
+            `${getApiBaseUrl()}/api/skills/${encodeURIComponent(slug)}/files/content?path=${encodeURIComponent("SKILL.md")}`,
             {
               headers: {
                 Authorization: `Bearer ${sessionID}`,

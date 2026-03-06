@@ -41,8 +41,8 @@ const stringCases: StringCase[] = [
     },
     {
         name: "curl lowercase bearer token redaction",
-        input: "curl -H 'authorization: bearer myverylongtokensecretvalue' http://localhost:3000",
-        expected: "curl -H 'authorization: bearer ***lue' http://localhost:3000",
+        input: "curl -H 'authorization: bearer myverylongtokensecretvalue' http://localhost:5124",
+        expected: "curl -H 'authorization: bearer ***lue' http://localhost:5124",
     },
     {
         name: "curl api key header redaction",

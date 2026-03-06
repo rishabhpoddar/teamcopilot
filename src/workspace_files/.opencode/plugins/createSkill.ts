@@ -2,7 +2,15 @@ import { type Plugin, tool } from "@opencode-ai/plugin"
 import * as fs from "fs/promises"
 import * as path from "path"
 
-const API_BASE_URL = "http://localhost:3000"
+function getApiBaseUrl(): string {
+  const port = process.env.PORT?.trim()
+  if (!port) {
+    throw new Error("PORT must be set.")
+  }
+  return `http://localhost:${port}`
+}
+
+
 const SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
 interface SkillFileContentResponse {
@@ -86,7 +94,7 @@ async function rejectCreationPermission(
   sessionID: string,
   permissionId: string
 ): Promise<void> {
-  await fetch(`${API_BASE_URL}/api/workflows/permission-reject/${permissionId}`, {
+  await fetch(`${getApiBaseUrl()}/api/workflows/permission-reject/${permissionId}`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${sessionID}`,
@@ -99,7 +107,7 @@ async function requestCreationPermission(
   messageID: string,
   callID: string
 ): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/api/workflows/request-permission`, {
+  const response = await fetch(`${getApiBaseUrl()}/api/workflows/request-permission`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -128,7 +136,7 @@ async function requestCreationPermission(
     await new Promise((resolve) => setTimeout(resolve, 1000))
 
     const statusResponse = await fetch(
-      `${API_BASE_URL}/api/workflows/permission-status/${permissionId}`,
+      `${getApiBaseUrl()}/api/workflows/permission-status/${permissionId}`,
       {
         headers: {
           Authorization: `Bearer ${sessionID}`,
@@ -247,7 +255,7 @@ export const CreateSkillPlugin: Plugin = async (_ctx) => {
             callId
           )
 
-          const createResponse = await fetch(`${API_BASE_URL}/api/skills`, {
+          const createResponse = await fetch(`${getApiBaseUrl()}/api/skills`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -267,7 +275,7 @@ export const CreateSkillPlugin: Plugin = async (_ctx) => {
           }
 
           const readResponse = await fetch(
-            `${API_BASE_URL}/api/skills/${encodeURIComponent(slug)}/files/content?path=${encodeURIComponent("SKILL.md")}`,
+            `${getApiBaseUrl()}/api/skills/${encodeURIComponent(slug)}/files/content?path=${encodeURIComponent("SKILL.md")}`,
             {
               headers: {
                 Authorization: `Bearer ${sessionID}`,
@@ -290,7 +298,7 @@ export const CreateSkillPlugin: Plugin = async (_ctx) => {
 
           const nextContent = buildSkillMarkdown(slug, description, content)
 
-          const saveResponse = await fetch(`${API_BASE_URL}/api/skills/${encodeURIComponent(slug)}/files/content`, {
+          const saveResponse = await fetch(`${getApiBaseUrl()}/api/skills/${encodeURIComponent(slug)}/files/content`, {
             method: "PUT",
             headers: {
               "Content-Type": "application/json",

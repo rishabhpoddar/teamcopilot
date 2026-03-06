@@ -8,7 +8,7 @@ Follow the "Running Without Docker" steps in [README.md](README.md), then use de
 npm run dev
 ```
 
-This starts both the backend (port 3000) and frontend Vite dev server (port 5173) concurrently. Open http://localhost:5173 for development - frontend changes will reflect instantly via HMR.
+This starts both the backend (port 5124) and frontend Vite dev server (port 5173) concurrently. Open http://localhost:5173 for development - frontend changes will reflect instantly via HMR.
 
 ---
 
@@ -44,7 +44,7 @@ npm run prisma:migrate:reset
 ### Port Already in Use
 
 ```bash
-lsof -ti:3000 | xargs kill -9
+lsof -ti:5124 | xargs kill -9
 ```
 
 ### Database Errors

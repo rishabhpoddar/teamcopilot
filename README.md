@@ -39,7 +39,7 @@ cd frontend && npm run build && cd ..
 npm start
 ```
 
-The application will be available at **http://localhost:3000**
+The application will be available at **http://localhost:5124**
 
 Database migrations are applied automatically at server startup. If you point `WORKSPACE_DIR` to a new location, LocalTool creates a fresh SQLite database there.
 
@@ -78,14 +78,14 @@ docker build -t localtool .
 # Run the container
 docker run -d \
   --name localtool \
-  -p 3000:3000 \
+  -p 5124:5124 \
   -v my_workspaces:/app/workspaces \
-  -e EXTERNAL_SERVICE_URL="http://localhost:3000" \
+  -e EXTERNAL_SERVICE_URL="http://localhost:5124" \
   -e JWT_SECRET="your-secret-key" \
   localtool
 ```
 
-The application will be available at **http://localhost:3000**
+The application will be available at **http://localhost:5124**
 
 ### Docker Volumes
 
@@ -103,11 +103,11 @@ Data is persisted in Docker named volumes. Even if you remove and recreate the c
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `EXTERNAL_SERVICE_URL` | URL where the service is accessible | `http://localhost:3000` |
+| `EXTERNAL_SERVICE_URL` | URL where the service is accessible | `http://localhost:5124` |
 | `JWT_SECRET` | Secret for JWT tokens | - |
 | `WORKSPACE_DIR` | Path to workspace directory | `./my_workspaces` |
 | `HOST` | Hostname for the main server | `0.0.0.0` |
-| `PORT` | Port for the main server | `3000` |
+| `PORT` | Port for the main server | `5124` |
 | `OPENCODE_PORT` | Port for the Opencode server | `4096` |
 | `OPENCODE_MODEL` | AI model for Opencode | `openai/gpt-5.2-codex` |
 

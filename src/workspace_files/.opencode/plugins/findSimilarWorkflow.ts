@@ -1,7 +1,15 @@
 import { type Plugin, tool } from "@opencode-ai/plugin"
 import { pipeline } from "@huggingface/transformers"
 
-const API_BASE_URL = "http://localhost:3000"
+function getApiBaseUrl(): string {
+  const port = process.env.PORT?.trim()
+  if (!port) {
+    throw new Error("PORT must be set.")
+  }
+  return `http://localhost:${port}`
+}
+
+
 
 // ============================================================================
 // Types
@@ -99,7 +107,7 @@ export const FindSimilarWorkflowPlugin: Plugin = async (_ctx) => {
           const { sessionID } = context
           const { description, limit = 5 } = args
 
-          const workflowsResponse = await fetch(`${API_BASE_URL}/api/workflows`, {
+          const workflowsResponse = await fetch(`${getApiBaseUrl()}/api/workflows`, {
             headers: {
               Authorization: `Bearer ${sessionID}`,
             },

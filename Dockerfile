@@ -33,10 +33,10 @@ RUN mkdir -p /app/workspaces
 # Default environment variables
 ENV WORKSPACE_DIR="/app/workspaces"
 ENV HOST="0.0.0.0"
-ENV PORT="3000"
+ENV PORT="5124"
 ENV OPENCODE_PORT="4096"
 ENV OPENCODE_MODEL="openai/gpt-5.2-codex"
 ENV PATH="/app/node_modules/.bin:${PATH}"
 
-EXPOSE 3000
+EXPOSE 5124
 CMD node dist/index.js
