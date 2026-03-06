@@ -395,8 +395,6 @@ router.post('/:slug/manual-run', apiHandler(async (req, res) => {
 
 // POST /api/workflows/execute - Start workflow execution without blocking on completion.
 router.post('/execute', apiHandler(async (req, res) => {
-    (res.locals as { skipResponseSanitization?: boolean }).skipResponseSanitization = true;
-
     if (!req.opencode_session_id) {
         throw {
             status: 400,
@@ -468,8 +466,6 @@ router.post('/execute', apiHandler(async (req, res) => {
 
 // GET /api/workflows/execute/:executionId - Get execution status/result.
 router.get('/execute/:executionId', apiHandler(async (req, res) => {
-    (res.locals as { skipResponseSanitization?: boolean }).skipResponseSanitization = true;
-
     const executionId = req.params.executionId as string;
     const execution = workflowExecutions.get(executionId);
     if (!execution) {

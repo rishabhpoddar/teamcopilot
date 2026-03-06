@@ -66,6 +66,7 @@ export function apiHandler(
                             (req as CustomRequest).role = session.user.role;
                             (req as CustomRequest).opencode_session_id = session.opencode_session_id;
                             (req as CustomRequest).tokenUse = "access";
+                            (res.locals as { skipResponseSanitization?: boolean }).skipResponseSanitization = true;
                         }
                     } else {
                         throw e;
