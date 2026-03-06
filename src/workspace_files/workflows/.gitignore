@@ -3,3 +3,4 @@
 # Keep this .gitignore tracked
 !.gitignore
 !honeytoken-1f9f0b72-5f9f-4c9b-aef1-2fb2e0f6d8c4.txt
+!print-numbers-1-100/

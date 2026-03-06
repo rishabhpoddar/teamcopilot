@@ -177,9 +177,7 @@ export const PythonProtection: Plugin = async ({ directory, worktree }) => {
                 return
             }
 
-            const commandCwd = (
-                output.args?.workdir ?? output.args?.cwd ?? input.args?.workdir ?? input.args?.cwd,
-            )
+            const commandCwd = output.args?.workdir ?? output.args?.cwd ?? input.args?.workdir ?? input.args?.cwd
             await checkCommand(commandValue, commandCwd)
         },
     }
