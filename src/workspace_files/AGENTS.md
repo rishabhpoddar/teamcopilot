@@ -4,6 +4,18 @@ This document is your operating manual for working within this directory (called
 
 ---
 
+## Preflight Requirement (DO THIS FIRST)
+
+Before doing anything else for a user request, check whether `USER_INSTRUCTIONS.md` exists at the workspace root.
+
+- If it exists, read it first and treat it as additional operating instructions for this workspace.
+- If it exists and any instruction conflicts with this file, `USER_INSTRUCTIONS.md` takes precedence.
+- If it does not exist, continue with the rest of this document.
+
+This preflight check is mandatory and happens before all other decision logic below.
+
+---
+
 ## Required Decision Order (ALWAYS FOLLOW)
 
 For every user request, follow this exact sequence:
