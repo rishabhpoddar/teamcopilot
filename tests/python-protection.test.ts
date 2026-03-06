@@ -24,6 +24,34 @@ type PluginResult = {
     message: string;
 };
 
+const WORKFLOW_SLUG = "print-numbers-1-50";
+const WORKFLOW_SCRIPT = "for i in range(1, 51):\n    print(i)\n";
+
+async function ensureRepoWorkflowFixture(): Promise<() => Promise<void>> {
+    const repoWorkflowDir = path.resolve(process.cwd(), "src/workspace_files/workflows", WORKFLOW_SLUG);
+    const repoRunPy = path.join(repoWorkflowDir, "run.py");
+
+    try {
+        await fs.access(repoRunPy);
+        return async () => { };
+    } catch {
+        await fs.mkdir(repoWorkflowDir, { recursive: true });
+        await fs.writeFile(repoRunPy, WORKFLOW_SCRIPT, "utf8");
+
+        return async () => {
+            await fs.rm(repoRunPy, { force: true });
+            try {
+                const remaining = await fs.readdir(repoWorkflowDir);
+                if (remaining.length === 0) {
+                    await fs.rm(repoWorkflowDir, { recursive: true, force: true });
+                }
+            } catch {
+                // Ignore cleanup errors.
+            }
+        };
+    }
+}
+
 async function createFixture(): Promise<{
     root: string;
     workflowDir: string;
@@ -32,7 +60,7 @@ async function createFixture(): Promise<{
 }> {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "python-protection-"));
     const workflowsDir = path.join(root, "workflows");
-    const workflowDir = path.join(workflowsDir, "print-numbers-1-100");
+    const workflowDir = path.join(workflowsDir, "print-numbers-1-50");
     const matchingDir = path.join(root, "scripts-matching");
     const differentDir = path.join(root, "scripts-different");
 
@@ -40,9 +68,8 @@ async function createFixture(): Promise<{
     await fs.mkdir(matchingDir, { recursive: true });
     await fs.mkdir(differentDir, { recursive: true });
 
-    const workflowScript = "for i in range(1, 101):\n    print(i)\n";
-    await fs.writeFile(path.join(workflowDir, "run.py"), workflowScript, "utf8");
-    await fs.writeFile(path.join(matchingDir, "run.py"), workflowScript, "utf8");
+    await fs.writeFile(path.join(workflowDir, "run.py"), WORKFLOW_SCRIPT, "utf8");
+    await fs.writeFile(path.join(matchingDir, "run.py"), WORKFLOW_SCRIPT, "utf8");
     await fs.writeFile(path.join(differentDir, "run.py"), "print('different script')\n", "utf8");
 
     return { root, workflowDir, matchingDir, differentDir };
@@ -118,6 +145,7 @@ function assertAllowed(result: PluginResult, label: string): void {
 }
 
 async function main(): Promise<void> {
+    const cleanupRepoFixture = await ensureRepoWorkflowFixture();
     const fixture = await createFixture();
     try {
         assertBlocked(
@@ -160,7 +188,7 @@ async function main(): Promise<void> {
             runPluginCase(fixture.root, {
                 kind: "tool",
                 input: { tool: "bash", sessionID: "s1", callID: "c5" },
-                output: { args: { cmd: "cd workflows/print-numbers-1-100 && python run.py", cwd: fixture.root } },
+                output: { args: { cmd: "cd workflows/print-numbers-1-50 && python run.py", cwd: fixture.root } },
             }),
             "Blocks chained cd + python run.py",
         );
@@ -168,7 +196,7 @@ async function main(): Promise<void> {
         assertBlocked(
             runPluginCase(fixture.root, {
                 kind: "command",
-                input: { command: "cd workflows/print-numbers-1-100 && python", arguments: "run.py", sessionID: "s1" },
+                input: { command: "cd workflows/print-numbers-1-50 && python", arguments: "run.py", sessionID: "s1" },
                 output: { parts: [] },
             }),
             "Blocks command.execute.before path",
@@ -195,6 +223,7 @@ async function main(): Promise<void> {
         console.log("Python protection tests passed: 8");
     } finally {
         await fs.rm(fixture.root, { recursive: true, force: true });
+        await cleanupRepoFixture();
     }
 }
 
