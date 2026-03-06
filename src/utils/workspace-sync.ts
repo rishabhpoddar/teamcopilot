@@ -141,10 +141,16 @@ function syncTemplateDirectory(
 
 async function initializeWorkspaceNodeDependencies(workspaceDir: string): Promise<void> {
     const workspacePackageJsonPath = path.join(workspaceDir, "package.json");
+    const existingPackageJson = fs.existsSync(workspacePackageJsonPath)
+        ? JSON.parse(fs.readFileSync(workspacePackageJsonPath, "utf-8"))
+        : {};
+    const dependencies = {
+        ...(existingPackageJson.dependencies ?? {}),
+        "opencode-ai": "1.1.65",
+    };
     const workspacePackageJson = {
-        dependencies: {
-            "opencode-ai": "1.1.65",
-        },
+        ...existingPackageJson,
+        dependencies,
     };
     fs.writeFileSync(workspacePackageJsonPath, JSON.stringify(workspacePackageJson, null, 2), "utf-8");
     await execFileAsync("npm", ["install"], {
@@ -155,7 +161,6 @@ async function initializeWorkspaceNodeDependencies(workspaceDir: string): Promis
 
 export async function initializeWorkspaceDirectory(): Promise<void> {
     const workspaceDir = getWorkspaceDirFromEnv();
-    const isNewWorkspace = !fs.existsSync(workspaceDir);
     fs.mkdirSync(workspaceDir, { recursive: true });
     const workflowsDir = path.join(workspaceDir, "workflows");
     fs.mkdirSync(workflowsDir, { recursive: true });
@@ -172,9 +177,7 @@ export async function initializeWorkspaceDirectory(): Promise<void> {
 
     syncTemplateDirectory(workspaceTemplateDir, workspaceDir, "", []);
 
-    if (isNewWorkspace) {
-        await initializeWorkspaceNodeDependencies(workspaceDir);
-    }
+    await initializeWorkspaceNodeDependencies(workspaceDir);
 }
 
 export async function ensureWorkspaceDatabase(): Promise<void> {
