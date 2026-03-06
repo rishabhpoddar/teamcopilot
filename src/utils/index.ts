@@ -10,6 +10,7 @@ type CustomRequest = express.Request & {
     role?: string;
     opencode_session_id?: string;
     tokenUse?: "access" | "password_change";
+    mustChangePassword?: boolean;
 }
 
 export function apiHandler(
@@ -50,6 +51,7 @@ export function apiHandler(
                     (req as CustomRequest).role = user.role;
                     (req as CustomRequest).opencode_session_id = undefined;
                     (req as CustomRequest).tokenUse = payload.token_use === "password_change" ? "password_change" : "access";
+                    (req as CustomRequest).mustChangePassword = user.must_change_password;
                 } catch (e) {
                     if (e instanceof jwt.JsonWebTokenError || e instanceof jwt.TokenExpiredError) {
                         const session = await prisma.chat_sessions.findFirst({
@@ -66,6 +68,7 @@ export function apiHandler(
                             (req as CustomRequest).role = session.user.role;
                             (req as CustomRequest).opencode_session_id = session.opencode_session_id;
                             (req as CustomRequest).tokenUse = "access";
+                            (req as CustomRequest).mustChangePassword = session.user.must_change_password;
                             (res.locals as { skipResponseSanitization?: boolean }).skipResponseSanitization = true;
                         }
                     } else {
@@ -84,6 +87,12 @@ export function apiHandler(
                 throw {
                     status: 401,
                     message: 'This token can only be used to complete password change.'
+                };
+            }
+            if (requireAuth && (req as CustomRequest).tokenUse === "access" && (req as CustomRequest).mustChangePassword) {
+                throw {
+                    status: 401,
+                    message: "Password change is required before using this access token."
                 };
             }
             await handler(req as CustomRequest, res, next);

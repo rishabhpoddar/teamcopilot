@@ -4,7 +4,6 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './lib/auth'
 import { axiosInstance } from './utils'
 import Login from './pages/Login'
-import ResetPassword from './pages/ResetPassword'
 import Home from './pages/Home'
 import WorkflowEditorPage from './pages/WorkflowEditorPage'
 import SkillEditorPage from './pages/SkillEditorPage'
@@ -99,7 +98,6 @@ function App() {
     <AuthProvider>
       <Routes>
         <Route path="/login" element={<GuestRoute><Login /></GuestRoute>} />
-        <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/opencode-auth" element={<ProtectedRoute><OpencodeSetupRoute /></ProtectedRoute>} />
         <Route path="/opencode-auth/complete" element={<ProtectedRoute><OpencodeSetupCompleteRoute /></ProtectedRoute>} />
         <Route path="/" element={<ProtectedRoute><CredentialedRoute><Home /></CredentialedRoute></ProtectedRoute>} />

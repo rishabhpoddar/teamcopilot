@@ -67,8 +67,7 @@ Email/password auth → JWT tokens (365-day expiry). The flow:
 1. `POST /api/auth/signup` — creates user with bcrypt-hashed password, returns JWT
 2. `POST /api/auth/signin` — validates credentials, returns JWT
 3. Frontend stores token in localStorage and sends `Authorization: Bearer {token}` on subsequent requests
-4. Password reset via CLI: `npm run reset-password -- user@example.com` prints a reset URL
-5. `POST /api/auth/reset-password` — accepts `{ token, newPassword }` to complete the reset
+4. Password reset via CLI: `npm run reset-password -- user@example.com` sets a temporary password
 
 ### Route Structure
 

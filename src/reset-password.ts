@@ -1,10 +1,10 @@
 import dotenv from 'dotenv';
 dotenv.config();
-import crypto from 'crypto';
 import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
+import bcrypt from 'bcryptjs';
 import prisma from './prisma/client';
-import { assertEnv } from './utils/assert';
+import { getPasswordPolicyErrorMessage, isPasswordValid, MIN_PASSWORD_LENGTH } from './utils/password-policy';
 
 async function resolveEmailArgOrPrompt(): Promise<string> {
     const argEmail = process.argv[2];
@@ -26,8 +26,24 @@ async function resolveEmailArgOrPrompt(): Promise<string> {
     }
 }
 
+async function resolveTempPasswordOrPrompt(): Promise<string> {
+    const rl = createInterface({ input, output });
+    try {
+        while (true) {
+            const answer = (await rl.question(`Enter temporary password (min ${MIN_PASSWORD_LENGTH} chars): `)).trim();
+            if (isPasswordValid(answer)) {
+                return answer;
+            }
+            console.error(`${getPasswordPolicyErrorMessage()}. Please try again.`);
+        }
+    } finally {
+        rl.close();
+    }
+}
+
 async function main() {
     const email = await resolveEmailArgOrPrompt();
+    const tempPassword = await resolveTempPasswordOrPrompt();
 
     const user = await prisma.users.findUnique({ where: { email } });
     if (!user) {
@@ -35,16 +51,18 @@ async function main() {
         process.exit(1);
     }
 
-    const resetToken = crypto.randomBytes(32).toString('hex');
-    const expiresAt = Date.now() + 60 * 60 * 1000; // 1 hour
-
+    const passwordHash = await bcrypt.hash(tempPassword, 12);
     await prisma.users.update({
         where: { id: user.id },
-        data: { reset_token: resetToken, reset_token_expires_at: expiresAt }
+        data: {
+            password_hash: passwordHash,
+            must_change_password: true,
+            reset_token: null,
+            reset_token_expires_at: null
+        }
     });
 
-    const serviceUrl = assertEnv('EXTERNAL_SERVICE_URL');
-    console.log(`\nPassword reset link (expires in 1 hour):\n${serviceUrl}/reset-password?token=${resetToken}&email=${encodeURIComponent(user.email)}\n`);
+    console.log(`Temporary password set for ${user.email}. Password change is required on next sign in.`);
 
     await prisma.$disconnect();
 }

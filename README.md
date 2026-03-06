@@ -151,8 +151,8 @@ Password reset is done via a CLI command on the server. There is no email-based 
    ```bash
    npm run reset-password -- user@example.com
    ```
-2. This prints a one-time reset link to the console (valid for 1 hour).
-3. Open the link in a browser and set a new password.
+2. The CLI will prompt for a temporary password and store it.
+3. The user must change their password on next sign in (same flow as first-time login).
 
 ---
 

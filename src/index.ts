@@ -29,11 +29,6 @@ const app = express();
 
 app.use(express.json());
 
-app.use(cors({
-    origin: process.env.EXTERNAL_SERVICE_URL,
-    credentials: true
-}));
-
 // Logging middleware
 // app.use((req, res, next) => {
 //     const start = Date.now();
