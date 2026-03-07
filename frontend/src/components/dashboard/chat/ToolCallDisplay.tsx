@@ -34,7 +34,7 @@ export default function ToolCallDisplay({
     respondingPermissionIds
 }: ToolCallDisplayProps) {
     const auth = useAuth();
-    const [expanded, setExpanded] = useState(false);
+    const [expanded, setExpanded] = useState(true);
     const [logs, setLogs] = useState<string | null>(null);
     const [logsError, setLogsError] = useState<string | null>(null);
     const [isLogsLoading, setIsLogsLoading] = useState(false);

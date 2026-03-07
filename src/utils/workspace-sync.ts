@@ -43,7 +43,15 @@ const MANAGED_WORKSPACE_DIRECTORIES = new Set([
 
 function shouldSkipManagedDirectoryContent(relativePath: string): boolean {
     const [topLevelSegment] = relativePath.split("/");
-    return MANAGED_WORKSPACE_DIRECTORIES.has(topLevelSegment);
+    if (MANAGED_WORKSPACE_DIRECTORIES.has(topLevelSegment)) {
+        return true;
+    }
+
+    if (relativePath === ".opencode/xdg-data" || relativePath.startsWith(".opencode/xdg-data/")) {
+        return true;
+    }
+
+    return false;
 }
 
 function evaluateIgnoreRuleSets(
