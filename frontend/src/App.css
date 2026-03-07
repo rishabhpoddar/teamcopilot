@@ -2,4 +2,85 @@
   width: min(1200px, calc(100vw - 2rem));
   margin: 0 auto;
   padding: 1rem;
+  min-height: 100vh;
+  display: flex;
+}
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid currentColor;
+}
+
+.app-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.app-brand-logo {
+  width: 42px;
+  height: 42px;
+  object-fit: contain;
+  display: block;
+}
+
+.app-brand-text {
+  font-size: 1.8rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.app-workspace {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  opacity: 0.7;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.app-header-meta {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.app-signout {
+  white-space: nowrap;
+  padding: 0.45em 0.95em;
+}
+
+.app-workspace-label {
+  font-weight: 600;
+}
+
+.app-workspace-value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  word-break: break-all;
+}
+
+@media (max-width: 720px) {
+  .app-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .app-header-meta,
+  .app-workspace {
+    justify-content: flex-start;
+  }
 }

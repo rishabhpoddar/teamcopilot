@@ -93,9 +93,42 @@ function GuestRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
-function App() {
+function AppShell() {
+  const auth = useAuth()
+  const [workspaceDir, setWorkspaceDir] = useState<string | null>(null)
+  const [workspaceError, setWorkspaceError] = useState<string | null>(null)
+
+  useEffect(() => {
+    axiosInstance.get<{ workspace_dir: string }>('/api/workspace')
+      .then((response) => {
+        setWorkspaceDir(response.data.workspace_dir)
+        setWorkspaceError(null)
+      })
+      .catch((err: unknown) => {
+        const errorMessage = err instanceof AxiosError ? err.response?.data?.message || err.response?.data || err.message : 'Failed to load workspace path'
+        setWorkspaceError(errorMessage)
+      })
+  }, [])
+
   return (
-    <AuthProvider>
+    <div className="app-shell">
+      <header className="app-header">
+        <div className="app-brand">
+          <img src="/logo.svg" alt="TeamCopilot logo" className="app-brand-logo" />
+          <div className="app-brand-text">TeamCopilot</div>
+        </div>
+        <div className="app-header-meta">
+          <div className="app-workspace">
+            <span className="app-workspace-label">Workspace</span>
+            <span className="app-workspace-value">
+              {workspaceError ?? workspaceDir ?? 'Loading...'}
+            </span>
+          </div>
+          {!auth.loading && auth.user && (
+            <button className="app-signout" onClick={auth.logout}>Sign Out</button>
+          )}
+        </div>
+      </header>
       <Routes>
         <Route path="/login" element={<GuestRoute><Login /></GuestRoute>} />
         <Route path="/opencode-auth" element={<ProtectedRoute><OpencodeSetupRoute /></ProtectedRoute>} />
@@ -109,6 +142,14 @@ function App() {
         <Route path="/skills/:slug/approval-review" element={<ProtectedRoute><CredentialedRoute><SkillApprovalReviewPage /></CredentialedRoute></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+    </div>
+  )
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <AppShell />
     </AuthProvider>
   )
 }

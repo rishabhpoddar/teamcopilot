@@ -20,8 +20,9 @@ import { startOpencodeServer, stopOpencodeServer } from "./opencode-server";
 import path from 'path';
 import { Server } from "http";
 import { assertEnv, parseIntStrict } from "./utils/assert";
+import { apiHandler } from "./utils";
 import { sanitizeForClient, sanitizeStringContent } from "./utils/redact";
-import { ensureWorkspaceDatabase, initializeWorkspaceDirectory } from "./utils/workspace-sync";
+import { ensureWorkspaceDatabase, getWorkspaceDirFromEnv, initializeWorkspaceDirectory } from "./utils/workspace-sync";
 import { initializeOpencodeAuthStorage } from "./utils/opencode-auth";
 import opencodeAuthRouter from "./opencode-auth";
 import { loadJwtSecret } from "./utils/jwt-secret";
@@ -100,6 +101,11 @@ apiRouter.get("/", (_req, res) => {
     // for healthcheck
     res.send("Hello from the API!");
 });
+
+apiRouter.get("/workspace", apiHandler(async (_req, res) => {
+    const workspaceDir = getWorkspaceDirFromEnv();
+    res.json({ workspace_dir: workspaceDir });
+}, false));
 
 apiRouter.use('/workflows', workflowsRouter);
 apiRouter.use('/chat', chatRouter);

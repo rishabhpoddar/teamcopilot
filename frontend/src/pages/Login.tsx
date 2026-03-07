@@ -57,10 +57,6 @@ export default function Login() {
 
     return (
         <div className="auth-container">
-            <div className="auth-brand">
-                <img src="/logo.svg" alt="TeamCopilot logo" className="auth-brand-logo" />
-                <div className="auth-brand-text">TeamCopilot</div>
-            </div>
             <h1>{step === 'signin' ? 'Sign In' : 'Set New Password'}</h1>
             {step === 'signin' ? (
                 <form onSubmit={handleSignIn} className="auth-form">

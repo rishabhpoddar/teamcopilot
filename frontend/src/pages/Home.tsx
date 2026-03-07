@@ -21,7 +21,6 @@ export default function Home() {
     const [searchParams, setSearchParams] = useSearchParams();
 
     if (auth.loading) return null;
-    const { user, logout } = auth;
     const tabParam = searchParams.get('tab');
     const activeTab: Tab = validTabs.includes(tabParam as Tab) ? (tabParam as Tab) : 'ai';
     const composeDraft = searchParams.get('draft');
@@ -74,20 +73,6 @@ export default function Home() {
 
     return (
         <div className="dashboard">
-            <header className="dashboard-header">
-                <div className="dashboard-brand">
-                    <img src="/logo.svg" alt="TeamCopilot logo" className="dashboard-brand-logo" />
-                    <h1>TeamCopilot</h1>
-                </div>
-                <div className="dashboard-user">
-                    <div className="dashboard-user-meta">
-                        <span className="dashboard-user-name">{user?.name}</span>
-                        <span className="dashboard-user-email">{user?.email}</span>
-                    </div>
-                    <button onClick={logout}>Sign Out</button>
-                </div>
-            </header>
-
             <nav className="dashboard-tabs">
                 <button
                     className={`tab-btn ${activeTab === 'ai' ? 'active' : ''}`}

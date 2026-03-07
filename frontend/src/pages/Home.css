@@ -4,70 +4,6 @@
   margin: 0 auto;
 }
 
-.dashboard-header {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  column-gap: 1.5rem;
-  margin-bottom: 2rem;
-  padding-bottom: 1rem;
-  border-bottom: 1px solid #333;
-}
-
-.dashboard-header h1 {
-  margin: 0;
-}
-
-.dashboard-brand {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  min-width: 0;
-}
-
-.dashboard-brand-logo {
-  width: 42px;
-  height: 42px;
-  object-fit: contain;
-  display: block;
-  flex-shrink: 0;
-}
-
-.dashboard-brand h1 {
-  margin: 0;
-  font-size: 2.2rem;
-  line-height: 1;
-  letter-spacing: -0.02em;
-}
-
-.dashboard-user {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  justify-self: end;
-}
-
-.dashboard-user-meta {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  line-height: 1.2;
-}
-
-.dashboard-user-name {
-  font-size: 1.05rem;
-  font-weight: 600;
-}
-
-.dashboard-user-email {
-  font-size: 0.9rem;
-  color: #a1a1aa;
-}
-
-.dashboard-user button {
-  white-space: nowrap;
-  padding: 0.45em 0.95em;
-}
 
 /* Tab Navigation */
 .dashboard-tabs {
@@ -140,30 +76,11 @@
 
 /* Light Mode Overrides */
 @media (prefers-color-scheme: light) {
-  .dashboard-header {
-    border-bottom-color: #ddd;
-  }
-
   .dashboard-tabs {
     border-bottom-color: #ddd;
   }
 
   .section-empty code {
     background: #f0f0f0;
-  }
-}
-
-@media (max-width: 900px) {
-  .dashboard-header {
-    grid-template-columns: 1fr;
-    row-gap: 0.75rem;
-  }
-
-  .dashboard-user {
-    justify-self: start;
-  }
-
-  .dashboard-user-meta {
-    align-items: flex-start;
   }
 }
