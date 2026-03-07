@@ -36,16 +36,10 @@ cd frontend && npm install && cd ..
 cp .env.example .env
 ```
 
-Set at least:
-
-```env
-WORKSPACE_DIR=/path/to/some/folder
-```
-
 ### 3) Build and start
 
 ```bash
-cd frontend && npm run build && cd ..
+npm run build
 npm start
 ```
 
