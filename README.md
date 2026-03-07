@@ -1,3 +1,5 @@
+![TeamCopilot Logo](logo.svg)
+
 # TeamCopilot
 
 TeamCopilot helps technical and non-technical teams become more productive by enabling safe sharing of custom AI agent skills and tools, that you specifically build for organization.
