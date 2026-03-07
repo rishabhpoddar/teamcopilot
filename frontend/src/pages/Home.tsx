@@ -66,9 +66,15 @@ export default function Home() {
     return (
         <div className="dashboard">
             <header className="dashboard-header">
-                <h1>TeamCopilot</h1>
+                <div className="dashboard-brand">
+                    <img src="/logo.svg" alt="TeamCopilot logo" className="dashboard-brand-logo" />
+                    <h1>TeamCopilot</h1>
+                </div>
                 <div className="dashboard-user">
-                    <span>{user?.name} ({user?.email})</span>
+                    <div className="dashboard-user-meta">
+                        <span className="dashboard-user-name">{user?.name}</span>
+                        <span className="dashboard-user-email">{user?.email}</span>
+                    </div>
                     <button onClick={logout}>Sign Out</button>
                 </div>
             </header>

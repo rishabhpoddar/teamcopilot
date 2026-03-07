@@ -3,6 +3,27 @@
   margin: 0 auto;
 }
 
+.auth-brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.auth-brand-logo {
+  width: 52px;
+  height: 52px;
+  object-fit: contain;
+  display: block;
+}
+
+.auth-brand-text {
+  font-size: 1.8rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
 .auth-container h1 {
   margin-bottom: 1.5rem;
 }
