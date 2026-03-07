@@ -1,4 +1,4 @@
-![TeamCopilot Logo](logo.svg)
+<img src="logo.svg" alt="TeamCopilot Logo" width="180" />
 
 # TeamCopilot
 
