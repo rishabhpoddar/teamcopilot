@@ -1,6 +1,6 @@
-FROM python:3.14.3-alpine3.22 AS python-runtime
+FROM python:3.14.3-slim-bookworm AS python-runtime
 
-FROM node:20-alpine3.22
+FROM node:20-bookworm-slim
 
 # Install fixed Python runtime (3.14.3) and pip from official Python image
 COPY --from=python-runtime /usr/local /usr/local
