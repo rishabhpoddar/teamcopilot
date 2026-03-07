@@ -1,163 +1,113 @@
 # TeamCopilot
 
-An open-source platform for running AI agent workflows on your local machine. TeamCopilot provides a web interface to create, manage, and execute automated workflows powered by AI agents.
+TeamCopilot helps technical and non-technical teams become more productive by enabling safe sharing of custom AI agent skills and tools, that you specifically build for organization.
 
-## Features
+## What makes TeamCopilot different
 
-- Local SQLite database for data persistence
-- Workspace-scoped SQLite database (one DB per `WORKSPACE_DIR`)
-- Web-based UI for workflow management
-- Workspace-based workflow organization
-- Python-based workflow execution
+It's like Claude code / OpenAI Codex, except that:
+- The skills and tools you create can be used by anyone in your team as long as you give them permission to do so.
+- It makes it easy for non technical people to use AI agents since they don't have to work with a CLI.
+- It's fully open source.
+- You can pick either OpenAI or Anthropic as your AI provider.
 
----
-
-## Running Without Docker
+## Quick Start (Local)
 
 ### Prerequisites
-- Node.js 20.x or later
-- npm
-- Python 3.10+ (for running workflows)
 
-### Setup
+- Node.js 20+
+- npm
+- Python 3.10+
+
+### 1) Install
 
 ```bash
 git clone https://github.com/rishabhpoddar/teamcopilot
 cd teamcopilot
-
-# Install dependencies
 npm install
 cd frontend && npm install && cd ..
+```
 
-# Configure environment
+### 2) Configure
+
+```bash
 cp .env.example .env
+```
 
-# Build frontend
+Set at least:
+
+```env
+WORKSPACE_DIR=/path/to/some/folder
+JWT_SECRET=your-strong-secret
+```
+
+### 3) Build and start
+
+```bash
 cd frontend && npm run build && cd ..
-
-# Start the server
 npm start
 ```
 
-The application will be available at **http://localhost:5124**
+Open: **http://localhost:5124**
 
-Database migrations are applied automatically at server startup. If you point `WORKSPACE_DIR` to a new location, TeamCopilot creates a fresh SQLite database there.
-
-### OpenCode Setup (Install + API Key)
-
-TeamCopilot uses OpenCode. `npm install` in this repo already installs OpenCode locally via project dependencies, so you can use `npx opencode` directly.
-
-1. Start OpenCode:
-   ```bash
-   npx opencode
-   ```
-2. In the OpenCode prompt, run:
-   ```text
-   /connect
-   ```
-3. Select your provider (or `opencode`), then create/copy your API key and paste it when prompted.
-
-For provider-specific details, see the official docs: https://opencode.ai/docs
-
----
-
-## Running With Docker
-
-### Prerequisites
-- Docker
-
-### Setup
+## Docker Setup
 
 ```bash
 git clone https://github.com/rishabhpoddar/teamcopilot
 cd teamcopilot
-
-# Build the image
 docker build -t teamcopilot .
-
-# Run the container
 docker run -d \
   --name teamcopilot \
   -p 5124:5124 \
-  -v my_workspaces:/app/workspaces \
+  -v /path/to/some/folder:/app/workspaces \
   -e JWT_SECRET="your-secret-key" \
   teamcopilot
 ```
 
-The application will be available at **http://localhost:5124**
+Open: **http://localhost:5124**
 
-### Docker Volumes
-
-| Volume | Container Path | Purpose |
-|--------|---------------|---------|
-| `my_workspaces` | `/app/workspaces` | User workflow storage and per-workspace SQLite database |
-
-Data is persisted in Docker named volumes. Even if you remove and recreate the container, your workspace files and workspace-scoped database are retained.
-
----
-
-## Configuration
-
-### Environment Variables
+## Common Environment Variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `JWT_SECRET` | Secret for JWT tokens | - |
-| `WORKSPACE_DIR` | Path to workspace directory | `./my_workspaces` |
-| `HOST` | Hostname for the main server | `0.0.0.0` |
-| `PORT` | Port for the main server | `5124` |
-| `OPENCODE_PORT` | Port for the Opencode server | `4096` |
-| `OPENCODE_MODEL` | AI model for Opencode | `openai/gpt-5.2-codex` |
+| `JWT_SECRET` | Secret used for auth tokens | - |
+| `WORKSPACE_DIR` | Directory where workflows are stored | `./my_workspaces` |
+| `HOST` | Server host | `0.0.0.0` |
+| `PORT` | Server port | `5124` |
+| `OPENCODE_PORT` | Internal OpenCode server port | `4096` |
+| `OPENCODE_MODEL` | Model used by OpenCode | `openai/gpt-5.2-codex` |
 
-> Note: SQLite database files are automatically managed inside `WORKSPACE_DIR/.sqlite` at `data.db`, and migrations are applied automatically at startup. `HOST` and `PORT` control the main HTTP server. `OPENCODE_PORT` is used internally by the backend process and normally does not need to be exposed with a Docker `-p` flag.
+## User Management (CLI)
 
----
-
-## User Management
-
-### Creating an Account
-
-Accounts are created via CLI on the server:
+Create user:
 
 ```bash
-npm run create-user -- --email user@example.com --name "User Name" --role User --password "temporary-password"
+npm run create-user
 ```
 
-On first sign-in with this temporary password, the user must set a new password before they can access the app.
-
-### Updating a User's Role
+Change user role:
 
 ```bash
-npm run change-user-role -- --email user@example.com --role Engineer
+npm run change-user-role
 ```
 
-### Deleting a User
+Delete user:
 
 ```bash
-npm run delete-user -- --email user@example.com
+npm run delete-user
 ```
 
-### Signing In
+Reset password:
 
-Visit `/login` and enter your email and password.
+```bash
+npm run reset-password
+```
 
-### Resetting a Password
-
-Password reset is done via a CLI command on the server. There is no email-based reset flow.
-
-1. Run the reset command with the user's email:
-   ```bash
-   npm run reset-password -- user@example.com
-   ```
-2. The CLI will prompt for a temporary password and store it.
-3. The user must change their password on next sign in (same flow as first-time login).
-
----
+Users sign in at `/login`.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, project structure, and database management.
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-MIT License
+MIT
