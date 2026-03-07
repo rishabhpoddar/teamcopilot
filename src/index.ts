@@ -24,6 +24,7 @@ import { sanitizeForClient, sanitizeStringContent } from "./utils/redact";
 import { ensureWorkspaceDatabase, initializeWorkspaceDirectory } from "./utils/workspace-sync";
 import { initializeOpencodeAuthStorage } from "./utils/opencode-auth";
 import opencodeAuthRouter from "./opencode-auth";
+import { loadJwtSecret } from "./utils/jwt-secret";
 const app = express();
 
 app.use(express.json());
@@ -149,6 +150,7 @@ async function bootstrap() {
     await initializeWorkspaceDirectory();
     await initializeOpencodeAuthStorage();
     await ensureWorkspaceDatabase();
+    await loadJwtSecret();
     await startOpencodeServer();
     startCronJobs();
 

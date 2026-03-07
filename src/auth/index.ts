@@ -3,12 +3,11 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import prisma from "../prisma/client";
 import { apiHandler } from "../utils/index";
-import { assertEnv } from "../utils/assert";
+import { getJwtSecret } from "../utils/jwt-secret";
 import { getPasswordPolicyErrorMessage, isPasswordValid } from "../utils/password-policy";
 
 const router = express.Router({ mergeParams: true });
 
-const JWT_SECRET = assertEnv('JWT_SECRET');
 
 type PasswordChangeTokenPayload = {
     sub: string;
@@ -20,7 +19,7 @@ type PasswordChangeTokenPayload = {
 function issueAccessToken(user: { id: string; email: string; name: string }): string {
     return jwt.sign(
         { sub: user.id, email: user.email, name: user.name },
-        JWT_SECRET,
+        getJwtSecret(),
         { expiresIn: '365d' }
     );
 }
@@ -28,13 +27,13 @@ function issueAccessToken(user: { id: string; email: string; name: string }): st
 function issuePasswordChangeToken(user: { id: string; email: string; name: string }): string {
     return jwt.sign(
         { sub: user.id, email: user.email, name: user.name, token_use: 'password_change' },
-        JWT_SECRET,
+        getJwtSecret(),
         { expiresIn: '10m' }
     );
 }
 
 function parsePasswordChangeToken(rawToken: string): PasswordChangeTokenPayload {
-    const decoded = jwt.verify(rawToken, JWT_SECRET);
+    const decoded = jwt.verify(rawToken, getJwtSecret());
     if (typeof decoded !== 'object' || decoded === null) {
         throw {
             status: 401,

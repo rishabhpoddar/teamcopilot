@@ -89,7 +89,7 @@ SQLite via Prisma ORM. Schema is at `prisma/schema.prisma`. Currently two tables
 
 ## Environment Variables
 
-Required: `JWT_SECRET`
+JWT secret is generated on first boot and stored in `key_value`. Rotate via `npm run rotate-jwt-secret`.
 Optional: `WORKSPACE_DIR` (absolute path or relative to project root, default `./my_workspaces`)
 
 ### Server
