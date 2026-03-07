@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="logo2.svg" alt="TeamCopilot Logo" width="180" />
+  <img src="logo.svg" alt="TeamCopilot Logo" width="180" />
 </p>
 
 # TeamCopilot
