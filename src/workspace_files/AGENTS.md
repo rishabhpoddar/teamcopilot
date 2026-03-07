@@ -1,4 +1,4 @@
-# LocalTool Agent Instructions
+# TeamCopilot Agent Instructions
 
 This document is your operating manual for working within this directory (called workspace). Follow these conventions strictly when creating, updating, or running workflows and custom skills.
 

@@ -1,4 +1,4 @@
-# Contributing to LocalTool
+# Contributing to TeamCopilot
 
 ## Development Setup
 

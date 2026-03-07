@@ -1,6 +1,6 @@
-# LocalTool
+# TeamCopilot
 
-An open-source platform for running AI agent workflows on your local machine. LocalTool provides a web interface to create, manage, and execute automated workflows powered by AI agents.
+An open-source platform for running AI agent workflows on your local machine. TeamCopilot provides a web interface to create, manage, and execute automated workflows powered by AI agents.
 
 ## Features
 
@@ -22,8 +22,8 @@ An open-source platform for running AI agent workflows on your local machine. Lo
 ### Setup
 
 ```bash
-git clone https://github.com/rishabhpoddar/localtool
-cd localtool
+git clone https://github.com/rishabhpoddar/teamcopilot
+cd teamcopilot
 
 # Install dependencies
 npm install
@@ -41,11 +41,11 @@ npm start
 
 The application will be available at **http://localhost:5124**
 
-Database migrations are applied automatically at server startup. If you point `WORKSPACE_DIR` to a new location, LocalTool creates a fresh SQLite database there.
+Database migrations are applied automatically at server startup. If you point `WORKSPACE_DIR` to a new location, TeamCopilot creates a fresh SQLite database there.
 
 ### OpenCode Setup (Install + API Key)
 
-LocalTool uses OpenCode. `npm install` in this repo already installs OpenCode locally via project dependencies, so you can use `npx opencode` directly.
+TeamCopilot uses OpenCode. `npm install` in this repo already installs OpenCode locally via project dependencies, so you can use `npx opencode` directly.
 
 1. Start OpenCode:
    ```bash
@@ -69,19 +69,19 @@ For provider-specific details, see the official docs: https://opencode.ai/docs
 ### Setup
 
 ```bash
-git clone https://github.com/rishabhpoddar/localtool
-cd localtool
+git clone https://github.com/rishabhpoddar/teamcopilot
+cd teamcopilot
 
 # Build the image
-docker build -t localtool .
+docker build -t teamcopilot .
 
 # Run the container
 docker run -d \
-  --name localtool \
+  --name teamcopilot \
   -p 5124:5124 \
   -v my_workspaces:/app/workspaces \
   -e JWT_SECRET="your-secret-key" \
-  localtool
+  teamcopilot
 ```
 
 The application will be available at **http://localhost:5124**

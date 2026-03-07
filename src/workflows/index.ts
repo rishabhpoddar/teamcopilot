@@ -48,7 +48,7 @@ import { getResourceAccessSummary } from "../utils/resource-access";
 
 const router = express.Router({ mergeParams: true });
 
-const uploadTmpDir = path.join(os.tmpdir(), "localtool-workflow-uploads");
+const uploadTmpDir = path.join(os.tmpdir(), "teamcopilot-workflow-uploads");
 fs.mkdirSync(uploadTmpDir, { recursive: true });
 const maxUploadBytes = (() => {
     const parsed = Number(process.env.WORKFLOW_FILE_UPLOAD_MAX_MB ?? "1024");

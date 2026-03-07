@@ -35,7 +35,7 @@ import {
 import { getResourceAccessSummary } from "../utils/resource-access";
 
 const router = express.Router({ mergeParams: true });
-const uploadTmpDir = path.join(os.tmpdir(), "localtool-skill-uploads");
+const uploadTmpDir = path.join(os.tmpdir(), "teamcopilot-skill-uploads");
 fs.mkdirSync(uploadTmpDir, { recursive: true });
 const skillFileUpload = multer({ dest: uploadTmpDir, limits: { files: 1 } });
 

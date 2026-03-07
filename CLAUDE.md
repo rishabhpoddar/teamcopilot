@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-LocalTool is an open-source platform for running AI agent workflows on your local machine with a web interface. It uses a filesystem-first approach where workflows live as folder packages in a workspace directory.
+TeamCopilot is an open-source platform for running AI agent workflows on your local machine with a web interface. It uses a filesystem-first approach where workflows live as folder packages in a workspace directory.
 
 ## Repository Structure
 
@@ -102,7 +102,7 @@ Optional: `WORKSPACE_DIR` (absolute path or relative to project root, default `.
 
 ## Design Direction
 
-Per `plan-single-tenant.md`, LocalTool is evolving toward: a Next.js frontend, PostgreSQL database, WebSocket/SSE for real-time agent communication, and integration with the `opencode` agent running on user machines. Workflows are filesystem-first folder packages with `workflow.json` manifests, `run.py` entrypoints, and per-workflow `.env` + `.venv`.
+Per `plan-single-tenant.md`, TeamCopilot is evolving toward: a Next.js frontend, PostgreSQL database, WebSocket/SSE for real-time agent communication, and integration with the `opencode` agent running on user machines. Workflows are filesystem-first folder packages with `workflow.json` manifests, `run.py` entrypoints, and per-workflow `.env` + `.venv`.
 
 ## Code style
 

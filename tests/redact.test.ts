@@ -66,8 +66,8 @@ const stringCases: StringCase[] = [
     },
     {
         name: "multiple assignments per line",
-        input: "token=abc123 password=def456 project=localtool",
-        expected: "token=***123 password=***456 project=localtool",
+        input: "token=abc123 password=def456 project=teamcopilot",
+        expected: "token=***123 password=***456 project=teamcopilot",
     },
 ];
 
