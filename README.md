@@ -1,8 +1,8 @@
-<p align="center">
-  <img src="logo.svg" alt="TeamCopilot Logo" width="180" align="middle" />
-  <strong><font size="7">TeamCopilot</font></strong>
-</p>
+<div align="center">
+  <img src="logo.svg" alt="TeamCopilot Logo" width="220" align="middle" />
+</div>
 
+# TeamCopilot
 TeamCopilot helps technical and non-technical teams become more productive by enabling safe sharing of custom AI agent skills and tools, that you specifically build for organization.
 
 ## What makes TeamCopilot different
