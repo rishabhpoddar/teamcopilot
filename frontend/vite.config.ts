@@ -5,10 +5,7 @@ import path from 'node:path'
 
 dotenv.config({ path: path.resolve(__dirname, '..', '.env') })
 
-const backendPort = process.env.PORT
-if (!backendPort) {
-  throw new Error('PORT must be set in .env for Vite API proxy configuration')
-}
+const backendPort = process.env.PORT ?? '5124'
 
 const backendApiTarget = `http://localhost:${backendPort}`
 
