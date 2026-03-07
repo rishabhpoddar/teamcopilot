@@ -1,7 +1,8 @@
 import express from "express";
 import jwt from "jsonwebtoken";
 import prisma from "../prisma/client";
-import { assertCondition, assertEnv } from "./assert";
+import { assertCondition } from "./assert";
+import { getJwtSecret } from "./jwt-secret";
 
 type CustomRequest = express.Request & {
     userId?: string;
@@ -30,7 +31,7 @@ export function apiHandler(
                 const rawToken = authHeader.split(' ')[1];
                 assertCondition(rawToken, 'Missing authorization bearer token');
                 try {
-                    const decoded = jwt.verify(rawToken, assertEnv("JWT_SECRET"));
+                    const decoded = jwt.verify(rawToken, getJwtSecret());
                     const payload = decoded as { sub?: string; token_use?: string };
                     assertCondition(typeof payload.sub === "string" && payload.sub.length > 0, "Invalid authorization token subject");
                     const user = await prisma.users.findUnique({

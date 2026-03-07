@@ -40,8 +40,9 @@ Set at least:
 
 ```env
 WORKSPACE_DIR=/path/to/some/folder
-JWT_SECRET=your-strong-secret
 ```
+
+The JWT secret is generated on first boot and stored in the `key_value` table.
 
 ### 3) Build and start
 
@@ -62,7 +63,6 @@ docker run -d \
   --name teamcopilot \
   -p 5124:5124 \
   -v /path/to/some/folder:/app/workspaces \
-  -e JWT_SECRET="your-secret-key" \
   teamcopilot
 ```
 
@@ -72,7 +72,6 @@ Open: **http://localhost:5124**
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `JWT_SECRET` | Secret used for auth tokens | - |
 | `WORKSPACE_DIR` | Directory where workflows are stored | `./my_workspaces` |
 | `HOST` | Server host | `0.0.0.0` |
 | `PORT` | Server port | `5124` |
@@ -103,6 +102,12 @@ Reset password:
 
 ```bash
 npm run reset-password
+```
+
+Rotate JWT secret (invalidates existing tokens):
+
+```bash
+npm run rotate-jwt-secret
 ```
 
 Users sign in at `/login`.
