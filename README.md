@@ -42,8 +42,6 @@ Set at least:
 WORKSPACE_DIR=/path/to/some/folder
 ```
 
-The JWT secret is generated on first boot and stored in the `key_value` table.
-
 ### 3) Build and start
 
 ```bash
@@ -104,7 +102,7 @@ Reset password:
 npm run reset-password
 ```
 
-Rotate JWT secret (invalidates existing tokens):
+Rotate JWT secret (invalidates existing tokens causing everyone to get logged out):
 
 ```bash
 npm run rotate-jwt-secret
