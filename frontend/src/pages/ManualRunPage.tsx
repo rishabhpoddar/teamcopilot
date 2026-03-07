@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'react-toastify';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
+import { usePageTitle } from '../lib/usePageTitle';
 import type { WorkflowInput } from '../types/workflow';
 import { axiosInstance } from '../utils';
 import './ManualRunPage.css';
@@ -46,6 +47,8 @@ export default function ManualRunPage() {
     const [error, setError] = useState<string | null>(null);
     const [workflow, setWorkflow] = useState<WorkflowForManualRun | null>(null);
     const [formValues, setFormValues] = useState<Record<string, FormValue>>({});
+
+    usePageTitle('Manual Run');
 
     const authHeader = useMemo(() => token ? { Authorization: `Bearer ${token}` } : undefined, [token]);
 

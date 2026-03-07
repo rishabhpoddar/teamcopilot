@@ -1,8 +1,11 @@
 import { useNavigate } from 'react-router-dom';
+import { usePageTitle } from '../lib/usePageTitle';
 import './OpencodeAuthComplete.css';
 
 export default function OpencodeAuthComplete() {
     const navigate = useNavigate();
+
+    usePageTitle('OpenCode Auth Complete');
 
     return (
         <div className="opencode-auth-complete-page">

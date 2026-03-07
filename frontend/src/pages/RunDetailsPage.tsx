@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'react-toastify';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
+import { usePageTitle } from '../lib/usePageTitle';
 import type { WorkflowRun } from '../types/workflow';
 import { axiosInstance } from '../utils';
 import './RunDetailsPage.css';
@@ -49,6 +50,8 @@ export default function RunDetailsPage() {
     const [logs, setLogs] = useState<string>('No logs captured.');
     const [stopping, setStopping] = useState(false);
     const runStatusRef = useRef<WorkflowRun['status'] | null>(null);
+
+    usePageTitle('Run Details');
 
     const authHeader = useMemo(() => token ? { Authorization: `Bearer ${token}` } : undefined, [token]);
 

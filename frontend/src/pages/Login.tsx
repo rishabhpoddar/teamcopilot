@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { useAuth } from '../lib/auth';
+import { usePageTitle } from '../lib/usePageTitle';
 import './Auth.css';
 
 type AuthStep = 'signin' | 'change-password';
@@ -18,6 +19,8 @@ export default function Login() {
     const [error, setError] = useState('');
     const { login, completePasswordChange, logout } = useAuth();
     const navigate = useNavigate();
+
+    usePageTitle(step === 'signin' ? 'Sign In' : 'Set New Password');
 
     const handleSignIn = async (e: FormEvent) => {
         e.preventDefault();

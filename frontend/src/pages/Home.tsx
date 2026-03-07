@@ -1,5 +1,6 @@
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
+import { usePageTitle } from '../lib/usePageTitle';
 import WorkflowsSection from '../components/dashboard/WorkflowsSection';
 import RunHistorySection from '../components/dashboard/RunHistorySection';
 import AIModeSection from '../components/dashboard/AIModeSection';
@@ -8,6 +9,12 @@ import './Home.css';
 
 type Tab = 'workflows' | 'history' | 'ai' | 'skills';
 const validTabs: Tab[] = ['ai', 'workflows', 'skills', 'history'];
+const tabTitles: Record<Tab, string> = {
+    ai: 'AI Chat',
+    workflows: 'Workflows',
+    skills: 'Skills',
+    history: 'Run History'
+};
 
 export default function Home() {
     const auth = useAuth();
@@ -19,6 +26,8 @@ export default function Home() {
     const activeTab: Tab = validTabs.includes(tabParam as Tab) ? (tabParam as Tab) : 'ai';
     const composeDraft = searchParams.get('draft');
     const composeNewChat = searchParams.get('newChat') === '1';
+
+    usePageTitle(tabTitles[activeTab]);
 
     const setActiveTab = (tab: Tab) => {
         setSearchParams({ tab });

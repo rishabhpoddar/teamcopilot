@@ -5,6 +5,7 @@ import { toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom';
 import { axiosInstance } from '../utils';
 import { useAuth } from '../lib/auth';
+import { usePageTitle } from '../lib/usePageTitle';
 import './OpencodeAuthSetup.css';
 
 type ProviderAuthMethod = {
@@ -46,6 +47,8 @@ export default function OpencodeAuthSetup() {
     const auth = useAuth();
     const token = auth.loading ? null : auth.token;
     const navigate = useNavigate();
+
+    usePageTitle('OpenCode Auth Setup');
 
     const [status, setStatus] = useState<StatusResponse | null>(null);
     const [selectedMethod, setSelectedMethod] = useState<number | null>(null);
