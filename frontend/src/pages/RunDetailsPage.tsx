@@ -140,7 +140,7 @@ export default function RunDetailsPage() {
                 <h1>Run Details</h1>
             </header>
 
-            {loading && <div className="run-details-state">Loading run details...</div>}
+            {loading && null}
             {error && <div className="run-details-state error">{error}</div>}
 
             {!loading && !error && run && (
