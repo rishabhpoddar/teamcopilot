@@ -447,6 +447,12 @@ export default function ToolCallDisplay({
     const outputValue = getOutputValue();
     const parsedOutputValue = outputValue === null ? null : parseJsonIfString(outputValue);
     const outputSections = parsedOutputValue === null ? null : toDisplaySections(parsedOutputValue);
+    const filteredReadOutputSections = normalizedToolName === 'read' && outputSections
+        ? outputSections.filter((section) => {
+            const key = section.key.trim().toLowerCase();
+            return key !== 'path' && key !== 'type';
+        })
+        : outputSections;
 
     return (
         <div className="tool-call">
@@ -520,18 +526,18 @@ export default function ToolCallDisplay({
                             <div className="tool-call-label">
                                 {state.status === 'error' ? 'Error' : 'Output'}
                             </div>
-                            {outputSections ? (
+                            {filteredReadOutputSections ? (
                                 <div className="tool-call-fields">
-                                    {outputSections.map((section) => (
+                                    {filteredReadOutputSections.map((section) => (
                                         <div key={section.key} className="tool-call-field">
                                             <div className="tool-call-label">{section.key}</div>
                                             <pre className="tool-call-content">{section.content}</pre>
                                         </div>
                                     ))}
                                 </div>
-                            ) : (
+                            ) : normalizedToolName !== 'read' ? (
                                 <pre className="tool-call-content">{formatValueForDisplay(parsedOutputValue)}</pre>
-                            )}
+                            ) : null}
                         </div>
                     )}
                     {isRunWorkflowTool && (
