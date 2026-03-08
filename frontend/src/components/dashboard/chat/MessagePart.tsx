@@ -118,23 +118,6 @@ export default function MessagePart({
         );
     }
 
-    if (isFilePart(part)) {
-        if (part.mime.startsWith('image/')) {
-            return (
-                <div className="file-part">
-                    <img src={part.url} alt={part.filename || 'Image'} style={{ maxWidth: '100%' }} />
-                </div>
-            );
-        }
-        return (
-            <div className="file-part">
-                <a href={part.url} target="_blank" rel="noopener noreferrer">
-                    {part.filename || 'Download file'}
-                </a>
-            </div>
-        );
-    }
-
     // For other part types (step-start, step-finish, agent), just skip rendering
     return null;
 }

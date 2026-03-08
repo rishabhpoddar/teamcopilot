@@ -170,24 +170,8 @@ export default function ToolCallDisplay({
             .replace(/\\n/g, '\n');
     };
 
-    const extractReadContent = (value: string): string | null => {
-        const normalized = value
-            .replace(/&lt;/g, '<')
-            .replace(/&gt;/g, '>')
-            .replace(/&amp;/g, '&');
-        const contentMatch = normalized.match(/<content>([\s\S]*?)<\/content>/i);
-        if (!contentMatch) {
-            return null;
-        }
-        return contentMatch[1].trim();
-    };
-
     const formatValueForDisplay = (value: unknown): string => {
         if (typeof value === 'string') {
-            const readContent = extractReadContent(value);
-            if (readContent !== null) {
-                return readContent.replace(/\s+(?=\d+:\s)/g, '\n');
-            }
             try {
                 const parsed = JSON.parse(value) as unknown;
                 if (parsed !== null && typeof parsed === 'object') {
@@ -462,32 +446,7 @@ export default function ToolCallDisplay({
 
     const outputValue = getOutputValue();
     const parsedOutputValue = outputValue === null ? null : parseJsonIfString(outputValue);
-    let readOutputContent: string | null = null;
-    let outputSections = parsedOutputValue === null ? null : toDisplaySections(parsedOutputValue);
-
-    if (normalizedToolName === 'read' && parsedOutputValue !== null) {
-        if (typeof parsedOutputValue === 'string') {
-            const xmlSections = parseXmlSections(parsedOutputValue);
-            if (xmlSections) {
-                const contentSection = xmlSections.find((section) => section.key.toLowerCase() === 'content');
-                if (contentSection) {
-                    readOutputContent = contentSection.content;
-                }
-            } else {
-                readOutputContent = formatValueForDisplay(parsedOutputValue);
-            }
-        } else if (typeof parsedOutputValue === 'object' && !Array.isArray(parsedOutputValue)) {
-            const outputObject = parsedOutputValue as Record<string, unknown>;
-            const contentKey = findKeyCaseInsensitive(outputObject, ['content', 'text', 'file_content', 'fileContent']);
-            if (contentKey) {
-                readOutputContent = formatValueForDisplay(outputObject[contentKey]);
-            }
-        }
-
-        if (readOutputContent !== null) {
-            outputSections = null;
-        }
-    }
+    const outputSections = parsedOutputValue === null ? null : toDisplaySections(parsedOutputValue);
 
     return (
         <div className="tool-call">
@@ -561,12 +520,7 @@ export default function ToolCallDisplay({
                             <div className="tool-call-label">
                                 {state.status === 'error' ? 'Error' : 'Output'}
                             </div>
-                            {readOutputContent !== null ? (
-                                <details className="chat-read-content-details">
-                                    <summary>File contents</summary>
-                                    <pre className="tool-call-content chat-read-content-pre">{readOutputContent}</pre>
-                                </details>
-                            ) : outputSections ? (
+                            {outputSections ? (
                                 <div className="tool-call-fields">
                                     {outputSections.map((section) => (
                                         <div key={section.key} className="tool-call-field">
