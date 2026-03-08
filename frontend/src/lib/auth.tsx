@@ -69,7 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     setLoading(false);
                     return;
                 }
-                setLoading(false);
+                setLoading(true);
             }
         })();
     }, [token]);
