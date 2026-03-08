@@ -5,12 +5,18 @@
 # TeamCopilot
 TeamCopilot helps technical and non-technical teams become more productive by enabling safe sharing of custom AI agent skills and tools.
 
+## Dashboard
+
+![TeamCopilot Dashboard](assets/dashboard.jpeg)
+
 ## What makes TeamCopilot different
 
 It's like Claude code / OpenAI Codex, except that:
-- The skills and tools you create can be used by anyone in your team as long as you give them permission to do so.
-- It makes it easy for non technical people to use AI agents since they don't have to work with a CLI.
-- It's fully open source.
+- Multi-user environment: everyone uses the same agent setup. Configure once, the whole team can use it.
+- Skill & tool permissions: control who can use which skills and tools through the agent. Example: allow only certain people in the team to use a skill for making server config changes.
+- Approval workflow: anyone can create tools/skills, but engineers in the team must approve them before the agent can even see them.
+- Fully auditable: chat sessions can’t be deleted by users and are stored on your server.
+- Use it anywhere: web UI lets you talk to the agent even when you're away from your work machine.
 - You can pick either OpenAI or Anthropic as your AI provider.
 
 ## Quick Start (Local)
