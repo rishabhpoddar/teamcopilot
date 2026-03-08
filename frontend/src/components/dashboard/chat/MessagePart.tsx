@@ -21,7 +21,19 @@ type ReadToolTranscript = {
 
 function stripToolCallNarration(text: string): string {
     const lines = text.split(/\r?\n/);
-    const filteredLines = lines.filter((line) => {
+    const filteredReadLines = lines.filter((line) => {
+        const trimmed = line.trim();
+        return !(trimmed.startsWith('Called the Read tool with the following input:') && trimmed.includes('{"filePath"'));
+    });
+    const withoutReadNarration = filteredReadLines.join('\n');
+
+    const hasRawContentTags = /<content>[\s\S]*<\/content>/i.test(text);
+    const hasEscapedContentTags = /&lt;content&gt;[\s\S]*&lt;\/content&gt;/i.test(text);
+    if (!hasRawContentTags && !hasEscapedContentTags) {
+        return withoutReadNarration;
+    }
+
+    const filteredLines = filteredReadLines.filter((line) => {
         const trimmed = line.trim();
         return !(trimmed.startsWith('Called the ') && trimmed.includes(' tool with the following input:'));
     });
