@@ -446,32 +446,13 @@ export default function ToolCallDisplay({
 
     const outputValue = getOutputValue();
     const parsedOutputValue = outputValue === null ? null : parseJsonIfString(outputValue);
-    let readOutputContent: string | null = null;
-    let outputSections = parsedOutputValue === null ? null : toDisplaySections(parsedOutputValue);
-
-    if (normalizedToolName === 'read' && parsedOutputValue !== null) {
-        if (typeof parsedOutputValue === 'string') {
-            const xmlSections = parseXmlSections(parsedOutputValue);
-            if (xmlSections) {
-                const contentSection = xmlSections.find((section) => section.key.toLowerCase() === 'content');
-                if (contentSection) {
-                    readOutputContent = contentSection.content;
-                }
-            } else {
-                readOutputContent = formatValueForDisplay(parsedOutputValue);
-            }
-        } else if (typeof parsedOutputValue === 'object' && !Array.isArray(parsedOutputValue)) {
-            const outputObject = parsedOutputValue as Record<string, unknown>;
-            const contentKey = findKeyCaseInsensitive(outputObject, ['content', 'text', 'file_content', 'fileContent']);
-            if (contentKey) {
-                readOutputContent = formatValueForDisplay(outputObject[contentKey]);
-            }
-        }
-
-        if (readOutputContent !== null) {
-            outputSections = null;
-        }
-    }
+    const outputSections = parsedOutputValue === null ? null : toDisplaySections(parsedOutputValue);
+    const filteredReadOutputSections = normalizedToolName === 'read' && outputSections
+        ? outputSections.filter((section) => {
+            const key = section.key.trim().toLowerCase();
+            return key !== 'path' && key !== 'type';
+        })
+        : outputSections;
 
     return (
         <div className="tool-call">
@@ -545,20 +526,18 @@ export default function ToolCallDisplay({
                             <div className="tool-call-label">
                                 {state.status === 'error' ? 'Error' : 'Output'}
                             </div>
-                            {readOutputContent !== null ? (
-                                <pre className="tool-call-content">{readOutputContent}</pre>
-                            ) : outputSections ? (
+                            {filteredReadOutputSections ? (
                                 <div className="tool-call-fields">
-                                    {outputSections.map((section) => (
+                                    {filteredReadOutputSections.map((section) => (
                                         <div key={section.key} className="tool-call-field">
                                             <div className="tool-call-label">{section.key}</div>
                                             <pre className="tool-call-content">{section.content}</pre>
                                         </div>
                                     ))}
                                 </div>
-                            ) : (
+                            ) : normalizedToolName !== 'read' ? (
                                 <pre className="tool-call-content">{formatValueForDisplay(parsedOutputValue)}</pre>
-                            )}
+                            ) : null}
                         </div>
                     )}
                     {isRunWorkflowTool && (
