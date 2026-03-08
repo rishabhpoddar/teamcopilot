@@ -324,7 +324,3 @@ export function isToolPart(part: Part): part is ToolPart {
 export function isReasoningPart(part: Part): part is ReasoningPart {
     return part.type === "reasoning";
 }
-
-export function isFilePart(part: Part): part is FilePart {
-    return part.type === "file";
-}

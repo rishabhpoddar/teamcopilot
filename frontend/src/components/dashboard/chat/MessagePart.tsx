@@ -1,7 +1,7 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Part, PermissionRequest } from '../../../types/chat';
-import { isTextPart, isToolPart, isReasoningPart, isFilePart } from '../../../types/chat';
+import { isTextPart, isToolPart, isReasoningPart } from '../../../types/chat';
 import ToolCallDisplay from './ToolCallDisplay';
 import QuestionToolDisplay from './QuestionToolDisplay';
 
