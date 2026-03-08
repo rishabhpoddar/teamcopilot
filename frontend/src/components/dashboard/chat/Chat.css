@@ -459,6 +459,32 @@
     overflow-y: auto;
 }
 
+.chat-read-content-details {
+    margin-top: 0.5rem;
+    border: 1px solid #333;
+    border-radius: 6px;
+    background: #1f1f1f;
+}
+
+.chat-read-content-details summary {
+    cursor: pointer;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #cfcfcf;
+    user-select: none;
+}
+
+.chat-read-content-details[open] summary {
+    border-bottom: 1px solid #333;
+}
+
+.chat-read-content-pre {
+    margin: 0;
+    border-radius: 0 0 6px 6px;
+    max-height: 320px;
+}
+
 .tool-call-diff-content {
     white-space: pre;
     display: block;
@@ -502,6 +528,74 @@
     padding: 1rem;
     border-top: 1px solid #333;
     background: #1a1a1a;
+}
+
+.chat-input-form-wrap {
+    position: relative;
+}
+
+.chat-mention-suggestions {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: calc(100% + 0.5rem);
+    max-height: 220px;
+    overflow-y: auto;
+    border: 1px solid #3f3f3f;
+    border-radius: 8px;
+    background: #141414;
+    z-index: 6;
+}
+
+.chat-mention-suggestion-item,
+.chat-mention-suggestion-empty,
+.chat-mention-suggestion-error {
+    width: 100%;
+    display: block;
+    text-align: left;
+    border: 0;
+    background: transparent;
+    color: #d6d6d6;
+    padding: 0.55rem 0.7rem;
+    font-size: 0.875rem;
+    line-height: 1.35;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.chat-mention-suggestion-item {
+    cursor: pointer;
+    user-select: none;
+    border-radius: 0;
+    border: 0;
+    outline: none;
+    box-shadow: none;
+    transition: none;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.chat-mention-suggestion-item.is-selected {
+    background: #2b2b2b;
+    color: #f0f0f0;
+}
+
+.chat-mention-suggestion-item:hover:not(.is-selected) {
+    background: transparent;
+    color: #d6d6d6;
+    border-color: transparent;
+    outline: none;
+    box-shadow: none;
+}
+
+.chat-mention-suggestion-item:focus,
+.chat-mention-suggestion-item:focus-visible {
+    outline: none;
+    border-color: transparent;
+    box-shadow: none;
+}
+
+.chat-mention-suggestion-error {
+    color: #ff8f8f;
 }
 
 .chat-input-form {
@@ -890,6 +984,19 @@
 
     .tool-call-content {
         background: #f0f0f0;
+    }
+
+    .chat-read-content-details {
+        border-color: #ddd;
+        background: #fafafa;
+    }
+
+    .chat-read-content-details summary {
+        color: #444;
+    }
+
+    .chat-read-content-details[open] summary {
+        border-bottom-color: #ddd;
     }
 
     .markdown-content blockquote {

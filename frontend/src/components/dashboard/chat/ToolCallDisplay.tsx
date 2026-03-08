@@ -170,8 +170,24 @@ export default function ToolCallDisplay({
             .replace(/\\n/g, '\n');
     };
 
+    const extractReadContent = (value: string): string | null => {
+        const normalized = value
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&amp;/g, '&');
+        const contentMatch = normalized.match(/<content>([\s\S]*?)<\/content>/i);
+        if (!contentMatch) {
+            return null;
+        }
+        return contentMatch[1].trim();
+    };
+
     const formatValueForDisplay = (value: unknown): string => {
         if (typeof value === 'string') {
+            const readContent = extractReadContent(value);
+            if (readContent !== null) {
+                return readContent.replace(/\s+(?=\d+:\s)/g, '\n');
+            }
             try {
                 const parsed = JSON.parse(value) as unknown;
                 if (parsed !== null && typeof parsed === 'object') {
@@ -546,7 +562,10 @@ export default function ToolCallDisplay({
                                 {state.status === 'error' ? 'Error' : 'Output'}
                             </div>
                             {readOutputContent !== null ? (
-                                <pre className="tool-call-content">{readOutputContent}</pre>
+                                <details className="chat-read-content-details">
+                                    <summary>File contents</summary>
+                                    <pre className="tool-call-content chat-read-content-pre">{readOutputContent}</pre>
+                                </details>
                             ) : outputSections ? (
                                 <div className="tool-call-fields">
                                     {outputSections.map((section) => (

@@ -16,6 +16,11 @@ import MessageList from './MessageList';
 import ChatInput from './ChatInput';
 import './Chat.css';
 
+interface ChatInputSendPayload {
+    content: string;
+    filePaths: string[];
+}
+
 interface ChatContainerProps {
     initialDraftMessage: string | null;
     forceNewChat: boolean;
@@ -467,12 +472,31 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
     }, [activeSessionId, messages.length]);
     */
 
-    const sendMessage = async (content: string) => {
+    const searchMentionFiles = useCallback(async (query: string): Promise<string[]> => {
+        if (!token) {
+            return [];
+        }
+
+        try {
+            const response = await axiosInstance.get<{ files: string[] }>('/api/chat/file-suggestions', {
+                params: { query, limit: 10 },
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            return Array.isArray(response.data?.files) ? response.data.files : [];
+        } catch (err: unknown) {
+            const errorMessage = err instanceof AxiosError
+                ? err.response?.data?.message || err.response?.data || err.message
+                : 'Failed to fetch file suggestions';
+            throw new Error(String(errorMessage));
+        }
+    }, [token]);
+
+    const sendMessage = async ({ content, filePaths }: ChatInputSendPayload) => {
         if (!token || !activeSessionId) return;
 
         const isPending = activeSessionId === PENDING_SESSION_ID;
         let tempUserMessage: Message | null = null;
-        let tempTextPart: Part | null = null;
+        let tempParts: Part[] = [];
 
         // Optimistically add user message to UI
         tempUserMessage = {
@@ -481,15 +505,26 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
             role: 'user',
             time: { created: Date.now() }
         };
-        tempTextPart = {
+        const now = Date.now();
+        const tempTextPart: Part = {
             id: `temp-part-${Date.now()}`,
             sessionID: 'temp',
             messageID: tempUserMessage.id,
             type: 'text',
             text: content
         };
+        const tempFileParts: Part[] = filePaths.map((filePath, index) => ({
+            id: `temp-file-part-${now}-${index}`,
+            sessionID: 'temp',
+            messageID: tempUserMessage!.id,
+            type: 'file',
+            mime: 'text/plain',
+            filename: filePath.split('/').pop(),
+            url: filePath
+        }));
+        tempParts = [tempTextPart, ...tempFileParts];
         setMessages(prev => [...prev, tempUserMessage!]);
-        setParts(prev => [...prev, tempTextPart!]);
+        setParts(prev => [...prev, ...tempParts]);
 
         try {
             setIsStreaming(true);
@@ -515,9 +550,13 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
             }
 
             // Send the message
+            const parts: Array<{ type: 'text'; text: string } | { type: 'file'; path: string }> = [
+                { type: 'text', text: content },
+                ...filePaths.map((filePath) => ({ type: 'file' as const, path: filePath }))
+            ];
             const sendResponse = await axiosInstance.post(
                 `/api/chat/sessions/${sessionId}/messages`,
-                { content },
+                { parts },
                 { headers: { Authorization: `Bearer ${token}` } }
             );
 
@@ -541,7 +580,8 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
             setIsStreaming(false);
             // Remove temp message on error
             setMessages(prev => prev.filter(m => m.id !== tempUserMessage!.id));
-            setParts(prev => prev.filter(p => p.id !== tempTextPart!.id));
+            const tempPartIds = new Set(tempParts.map((part) => part.id));
+            setParts(prev => prev.filter(p => !tempPartIds.has(p.id)));
             // If we were pending, go back to pending state
             if (isPending) {
                 setActiveSessionId(PENDING_SESSION_ID);
@@ -699,6 +739,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                         />
                         <ChatInput
                             onSend={sendMessage}
+                            fetchFileSuggestions={searchMentionFiles}
                             onDraftChange={(content: string) => {
                                 if (!activeSessionId) {
                                     return;

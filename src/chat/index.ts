@@ -1,4 +1,7 @@
 import express from "express";
+import path from "path";
+import { pathToFileURL } from "url";
+import type { FilePartInput, TextPartInput } from "@opencode-ai/sdk";
 import prisma from "../prisma/client";
 import { apiHandler } from "../utils/index";
 import {
@@ -32,6 +35,111 @@ function getErrorMessage(error: unknown): string {
         return error.message;
     }
     return 'Unknown error';
+}
+
+interface ChatTextPartInput {
+    type: "text";
+    text: string;
+}
+
+interface ChatFilePartInput {
+    type: "file";
+    path: string;
+}
+
+type ChatMessagePartInput = ChatTextPartInput | ChatFilePartInput;
+
+function normalizeWorkspaceRelativePath(rawPath: string): string {
+    const normalized = path.posix.normalize(rawPath.split("\\").join("/").trim());
+    if (!normalized || normalized === "." || normalized.startsWith("../") || normalized === ".." || normalized.startsWith("/")) {
+        throw {
+            status: 400,
+            message: "file path must be a workspace-relative path"
+        };
+    }
+    return normalized;
+}
+
+function parseMessageParts(rawParts: unknown): ChatMessagePartInput[] {
+    if (!Array.isArray(rawParts)) {
+        throw {
+            status: 400,
+            message: "parts must be an array"
+        };
+    }
+
+    const parts: ChatMessagePartInput[] = [];
+    for (const rawPart of rawParts) {
+        if (!rawPart || typeof rawPart !== "object") {
+            throw {
+                status: 400,
+                message: "Each part must be an object"
+            };
+        }
+
+        const part = rawPart as Record<string, unknown>;
+        if (part.type === "text") {
+            if (typeof part.text !== "string") {
+                throw {
+                    status: 400,
+                    message: "Text part requires a string text field"
+                };
+            }
+            parts.push({ type: "text", text: part.text });
+            continue;
+        }
+
+        if (part.type === "file") {
+            if (typeof part.path !== "string") {
+                throw {
+                    status: 400,
+                    message: "File part requires a string path field"
+                };
+            }
+            parts.push({ type: "file", path: normalizeWorkspaceRelativePath(part.path) });
+            continue;
+        }
+
+        throw {
+            status: 400,
+            message: `Unsupported part type: ${String(part.type)}`
+        };
+    }
+
+    return parts;
+}
+
+function buildOpencodePromptParts(parts: ChatMessagePartInput[]): Array<TextPartInput | FilePartInput> {
+    const workspaceDir = getWorkspaceDir();
+    return parts.map((part): TextPartInput | FilePartInput => {
+        if (part.type === "text") {
+            return {
+                type: "text",
+                text: part.text
+            };
+        }
+
+        const normalizedPath = normalizeWorkspaceRelativePath(part.path);
+        const absolutePath = path.resolve(workspaceDir, normalizedPath);
+        const relativeCheck = path.relative(workspaceDir, absolutePath);
+        if (relativeCheck.startsWith("..") || path.isAbsolute(relativeCheck)) {
+            throw {
+                status: 400,
+                message: "file path must stay inside workspace"
+            };
+        }
+
+        const filename = normalizedPath.endsWith("/")
+            ? normalizedPath.slice(0, -1).split("/").pop() || normalizedPath
+            : normalizedPath.split("/").pop() || normalizedPath;
+
+        return {
+            type: "file",
+            mime: "text/plain",
+            filename,
+            url: pathToFileURL(absolutePath).href
+        };
+    });
 }
 
 function shouldAutoGenerateTitle(title: string | null): boolean {
@@ -132,6 +240,49 @@ router.get('/sessions', apiHandler(async (req, res) => {
 
     const validSessions = sessions.filter((session) => opencodeSessionIds.has(session.opencode_session_id));
     res.json({ sessions: validSessions });
+}, true));
+
+// GET /api/chat/file-suggestions - Search workspace files/folders for @mentions
+router.get('/file-suggestions', apiHandler(async (req, res) => {
+    const query = req.query.query;
+    if (typeof query !== "string") {
+        throw {
+            status: 400,
+            message: "query is required and must be a string"
+        };
+    }
+
+    const trimmedQuery = query.trim();
+    if (!trimmedQuery) {
+        res.json({ files: [] });
+        return;
+    }
+
+    const rawLimit = req.query.limit;
+    let limit = 10;
+    if (rawLimit !== undefined) {
+        const parsedLimit = Number.parseInt(String(rawLimit), 10);
+        if (!Number.isFinite(parsedLimit) || parsedLimit < 1 || parsedLimit > 50) {
+            throw {
+                status: 400,
+                message: "limit must be an integer between 1 and 50"
+            };
+        }
+        limit = parsedLimit;
+    }
+
+    const client = await getOpencodeClient();
+    const result = await client.find.files({
+        query: {
+            query: trimmedQuery
+        }
+    });
+
+    if (result.error) {
+        throw new Error(getErrorMessage(result.error) || "Failed to fetch file suggestions from opencode");
+    }
+
+    res.json({ files: (result.data || []).slice(0, limit) });
 }, true));
 
 // POST /api/chat/sessions - Create new session
@@ -287,12 +438,27 @@ router.get('/sessions/:id/messages', apiHandler(async (req, res) => {
 // POST /api/chat/sessions/:id/messages - Send message
 router.post('/sessions/:id/messages', apiHandler(async (req, res) => {
     const id = req.params.id as string;
-    const { content } = req.body;
+    const rawParts = req.body?.parts;
 
-    if (!content || typeof content !== 'string') {
+    if (rawParts === undefined) {
         throw {
             status: 400,
-            message: 'content is required and must be a string'
+            message: "parts is required"
+        };
+    }
+    const inputParts = parseMessageParts(rawParts);
+
+    if (inputParts.length === 0) {
+        throw {
+            status: 400,
+            message: "parts must contain at least one item"
+        };
+    }
+
+    if (!inputParts.some((part) => part.type === "text" && part.text.trim().length > 0)) {
+        throw {
+            status: 400,
+            message: "Message must include a non-empty text part"
         };
     }
 
@@ -326,11 +492,12 @@ router.post('/sessions/:id/messages', apiHandler(async (req, res) => {
     }
 
     const client = await getOpencodeClient();
+    const promptParts = buildOpencodePromptParts(inputParts);
 
     // Use promptAsync to send message and return immediately
     const result = await client.session.promptAsync({
         path: { id: session.opencode_session_id },
-        body: { parts: [{ type: "text", text: content }] }
+        body: { parts: promptParts }
     });
 
     if (result.error) {
@@ -342,7 +509,8 @@ router.post('/sessions/:id/messages', apiHandler(async (req, res) => {
     };
 
     if (shouldAutoGenerateTitle(session.title)) {
-        data.title = generateTitleFromUserMessage(content);
+        const firstTextPart = inputParts.find((part): part is ChatTextPartInput => part.type === "text" && part.text.trim().length > 0);
+        data.title = generateTitleFromUserMessage(firstTextPart?.text || "");
     }
 
     const updatedSession = await prisma.chat_sessions.update({
