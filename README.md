@@ -5,10 +5,6 @@
 # TeamCopilot
 TeamCopilot helps technical and non-technical teams become more productive by enabling safe sharing of custom AI agent skills and tools.
 
-## Dashboard
-
-![TeamCopilot Dashboard](assets/dashboard.jpeg)
-
 ## What makes TeamCopilot different
 
 It's like Claude code / OpenAI Codex, except that:
@@ -18,6 +14,10 @@ It's like Claude code / OpenAI Codex, except that:
 - Fully auditable: chat sessions can’t be deleted by users and are stored on your server.
 - Use it anywhere: web UI lets you talk to the agent even when you're away from your work machine.
 - You can pick either OpenAI or Anthropic as your AI provider.
+
+## Dashboard View
+
+![TeamCopilot Dashboard](assets/dashboard.jpeg)
 
 ## Quick Start (Local)
 
