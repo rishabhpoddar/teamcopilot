@@ -62,84 +62,84 @@ export default function Hero() {
   return (
     <div className="bg-black">
       <section className="relative min-h-screen overflow-hidden">
-      {/* Background Video */}
-      <div className="absolute bottom-[35vh] left-0 right-0 h-[80vh] z-0">
-        <VideoPlayer
-          src="/hero-video.mp4"
-          className="w-full h-full object-cover"
-        />
-      </div>
+        {/* Background Video */}
+        <div className="absolute bottom-[35vh] left-0 right-0 h-[80vh] z-0">
+          <VideoPlayer
+            src="/hero-video.mp4"
+            className="w-full h-full object-cover"
+          />
+        </div>
 
-      {/* Hero Content */}
-      <motion.div
-        variants={containerVariants}
-        initial="hidden"
-        animate="visible"
-        className="relative z-10 flex flex-col items-center justify-center min-h-screen px-6 pt-24"
-      >
-        {/* Star on GitHub Button */}
-        <motion.a
-          variants={itemVariants}
-          href="https://github.com/rishabhpoddar/teamcopilot"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-3 px-6 py-3 mb-8 rounded-full bg-white/10 backdrop-blur-md border border-white/20 hover:bg-white/15 transition-all"
-        >
-          <GitHubIcon className="w-6 h-6 text-white" />
-          <span className="text-white font-medium">Star on GitHub</span>
-          <StarIcon className="w-5 h-5 text-white" />
-        </motion.a>
-
-        {/* Headline */}
-        <motion.h1
-          variants={itemVariants}
-          className="text-5xl sm:text-6xl md:text-7xl lg:text-[80px] font-bold text-white text-center tracking-tight leading-[1.1] max-w-5xl"
-        >
-          A Coding Agent for Teams
-        </motion.h1>
-
-        {/* Subtext */}
-        <motion.p
-          variants={itemVariants}
-          className="mt-6 text-lg sm:text-xl text-gray-400 text-center max-w-2xl leading-relaxed"
-        >
-          Think Claude Code, but shared across your entire team and running on
-          your cloud. Configure once, the whole team can use it.
-        </motion.p>
-
-        {/* Feature Tags */}
+        {/* Hero Content */}
         <motion.div
-          variants={itemVariants}
-          className="flex flex-wrap items-center justify-center gap-3 mt-8"
+          variants={containerVariants}
+          initial="hidden"
+          animate="visible"
+          className="relative z-10 flex flex-col items-center justify-center min-h-screen px-6 pt-24"
         >
-          {featureTags.map((feature) => (
-            <span
-              key={feature}
-              className="px-4 py-2 text-sm text-gray-300 rounded-full bg-white/5 border border-white/10"
-            >
-              {feature}
-            </span>
-          ))}
-        </motion.div>
-
-        {/* CTA Button */}
-        <motion.div
-          variants={itemVariants}
-          className="flex flex-wrap items-center justify-center gap-4 mt-10"
-        >
+          {/* Star on GitHub Button */}
           <motion.a
+            variants={itemVariants}
             href="https://github.com/rishabhpoddar/teamcopilot"
             target="_blank"
             rel="noopener noreferrer"
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            className="px-8 py-3.5 text-base font-medium rounded-full bg-black text-white border-2 border-white transition-all hover:bg-white hover:text-black"
+            className="flex items-center gap-3 px-6 py-3 mb-8 rounded-full bg-white/10 backdrop-blur-md border border-white/20 hover:bg-white/15 transition-all"
           >
-            View on GitHub
+            <GitHubIcon className="w-6 h-6 text-white" />
+            <span className="text-white font-medium">Star on GitHub</span>
+            <StarIcon className="w-5 h-5 text-white" />
           </motion.a>
-        </motion.div>
 
-      </motion.div>
+          {/* Headline */}
+          <motion.h1
+            variants={itemVariants}
+            className="text-5xl sm:text-6xl md:text-7xl lg:text-[80px] font-bold text-white text-center tracking-tight leading-[1.1] max-w-5xl"
+          >
+            A Shared AI Agent for Teams
+          </motion.h1>
+
+          {/* Subtext */}
+          <motion.p
+            variants={itemVariants}
+            className="mt-6 text-lg sm:text-xl text-gray-400 text-center max-w-2xl leading-relaxed"
+          >
+            Think Claude Code, but shared across your entire team and running on
+            your cloud. Configure once, the whole team can use it.
+          </motion.p>
+
+          {/* Feature Tags */}
+          <motion.div
+            variants={itemVariants}
+            className="flex flex-wrap items-center justify-center gap-3 mt-8"
+          >
+            {featureTags.map((feature) => (
+              <span
+                key={feature}
+                className="px-4 py-2 text-sm text-gray-300 rounded-full bg-white/5 border border-white/10"
+              >
+                {feature}
+              </span>
+            ))}
+          </motion.div>
+
+          {/* CTA Button */}
+          <motion.div
+            variants={itemVariants}
+            className="flex flex-wrap items-center justify-center gap-4 mt-10"
+          >
+            <motion.a
+              href="https://github.com/rishabhpoddar/teamcopilot"
+              target="_blank"
+              rel="noopener noreferrer"
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              className="px-8 py-3.5 text-base font-medium rounded-full bg-black text-white border-2 border-white transition-all hover:bg-white hover:text-black"
+            >
+              View on GitHub
+            </motion.a>
+          </motion.div>
+
+        </motion.div>
       </section>
 
       {/* Features Section */}

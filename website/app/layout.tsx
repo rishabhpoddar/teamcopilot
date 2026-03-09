@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "TeamCopilot - A Coding Agent for Teams",
+  title: "TeamCopilot - A Shared AI Agent for Teams",
   description: "Think Claude Code, but shared across your entire team and running on your cloud. Configure once, the whole team can use it.",
   icons: {
     icon: "/logo.svg",
