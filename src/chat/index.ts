@@ -1,4 +1,5 @@
 import express from "express";
+import fs from "fs/promises";
 import path from "path";
 import { pathToFileURL } from "url";
 import type { FilePartInput, TextPartInput } from "@opencode-ai/sdk";
@@ -26,6 +27,8 @@ import { sanitizeForClient } from "../utils/redact";
 import { abortOpencodeSession } from "../utils/session-abort";
 
 const router = express.Router({ mergeParams: true });
+const USER_INSTRUCTIONS_FILENAME = "USER_INSTRUCTIONS.md";
+const ACTUAL_USER_MESSAGE_MARKER = "####### Actual user message below #######";
 
 function getErrorMessage(error: unknown): string {
     if (error && typeof error === 'object' && 'detail' in error) {
@@ -140,6 +143,133 @@ function buildOpencodePromptParts(parts: ChatMessagePartInput[]): Array<TextPart
             url: pathToFileURL(absolutePath).href
         };
     });
+}
+
+async function readWorkspaceUserInstructions(): Promise<string | null> {
+    const workspaceDir = getWorkspaceDir();
+    const userInstructionsPath = path.join(workspaceDir, USER_INSTRUCTIONS_FILENAME);
+
+    try {
+        const content = await fs.readFile(userInstructionsPath, "utf-8");
+        if (content.trim().length === 0) {
+            return null;
+        }
+        return content;
+    } catch (err) {
+        const nodeError = err as NodeJS.ErrnoException;
+        if (nodeError.code === "ENOENT") {
+            return null;
+        }
+        throw new Error(`Failed to read ${USER_INSTRUCTIONS_FILENAME}: ${nodeError.message}`);
+    }
+}
+
+function stripTextBeforeActualUserMarker(text: string): string {
+    const markerIndex = text.indexOf(ACTUAL_USER_MESSAGE_MARKER);
+    if (markerIndex === -1) {
+        return text;
+    }
+    return text.slice(markerIndex + ACTUAL_USER_MESSAGE_MARKER.length).replace(/^\s+/, "");
+}
+
+function sanitizeFirstUserMessageForClient(messages: SessionMessageWire[]): SessionMessageWire[] {
+    const firstUserMessageId = messages.find((message) => {
+        const info = message.info as { role?: string };
+        return info.role === "user";
+    })?.info.id;
+
+    if (!firstUserMessageId) {
+        return messages;
+    }
+
+    const firstUserMessage = messages.find((message) => message.info.id === firstUserMessageId);
+    if (!firstUserMessage) {
+        return messages;
+    }
+
+    const hasMarker = firstUserMessage.parts.some((part) => {
+        if (part.type !== "text") {
+            return false;
+        }
+        const textPart = part as typeof part & { text?: string };
+        return typeof textPart.text === "string" && textPart.text.includes(ACTUAL_USER_MESSAGE_MARKER);
+    });
+
+    if (!hasMarker) {
+        return messages;
+    }
+
+    let markerFound = false;
+    return messages.map((message) => {
+        if (message.info.id !== firstUserMessageId) {
+            return message;
+        }
+
+        const parts = message.parts.map((part) => {
+            if (part.type !== "text") {
+                return part;
+            }
+            const textPart = part as typeof part & { text?: string };
+            if (typeof textPart.text !== "string") {
+                return part;
+            }
+
+            if (markerFound) {
+                return part;
+            }
+
+            const markerIndex = textPart.text.indexOf(ACTUAL_USER_MESSAGE_MARKER);
+            if (markerIndex === -1) {
+                return {
+                    ...textPart,
+                    text: ""
+                };
+            }
+
+            markerFound = true;
+            return {
+                ...textPart,
+                text: stripTextBeforeActualUserMarker(textPart.text)
+            };
+        });
+
+        return {
+            info: message.info,
+            parts
+        };
+    });
+}
+
+function sanitizeEventForClient(event: Record<string, unknown>): Record<string, unknown> {
+    if (event.type !== "message.part.updated") {
+        return event;
+    }
+
+    const properties = event.properties;
+    if (!properties || typeof properties !== "object") {
+        return event;
+    }
+
+    const part = (properties as { part?: unknown }).part;
+    if (!part || typeof part !== "object") {
+        return event;
+    }
+
+    const candidate = part as { type?: unknown; text?: unknown };
+    if (candidate.type !== "text" || typeof candidate.text !== "string") {
+        return event;
+    }
+
+    return {
+        ...event,
+        properties: {
+            ...(properties as Record<string, unknown>),
+            part: {
+                ...(part as Record<string, unknown>),
+                text: stripTextBeforeActualUserMarker(candidate.text)
+            }
+        }
+    };
 }
 
 function shouldAutoGenerateTitle(title: string | null): boolean {
@@ -428,9 +558,10 @@ router.get('/sessions/:id/messages', apiHandler(async (req, res) => {
         session.opencode_session_id
     );
     const normalizedMessages = normalizeStaleRunningTools(result.data as SessionMessageWire[], sessionStatusType);
+    const sanitizedMessages = sanitizeFirstUserMessageForClient(normalizedMessages);
 
     res.json({
-        messages: normalizedMessages,
+        messages: sanitizedMessages,
         session_status: sessionStatusType
     });
 }, true));
@@ -493,11 +624,34 @@ router.post('/sessions/:id/messages', apiHandler(async (req, res) => {
 
     const client = await getOpencodeClient();
     const promptParts = buildOpencodePromptParts(inputParts);
+    let finalPromptParts = promptParts;
+
+    const existingMessagesResult = await client.session.messages({
+        path: { id: session.opencode_session_id },
+        query: { limit: 1 }
+    });
+    if (existingMessagesResult.error) {
+        throw new Error(getErrorMessage(existingMessagesResult.error) || "Failed to check session message history");
+    }
+
+    if ((existingMessagesResult.data || []).length === 0) {
+        const userInstructions = await readWorkspaceUserInstructions();
+        if (userInstructions) {
+            const wrappedUserInstructions = `# Custom user instructions (in case of conflicts, the instructions here take precedence over the contents of the AGENTS.md file)\n\n${userInstructions}\n\n${ACTUAL_USER_MESSAGE_MARKER}\n\n`;
+            finalPromptParts = [
+                {
+                    type: "text",
+                    text: wrappedUserInstructions
+                },
+                ...promptParts
+            ];
+        }
+    }
 
     // Use promptAsync to send message and return immediately
     const result = await client.session.promptAsync({
         path: { id: session.opencode_session_id },
-        body: { parts: promptParts }
+        body: { parts: finalPromptParts }
     });
 
     if (result.error) {
@@ -831,7 +985,8 @@ router.get('/sessions/:id/events', apiHandler(async (req, res) => {
 
                             // Filter events to only include ones for this session
                             if (eventSessionId === session.opencode_session_id) {
-                                res.write(`data: ${JSON.stringify(sanitizeForClient(event))}\n\n`);
+                                const sanitizedEvent = sanitizeEventForClient(event as Record<string, unknown>);
+                                res.write(`data: ${JSON.stringify(sanitizeForClient(sanitizedEvent))}\n\n`);
                             }
                         } catch {
                             // Skip malformed JSON
