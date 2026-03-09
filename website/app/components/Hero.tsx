@@ -117,8 +117,8 @@ export default function Hero() {
           <div className="relative overflow-hidden rounded-[28px] border border-white/10 bg-gradient-to-br from-white/[0.06] via-white/[0.03] to-transparent p-5 shadow-[0_40px_120px_rgba(0,0,0,0.45)] sm:rounded-[32px] sm:p-8 lg:p-10">
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.12),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(59,130,246,0.16),transparent_28%)]" />
 
-            <div className="relative grid items-center gap-8 lg:grid-cols-[0.9fr_1.4fr] lg:gap-10">
-              <div className="max-w-xl min-w-0">
+            <div className="relative grid items-center gap-8 xl:grid-cols-[0.9fr_1.4fr] xl:gap-10">
+              <div className="mx-auto flex min-w-0 max-w-2xl flex-col items-center text-center xl:mx-0 xl:max-w-xl xl:items-start xl:text-left">
                 <p className="text-xs font-medium uppercase tracking-[0.28em] text-gray-500 sm:text-sm">
                   Dashboard View
                 </p>
@@ -131,7 +131,7 @@ export default function Hero() {
                   history without passing around local setup details.
                 </p>
 
-                <div className="mt-8 grid gap-4 text-sm text-gray-300 sm:grid-cols-2">
+                <div className="mt-8 grid w-full max-w-[36rem] gap-4 text-sm text-gray-300 sm:grid-cols-2 xl:max-w-none xl:grid-cols-1">
                   <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
                     Anyone can create custom agent skills and tools. After approval, anyone in your team can use them.
                   </div>
@@ -141,7 +141,7 @@ export default function Hero() {
                 </div>
               </div>
 
-              <div className="relative mx-auto w-full max-w-[42rem]">
+              <div className="relative mx-auto w-full max-w-[52rem] xl:max-w-[42rem]">
                 <div className="overflow-hidden rounded-[24px] border border-white/12 bg-[#0a0a0a] shadow-2xl shadow-black/50 sm:rounded-[28px]">
                   <div className="flex flex-col items-start gap-3 border-b border-white/10 bg-white/[0.04] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-center gap-2">
