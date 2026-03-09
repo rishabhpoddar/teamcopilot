@@ -8,7 +8,7 @@ const navLinks = [
 
 export default function Navbar() {
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-md bg-black/30 border-b border-white/10 animate-fade-in-down">
+    <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/10 bg-black/30 backdrop-blur-md">
       <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2 text-white font-medium tracking-tight text-xl">

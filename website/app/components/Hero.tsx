@@ -63,8 +63,7 @@ export default function Hero() {
             href="https://github.com/rishabhpoddar/teamcopilot"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-3 px-6 py-3 mb-8 rounded-full border border-blue-300/20 bg-[linear-gradient(135deg,rgba(59,130,246,0.18),rgba(255,255,255,0.08))] backdrop-blur-md hover:bg-[linear-gradient(135deg,rgba(59,130,246,0.24),rgba(255,255,255,0.12))] transition-all animate-fade-in-up"
-            style={{ animationDelay: "0.1s" }}
+            className="flex items-center gap-3 px-6 py-3 mb-8 rounded-full border border-blue-300/20 bg-[linear-gradient(135deg,rgba(59,130,246,0.18),rgba(255,255,255,0.08))] backdrop-blur-md hover:bg-[linear-gradient(135deg,rgba(59,130,246,0.24),rgba(255,255,255,0.12))] transition-all"
           >
             <GitHubIcon className="w-6 h-6 text-white" />
             <span className="text-white font-medium">Star on GitHub</span>
@@ -73,26 +72,21 @@ export default function Hero() {
 
           {/* Headline */}
           <h1
-            className="text-5xl sm:text-6xl md:text-7xl lg:text-[80px] font-bold text-white text-center tracking-tight leading-[1.1] max-w-5xl animate-fade-in-up"
-            style={{ animationDelay: "0.2s" }}
+            className="text-5xl sm:text-6xl md:text-7xl lg:text-[80px] font-bold text-white text-center tracking-tight leading-[1.1] max-w-5xl"
           >
             A Shared AI Agent for Teams
           </h1>
 
           {/* Subtext */}
           <p
-            className="mt-6 text-lg sm:text-xl text-gray-400 text-center max-w-2xl leading-relaxed animate-fade-in-up"
-            style={{ animationDelay: "0.3s" }}
+            className="mt-6 text-lg sm:text-xl text-gray-400 text-center max-w-2xl leading-relaxed"
           >
             Think Claude Code, but shared across your entire team and running on
             your cloud. Configure once, the whole team can use it.
           </p>
 
           {/* Feature Tags */}
-          <div
-            className="flex flex-wrap items-center justify-center gap-3 mt-8 animate-fade-in-up"
-            style={{ animationDelay: "0.4s" }}
-          >
+          <div className="flex flex-wrap items-center justify-center gap-3 mt-8">
             {featureTags.map((feature) => (
               <span
                 key={feature}
@@ -104,10 +98,7 @@ export default function Hero() {
           </div>
 
           {/* CTA Button */}
-          <div
-            className="flex flex-wrap items-center justify-center gap-4 mt-10 animate-fade-in-up"
-            style={{ animationDelay: "0.5s" }}
-          >
+          <div className="flex flex-wrap items-center justify-center gap-4 mt-10">
             <a
               href="https://github.com/rishabhpoddar/teamcopilot"
               target="_blank"
