@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 import VideoPlayer from "./VideoPlayer";
 
 const featureTags = [
@@ -45,7 +47,7 @@ export default function Hero() {
         </div>
 
         {/* Hero Content */}
-        <div className="relative z-10 flex flex-col items-center justify-center min-h-screen px-6 pt-24">
+        <div className="relative z-10 flex flex-col items-center justify-center min-h-screen px-6 pt-24 pb-12 sm:pb-16">
           {/* Star on GitHub Button */}
           <a
             href="https://github.com/rishabhpoddar/teamcopilot"
@@ -106,6 +108,65 @@ export default function Hero() {
             </a>
           </div>
 
+        </div>
+      </section>
+
+      <section id="dashboard" className="relative z-10 bg-black px-4 pt-10 pb-12 sm:px-6 sm:pt-0">
+        <div className="mx-auto max-w-7xl">
+          <div className="relative overflow-hidden rounded-[28px] border border-white/10 bg-gradient-to-br from-white/[0.06] via-white/[0.03] to-transparent p-5 shadow-[0_40px_120px_rgba(0,0,0,0.45)] sm:rounded-[32px] sm:p-8 lg:p-10">
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.12),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(59,130,246,0.16),transparent_28%)]" />
+
+            <div className="relative grid items-center gap-8 lg:grid-cols-[0.9fr_1.4fr] lg:gap-10">
+              <div className="max-w-xl min-w-0">
+                <p className="text-xs font-medium uppercase tracking-[0.28em] text-gray-500 sm:text-sm">
+                  Dashboard View
+                </p>
+                <h2 className="mt-4 max-w-[12ch] text-[2.25rem] leading-[1.05] font-bold tracking-tight text-white sm:max-w-none sm:text-4xl">
+                  A web UI to talk to your team&apos;s agent anywhere, anytime.
+                </h2>
+                <p className="mt-5 text-base leading-7 text-gray-400 sm:text-lg">
+                  TeamCopilot gives your team a single interface to chat with the
+                  agent, browse approved workflows and skills, and inspect run
+                  history without passing around local setup details.
+                </p>
+
+                <div className="mt-8 grid gap-4 text-sm text-gray-300 sm:grid-cols-2">
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                    Anyone can create custom agent skills and tools. After approval, anyone in your team can use them.
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                    Fully self hosted means all your data and secrets stay on your own cloud.
+                  </div>
+                </div>
+              </div>
+
+              <div className="relative mx-auto w-full max-w-[42rem]">
+                <div className="overflow-hidden rounded-[24px] border border-white/12 bg-[#0a0a0a] shadow-2xl shadow-black/50 sm:rounded-[28px]">
+                  <div className="flex flex-col items-start gap-3 border-b border-white/10 bg-white/[0.04] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="h-3 w-3 rounded-full bg-[#ff5f57]" />
+                      <span className="h-3 w-3 rounded-full bg-[#febc2e]" />
+                      <span className="h-3 w-3 rounded-full bg-[#28c840]" />
+                    </div>
+                    <div className="max-w-full rounded-full border border-white/10 bg-black/40 px-3 py-1 text-[10px] leading-relaxed tracking-[0.22em] text-gray-400 uppercase sm:text-[11px]">
+                      TeamCopilot Dashboard
+                    </div>
+                  </div>
+
+                  <div className="relative aspect-[2556/1630]">
+                    <Image
+                      src="/dashboard.jpeg"
+                      alt="TeamCopilot dashboard showing AI chat, sessions list, workflows, skills, and run history"
+                      fill
+                      priority
+                      sizes="(max-width: 640px) 100vw, (max-width: 1280px) 60vw, 900px"
+                      className="object-cover object-top"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
