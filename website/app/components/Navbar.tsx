@@ -1,6 +1,3 @@
-"use client";
-
-import { motion } from "framer-motion";
 import Link from "next/link";
 import Image from "next/image";
 
@@ -11,12 +8,7 @@ const navLinks = [
 
 export default function Navbar() {
   return (
-    <motion.nav
-      initial={{ opacity: 0, y: -20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.6, ease: "easeOut" }}
-      className="fixed top-0 left-0 right-0 z-50 backdrop-blur-md bg-black/30 border-b border-white/10"
-    >
+    <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-md bg-black/30 border-b border-white/10 animate-fade-in-down">
       <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2 text-white font-medium tracking-tight text-xl">
@@ -47,17 +39,15 @@ export default function Navbar() {
         </div>
 
         {/* CTA Button */}
-        <motion.a
+        <a
           href="https://github.com/rishabhpoddar/teamcopilot"
           target="_blank"
           rel="noopener noreferrer"
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          className="px-5 py-2.5 text-sm font-medium rounded-full bg-gradient-to-r from-white to-gray-300 text-black transition-all hover:shadow-lg hover:shadow-white/20"
+          className="px-5 py-2.5 text-sm font-medium rounded-full bg-gradient-to-r from-white to-gray-300 text-black transition-all hover:shadow-lg hover:shadow-white/20 hover:scale-[1.02] active:scale-[0.98]"
         >
           Get Started
-        </motion.a>
+        </a>
       </div>
-    </motion.nav>
+    </nav>
   );
 }

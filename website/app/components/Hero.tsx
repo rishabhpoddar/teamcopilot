@@ -1,6 +1,3 @@
-"use client";
-
-import { motion } from "framer-motion";
 import VideoPlayer from "./VideoPlayer";
 
 const featureTags = [
@@ -35,29 +32,6 @@ const detailedFeatures = [
   },
 ];
 
-const containerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.1,
-      delayChildren: 0.2,
-    },
-  },
-};
-
-const itemVariants = {
-  hidden: { opacity: 0, y: 20 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: {
-      duration: 0.6,
-      ease: "easeOut" as const,
-    },
-  },
-};
-
 export default function Hero() {
   return (
     <div className="bg-black">
@@ -71,46 +45,41 @@ export default function Hero() {
         </div>
 
         {/* Hero Content */}
-        <motion.div
-          variants={containerVariants}
-          initial="hidden"
-          animate="visible"
-          className="relative z-10 flex flex-col items-center justify-center min-h-screen px-6 pt-24"
-        >
+        <div className="relative z-10 flex flex-col items-center justify-center min-h-screen px-6 pt-24">
           {/* Star on GitHub Button */}
-          <motion.a
-            variants={itemVariants}
+          <a
             href="https://github.com/rishabhpoddar/teamcopilot"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-3 px-6 py-3 mb-8 rounded-full bg-white/10 backdrop-blur-md border border-white/20 hover:bg-white/15 transition-all"
+            className="flex items-center gap-3 px-6 py-3 mb-8 rounded-full bg-white/10 backdrop-blur-md border border-white/20 hover:bg-white/15 transition-all animate-fade-in-up"
+            style={{ animationDelay: "0.1s" }}
           >
             <GitHubIcon className="w-6 h-6 text-white" />
             <span className="text-white font-medium">Star on GitHub</span>
             <StarIcon className="w-5 h-5 text-white" />
-          </motion.a>
+          </a>
 
           {/* Headline */}
-          <motion.h1
-            variants={itemVariants}
-            className="text-5xl sm:text-6xl md:text-7xl lg:text-[80px] font-bold text-white text-center tracking-tight leading-[1.1] max-w-5xl"
+          <h1
+            className="text-5xl sm:text-6xl md:text-7xl lg:text-[80px] font-bold text-white text-center tracking-tight leading-[1.1] max-w-5xl animate-fade-in-up"
+            style={{ animationDelay: "0.2s" }}
           >
             A Shared AI Agent for Teams
-          </motion.h1>
+          </h1>
 
           {/* Subtext */}
-          <motion.p
-            variants={itemVariants}
-            className="mt-6 text-lg sm:text-xl text-gray-400 text-center max-w-2xl leading-relaxed"
+          <p
+            className="mt-6 text-lg sm:text-xl text-gray-400 text-center max-w-2xl leading-relaxed animate-fade-in-up"
+            style={{ animationDelay: "0.3s" }}
           >
             Think Claude Code, but shared across your entire team and running on
             your cloud. Configure once, the whole team can use it.
-          </motion.p>
+          </p>
 
           {/* Feature Tags */}
-          <motion.div
-            variants={itemVariants}
-            className="flex flex-wrap items-center justify-center gap-3 mt-8"
+          <div
+            className="flex flex-wrap items-center justify-center gap-3 mt-8 animate-fade-in-up"
+            style={{ animationDelay: "0.4s" }}
           >
             {featureTags.map((feature) => (
               <span
@@ -120,49 +89,37 @@ export default function Hero() {
                 {feature}
               </span>
             ))}
-          </motion.div>
+          </div>
 
           {/* CTA Button */}
-          <motion.div
-            variants={itemVariants}
-            className="flex flex-wrap items-center justify-center gap-4 mt-10"
+          <div
+            className="flex flex-wrap items-center justify-center gap-4 mt-10 animate-fade-in-up"
+            style={{ animationDelay: "0.5s" }}
           >
-            <motion.a
+            <a
               href="https://github.com/rishabhpoddar/teamcopilot"
               target="_blank"
               rel="noopener noreferrer"
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              className="px-8 py-3.5 text-base font-medium rounded-full bg-black text-white border-2 border-white transition-all hover:bg-white hover:text-black"
+              className="px-8 py-3.5 text-base font-medium rounded-full bg-black text-white border-2 border-white transition-all hover:bg-white hover:text-black hover:scale-[1.02] active:scale-[0.98]"
             >
               View on GitHub
-            </motion.a>
-          </motion.div>
+            </a>
+          </div>
 
-        </motion.div>
+        </div>
       </section>
 
       {/* Features Section */}
       <section id="features" className="relative z-10 bg-black py-24 px-6">
         <div className="max-w-4xl mx-auto">
-          <motion.h2
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.6 }}
-            className="text-3xl sm:text-4xl font-bold text-white text-center mb-16"
-          >
+          <h2 className="text-3xl sm:text-4xl font-bold text-white text-center mb-16">
             Why TeamCopilot?
-          </motion.h2>
+          </h2>
 
           <div className="space-y-12">
-            {detailedFeatures.map((feature, index) => (
-              <motion.div
+            {detailedFeatures.map((feature) => (
+              <div
                 key={feature.title}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.5, delay: index * 0.1 }}
                 className="border-l-2 border-white/20 pl-6 hover:border-white/50 transition-colors"
               >
                 <h3 className="text-xl font-semibold text-white mb-2">
@@ -171,7 +128,7 @@ export default function Hero() {
                 <p className="text-gray-400 leading-relaxed">
                   {feature.description}
                 </p>
-              </motion.div>
+              </div>
             ))}
           </div>
         </div>
