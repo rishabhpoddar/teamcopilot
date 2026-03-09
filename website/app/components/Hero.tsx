@@ -15,22 +15,32 @@ const detailedFeatures = [
   {
     title: "Multi-user environment",
     description: "Everyone uses the same agent setup. Configure once, the whole team can use it.",
+    accent: "01",
   },
   {
     title: "Skill & tool permissions",
     description: "Control who can use which skills and tools through the agent. Example: allow only certain people in the team to use a skill for making server config changes.",
+    accent: "02",
   },
   {
     title: "Approval workflow",
     description: "Anyone can create tools/skills, but engineers in the team must approve them before the agent can even see them.",
+    accent: "03",
   },
   {
-    title: "Fully auditable",
-    description: "Chat sessions can't be deleted by users and are stored on your server.",
+    title: "Fully private and secure",
+    description: "You can self-host TeamCopilot. This means all your chats, data and secrets stay on your own cloud.",
+    accent: "04",
   },
   {
     title: "Use it anywhere",
     description: "Web UI lets you talk to the agent even when you're away from your work machine.",
+    accent: "05",
+  },
+  {
+    title: "Use any AI model",
+    description: "Use any AI model from OpenAI or Anthropic.",
+    accent: "06",
   },
 ];
 
@@ -171,24 +181,47 @@ export default function Hero() {
       </section>
 
       {/* Features Section */}
-      <section id="features" className="relative z-10 bg-black py-24 px-6">
-        <div className="max-w-4xl mx-auto">
-          <h2 className="text-3xl sm:text-4xl font-bold text-white text-center mb-16">
-            Why TeamCopilot?
-          </h2>
+      <section id="features" className="relative z-10 overflow-hidden bg-black px-4 py-24 sm:px-6">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.08),transparent_28%),radial-gradient(circle_at_bottom_left,rgba(59,130,246,0.14),transparent_30%)]" />
 
-          <div className="space-y-12">
+        <div className="relative mx-auto max-w-7xl">
+          <div className="mx-auto max-w-3xl text-center">
+            <p className="text-xs font-medium uppercase tracking-[0.34em] text-gray-500 sm:text-sm">
+              Why TeamCopilot
+            </p>
+            <h2 className="mt-4 text-3xl font-bold tracking-tight text-white sm:text-4xl lg:text-5xl">
+              Built for teams that want one agent setup, not twenty personal ones
+            </h2>
+            <p className="mt-5 text-base leading-7 text-gray-400 sm:text-lg">
+              The product is designed around shared infrastructure, controlled
+              rollout, and visibility into how the agent is being used across
+              your organization.
+            </p>
+          </div>
+
+          <div className="mt-14 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
             {detailedFeatures.map((feature) => (
               <div
                 key={feature.title}
-                className="border-l-2 border-white/20 pl-6 hover:border-white/50 transition-colors"
+                className="group relative overflow-hidden rounded-[28px] border border-white/10 bg-white/[0.03] p-6 transition-all duration-300 hover:-translate-y-1 hover:border-white/20 hover:bg-white/[0.05]"
               >
-                <h3 className="text-xl font-semibold text-white mb-2">
-                  {feature.title}
-                </h3>
-                <p className="text-gray-400 leading-relaxed">
-                  {feature.description}
-                </p>
+                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.08),transparent_30%)] opacity-70 transition-opacity duration-300 group-hover:opacity-100" />
+
+                <div className="relative flex h-full flex-col">
+                  <div className="flex items-center justify-between">
+                    <span className="rounded-full border border-white/10 bg-black/40 px-3 py-1 text-[11px] font-medium tracking-[0.28em] text-gray-400 uppercase">
+                      {feature.accent}
+                    </span>
+                    <span className="h-2.5 w-2.5 rounded-full bg-white/70 shadow-[0_0_20px_rgba(255,255,255,0.45)]" />
+                  </div>
+
+                  <h3 className="mt-8 text-2xl font-semibold tracking-tight text-white">
+                    {feature.title}
+                  </h3>
+                  <p className="mt-4 text-base leading-7 text-gray-400">
+                    {feature.description}
+                  </p>
+                </div>
               </div>
             ))}
           </div>
