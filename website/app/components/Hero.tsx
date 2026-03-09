@@ -52,7 +52,7 @@ export default function Hero() {
         <div className="absolute bottom-[35vh] left-0 right-0 h-[80vh] z-0">
           <VideoPlayer
             src="/hero-video.mp4"
-            className="w-full h-full object-cover"
+            className="w-full h-full object-cover opacity-80 [filter:hue-rotate(12deg)_saturate(1.15)_brightness(0.72)]"
           />
         </div>
 
@@ -63,7 +63,7 @@ export default function Hero() {
             href="https://github.com/rishabhpoddar/teamcopilot"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-3 px-6 py-3 mb-8 rounded-full bg-white/10 backdrop-blur-md border border-white/20 hover:bg-white/15 transition-all animate-fade-in-up"
+            className="flex items-center gap-3 px-6 py-3 mb-8 rounded-full border border-blue-300/20 bg-[linear-gradient(135deg,rgba(59,130,246,0.18),rgba(255,255,255,0.08))] backdrop-blur-md hover:bg-[linear-gradient(135deg,rgba(59,130,246,0.24),rgba(255,255,255,0.12))] transition-all animate-fade-in-up"
             style={{ animationDelay: "0.1s" }}
           >
             <GitHubIcon className="w-6 h-6 text-white" />
@@ -96,7 +96,7 @@ export default function Hero() {
             {featureTags.map((feature) => (
               <span
                 key={feature}
-                className="px-4 py-2 text-sm text-gray-300 rounded-full bg-white/5 border border-white/10"
+                className="px-4 py-2 text-sm text-gray-300 rounded-full border border-blue-300/10 bg-[linear-gradient(135deg,rgba(59,130,246,0.10),rgba(255,255,255,0.04))]"
               >
                 {feature}
               </span>
