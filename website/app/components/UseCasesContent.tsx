@@ -6,9 +6,14 @@ const useCases = [
   {
     eyebrow: "01",
     title: "Automate infrastructure management",
-    description:
-      "Create agent skills that explain your infrastructure, access paths, safety checks, and deployment procedure. When someone asks what is in a config or requests a change, the agent can follow the exact workflow on its own, including backups, validation, rollout, and cleanup.",
-    exampleTitle: "Example skill: beta infrastructure config changes",
+    summary:
+      "Encode the operational workflow once so config changes, rollouts, and validation stop living in one engineer's head.",
+    details: [
+      "Document access paths, safety checks, and deployment steps inside a reusable skill.",
+      "Let the agent read the current state first, then make narrow changes with backups.",
+      "Keep the whole change auditable from rollout through smoke tests.",
+    ],
+    exampleTitle: "Example skill: infrastructure config changes",
     skill: `# Skill: Beta intent configuration updates
 
 When the user asks about beta intent configuration contents or requests a change, follow this workflow exactly.
@@ -43,8 +48,13 @@ Inspect or update the beta configuration on the server safely, then roll the cha
   {
     eyebrow: "02",
     title: "Create API wrappers without sharing secrets",
-    description:
-      "Teach the agent how your APIs work and hardcode the required secrets in the skill file. TeamCopilot redacts secrets before showing anything in the frontend, so even non-technical teammates can query internal APIs safely through natural language.",
+    summary:
+      "Wrap internal APIs behind plain-English prompts while keeping auth and endpoint details inside the skill.",
+    details: [
+      "Define the base URL, authentication, and endpoint behavior once.",
+      "Let teammates ask natural-language questions instead of memorizing request formats.",
+      "Keep sensitive credentials out of the visible UI while still enabling safe access.",
+    ],
     exampleTitle: "Example skill: internal customer summary API",
     skill: `# Skill: Customer summary API helper
 
@@ -85,8 +95,13 @@ Use this when the user gives an email instead of a customer ID.
   {
     eyebrow: "03",
     title: "Code Q&A",
-    description:
-      "Give the agent access to your codebase so anyone, including non-technical people, can ask how the system works, where a feature lives, or what would break if something changes. The agent can read the code directly and answer with repository-specific context instead of generic guesses.",
+    summary:
+      "Turn the repository into something the whole team can query without relying on generic AI answers.",
+    details: [
+      "Let the agent inspect the codebase directly before it answers.",
+      "Return file-level explanations that tie technical behavior back to product behavior.",
+      "Reduce interrupt-driven questions for engineers without hiding the source of truth.",
+    ],
     exampleTitle: "Example skill: repository analyst",
     skill: `# Skill: Repository analyst
 
@@ -113,8 +128,13 @@ Use this skill to answer questions about how the product works.
   {
     eyebrow: "04",
     title: "Enable non-technical people to make code changes",
-    description:
-      "Once the agent can read your repository and understands your engineering workflow, it can make routine code changes for people who are not comfortable working directly in the codebase. The skill can encode guardrails such as test requirements, branch naming, review expectations, and deployment constraints.",
+    summary:
+      "Package your engineering workflow into guardrails so routine product changes no longer require direct repo fluency.",
+    details: [
+      "Capture branch, testing, and review expectations inside the skill.",
+      "Use the agent for small, well-scoped code changes that follow existing patterns.",
+      "Give non-technical teammates a safe path to request implementation work directly.",
+    ],
     exampleTitle: "Example skill: safe repository changes",
     skill: `# Skill: Safe repository changes
 
@@ -144,66 +164,79 @@ Use this skill when a user asks for a product or content change in the codebase.
 function UseCaseCard({
   eyebrow,
   title,
-  description,
+  summary,
+  details,
   exampleTitle,
   skill,
 }: {
   eyebrow: string;
   title: string;
-  description: string;
+  summary: string;
+  details: string[];
   exampleTitle: string;
   skill: string;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const previewLines = skill.split("\n").slice(0, 4).join("\n");
+  const previewLines = skill.split("\n").slice(0, 7).join("\n");
 
   return (
-    <article className="rounded-[20px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))] p-4 shadow-[0_30px_90px_rgba(0,0,0,0.4)] sm:rounded-[30px] sm:p-6 lg:p-8">
-      <div className="grid gap-5 sm:gap-8 lg:grid-cols-[0.95fr_1.15fr]">
+    <article className="group relative overflow-hidden rounded-[20px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] p-3.5 shadow-[0_30px_90px_rgba(0,0,0,0.4)] sm:rounded-[30px] sm:p-6 lg:p-8">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(96,165,250,0.16),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(34,197,94,0.14),transparent_28%)] opacity-70 transition-opacity duration-300 group-hover:opacity-100" />
+      <div className="relative grid gap-5 lg:grid-cols-[1.05fr_0.95fr] lg:items-start">
         <div>
-          <span className="inline-flex rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-[11px] font-medium tracking-[0.28em] text-gray-400 uppercase">
+          <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[11px] font-medium tracking-[0.28em] text-gray-400 uppercase">
             {eyebrow}
           </span>
-          <h2 className="mt-4 text-xl font-semibold tracking-tight text-white sm:mt-6 sm:text-2xl lg:text-3xl">
+          <h2 className="mt-3 max-w-xl text-xl font-semibold tracking-tight text-white sm:mt-6 sm:text-3xl">
             {title}
           </h2>
-          <p className="mt-4 text-sm leading-7 text-gray-400 sm:mt-5 sm:text-base sm:leading-8">
-            {description}
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-gray-300 sm:text-base sm:leading-8">
+            {summary}
           </p>
+
+          <div className="mt-5 hidden gap-2.5 sm:mt-8 sm:grid">
+            {details.map((detail) => (
+              <div
+                key={detail}
+                className="flex items-start gap-3 rounded-[18px] border border-white/8 bg-black/20 px-3 py-2.5 sm:rounded-2xl sm:px-4 sm:py-3"
+              >
+                <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-gradient-to-r from-cyan-300 to-emerald-300" />
+                <p className="text-sm leading-7 text-gray-300 sm:leading-6">{detail}</p>
+              </div>
+            ))}
+          </div>
         </div>
 
         <div
           onClick={() => setIsExpanded(!isExpanded)}
-          className={`cursor-pointer rounded-[16px] border bg-black/40 p-4 transition-colors sm:rounded-[24px] sm:p-5 ${
-            isExpanded ? "border-blue-300/30 bg-white/[0.04]" : "border-white/10 hover:border-white/20"
-          }`}
+          className={`cursor-pointer rounded-[18px] border bg-black/45 p-3 backdrop-blur-sm transition-colors sm:rounded-[24px] sm:p-5 ${isExpanded ? "border-cyan-300/30 bg-white/[0.05]" : "border-white/10 hover:border-white/20"
+            }`}
         >
-          <div className="flex w-full items-center justify-between gap-4">
+          <div className="flex w-full flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
             <div className="min-w-0">
               <p className="text-xs font-medium uppercase tracking-[0.28em] text-gray-500">
                 Example Skill
               </p>
-              <h4 className="mt-2 text-lg font-semibold leading-tight text-white sm:text-2xl">
+              <h4 className="mt-2 max-w-md text-base font-semibold leading-tight text-white sm:text-2xl">
                 {exampleTitle}
               </h4>
             </div>
             <span
-              className={`shrink-0 rounded-full border px-3 py-1 text-xs transition-colors ${
-                isExpanded
-                  ? "border-blue-300/20 text-white"
-                  : "border-white/10 text-gray-300"
-              }`}
+              className={`rounded-full border px-3 py-1 text-xs transition-colors ${isExpanded
+                ? "border-cyan-300/20 text-white"
+                : "border-white/10 text-gray-300"
+                }`}
             >
               {isExpanded ? "Collapse" : "Expand"}
             </span>
           </div>
 
           {!isExpanded && (
-            <div className="mt-3 rounded-xl border border-white/8 bg-white/[0.03] p-3 sm:mt-4 sm:rounded-2xl sm:p-4">
-              <p className="text-[11px] font-medium uppercase tracking-[0.24em] text-blue-200/70">
+            <div className="mt-3 rounded-xl border border-white/8 bg-white/[0.03] p-2.5 sm:mt-4 sm:rounded-2xl sm:p-4">
+              <p className="text-[11px] font-medium uppercase tracking-[0.24em] text-cyan-200/70">
                 Skill Preview
               </p>
-              <pre className="mt-2 overflow-hidden text-xs leading-6 text-gray-400 whitespace-pre-wrap sm:mt-3 sm:text-sm sm:leading-7">
+              <pre className="mt-2 overflow-hidden text-[11px] leading-5 text-gray-400 whitespace-pre-wrap break-words sm:mt-3 sm:text-sm sm:leading-7">
                 <code>{previewLines}</code>
               </pre>
             </div>
@@ -212,7 +245,7 @@ function UseCaseCard({
       </div>
 
       {isExpanded && (
-        <div className="mt-5 sm:mt-8">
+        <div className="relative mt-5 sm:mt-8">
           <pre className="rounded-xl border border-white/10 bg-[#050505] p-3 text-xs leading-6 text-gray-300 whitespace-pre-wrap break-words sm:rounded-2xl sm:p-4 sm:text-sm sm:leading-7">
             <code>{skill}</code>
           </pre>
@@ -225,35 +258,34 @@ function UseCaseCard({
 export default function UseCasesContent() {
   return (
     <main className="min-h-screen overflow-hidden bg-black pt-28 text-white">
-      <section className="relative px-4 pb-14 sm:px-6 sm:pb-20">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.1),transparent_28%),radial-gradient(circle_at_20%_30%,rgba(59,130,246,0.18),transparent_26%),radial-gradient(circle_at_80%_20%,rgba(16,185,129,0.12),transparent_24%)]" />
+      <section className="relative px-3 pb-8 sm:px-6 sm:pb-14">
+        <div className="pointer-events-none absolute inset-x-0 -top-20 bottom-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.08),transparent_22%),radial-gradient(circle_at_20%_30%,rgba(59,130,246,0.15),transparent_24%),radial-gradient(circle_at_80%_20%,rgba(16,185,129,0.1),transparent_22%),linear-gradient(180deg,rgba(0,0,0,0)_0%,rgba(2,6,23,0.38)_18%,rgba(0,0,0,0.12)_58%,rgba(0,0,0,0)_100%)]" />
         <div className="relative mx-auto max-w-6xl">
           <div className="max-w-4xl">
-            <p className="text-xs font-medium uppercase tracking-[0.34em] text-gray-500 sm:text-sm">
-              Use Cases
-            </p>
-            <h1 className="mt-4 text-3xl font-bold tracking-tight text-white sm:text-4xl lg:text-6xl">
-              Show people what becomes possible once the agent knows your systems
-            </h1>
-            <p className="mt-6 max-w-3xl text-base leading-7 text-gray-400 sm:text-lg sm:leading-8">
-              TeamCopilot is intentionally open-ended. These examples make that concrete:
-              you can teach the agent how your infrastructure works, how your APIs
-              should be queried, how your codebase is structured, and how repository
-              changes should be handled. Then anyone on the team can use that setup
-              productively.
-            </p>
+            <div className="rounded-[24px] border border-white/10 bg-white/[0.03] p-4 backdrop-blur-sm sm:rounded-[28px] sm:p-7">
+              <p className="text-xs font-medium uppercase tracking-[0.34em] text-gray-500 sm:text-sm">
+                Use Cases
+              </p>
+              <h1 className="mt-3 text-2xl font-bold tracking-tight text-white sm:mt-4 sm:text-4xl lg:text-6xl">
+                Example use cases of TeamCopilot
+              </h1>
+              <p className="mt-4 max-w-3xl text-sm leading-6 text-gray-400 sm:mt-6 sm:text-lg sm:leading-8">
+                Automate infrastructure management, knowledge sharing, code changes and reviews, testing and more...
+              </p>
+            </div>
           </div>
         </div>
       </section>
 
-      <section className="relative px-4 pb-24 sm:px-6">
+      <section className="relative px-3 pb-18 sm:px-6 sm:pb-24">
         <div className="mx-auto grid max-w-6xl gap-6">
           {useCases.map((useCase) => (
             <UseCaseCard
               key={useCase.title}
               eyebrow={useCase.eyebrow}
               title={useCase.title}
-              description={useCase.description}
+              summary={useCase.summary}
+              details={useCase.details}
               exampleTitle={useCase.exampleTitle}
               skill={useCase.skill}
             />
