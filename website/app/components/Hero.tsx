@@ -119,6 +119,36 @@ export default function Hero() {
         </div>
       </section>
 
+      <section className="relative z-10 bg-black px-4 pb-6 sm:px-6 sm:pb-10">
+        <div className="mx-auto max-w-6xl">
+          <div className="overflow-hidden rounded-[28px] border border-white/10 bg-gradient-to-br from-white/[0.05] via-white/[0.03] to-transparent p-5 shadow-[0_30px_100px_rgba(0,0,0,0.4)] sm:rounded-[32px] sm:p-8">
+            <div className="mx-auto max-w-3xl text-center">
+              <p className="text-xs font-medium uppercase tracking-[0.3em] text-gray-500 sm:text-sm">
+                Custom Skills Walkthrough
+              </p>
+              <h2 className="mt-4 text-3xl font-bold tracking-tight text-white sm:text-4xl">
+                Watch the full flow: create, share, and run a custom skill
+              </h2>
+            </div>
+
+            <div className="mt-8 overflow-hidden rounded-[24px] border border-white/10 bg-black shadow-2xl shadow-black/50">
+              <div className="aspect-video w-full">
+                <iframe
+                  width="560"
+                  height="315"
+                  src="https://www.youtube.com/embed/OvanoXbwnwE?si=xLhD7J4VJVqY_YGK"
+                  title="TeamCopilot custom skills walkthrough"
+                  className="h-full w-full"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  referrerPolicy="strict-origin-when-cross-origin"
+                  allowFullScreen
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section id="dashboard" className="relative z-10 bg-black px-4 pt-10 pb-12 sm:px-6 sm:pt-0">
         <div className="mx-auto max-w-7xl">
           <div className="relative overflow-hidden rounded-[28px] border border-white/10 bg-gradient-to-br from-white/[0.06] via-white/[0.03] to-transparent p-5 shadow-[0_40px_120px_rgba(0,0,0,0.45)] sm:rounded-[32px] sm:p-8 lg:p-10">
