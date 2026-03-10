@@ -1,3 +1,7 @@
+"use client";
+
+import { useState } from "react";
+
 const useCases = [
   {
     eyebrow: "01",
@@ -137,42 +141,84 @@ Use this skill when a user asks for a product or content change in the codebase.
   },
 ];
 
-function SkillExample({
+function UseCaseCard({
+  eyebrow,
   title,
+  description,
+  exampleTitle,
   skill,
 }: {
+  eyebrow: string;
   title: string;
+  description: string;
+  exampleTitle: string;
   skill: string;
 }) {
+  const [isExpanded, setIsExpanded] = useState(false);
   const previewLines = skill.split("\n").slice(0, 4).join("\n");
 
   return (
-    <details className="group rounded-[24px] border border-white/10 bg-black/40 p-5 open:border-blue-300/30 open:bg-white/[0.04]">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-4">
-        <div className="min-w-0">
-          <p className="text-xs font-medium uppercase tracking-[0.28em] text-gray-500">
-            Example Skill
-          </p>
-          <h4 className="mt-2 text-2xl font-semibold leading-tight text-white sm:text-[1.75rem]">
+    <article className="rounded-[20px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))] p-4 shadow-[0_30px_90px_rgba(0,0,0,0.4)] sm:rounded-[30px] sm:p-6 lg:p-8">
+      <div className="grid gap-5 sm:gap-8 lg:grid-cols-[0.95fr_1.15fr]">
+        <div>
+          <span className="inline-flex rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-[11px] font-medium tracking-[0.28em] text-gray-400 uppercase">
+            {eyebrow}
+          </span>
+          <h2 className="mt-4 text-xl font-semibold tracking-tight text-white sm:mt-6 sm:text-2xl lg:text-3xl">
             {title}
-          </h4>
-          <div className="mt-4 rounded-2xl border border-white/8 bg-white/[0.03] p-4 group-open:hidden">
-            <p className="text-[11px] font-medium uppercase tracking-[0.24em] text-blue-200/70">
-              Skill Preview
-            </p>
-            <pre className="mt-3 overflow-hidden text-sm leading-7 text-gray-400 whitespace-pre-wrap">
-              <code>{previewLines}</code>
-            </pre>
-          </div>
+          </h2>
+          <p className="mt-4 text-sm leading-7 text-gray-400 sm:mt-5 sm:text-base sm:leading-8">
+            {description}
+          </p>
         </div>
-        <span className="shrink-0 rounded-full border border-white/10 px-3 py-1 text-xs text-gray-300 transition-colors group-open:border-blue-300/20 group-open:text-white">
-          Expand
-        </span>
-      </summary>
-      <pre className="mt-5 overflow-x-auto rounded-2xl border border-white/10 bg-[#050505] p-4 text-sm leading-7 text-gray-300">
-        <code>{skill}</code>
-      </pre>
-    </details>
+
+        <div
+          onClick={() => setIsExpanded(!isExpanded)}
+          className={`cursor-pointer rounded-[16px] border bg-black/40 p-4 transition-colors sm:rounded-[24px] sm:p-5 ${
+            isExpanded ? "border-blue-300/30 bg-white/[0.04]" : "border-white/10 hover:border-white/20"
+          }`}
+        >
+          <div className="flex w-full items-center justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-xs font-medium uppercase tracking-[0.28em] text-gray-500">
+                Example Skill
+              </p>
+              <h4 className="mt-2 text-lg font-semibold leading-tight text-white sm:text-2xl">
+                {exampleTitle}
+              </h4>
+            </div>
+            <span
+              className={`shrink-0 rounded-full border px-3 py-1 text-xs transition-colors ${
+                isExpanded
+                  ? "border-blue-300/20 text-white"
+                  : "border-white/10 text-gray-300"
+              }`}
+            >
+              {isExpanded ? "Collapse" : "Expand"}
+            </span>
+          </div>
+
+          {!isExpanded && (
+            <div className="mt-3 rounded-xl border border-white/8 bg-white/[0.03] p-3 sm:mt-4 sm:rounded-2xl sm:p-4">
+              <p className="text-[11px] font-medium uppercase tracking-[0.24em] text-blue-200/70">
+                Skill Preview
+              </p>
+              <pre className="mt-2 overflow-hidden text-xs leading-6 text-gray-400 whitespace-pre-wrap sm:mt-3 sm:text-sm sm:leading-7">
+                <code>{previewLines}</code>
+              </pre>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {isExpanded && (
+        <div className="mt-5 sm:mt-8">
+          <pre className="rounded-xl border border-white/10 bg-[#050505] p-3 text-xs leading-6 text-gray-300 whitespace-pre-wrap break-words sm:rounded-2xl sm:p-4 sm:text-sm sm:leading-7">
+            <code>{skill}</code>
+          </pre>
+        </div>
+      )}
+    </article>
   );
 }
 
@@ -186,10 +232,10 @@ export default function UseCasesContent() {
             <p className="text-xs font-medium uppercase tracking-[0.34em] text-gray-500 sm:text-sm">
               Use Cases
             </p>
-            <h1 className="mt-4 text-4xl font-bold tracking-tight text-white sm:text-5xl lg:text-6xl">
+            <h1 className="mt-4 text-3xl font-bold tracking-tight text-white sm:text-4xl lg:text-6xl">
               Show people what becomes possible once the agent knows your systems
             </h1>
-            <p className="mt-6 max-w-3xl text-lg leading-8 text-gray-400">
+            <p className="mt-6 max-w-3xl text-base leading-7 text-gray-400 sm:text-lg sm:leading-8">
               TeamCopilot is intentionally open-ended. These examples make that concrete:
               you can teach the agent how your infrastructure works, how your APIs
               should be queried, how your codebase is structured, and how repository
@@ -203,26 +249,14 @@ export default function UseCasesContent() {
       <section className="relative px-4 pb-24 sm:px-6">
         <div className="mx-auto grid max-w-6xl gap-6">
           {useCases.map((useCase) => (
-            <article
+            <UseCaseCard
               key={useCase.title}
-              className="rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))] p-6 shadow-[0_30px_90px_rgba(0,0,0,0.4)] sm:p-8"
-            >
-              <div className="grid gap-8 lg:grid-cols-[0.95fr_1.15fr]">
-                <div>
-                  <span className="inline-flex rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-[11px] font-medium tracking-[0.28em] text-gray-400 uppercase">
-                    {useCase.eyebrow}
-                  </span>
-                  <h2 className="mt-6 text-3xl font-semibold tracking-tight text-white">
-                    {useCase.title}
-                  </h2>
-                  <p className="mt-5 text-base leading-8 text-gray-400">
-                    {useCase.description}
-                  </p>
-                </div>
-
-                <SkillExample title={useCase.exampleTitle} skill={useCase.skill} />
-              </div>
-            </article>
+              eyebrow={useCase.eyebrow}
+              title={useCase.title}
+              description={useCase.description}
+              exampleTitle={useCase.exampleTitle}
+              skill={useCase.skill}
+            />
           ))}
         </div>
       </section>
