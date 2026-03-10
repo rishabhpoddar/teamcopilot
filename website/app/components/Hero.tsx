@@ -1,3 +1,4 @@
+import Link from "next/link";
 import Image from "next/image";
 
 import VideoPlayer from "./VideoPlayer";
@@ -99,6 +100,12 @@ export default function Hero() {
 
           {/* CTA Button */}
           <div className="flex flex-wrap items-center justify-center gap-4 mt-10">
+            <Link
+              href="/use-cases"
+              className="px-8 py-3.5 text-base font-medium rounded-full border border-blue-300/30 bg-[linear-gradient(135deg,rgba(59,130,246,0.18),rgba(255,255,255,0.06))] text-white transition-all hover:border-blue-200/50 hover:bg-[linear-gradient(135deg,rgba(59,130,246,0.26),rgba(255,255,255,0.10))] hover:scale-[1.02] active:scale-[0.98]"
+            >
+              See example use cases
+            </Link>
             <a
               href="https://github.com/rishabhpoddar/teamcopilot"
               target="_blank"
