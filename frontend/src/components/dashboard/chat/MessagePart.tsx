@@ -19,6 +19,12 @@ type ReadToolTranscript = {
     content: string;
 };
 
+type DirectoryTranscript = {
+    path: string;
+    entries: string[];
+    totalCount: number;
+};
+
 function stripToolCallNarration(text: string): string {
     const lines = text.split(/\r?\n/);
     const filteredReadLines = lines.filter((line) => {
@@ -72,6 +78,49 @@ function parseReadToolTranscript(text: string): ReadToolTranscript | null {
     };
 }
 
+function parseDirectoryTranscript(text: string): { transcript: DirectoryTranscript; remainingText: string } | null {
+    const normalizedText = text
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&amp;/g, '&');
+
+    // Check for directory type marker
+    if (!/<type>\s*directory\s*<\/type>/i.test(normalizedText)) {
+        return null;
+    }
+
+    const pathMatch = normalizedText.match(/<path>([\s\S]*?)<\/path>/i);
+    const entriesMatch = normalizedText.match(/<entries>([\s\S]*?)<\/entries>/i);
+
+    if (!pathMatch || !entriesMatch) {
+        return null;
+    }
+
+    const path = pathMatch[1].trim();
+    const entriesRaw = entriesMatch[1].trim();
+
+    // Parse the count from "(N entries)" pattern
+    const countMatch = entriesRaw.match(/\((\d+)\s+entr(?:y|ies)\)\s*$/i);
+    const totalCount = countMatch ? parseInt(countMatch[1], 10) : 0;
+
+    // Remove the count suffix and split by whitespace to get entries
+    const entriesText = entriesRaw.replace(/\(\d+\s+entr(?:y|ies)\)\s*$/i, '').trim();
+    const entries = entriesText.split(/\s+/).filter((e) => e.length > 0);
+
+    // Extract the text before the directory block
+    const fullBlockPattern = /<path>[\s\S]*?<\/path>\s*<type>\s*directory\s*<\/type>\s*<entries>[\s\S]*?<\/entries>/i;
+    const remainingText = normalizedText.replace(fullBlockPattern, '').trim();
+
+    return {
+        transcript: {
+            path,
+            entries,
+            totalCount: totalCount || entries.length
+        },
+        remainingText
+    };
+}
+
 export default function MessagePart({
     part,
     onAnswer,
@@ -98,6 +147,34 @@ export default function MessagePart({
                 </div>
             );
         }
+
+        const directoryResult = parseDirectoryTranscript(sanitizedText);
+        if (directoryResult) {
+            const { transcript: dirTranscript, remainingText } = directoryResult;
+            return (
+                <div className="markdown-content">
+                    {remainingText && (
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {remainingText}
+                        </ReactMarkdown>
+                    )}
+                    <div className="chat-directory-listing">
+                        <p><strong>Directory:</strong> <code>{dirTranscript.path}</code></p>
+                        <details className="chat-directory-details">
+                            <summary>Contents ({dirTranscript.totalCount} {dirTranscript.totalCount === 1 ? 'entry' : 'entries'})</summary>
+                            <ul className="chat-directory-entries">
+                                {dirTranscript.entries.map((entry, idx) => (
+                                    <li key={idx} className={entry.endsWith('/') ? 'is-directory' : 'is-file'}>
+                                        <code>{entry}</code>
+                                    </li>
+                                ))}
+                            </ul>
+                        </details>
+                    </div>
+                </div>
+            );
+        }
+
         return (
             <div className="markdown-content">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>

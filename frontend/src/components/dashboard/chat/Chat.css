@@ -485,6 +485,58 @@
     max-height: 320px;
 }
 
+/* Directory listing styles */
+.chat-directory-listing {
+    margin-top: 0.75rem;
+}
+
+.chat-directory-listing > p {
+    margin: 0 0 0.5rem 0;
+}
+
+.chat-directory-details {
+    margin-top: 0.5rem;
+    border: 1px solid #333;
+    border-radius: 6px;
+    background: #1f1f1f;
+}
+
+.chat-directory-details summary {
+    cursor: pointer;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #cfcfcf;
+    user-select: none;
+}
+
+.chat-directory-details[open] summary {
+    border-bottom: 1px solid #333;
+}
+
+.chat-directory-entries {
+    margin: 0;
+    padding: 0.5rem 0.75rem;
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem 0.75rem;
+    max-height: 240px;
+    overflow-y: auto;
+}
+
+.chat-directory-entries li {
+    font-size: 0.85rem;
+}
+
+.chat-directory-entries li.is-directory code {
+    color: #6cb6ff;
+}
+
+.chat-directory-entries li.is-file code {
+    color: #adbac7;
+}
+
 .tool-call-diff-content {
     white-space: pre;
     display: block;
@@ -997,6 +1049,27 @@
 
     .chat-read-content-details[open] summary {
         border-bottom-color: #ddd;
+    }
+
+    .chat-directory-details {
+        border-color: #ddd;
+        background: #fafafa;
+    }
+
+    .chat-directory-details summary {
+        color: #444;
+    }
+
+    .chat-directory-details[open] summary {
+        border-bottom-color: #ddd;
+    }
+
+    .chat-directory-entries li.is-directory code {
+        color: #0066cc;
+    }
+
+    .chat-directory-entries li.is-file code {
+        color: #555;
     }
 
     .markdown-content blockquote {
