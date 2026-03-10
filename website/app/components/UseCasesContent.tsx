@@ -1,11 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ComponentType, type SVGProps } from "react";
+import {
+  CodeBracketIcon,
+  KeyIcon,
+  ServerStackIcon,
+  SparklesIcon,
+} from "@heroicons/react/24/outline";
 
 const useCases = [
   {
     eyebrow: "01",
     title: "Automate infrastructure management",
+    icon: ServerStackIcon,
+    iconLabel: "Infrastructure automation",
     summary:
       "Encode the operational workflow once so config changes, rollouts, and validation stop living in one engineer's head.",
     details: [
@@ -48,6 +56,8 @@ Inspect or update the beta configuration on the server safely, then roll the cha
   {
     eyebrow: "02",
     title: "Create API wrappers without sharing secrets",
+    icon: KeyIcon,
+    iconLabel: "Internal API workflows",
     summary:
       "Wrap internal APIs behind plain-English prompts while keeping auth and endpoint details inside the skill.",
     details: [
@@ -95,6 +105,8 @@ Use this when the user gives an email instead of a customer ID.
   {
     eyebrow: "03",
     title: "Code Q&A",
+    icon: CodeBracketIcon,
+    iconLabel: "Codebase analysis",
     summary:
       "Turn the repository into something the whole team can query without relying on generic AI answers.",
     details: [
@@ -128,6 +140,8 @@ Use this skill to answer questions about how the product works.
   {
     eyebrow: "04",
     title: "Enable non-technical people to make code changes",
+    icon: SparklesIcon,
+    iconLabel: "Safe code changes",
     summary:
       "Package your engineering workflow into guardrails so routine product changes no longer require direct repo fluency.",
     details: [
@@ -164,6 +178,8 @@ Use this skill when a user asks for a product or content change in the codebase.
 function UseCaseCard({
   eyebrow,
   title,
+  icon: Icon,
+  iconLabel,
   summary,
   details,
   exampleTitle,
@@ -171,6 +187,8 @@ function UseCaseCard({
 }: {
   eyebrow: string;
   title: string;
+  icon: ComponentType<SVGProps<SVGSVGElement>>;
+  iconLabel: string;
   summary: string;
   details: string[];
   exampleTitle: string;
@@ -184,9 +202,17 @@ function UseCaseCard({
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(96,165,250,0.16),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(34,197,94,0.14),transparent_28%)] opacity-70 transition-opacity duration-300 group-hover:opacity-100" />
       <div className="relative grid gap-5 lg:grid-cols-[1.05fr_0.95fr] lg:items-start">
         <div>
-          <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[11px] font-medium tracking-[0.28em] text-gray-400 uppercase">
-            {eyebrow}
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[11px] font-medium tracking-[0.28em] text-gray-400 uppercase">
+              {eyebrow}
+            </span>
+            <div
+              aria-label={iconLabel}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-cyan-400/15 bg-gradient-to-br from-cyan-400/12 to-emerald-400/10 text-cyan-100 shadow-[0_10px_35px_rgba(8,145,178,0.15)]"
+            >
+              <Icon className="h-6 w-6" />
+            </div>
+          </div>
           <h2 className="mt-3 max-w-xl text-xl font-semibold tracking-tight text-white sm:mt-6 sm:text-3xl">
             {title}
           </h2>
@@ -284,6 +310,8 @@ export default function UseCasesContent() {
               key={useCase.title}
               eyebrow={useCase.eyebrow}
               title={useCase.title}
+              icon={useCase.icon}
+              iconLabel={useCase.iconLabel}
               summary={useCase.summary}
               details={useCase.details}
               exampleTitle={useCase.exampleTitle}
