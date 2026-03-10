@@ -35,7 +35,7 @@ ENV WORKSPACE_DIR="/app/workspaces"
 ENV HOST="0.0.0.0"
 ENV PORT="5124"
 ENV OPENCODE_PORT="4096"
-ENV OPENCODE_MODEL="openai/gpt-5.2-codex"
+ENV OPENCODE_MODEL="openai/gpt-5.3-codex"
 ENV PATH="/app/node_modules/.bin:${PATH}"
 
 EXPOSE 5124
