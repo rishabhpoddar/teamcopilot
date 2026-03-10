@@ -27,6 +27,34 @@ interface ChatContainerProps {
     onDraftHandled: () => void;
 }
 
+function getSessionErrorMessage(error: unknown): string {
+    if (!error || typeof error !== 'object') {
+        return 'The assistant failed to respond';
+    }
+
+    const candidate = error as {
+        name?: unknown;
+        message?: unknown;
+        data?: {
+            message?: unknown;
+        };
+    };
+
+    if (typeof candidate.data?.message === 'string' && candidate.data.message.trim().length > 0) {
+        return candidate.data.message;
+    }
+
+    if (typeof candidate.message === 'string' && candidate.message.trim().length > 0) {
+        return candidate.message;
+    }
+
+    if (typeof candidate.name === 'string' && candidate.name.trim().length > 0) {
+        return candidate.name;
+    }
+
+    return 'The assistant failed to respond';
+}
+
 export default function ChatContainer({ initialDraftMessage, forceNewChat, onDraftHandled }: ChatContainerProps) {
     const PENDING_SESSION_ID = 'pending';
     const PERMISSION_POLL_INTERVAL_MS = 1000;
@@ -50,6 +78,33 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
     const handledComposeKeyRef = useRef<string | null>(null);
 
     const token = auth.loading ? null : auth.token;
+
+    const showSessionError = useCallback((message: string) => {
+        const now = Date.now();
+        const messageId = `session-error-${now}`;
+        setMessages(prev => [
+            ...prev,
+            {
+                id: messageId,
+                sessionID: activeSessionId ?? 'unknown',
+                role: 'assistant',
+                time: {
+                    created: now,
+                    completed: now
+                },
+                parentID: '',
+                modelID: 'unknown',
+                providerID: 'unknown',
+                error: {
+                    name: 'SessionError',
+                    data: {
+                        message
+                    }
+                }
+            }
+        ]);
+        toast.error(message);
+    }, [activeSessionId]);
 
     const assertPermissionHasToolCall = useCallback((permission: PermissionRequest): PermissionRequest => {
         const tool = permission.tool as { messageID?: unknown; callID?: unknown };
@@ -151,6 +206,8 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
             }
 
             case 'session.error': {
+                const message = getSessionErrorMessage(event.properties.error);
+                showSessionError(message);
                 setIsStreaming(false);
                 break;
             }
@@ -196,7 +253,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                 break;
             }
         }
-    }, [assertPermissionHasToolCall]);
+    }, [assertPermissionHasToolCall, showSessionError]);
 
     const startSSE = useCallback((sessionId: string) => {
         if (!token) return;

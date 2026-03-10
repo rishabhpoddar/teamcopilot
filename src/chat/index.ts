@@ -287,6 +287,36 @@ function shouldAutoGenerateTitle(title: string | null): boolean {
     return genericPatterns.some((pattern) => pattern.test(normalized));
 }
 
+function getEventSessionId(event: Record<string, unknown>): string | null {
+    const directSessionId = event.sessionID;
+    if (typeof directSessionId === "string" && directSessionId.length > 0) {
+        return directSessionId;
+    }
+
+    const properties = event.properties;
+    if (!properties || typeof properties !== "object") {
+        return null;
+    }
+
+    const propertyRecord = properties as Record<string, unknown>;
+    const candidates = [
+        propertyRecord.sessionID,
+        (propertyRecord.info as Record<string, unknown> | undefined)?.sessionID,
+        (propertyRecord.part as Record<string, unknown> | undefined)?.sessionID,
+        (propertyRecord.permission as Record<string, unknown> | undefined)?.sessionID,
+        (propertyRecord.message as Record<string, unknown> | undefined)?.sessionID,
+        (propertyRecord.error as Record<string, unknown> | undefined)?.sessionID
+    ];
+
+    for (const candidate of candidates) {
+        if (typeof candidate === "string" && candidate.length > 0) {
+            return candidate;
+        }
+    }
+
+    return null;
+}
+
 function generateTitleFromUserMessage(content: string): string {
     const maxChars = 60;
     const maxWords = 9;
@@ -976,12 +1006,7 @@ router.get('/sessions/:id/events', apiHandler(async (req, res) => {
                     if (data) {
                         try {
                             const event = JSON.parse(data);
-                            // Check all possible locations for sessionID
-                            const eventSessionId = event.properties?.sessionID ||
-                                event.sessionID ||
-                                event.properties?.info?.sessionID ||
-                                event.properties?.part?.sessionID ||
-                                event.properties?.permission?.sessionID;
+                            const eventSessionId = getEventSessionId(event as Record<string, unknown>);
 
                             // Filter events to only include ones for this session
                             if (eventSessionId === session.opencode_session_id) {
