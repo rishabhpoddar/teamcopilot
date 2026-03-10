@@ -113,20 +113,30 @@ function AppShell() {
   return (
     <div className="app-shell">
       <header className="app-header">
-        <div className="app-brand">
-          <img src="/logo.svg" alt="TeamCopilot logo" className="app-brand-logo" />
-          <div className="app-brand-text">TeamCopilot</div>
-        </div>
-        <div className="app-header-meta">
-          <div className="app-workspace">
-            <span className="app-workspace-label">Workspace</span>
-            <span className="app-workspace-value">
-              {workspaceError ?? workspaceDir ?? 'Loading...'}
-            </span>
+        <div className="app-header-top">
+          <div className="app-brand-block">
+            <div className="app-brand">
+              <img src="/logo.svg" alt="TeamCopilot logo" className="app-brand-logo" />
+              <div className="app-brand-text">TeamCopilot</div>
+            </div>
+            <div className="app-workspace">
+              <span className="app-workspace-label">Workspace</span>
+              <span className="app-workspace-value">
+                {workspaceError ?? workspaceDir ?? 'Loading...'}
+              </span>
+            </div>
           </div>
-          {!auth.loading && auth.user && (
-            <button className="app-signout" onClick={auth.logout}>Sign Out</button>
-          )}
+          <div className="app-header-meta">
+            {!auth.loading && auth.user && (
+              <div className="app-user">
+                <span className="app-user-name">{auth.user.name}</span>
+                <span className="app-user-email">{auth.user.email}</span>
+              </div>
+            )}
+            {!auth.loading && auth.user && (
+              <button className="app-signout" onClick={auth.logout}>Sign Out</button>
+            )}
+          </div>
         </div>
       </header>
       <Routes>
