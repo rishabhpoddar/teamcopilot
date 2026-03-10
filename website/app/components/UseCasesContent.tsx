@@ -80,7 +80,7 @@ Use this when the user gives an email instead of a customer ID.
   },
   {
     eyebrow: "03",
-    title: "Code analysis",
+    title: "Code Q&A",
     description:
       "Give the agent access to your codebase so anyone, including non-technical people, can ask how the system works, where a feature lives, or what would break if something changes. The agent can read the code directly and answer with repository-specific context instead of generic guesses.",
     exampleTitle: "Example skill: repository analyst",
