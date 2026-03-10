@@ -7,10 +7,11 @@ import Image from "next/image";
 const navLinks = [
   { name: "Features", href: "/#features", match: "home" },
   { name: "Use Cases", href: "/use-cases", match: "use-cases" },
+  { name: "Security", href: "/security", match: "security" },
   { name: "GitHub", href: "https://github.com/rishabhpoddar/teamcopilot", external: true },
 ];
 
-export default function Navbar({ currentPage = "home" }: { currentPage?: "home" | "use-cases" }) {
+export default function Navbar({ currentPage = "home" }: { currentPage?: "home" | "use-cases" | "security" }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
