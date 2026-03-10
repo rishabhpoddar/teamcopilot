@@ -74,7 +74,7 @@ Open: **http://localhost:5124**
 | `HOST` | Server host | `0.0.0.0` |
 | `PORT` | Server port | `5124` |
 | `OPENCODE_PORT` | Internal OpenCode server port | `4096` |
-| `OPENCODE_MODEL` | Model used by OpenCode | `openai/gpt-5.2-codex` |
+| `OPENCODE_MODEL` | Model used by OpenCode | `openai/gpt-5.3-codex` |
 
 ## User Management (CLI)
 

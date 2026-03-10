@@ -98,7 +98,7 @@ Optional: `WORKSPACE_DIR` (absolute path or relative to project root, default `.
 
 ### Opencode Server
 - `OPENCODE_PORT` (default `4096`) — Internal port used by the Opencode server started inside the backend process (always listens on localhost)
-- `OPENCODE_MODEL` (default `openai/gpt-5.2-codex`) — AI model to use
+- `OPENCODE_MODEL` (default `openai/gpt-5.3-codex`) — AI model to use
 
 ## Design Direction
 
