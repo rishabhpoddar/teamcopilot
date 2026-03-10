@@ -47,7 +47,7 @@ const detailedFeatures = [
 
 export default function Hero() {
   return (
-    <div className="bg-black">
+    <div className="bg-blue-600">
       <section className="relative min-h-screen overflow-hidden">
         {/* Background Video */}
         <div className="absolute bottom-[35vh] left-0 right-0 h-[80vh] z-0">
@@ -119,7 +119,7 @@ export default function Hero() {
         </div>
       </section>
 
-      <section id="dashboard" className="relative z-10 bg-black px-4 pt-10 pb-12 sm:px-6 sm:pt-0">
+      <section id="dashboard" className="relative z-10 bg-blue-600 px-4 pt-10 pb-12 sm:px-6 sm:pt-0">
         <div className="mx-auto max-w-7xl">
           <div className="relative overflow-hidden rounded-[28px] border border-white/10 bg-gradient-to-br from-white/[0.06] via-white/[0.03] to-transparent p-5 shadow-[0_40px_120px_rgba(0,0,0,0.45)] sm:rounded-[32px] sm:p-8 lg:p-10">
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.12),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(59,130,246,0.16),transparent_28%)]" />
@@ -179,7 +179,7 @@ export default function Hero() {
       </section>
 
       {/* Features Section */}
-      <section id="features" className="relative z-10 overflow-hidden bg-black px-4 py-24 sm:px-6">
+      <section id="features" className="relative z-10 overflow-hidden bg-blue-600 px-4 py-24 sm:px-6">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.08),transparent_28%),radial-gradient(circle_at_bottom_left,rgba(59,130,246,0.14),transparent_30%)]" />
 
         <div className="relative mx-auto max-w-7xl">

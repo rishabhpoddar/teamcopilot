@@ -283,9 +283,9 @@ function UseCaseCard({
 
 export default function UseCasesContent() {
   return (
-    <main className="min-h-screen overflow-hidden bg-black pt-28 text-white">
+    <main className="min-h-screen overflow-hidden bg-blue-600 pt-28 text-white">
       <section className="relative px-3 pb-8 sm:px-6 sm:pb-14">
-        <div className="pointer-events-none absolute inset-x-0 -top-20 bottom-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.08),transparent_22%),radial-gradient(circle_at_20%_30%,rgba(59,130,246,0.15),transparent_24%),radial-gradient(circle_at_80%_20%,rgba(16,185,129,0.1),transparent_22%),linear-gradient(180deg,rgba(0,0,0,0)_0%,rgba(2,6,23,0.38)_18%,rgba(0,0,0,0.12)_58%,rgba(0,0,0,0)_100%)]" />
+        <div className="pointer-events-none absolute inset-x-0 -top-20 bottom-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.10),transparent_22%),radial-gradient(circle_at_20%_30%,rgba(191,219,254,0.20),transparent_24%),radial-gradient(circle_at_80%_20%,rgba(125,211,252,0.18),transparent_22%),linear-gradient(180deg,rgba(37,99,235,0)_0%,rgba(29,78,216,0.20)_18%,rgba(30,64,175,0.14)_58%,rgba(37,99,235,0)_100%)]" />
         <div className="relative mx-auto max-w-6xl">
           <div className="max-w-4xl">
             <div className="rounded-[24px] border border-white/10 bg-white/[0.03] p-4 backdrop-blur-sm sm:rounded-[28px] sm:p-7">

@@ -70,8 +70,8 @@ export default function SecurityPage() {
   return (
     <>
       <Navbar currentPage="security" />
-      <main className="relative min-h-screen overflow-hidden bg-black pt-28 text-white">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(14,165,233,0.16),transparent_28%),radial-gradient(circle_at_80%_20%,rgba(34,197,94,0.12),transparent_22%),linear-gradient(180deg,#050505_0%,#000000_100%)]" />
+      <main className="relative min-h-screen overflow-hidden bg-blue-600 pt-28 text-white">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(191,219,254,0.18),transparent_28%),radial-gradient(circle_at_80%_20%,rgba(56,189,248,0.16),transparent_22%),linear-gradient(180deg,#2563eb_0%,#1d4ed8_100%)]" />
 
         <section className="relative mx-auto max-w-7xl px-6 pb-20">
           <div className="mx-auto max-w-3xl text-center">
