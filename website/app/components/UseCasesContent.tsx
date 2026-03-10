@@ -43,9 +43,9 @@ Inspect or update the beta configuration on the server safely, then roll the cha
 6. Restart the beta pod by running this workflow in restart-only mode:
    \`service-beta-deploy\`
    with \`restart_only=true\`
-8. Run beta tests:
+7. Run beta tests:
    \`service-beta-smoke-tests\`
-9. After the change is validated, delete the backup file.
+8. After the change is validated, delete the backup file.
 
 ## Guardrails
 - Never skip reading the remote file first.
@@ -139,7 +139,7 @@ Use this skill to answer questions about how the product works.
   },
   {
     eyebrow: "04",
-    title: "Enable non-technical people to make code changes",
+    title: "Let non-technical teammates request safe code changes",
     icon: SparklesIcon,
     iconLabel: "Safe code changes",
     summary:
@@ -296,7 +296,7 @@ export default function UseCasesContent() {
                 Example use cases of TeamCopilot
               </h1>
               <p className="mt-4 max-w-3xl text-sm leading-6 text-gray-400 sm:mt-6 sm:text-lg sm:leading-8">
-                Automate infrastructure management, knowledge sharing, code changes and reviews, testing and more...
+                Automate infrastructure management, wrap internal APIs, answer codebase questions, and handle safe code changes.
               </p>
             </div>
           </div>
