@@ -2,11 +2,12 @@ import Link from "next/link";
 import Image from "next/image";
 
 const navLinks = [
-  { name: "Features", href: "#features", active: true },
-  { name: "GitHub", href: "https://github.com/rishabhpoddar/teamcopilot", active: false, external: true },
+  { name: "Features", href: "/#features", match: "home" },
+  { name: "Use Cases", href: "/use-cases", match: "use-cases" },
+  { name: "GitHub", href: "https://github.com/rishabhpoddar/teamcopilot", external: true },
 ];
 
-export default function Navbar() {
+export default function Navbar({ currentPage = "home" }: { currentPage?: "home" | "use-cases" }) {
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/10 bg-black/30 backdrop-blur-md">
       <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
@@ -19,22 +20,32 @@ export default function Navbar() {
         {/* Navigation Links */}
         <div className="hidden md:flex items-center gap-8">
           {navLinks.map((link) => (
-            <a
-              key={link.name}
-              href={link.href}
-              target={link.external ? "_blank" : undefined}
-              rel={link.external ? "noopener noreferrer" : undefined}
-              className={`relative text-sm transition-colors ${
-                link.active
-                  ? "text-white"
-                  : "text-gray-400 hover:text-white"
-              }`}
-            >
-              {link.name}
-              {link.active && (
-                <span className="absolute -bottom-1 left-0 right-0 h-[2px] bg-white rounded-full" />
-              )}
-            </a>
+            link.external ? (
+              <a
+                key={link.name}
+                href={link.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="relative text-sm text-gray-400 transition-colors hover:text-white"
+              >
+                {link.name}
+              </a>
+            ) : (
+              <Link
+                key={link.name}
+                href={link.href}
+                className={`relative text-sm transition-colors ${
+                  currentPage === link.match
+                    ? "text-white"
+                    : "text-gray-400 hover:text-white"
+                }`}
+              >
+                {link.name}
+                {currentPage === link.match && (
+                  <span className="absolute -bottom-1 left-0 right-0 h-[2px] bg-white rounded-full" />
+                )}
+              </Link>
+            )
           ))}
         </div>
 
