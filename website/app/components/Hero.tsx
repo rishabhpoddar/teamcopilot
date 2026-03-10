@@ -68,7 +68,7 @@ export default function Hero() {
           >
             <GitHubIcon className="w-6 h-6 text-white" />
             <span className="text-white font-medium">Star on GitHub</span>
-            <StarIcon className="w-5 h-5 text-white" />
+            <StarIcon className="w-5 h-5 text-yellow-300" />
           </a>
 
           {/* Headline */}
