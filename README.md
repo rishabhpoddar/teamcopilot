@@ -71,8 +71,8 @@ Open: **http://localhost:5124**
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `WORKSPACE_DIR` | Directory where workflows are stored | `./my_workspaces` |
-| `HOST` | Server host | `0.0.0.0` |
-| `PORT` | Server port | `5124` |
+| `TEAMCOPILOT_HOST` | Server host | `0.0.0.0` |
+| `TEAMCOPILOT_PORT` | Server port | `5124` |
 | `OPENCODE_PORT` | Internal OpenCode server port | `4096` |
 | `OPENCODE_MODEL` | Model used by OpenCode | `openai/gpt-5.3-codex` |
 

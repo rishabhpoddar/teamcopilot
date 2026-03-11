@@ -160,10 +160,10 @@ async function bootstrap() {
     await startOpencodeServer();
     startCronJobs();
 
-    const HOST = assertEnv("HOST");
-    const PORT = parseIntStrict(assertEnv("PORT"), "PORT");
-    httpServer = app.listen(PORT, HOST, () => {
-        console.log(`Server running at http://${HOST}:${PORT}`);
+    const TEAMCOPILOT_HOST = assertEnv("TEAMCOPILOT_HOST");
+    const TEAMCOPILOT_PORT = parseIntStrict(assertEnv("TEAMCOPILOT_PORT"), "TEAMCOPILOT_PORT");
+    httpServer = app.listen(TEAMCOPILOT_PORT, TEAMCOPILOT_HOST, () => {
+        console.log(`Server running at http://${TEAMCOPILOT_HOST}:${TEAMCOPILOT_PORT}`);
     });
 }
 

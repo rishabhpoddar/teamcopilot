@@ -93,8 +93,8 @@ JWT secret is generated on first boot and stored in `key_value`. Rotate via `npm
 Optional: `WORKSPACE_DIR` (absolute path or relative to project root, default `./my_workspaces`)
 
 ### Server
-- `HOST` (default `0.0.0.0`) — Hostname for the main server
-- `PORT` (default `5124`) — Port for the main server
+- `TEAMCOPILOT_HOST` (default `0.0.0.0`) — Hostname for the main server
+- `TEAMCOPILOT_PORT` (default `5124`) — Port for the main server
 
 ### Opencode Server
 - `OPENCODE_PORT` (default `4096`) — Internal port used by the Opencode server started inside the backend process (always listens on localhost)

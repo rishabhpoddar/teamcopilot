@@ -3,9 +3,9 @@ import * as fs from "fs/promises"
 import * as path from "path"
 
 function getApiBaseUrl(): string {
-  const port = process.env.PORT?.trim()
+  const port = process.env.TEAMCOPILOT_PORT?.trim()
   if (!port) {
-    throw new Error("PORT must be set.")
+    throw new Error("TEAMCOPILOT_PORT must be set.")
   }
   return `http://localhost:${port}`
 }

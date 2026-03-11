@@ -5,7 +5,7 @@ import path from 'node:path'
 
 dotenv.config({ path: path.resolve(__dirname, '..', '.env') })
 
-const backendPort = process.env.PORT ?? '5124'
+const backendPort = process.env.TEAMCOPILOT_PORT ?? '5124'
 
 const backendApiTarget = `http://localhost:${backendPort}`
 
