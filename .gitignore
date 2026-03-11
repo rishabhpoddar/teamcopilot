@@ -6,3 +6,4 @@ dist/
 *.db-journal
 *.db-shm
 *.db-wal
+marketing_docs
