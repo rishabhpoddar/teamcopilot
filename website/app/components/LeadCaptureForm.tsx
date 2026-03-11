@@ -13,10 +13,7 @@ type SubmissionState =
   | { status: "success"; message: string }
   | { status: "error"; message: string };
 
-const endpointByFormType = {
-  demo: "/api/book-demo",
-  consultation: "/api/ai-automation-consulting",
-};
+const SHARED_LEAD_CAPTURE_ENDPOINT = "/api/lead-capture";
 
 export default function LeadCaptureForm({ formType, submitLabel }: LeadCaptureFormProps) {
   const [submissionState, setSubmissionState] = useState<SubmissionState>({ status: "idle" });
@@ -34,27 +31,29 @@ export default function LeadCaptureForm({ formType, submitLabel }: LeadCaptureFo
       teamSize: String(formData.get("teamSize")),
       website: String(formData.get("website")),
       goals: String(formData.get("goals")),
+      formType,
     };
 
     try {
-      const response = await fetch(endpointByFormType[formType], {
+      const response = await fetch(SHARED_LEAD_CAPTURE_ENDPOINT, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Accept: "application/json",
         },
         body: JSON.stringify(payload),
       });
 
-      const result = (await response.json()) as { message?: string };
+      const result = (await response.json()) as { message?: string; errors?: Array<{ message: string }> };
 
       if (!response.ok) {
-        throw new Error(result.message ?? "Something went wrong. Please try again.");
+        throw new Error(result.errors?.[0]?.message ?? result.message ?? "Something went wrong. Please try again.");
       }
 
       form.reset();
       setSubmissionState({
         status: "success",
-        message: result.message ?? "Thanks. We will get back to you shortly.",
+        message: "Thanks. We will get back to you shortly.",
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Something went wrong. Please try again.";
@@ -91,6 +90,7 @@ export default function LeadCaptureForm({ formType, submitLabel }: LeadCaptureFo
             name="workEmail"
             type="email"
             required
+            autoComplete="email"
             className="mt-2 w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white outline-none transition focus:border-cyan-300/50"
             placeholder="jane@company.com"
           />

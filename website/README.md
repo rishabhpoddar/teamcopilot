@@ -10,3 +10,7 @@ Set these environment variables before running the site:
 
 - `NEXT_PUBLIC_POSTHOG_TOKEN`
 - `NEXT_PUBLIC_POSTHOG_HOST` (for example `https://us.i.posthog.com`)
+
+## Lead Capture
+
+Both the demo and consulting pages submit through the shared Next.js API route at `POST /api/lead-capture`, which forwards requests to the hard-coded Formspree endpoint.
