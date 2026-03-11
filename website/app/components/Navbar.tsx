@@ -7,11 +7,16 @@ import Image from "next/image";
 const navLinks = [
   { name: "Features", href: "/#features", match: "home" },
   { name: "Use Cases", href: "/use-cases", match: "use-cases" },
+  { name: "Book a Demo", href: "/book-demo", match: "book-demo" },
   { name: "Security", href: "/security", match: "security" },
   { name: "GitHub", href: "https://github.com/rishabhpoddar/teamcopilot", external: true },
 ];
 
-export default function Navbar({ currentPage = "home" }: { currentPage?: "home" | "use-cases" | "security" }) {
+export default function Navbar({
+  currentPage = "home",
+}: {
+  currentPage?: "home" | "use-cases" | "book-demo" | "ai-automation-consulting" | "security";
+}) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
@@ -57,14 +62,12 @@ export default function Navbar({ currentPage = "home" }: { currentPage?: "home" 
 
         <div className="flex items-center gap-4">
           {/* CTA Button */}
-          <a
-            href="https://github.com/rishabhpoddar/teamcopilot"
-            target="_blank"
-            rel="noopener noreferrer"
+          <Link
+            href="/book-demo"
             className="hidden sm:block px-5 py-2.5 text-sm font-medium rounded-full bg-gradient-to-r from-white to-gray-300 text-black transition-all hover:shadow-lg hover:shadow-white/20 hover:scale-[1.02] active:scale-[0.98]"
           >
-            Get Started
-          </a>
+            Book a Demo
+          </Link>
 
           {/* Mobile Menu Button */}
           <button
@@ -129,15 +132,13 @@ export default function Navbar({ currentPage = "home" }: { currentPage?: "home" 
                 </Link>
               )
             ))}
-            <a
-              href="https://github.com/rishabhpoddar/teamcopilot"
-              target="_blank"
-              rel="noopener noreferrer"
+            <Link
+              href="/book-demo"
               className="sm:hidden mt-2 px-5 py-2.5 text-sm font-medium rounded-full bg-gradient-to-r from-white to-gray-300 text-black text-center transition-all"
               onClick={() => setMobileMenuOpen(false)}
             >
-              Get Started
-            </a>
+              Book a Demo
+            </Link>
           </div>
         </div>
       )}

@@ -287,6 +287,24 @@ export default function Hero() {
               </div>
             </div>
           </div>
+
+          <div className="mt-16 pb-4 text-center sm:mt-20 sm:pb-8">
+            <p className="text-xs font-medium uppercase tracking-[0.34em] text-gray-500 sm:text-sm">
+              Talk to TeamCopilot
+            </p>
+            <h2 className="mt-4 text-3xl font-bold tracking-tight text-white sm:text-4xl lg:text-5xl">
+              Book a product demo for your team
+            </h2>
+            <p className="mx-auto mt-5 max-w-3xl text-base leading-7 text-gray-400 sm:text-lg">
+              See how TeamCopilot can supercharge your team&apos;s productivity!
+            </p>
+            <Link
+              href="/book-demo"
+              className="mt-8 inline-flex rounded-full bg-gradient-to-r from-cyan-200 to-white px-6 py-3 text-sm font-semibold text-black transition hover:shadow-lg hover:shadow-cyan-200/20"
+            >
+              Book a Demo
+            </Link>
+          </div>
         </div>
       </section>
     </div>
