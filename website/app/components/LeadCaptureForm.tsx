@@ -172,7 +172,7 @@ export default function LeadCaptureForm({ formType, submitLabel }: LeadCaptureFo
             placeholder={
               formType === "demo"
                 ? "Examples: internal support agent, SEO workflow, engineering automation, approval controls."
-                : "Examples: SEO content ops, lead routing, reporting, customer support, proposal generation."
+                : "Examples: lead routing, reporting, customer support, proposal generation, internal operations."
             }
           />
         </div>
