@@ -80,6 +80,10 @@ export default function RootLayout({
                 'currency': 'INR',
                 'event_callback': callback
               });
+              gtag('event', 'conversion', {
+                'send_to': 'AW-17338433804/me4uCKjO9YYcEIyCzstA',
+                'event_callback': callback
+              });
               return false;
             };
           `}
