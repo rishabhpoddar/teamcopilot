@@ -18,6 +18,28 @@ export const metadata: Metadata = {
   title: "TeamCopilot - A Shared AI Agent for Teams",
   description: "Think Claude Code, but shared across your entire team and running on your cloud. Configure once, the whole team can use it.",
   metadataBase: new URL(getSiteUrl()),
+  openGraph: {
+    title: "TeamCopilot - A Shared AI Agent for Teams",
+    description: "Think Claude Code, but shared across your entire team and running on your cloud. Configure once, the whole team can use it.",
+    url: getSiteUrl(),
+    siteName: "TeamCopilot",
+    images: [
+      {
+        url: "/social-preview.png",
+        width: 1200,
+        height: 630,
+        alt: "TeamCopilot: A shared AI agent for Teams",
+      },
+    ],
+    locale: "en_US",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "TeamCopilot - A Shared AI Agent for Teams",
+    description: "Think Claude Code, but shared across your entire team and running on your cloud. Configure once, the whole team can use it.",
+    images: ["/social-preview.png"],
+  },
   icons: {
     icon: "/logo.svg",
     shortcut: "/logo.svg",
