@@ -17,7 +17,7 @@ It's like Claude code / OpenAI Codex, except that:
 
 ## Dashboard View
 
-![TeamCopilot Dashboard](website/public/dashboard.jpeg)
+![TeamCopilot Dashboard](https://teamcopilot.ai/_next/image?url=%2Fdashboard.jpeg)
 
 ## Quick Start (Local)
 
