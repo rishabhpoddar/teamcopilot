@@ -67,6 +67,21 @@ export default function RootLayout({
             function gtag(){dataLayer.push(arguments);}
             gtag('js', new Date());
             gtag('config', 'AW-17338433804');
+
+            window.gtag_report_conversion = function (url) {
+              var callback = function () {
+                if (typeof(url) != 'undefined') {
+                  window.location = url;
+                }
+              };
+              gtag('event', 'conversion', {
+                'send_to': 'AW-17338433804/RPPeCPfuo-4aEIyCzstA',
+                'value': 1.0,
+                'currency': 'INR',
+                'event_callback': callback
+              });
+              return false;
+            };
           `}
         </Script>
       </head>

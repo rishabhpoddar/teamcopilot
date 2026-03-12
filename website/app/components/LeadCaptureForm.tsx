@@ -2,6 +2,12 @@
 
 import { FormEvent, useState } from "react";
 
+declare global {
+  interface Window {
+    gtag_report_conversion?: (url?: string) => boolean;
+  }
+}
+
 type LeadCaptureFormProps = {
   formType: "demo" | "consultation";
   submitLabel: string;
@@ -51,6 +57,7 @@ export default function LeadCaptureForm({ formType, submitLabel }: LeadCaptureFo
       }
 
       form.reset();
+      window.gtag_report_conversion?.();
       setSubmissionState({
         status: "success",
         message: "Thanks. We will get back to you shortly.",
