@@ -17,6 +17,25 @@ export const metadata: Metadata = {
   alternates: {
     canonical: `${getSiteUrl()}/ai-automation-consulting`,
   },
+  openGraph: {
+    title: "AI Automation Consulting for Businesses | TeamCopilot",
+    description: "Talk to TeamCopilot about AI automation for your business operations.",
+    url: `${getSiteUrl()}/ai-automation-consulting`,
+    images: [
+      {
+        url: "/ai-consulting.png",
+        width: 1200,
+        height: 628,
+        alt: "AI automation consulting for your business",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "AI Automation Consulting for Businesses | TeamCopilot",
+    description: "Talk to TeamCopilot about AI automation for your business operations.",
+    images: ["/ai-consulting.png"],
+  },
   keywords: [
     "ai automation consulting",
     "ai agents for business automation",
