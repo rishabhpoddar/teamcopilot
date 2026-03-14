@@ -19,23 +19,28 @@ The release must stop if the version in `package.json` and `package-lock.json` d
    `./release-teamcopilot-npm/scripts/publish.sh`
 4. By default, prefer a dry run first:
    `./release-teamcopilot-npm/scripts/publish.sh --dry-run`
-5. If the dry run is clean and the user wants the real release, run:
+5. If the dry run is clean and the user wants the real release, publish from the same commit.
+6. When the `trythisapp` npm account requires TOTP, ask for a fresh authenticator code only after the dry run has passed, then run:
+   `./release-teamcopilot-npm/scripts/publish.sh --publish --skip-checks --otp <fresh-code>`
+7. If TOTP is not required for the publish path, run:
    `./release-teamcopilot-npm/scripts/publish.sh --publish`
-6. After a successful publish, create a Git tag that exactly matches the package version, for example `0.0.1`.
-7. Use `gh` to create a GitHub release for that tag with release notes based on the changes since the previous release.
+8. After a successful publish, create a Git tag that exactly matches the package version, for example `0.0.1`.
+9. Use `gh` to create a GitHub release for that tag with release notes based on the changes since the previous release.
 
 ## What The Script Does
 
 - Reads the package `name` and `version` from the repo root `package.json`
 - Shows the exact release target, for example `teamcopilot@0.0.1`
 - Verifies `package.json` and `package-lock.json` have the same version
-- Runs `npm whoami` and requires the result to be `rishabhpoddar`
+- Runs `npm whoami` and requires the result to be `trythisapp`
 - Runs `npm run test` and requires it to pass
 - Runs `npm run build`
 - Requires `npm run build` to pass
 - Runs `npm pack --json`
 - Deletes the generated `.tgz` after verification so the repo is not left dirty
 - Publishes with `npm publish` only when `--publish` is passed
+- Accepts `--otp <code>` and passes it through to `npm publish`
+- Accepts `--skip-checks` to skip test/build/pack after a successful dry run on the same commit
 - Accepts `--tag <tag>` and `--access public`
 - After publish, GitHub tagging and release creation must be done separately with `gh`
 
@@ -44,9 +49,10 @@ The release must stop if the version in `package.json` and `package-lock.json` d
 - Treat the `package.json` version as the source of truth for the release version.
 - Stop if `package-lock.json` does not have the same version.
 - Prefer `--dry-run` before `--publish`.
+- For the `trythisapp` account, prefer `--dry-run` first, then use `--publish --skip-checks --otp <fresh-code>` so the TOTP code is entered immediately before publish.
 - Do not publish if tests fail.
 - Do not publish if build fails.
-- If `npm whoami` is not `rishabhpoddar`, stop immediately.
+- If `npm whoami` is not `trythisapp`, stop immediately.
 - If the user wants a prerelease tag like `beta`, pass `--tag beta`.
 - If the package ever becomes scoped, use `--access public` when required.
 - After a successful npm publish, create a git tag equal to the package version with no prefix.
@@ -59,6 +65,8 @@ The release must stop if the version in `package.json` and `package-lock.json` d
   `Use $release-teamcopilot-npm to dry-run the npm release for this repo.`
 - Publish the current version:
   `Use $release-teamcopilot-npm to publish the current package.json version to npm.`
+- Publish with a fresh TOTP code after a clean dry run:
+  `Use $release-teamcopilot-npm to publish this version from the trythisapp npm account with a fresh authenticator code, then create the matching GitHub release.`
 - Publish a beta tag:
   `Use $release-teamcopilot-npm to publish this version to npm with the beta tag.`
 - Publish and create the GitHub release:
