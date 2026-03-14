@@ -250,7 +250,7 @@ async function runInit(argv) {
     const existingValues = parseExistingEnv();
     const values = await promptForEnvValues(defaultValues, existingValues, flags);
     upsertEnvFile(values);
-    console.log(`Wrote ${envFilePath}`);
+    console.log(`Init completed. Please run "npx teamcopilot start" to start the service`);
 }
 
 async function main() {

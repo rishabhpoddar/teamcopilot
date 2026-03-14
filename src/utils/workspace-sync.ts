@@ -123,6 +123,40 @@ function readLocalGitignoreRuleSet(sourceDirectory: string, relativePath: string
     };
 }
 
+function mergeGitignoreFile(sourceGitignorePath: string, targetGitignorePath: string): void {
+    const sourceLines = fs.readFileSync(sourceGitignorePath, "utf-8").split(/\r?\n/);
+    if (!fs.existsSync(targetGitignorePath)) {
+        fs.writeFileSync(targetGitignorePath, `${sourceLines.join("\n").replace(/\n*$/, "\n")}`, "utf-8");
+        return;
+    }
+
+    const existingContent = fs.readFileSync(targetGitignorePath, "utf-8");
+    const existingLines = existingContent.split(/\r?\n/);
+    const existingEntries = new Set(existingLines);
+    const linesToAppend: string[] = [];
+
+    for (const sourceLine of sourceLines) {
+        if (sourceLine.length === 0 || existingEntries.has(sourceLine)) {
+            continue;
+        }
+        existingEntries.add(sourceLine);
+        linesToAppend.push(sourceLine);
+    }
+
+    if (linesToAppend.length === 0) {
+        return;
+    }
+
+    const needsSeparator = existingContent.length > 0 && !existingContent.endsWith("\n");
+    const prefix = needsSeparator ? "\n" : "";
+    const suffix = existingContent.endsWith("\n") || existingContent.length === 0 ? "" : "\n";
+    fs.writeFileSync(
+        targetGitignorePath,
+        `${existingContent}${suffix}${prefix}${linesToAppend.join("\n")}\n`,
+        "utf-8"
+    );
+}
+
 function syncTemplateDirectory(
     sourceDirectory: string,
     targetDirectory: string,
@@ -157,6 +191,10 @@ function syncTemplateDirectory(
         }
 
         if (entry.isFile()) {
+            if (entry.name === ".gitignore") {
+                mergeGitignoreFile(sourceEntryPath, targetEntryPath);
+                continue;
+            }
             fs.copyFileSync(sourceEntryPath, targetEntryPath);
         }
     }
