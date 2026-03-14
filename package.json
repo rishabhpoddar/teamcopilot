@@ -2,6 +2,11 @@
   "name": "teamcopilot",
   "version": "0.0.1",
   "description": "A shared AI Agent for Teams",
+  "homepage": "https://teamcopilot.ai",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rishabhpoddar/teamcopilot.git"
+  },
   "main": "dist/index.js",
   "bin": {
     "teamcopilot": "bin/teamcopilot.js"
