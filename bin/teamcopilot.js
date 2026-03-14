@@ -2,14 +2,16 @@
 
 const fs = require("fs");
 const path = require("path");
-const { spawn } = require("child_process");
+const { execFileSync, spawn } = require("child_process");
 const { createInterface } = require("node:readline/promises");
 const dotenv = require("dotenv");
 
 const packageRoot = path.resolve(__dirname, "..");
 const currentDirectory = process.cwd();
+const cliPackageJsonPath = path.join(packageRoot, "package.json");
 const envExamplePath = path.join(packageRoot, ".env.example");
 const envFilePath = path.join(currentDirectory, ".env");
+const localPackageJsonPath = path.join(currentDirectory, "package.json");
 
 const commandToScript = {
     start: "index.js",
@@ -44,6 +46,10 @@ Init options:
 function loadEnvExample() {
     const parsed = dotenv.parse(fs.readFileSync(envExamplePath, "utf-8"));
     return parsed;
+}
+
+function getCliPackageMetadata() {
+    return JSON.parse(fs.readFileSync(cliPackageJsonPath, "utf-8"));
 }
 
 function normalizeInitFlag(flagName) {
@@ -117,6 +123,34 @@ function parseExistingEnv() {
         return {};
     }
     return dotenv.parse(fs.readFileSync(envFilePath, "utf-8"));
+}
+
+function parseExistingPackageJson() {
+    if (!fs.existsSync(localPackageJsonPath)) {
+        return null;
+    }
+    return JSON.parse(fs.readFileSync(localPackageJsonPath, "utf-8"));
+}
+
+function ensureLocalPackagePinned() {
+    const cliPackage = getCliPackageMetadata();
+    const existingPackageJson = parseExistingPackageJson();
+    const nextPackageJson = existingPackageJson ?? {
+        name: path.basename(currentDirectory) || "teamcopilot-workspace",
+        private: true,
+    };
+    const existingDependencies = nextPackageJson.dependencies ?? {};
+    nextPackageJson.dependencies = {
+        ...existingDependencies,
+        teamcopilot: cliPackage.version,
+    };
+
+    fs.writeFileSync(localPackageJsonPath, `${JSON.stringify(nextPackageJson, null, 2)}\n`, "utf-8");
+    execFileSync("npm", ["install"], {
+        cwd: currentDirectory,
+        stdio: "inherit",
+        env: process.env,
+    });
 }
 
 async function promptForEnvValues(defaultValues, existingValues, providedFlags) {
@@ -250,7 +284,8 @@ async function runInit(argv) {
     const existingValues = parseExistingEnv();
     const values = await promptForEnvValues(defaultValues, existingValues, flags);
     upsertEnvFile(values);
-    console.log(`Init completed. Please run "npx teamcopilot start" to start the service`);
+    ensureLocalPackagePinned();
+    console.log(`Init completed. Pinned teamcopilot@${getCliPackageMetadata().version} locally. Please run "npx teamcopilot start" to start the service`);
 }
 
 async function main() {

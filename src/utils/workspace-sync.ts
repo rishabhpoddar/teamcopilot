@@ -157,6 +157,34 @@ function mergeGitignoreFile(sourceGitignorePath: string, targetGitignorePath: st
     );
 }
 
+function mergePackageJsonFile(sourcePackageJsonPath: string, targetPackageJsonPath: string): void {
+    const sourcePackageJson = JSON.parse(fs.readFileSync(sourcePackageJsonPath, "utf-8")) as Record<string, unknown>;
+    if (!fs.existsSync(targetPackageJsonPath)) {
+        fs.writeFileSync(targetPackageJsonPath, `${JSON.stringify(sourcePackageJson, null, 2)}\n`, "utf-8");
+        return;
+    }
+
+    const targetPackageJson = JSON.parse(fs.readFileSync(targetPackageJsonPath, "utf-8")) as Record<string, unknown>;
+    const mergedPackageJson: Record<string, unknown> = {
+        ...sourcePackageJson,
+        ...targetPackageJson,
+        dependencies: {
+            ...((sourcePackageJson.dependencies as Record<string, unknown> | undefined) ?? {}),
+            ...((targetPackageJson.dependencies as Record<string, unknown> | undefined) ?? {}),
+        },
+        devDependencies: {
+            ...((sourcePackageJson.devDependencies as Record<string, unknown> | undefined) ?? {}),
+            ...((targetPackageJson.devDependencies as Record<string, unknown> | undefined) ?? {}),
+        },
+        scripts: {
+            ...((sourcePackageJson.scripts as Record<string, unknown> | undefined) ?? {}),
+            ...((targetPackageJson.scripts as Record<string, unknown> | undefined) ?? {}),
+        },
+    };
+
+    fs.writeFileSync(targetPackageJsonPath, `${JSON.stringify(mergedPackageJson, null, 2)}\n`, "utf-8");
+}
+
 function syncTemplateDirectory(
     sourceDirectory: string,
     targetDirectory: string,
@@ -193,6 +221,10 @@ function syncTemplateDirectory(
         if (entry.isFile()) {
             if (entry.name === ".gitignore") {
                 mergeGitignoreFile(sourceEntryPath, targetEntryPath);
+                continue;
+            }
+            if (entry.name === "package.json") {
+                mergePackageJsonFile(sourceEntryPath, targetEntryPath);
                 continue;
             }
             fs.copyFileSync(sourceEntryPath, targetEntryPath);
