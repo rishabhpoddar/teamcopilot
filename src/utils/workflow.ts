@@ -6,17 +6,13 @@ import fs from "fs";
 import path from "path";
 import { WorkflowManifest, WorkflowMetadata } from "../types/workflow";
 import prisma from "../prisma/client";
-import { assertCondition, assertEnv } from "./assert";
+import { assertCondition } from "./assert";
 import { ensureWorkflowRunPermissionsForMetadata } from "./workflow-permissions";
-
-const WORKSPACE_DIR = assertEnv("WORKSPACE_DIR");
+import { getWorkspaceDirFromEnv } from "./workspace-sync";
 
 /** Get the absolute path to the workspace directory */
 function getWorkspacePath(): string {
-    if (path.isAbsolute(WORKSPACE_DIR)) {
-        return WORKSPACE_DIR;
-    }
-    return path.join(process.cwd(), WORKSPACE_DIR);
+    return getWorkspaceDirFromEnv();
 }
 
 /** Get the path to a workflow directory */

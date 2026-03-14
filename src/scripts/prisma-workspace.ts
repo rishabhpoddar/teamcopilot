@@ -1,6 +1,7 @@
 import dotenv from "dotenv";
 import { spawn } from "child_process";
 import { getWorkspaceDatabaseUrl } from "../utils/workspace-sync";
+import { getPackageRoot, getPrismaSchemaPath } from "../utils/runtime-paths";
 
 dotenv.config();
 
@@ -11,8 +12,11 @@ if (args.length === 0) {
 }
 
 const databaseUrl = getWorkspaceDatabaseUrl();
-const child = spawn("npx", ["prisma", ...args], {
-    cwd: process.cwd(),
+const prismaCliEntrypoint = require.resolve("prisma/build/index.js", {
+    paths: [getPackageRoot()],
+});
+const child = spawn(process.execPath, [prismaCliEntrypoint, ...args, "--schema", getPrismaSchemaPath()], {
+    cwd: getPackageRoot(),
     stdio: "inherit",
     env: {
         ...process.env,

@@ -51,6 +51,44 @@ npm start
 
 Open: **http://localhost:5124**
 
+## Quick Start (npm)
+
+### 1) Initialize in the folder you want to use
+
+```bash
+npx teamcopilot init
+```
+
+This writes or updates a local `.env` in the current directory. `WORKSPACE_DIR` defaults to the current directory as an absolute path. You can also provide values up front:
+
+```bash
+npx teamcopilot init \
+  --workspace-dir /absolute/path/to/workspace \
+  --teamcopilot-port 5124 \
+  --opencode-port 4096 \
+  --opencode-model openai/gpt-5.3-codex
+```
+
+### 2) Start the server
+
+```bash
+npx teamcopilot start
+```
+
+Open: **http://localhost:5124**
+
+### 3) Run admin commands from the same directory
+
+```bash
+npx teamcopilot create-user
+npx teamcopilot change-user-role
+npx teamcopilot delete-user
+npx teamcopilot reset-password
+npx teamcopilot rotate-jwt-secret
+```
+
+If `.env` is missing or incomplete, TeamCopilot will ask you to run `npx teamcopilot init` first.
+
 ## Docker Setup
 
 ```bash
@@ -82,30 +120,35 @@ Create user:
 
 ```bash
 npm run create-user
+npx teamcopilot create-user
 ```
 
 Change user role:
 
 ```bash
 npm run change-user-role
+npx teamcopilot change-user-role
 ```
 
 Delete user:
 
 ```bash
 npm run delete-user
+npx teamcopilot delete-user
 ```
 
 Reset password:
 
 ```bash
 npm run reset-password
+npx teamcopilot reset-password
 ```
 
 Rotate JWT secret (invalidates existing tokens causing everyone to get logged out):
 
 ```bash
 npm run rotate-jwt-secret
+npx teamcopilot rotate-jwt-secret
 ```
 
 Users sign in at `/login`.

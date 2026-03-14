@@ -5,6 +5,7 @@ import { stdin as input, stdout as output } from 'node:process';
 import bcrypt from 'bcryptjs';
 import prisma from './prisma/client';
 import { getPasswordPolicyErrorMessage, isPasswordValid, MIN_PASSWORD_LENGTH } from './utils/password-policy';
+import { bootstrapCliDatabaseAccess } from './utils/cli-bootstrap';
 
 async function resolveEmailArgOrPrompt(): Promise<string> {
     const argEmail = process.argv[2];
@@ -42,6 +43,7 @@ async function resolveTempPasswordOrPrompt(): Promise<string> {
 }
 
 async function main() {
+    await bootstrapCliDatabaseAccess();
     const email = await resolveEmailArgOrPrompt();
     const tempPassword = await resolveTempPasswordOrPrompt();
 
