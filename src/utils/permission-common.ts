@@ -1,6 +1,6 @@
 import prisma from "../prisma/client";
 import { PermissionMode, Permissions } from "../types/permissions";
-import { Prisma } from "@prisma/client";
+import { Prisma } from "../../prisma/generated/client";
 
 export type ResourceKind = "workflow" | "skill";
 

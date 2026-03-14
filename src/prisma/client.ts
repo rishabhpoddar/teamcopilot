@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient } from '../../prisma/generated/client'
 import { getWorkspaceDatabaseUrl } from '../utils/workspace-sync';
 
 let prismaClient: PrismaClient | null = null;

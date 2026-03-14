@@ -24,9 +24,9 @@
   "scripts": {
     "clean": "rm -rf dist",
     "check:unused:functions": "tsc --noEmit --noUnusedLocals --noUnusedParameters",
-    "check:unused:exports": "ts-prune -e -p tsconfig.json -i \"^src/types/shared/\"",
+    "check:unused:exports": "ts-prune -e -p tsconfig.json -i \"^src/types/shared/|^prisma/generated/\"",
     "check:unused": "npm run check:unused:functions && npm run check:unused:exports",
-    "build": "npm run clean && npm run check:unused && cd frontend && npm run build && cd .. && tsc && node scripts/copy-runtime-assets.mjs",
+    "build": "npm run clean && npm run check:unused && cd frontend && npm run build && cd .. && prisma generate --schema prisma/schema.prisma && tsc && node scripts/copy-runtime-assets.mjs",
     "start": "node dist/index.js",
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:backend": "ts-node-dev src/index.ts",
@@ -41,6 +41,7 @@
     "prisma:migrate:reset": "npm run prisma -- migrate reset",
     "prisma:migrate:deploy": "npm run prisma -- migrate deploy",
     "prisma:studio": "npm run prisma -- studio",
+    "postinstall": "prisma generate --schema prisma/schema.prisma",
     "test": "node -r ts-node/register tests/run-tests.ts",
     "prepublishOnly": "npm run build"
   },
