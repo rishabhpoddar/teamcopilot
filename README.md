@@ -19,39 +19,13 @@ It's like Claude code / OpenAI Codex, except that:
 
 ![TeamCopilot Dashboard](/assets/dashboard.webp)
 
-## Quick Start (Local)
+## Quick Start (npm)
 
 ### Prerequisites
 
 - Node.js 20+
 - npm
 - Python 3.10+
-
-### 1) Install
-
-```bash
-git clone https://github.com/rishabhpoddar/teamcopilot
-cd teamcopilot
-npm install
-cd frontend && npm install && cd ..
-```
-
-### 2) Configure
-
-```bash
-cp .env.example .env
-```
-
-### 3) Build and start
-
-```bash
-npm run build
-npm start
-```
-
-Open: **http://localhost:5124**
-
-## Quick Start (npm)
 
 ### 1) Initialize in the folder you want to use
 
@@ -119,35 +93,30 @@ Open: **http://localhost:5124**
 Create user:
 
 ```bash
-npm run create-user
 npx teamcopilot create-user
 ```
 
 Change user role:
 
 ```bash
-npm run change-user-role
 npx teamcopilot change-user-role
 ```
 
 Delete user:
 
 ```bash
-npm run delete-user
 npx teamcopilot delete-user
 ```
 
 Reset password:
 
 ```bash
-npm run reset-password
 npx teamcopilot reset-password
 ```
 
 Rotate JWT secret (invalidates existing tokens causing everyone to get logged out):
 
 ```bash
-npm run rotate-jwt-secret
 npx teamcopilot rotate-jwt-secret
 ```
 
