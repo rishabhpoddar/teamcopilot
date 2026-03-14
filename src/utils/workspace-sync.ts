@@ -4,6 +4,7 @@ import ignore, { Ignore } from "ignore";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { assertEnv } from "./assert";
+import { getPackageRoot, getPrismaSchemaPath, getWorkspaceTemplateDirectory } from "./runtime-paths";
 
 interface IgnoreRuleSet {
     basePath: string;
@@ -24,12 +25,26 @@ export function getWorkspaceDirFromEnv(): string {
     return workspaceDir;
 }
 
+function getPrismaCliEntrypoint(): string {
+    return require.resolve("prisma/build/index.js", {
+        paths: [getPackageRoot()],
+    });
+}
+
 function getWorkspaceDatabasePath(): string {
     return path.join(getWorkspaceDirFromEnv(), WORKSPACE_DB_DIRECTORY, WORKSPACE_DB_FILENAME);
 }
 
 export function getWorkspaceDatabaseUrl(): string {
     return `file:${getWorkspaceDatabasePath()}`;
+}
+
+export function workspaceDatabaseExists(): boolean {
+    return fs.existsSync(getWorkspaceDatabasePath());
+}
+
+export function ensureWorkspaceDatabaseDirectory(): void {
+    fs.mkdirSync(path.dirname(getWorkspaceDatabasePath()), { recursive: true });
 }
 
 function normalizeRelativePath(relativePath: string): string {
@@ -108,6 +123,40 @@ function readLocalGitignoreRuleSet(sourceDirectory: string, relativePath: string
     };
 }
 
+function mergeGitignoreFile(sourceGitignorePath: string, targetGitignorePath: string): void {
+    const sourceLines = fs.readFileSync(sourceGitignorePath, "utf-8").split(/\r?\n/);
+    if (!fs.existsSync(targetGitignorePath)) {
+        fs.writeFileSync(targetGitignorePath, `${sourceLines.join("\n").replace(/\n*$/, "\n")}`, "utf-8");
+        return;
+    }
+
+    const existingContent = fs.readFileSync(targetGitignorePath, "utf-8");
+    const existingLines = existingContent.split(/\r?\n/);
+    const existingEntries = new Set(existingLines);
+    const linesToAppend: string[] = [];
+
+    for (const sourceLine of sourceLines) {
+        if (sourceLine.length === 0 || existingEntries.has(sourceLine)) {
+            continue;
+        }
+        existingEntries.add(sourceLine);
+        linesToAppend.push(sourceLine);
+    }
+
+    if (linesToAppend.length === 0) {
+        return;
+    }
+
+    const needsSeparator = existingContent.length > 0 && !existingContent.endsWith("\n");
+    const prefix = needsSeparator ? "\n" : "";
+    const suffix = existingContent.endsWith("\n") || existingContent.length === 0 ? "" : "\n";
+    fs.writeFileSync(
+        targetGitignorePath,
+        `${existingContent}${suffix}${prefix}${linesToAppend.join("\n")}\n`,
+        "utf-8"
+    );
+}
+
 function syncTemplateDirectory(
     sourceDirectory: string,
     targetDirectory: string,
@@ -142,6 +191,10 @@ function syncTemplateDirectory(
         }
 
         if (entry.isFile()) {
+            if (entry.name === ".gitignore") {
+                mergeGitignoreFile(sourceEntryPath, targetEntryPath);
+                continue;
+            }
             fs.copyFileSync(sourceEntryPath, targetEntryPath);
         }
     }
@@ -178,11 +231,7 @@ export async function initializeWorkspaceDirectory(): Promise<void> {
     fs.writeFileSync(path.join(workflowsDir, HONEYTOKEN_FILE_NAME), honeytokenValue, "utf-8");
     fs.writeFileSync(path.join(skillsDir, HONEYTOKEN_FILE_NAME), honeytokenValue, "utf-8");
 
-    const workspaceTemplateDir = path.join(process.cwd(), "src", "workspace_files");
-    if (!fs.existsSync(workspaceTemplateDir)) {
-        throw new Error(`Workspace template directory not found: ${workspaceTemplateDir}`);
-    }
-
+    const workspaceTemplateDir = getWorkspaceTemplateDirectory();
     syncTemplateDirectory(workspaceTemplateDir, workspaceDir, "", []);
 
     await initializeWorkspaceNodeDependencies(workspaceDir);
@@ -190,11 +239,11 @@ export async function initializeWorkspaceDirectory(): Promise<void> {
 
 export async function ensureWorkspaceDatabase(): Promise<void> {
     const workspaceDatabaseUrl = getWorkspaceDatabaseUrl();
-    fs.mkdirSync(path.dirname(getWorkspaceDatabasePath()), { recursive: true });
+    ensureWorkspaceDatabaseDirectory();
     process.env.DATABASE_URL = workspaceDatabaseUrl;
 
-    await execFileAsync("npx", ["prisma", "migrate", "deploy"], {
-        cwd: process.cwd(),
+    await execFileAsync(process.execPath, [getPrismaCliEntrypoint(), "migrate", "deploy", "--schema", getPrismaSchemaPath()], {
+        cwd: getPackageRoot(),
         env: {
             ...process.env,
             DATABASE_URL: workspaceDatabaseUrl,

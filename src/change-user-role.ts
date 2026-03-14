@@ -3,6 +3,7 @@ dotenv.config();
 import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 import prisma from './prisma/client';
+import { bootstrapCliDatabaseAccess } from './utils/cli-bootstrap';
 
 type UserRole = 'User' | 'Engineer';
 
@@ -76,6 +77,7 @@ async function promptValidated(
 }
 
 async function main() {
+    await bootstrapCliDatabaseAccess();
     const parsedArgs = parseArgs(process.argv.slice(2));
     const args = await promptMissingArgs(parsedArgs);
 

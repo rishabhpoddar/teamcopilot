@@ -26,7 +26,9 @@ import { ensureWorkspaceDatabase, getWorkspaceDirFromEnv, initializeWorkspaceDir
 import { initializeOpencodeAuthStorage } from "./utils/opencode-auth";
 import opencodeAuthRouter from "./opencode-auth";
 import { loadJwtSecret } from "./utils/jwt-secret";
+import { getFrontendDistDirectory } from "./utils/runtime-paths";
 const app = express();
+const frontendDistDirectory = getFrontendDistDirectory();
 
 app.use(express.json());
 
@@ -116,11 +118,11 @@ apiRouter.use('/opencode-auth', opencodeAuthRouter);
 app.use('/api', apiRouter);
 
 // Serve static assets (JS, CSS, etc.) with correct MIME types
-app.use(express.static(path.join(__dirname, "..", "frontend", "dist")));
+app.use(express.static(frontendDistDirectory));
 
 // SPA fallback: serve index.html for non-API routes (client-side routing)
 app.get("*", (_req, res) => {
-    res.sendFile(path.join(__dirname, "..", "frontend", "dist", "index.html"));
+    res.sendFile(path.join(frontendDistDirectory, "index.html"));
 });
 
 app.use(async (err: any, req: express.Request, res: express.Response, _: express.NextFunction) => {

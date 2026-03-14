@@ -1,13 +1,32 @@
 {
-  "name": "api",
-  "version": "1.0.0",
+  "name": "teamcopilot",
+  "version": "0.0.1",
+  "description": "A shared AI Agent for Teams",
+  "homepage": "https://teamcopilot.ai",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rishabhpoddar/teamcopilot.git"
+  },
   "main": "dist/index.js",
+  "bin": {
+    "teamcopilot": "bin/teamcopilot.js"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "prisma",
+    ".env.example",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "clean": "rm -rf dist",
     "check:unused:functions": "tsc --noEmit --noUnusedLocals --noUnusedParameters",
     "check:unused:exports": "ts-prune -e -p tsconfig.json -i \"^src/types/shared/\"",
     "check:unused": "npm run check:unused:functions && npm run check:unused:exports",
-    "build": "npm run clean && npm run check:unused && cd frontend && npm run build && cd .. && tsc",
+    "build": "npm run clean && npm run check:unused && cd frontend && npm run build && cd .. && tsc && node scripts/copy-runtime-assets.mjs",
     "start": "node dist/index.js",
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:backend": "ts-node-dev src/index.ts",
@@ -22,12 +41,12 @@
     "prisma:migrate:reset": "npm run prisma -- migrate reset",
     "prisma:migrate:deploy": "npm run prisma -- migrate deploy",
     "prisma:studio": "npm run prisma -- studio",
-    "test": "node -r ts-node/register tests/run-tests.ts"
+    "test": "node -r ts-node/register tests/run-tests.ts",
+    "prepublishOnly": "npm run build"
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
-  "description": "",
+  "license": "MIT",
   "dependencies": {
     "@opencode-ai/sdk": "1.1.65",
     "@prisma/client": "^6.0.1",

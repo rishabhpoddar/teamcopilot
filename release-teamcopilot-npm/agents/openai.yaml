@@ -1,0 +1,4 @@
+interface:
+  display_name: "Release TeamCopilot npm"
+  short_description: "Publish TeamCopilot to npm safely"
+  default_prompt: "Use $release-teamcopilot-npm to publish TeamCopilot to npm from this repo."

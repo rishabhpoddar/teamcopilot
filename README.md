@@ -19,7 +19,7 @@ It's like Claude code / OpenAI Codex, except that:
 
 ![TeamCopilot Dashboard](/assets/dashboard.webp)
 
-## Quick Start (Local)
+## Quick Start (npm)
 
 ### Prerequisites
 
@@ -27,29 +27,41 @@ It's like Claude code / OpenAI Codex, except that:
 - npm
 - Python 3.10+
 
-### 1) Install
+### 1) Initialize in the folder you want to use
 
 ```bash
-git clone https://github.com/rishabhpoddar/teamcopilot
-cd teamcopilot
-npm install
-cd frontend && npm install && cd ..
+npx teamcopilot init
 ```
 
-### 2) Configure
+This writes or updates a local `.env` in the current directory. `WORKSPACE_DIR` defaults to the current directory as an absolute path. You can also provide values up front:
 
 ```bash
-cp .env.example .env
+npx teamcopilot init \
+  --workspace-dir /absolute/path/to/workspace \
+  --teamcopilot-port 5124 \
+  --opencode-port 4096 \
+  --opencode-model openai/gpt-5.3-codex
 ```
 
-### 3) Build and start
+### 2) Start the server
 
 ```bash
-npm run build
-npm start
+npx teamcopilot start
 ```
 
 Open: **http://localhost:5124**
+
+### 3) Run admin commands from the same directory
+
+```bash
+npx teamcopilot create-user
+npx teamcopilot change-user-role
+npx teamcopilot delete-user
+npx teamcopilot reset-password
+npx teamcopilot rotate-jwt-secret
+```
+
+If `.env` is missing or incomplete, TeamCopilot will ask you to run `npx teamcopilot init` first.
 
 ## Docker Setup
 
@@ -81,31 +93,31 @@ Open: **http://localhost:5124**
 Create user:
 
 ```bash
-npm run create-user
+npx teamcopilot create-user
 ```
 
 Change user role:
 
 ```bash
-npm run change-user-role
+npx teamcopilot change-user-role
 ```
 
 Delete user:
 
 ```bash
-npm run delete-user
+npx teamcopilot delete-user
 ```
 
 Reset password:
 
 ```bash
-npm run reset-password
+npx teamcopilot reset-password
 ```
 
 Rotate JWT secret (invalidates existing tokens causing everyone to get logged out):
 
 ```bash
-npm run rotate-jwt-secret
+npx teamcopilot rotate-jwt-secret
 ```
 
 Users sign in at `/login`.
