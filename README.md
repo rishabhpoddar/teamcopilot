@@ -3,7 +3,7 @@
 </div>
 
 # TeamCopilot
-TeamCopilot helps technical and non-technical teams become more productive by enabling safe sharing of custom AI agent skills and tools.
+[TeamCopilot](https://teamcopilot.ai) helps technical and non-technical teams become more productive by enabling safe sharing of custom AI agent skills and tools.
 
 ## What makes TeamCopilot different
 
@@ -14,6 +14,9 @@ It's like Claude code / OpenAI Codex, except that:
 - Fully auditable: chat sessions can’t be deleted by users and are stored on your server.
 - Use it anywhere: web UI lets you talk to the agent even when you're away from your work machine.
 - You can pick either OpenAI or Anthropic as your AI provider.
+
+## See docs
+Visit the [documentation section on our website](https://teamcopilot.ai/docs) to see an extensive guide on how to setup and use TeamCopilot.
 
 ## Dashboard View
 
@@ -33,15 +36,7 @@ It's like Claude code / OpenAI Codex, except that:
 npx teamcopilot init
 ```
 
-This writes or updates a local `.env` in the current directory. `WORKSPACE_DIR` defaults to the current directory as an absolute path. You can also provide values up front:
-
-```bash
-npx teamcopilot init \
-  --workspace-dir /absolute/path/to/workspace \
-  --teamcopilot-port 5124 \
-  --opencode-port 4096 \
-  --opencode-model openai/gpt-5.3-codex
-```
+This writes or updates a local `.env` in the current directory. `WORKSPACE_DIR` defaults to the current directory as an absolute path.
 
 ### 2) Start the server
 
@@ -63,22 +58,7 @@ npx teamcopilot rotate-jwt-secret
 
 If `.env` is missing or incomplete, TeamCopilot will ask you to run `npx teamcopilot init` first.
 
-## Docker Setup
-
-```bash
-git clone https://github.com/rishabhpoddar/teamcopilot
-cd teamcopilot
-docker build -t teamcopilot .
-docker run -d \
-  --name teamcopilot \
-  -p 5124:5124 \
-  -v /path/to/some/folder:/app/workspaces \
-  teamcopilot
-```
-
-Open: **http://localhost:5124**
-
-## Common Environment Variables
+## Environment Variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
