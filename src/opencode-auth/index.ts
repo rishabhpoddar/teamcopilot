@@ -160,12 +160,10 @@ router.post("/api", apiHandler(async (req, res) => {
         }
     }
 
-    if (!apiKeyEnvKey) {
-        await setRuntimeProviderAuth(providerId, {
-            type: "api",
-            key,
-        });
-    }
+    await setRuntimeProviderAuth(providerId, {
+        type: "api",
+        key,
+    });
     await restartOpencodeServer();
 
     res.json({ success: true });

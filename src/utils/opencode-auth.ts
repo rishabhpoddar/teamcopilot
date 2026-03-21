@@ -18,7 +18,6 @@ type ProviderAuthInfo =
     };
 
 type AuthRecord = Record<string, ProviderAuthInfo>;
-type ProviderEnvironmentRecord = Record<string, Record<string, string>>;
 
 type ProviderConfigField = {
     key: string;
@@ -46,7 +45,6 @@ type ProviderSetupDefinition = {
 
 const WORKSPACE_OPENCODE_DIR = ".opencode";
 const WORKSPACE_AUTH_FILE = "auth.json";
-const WORKSPACE_PROVIDER_ENV_FILE = "provider-env.json";
 const WORKSPACE_CONFIG_FILE = "opencode.json";
 const RUNTIME_DATA_HOME_DIR = "xdg-data";
 const AZURE_API_KEY_ENV_KEY = "AZURE_API_KEY";
@@ -61,10 +59,6 @@ function getRuntimeDataHomePath(): string {
 
 function getRuntimeAuthPath(): string {
     return path.join(getRuntimeDataHomePath(), "opencode", WORKSPACE_AUTH_FILE);
-}
-
-function getWorkspaceProviderEnvironmentPath(): string {
-    return path.join(getRuntimeDataHomePath(), "opencode", WORKSPACE_PROVIDER_ENV_FILE);
 }
 
 function getWorkspaceOpencodeConfigPath(): string {
@@ -129,49 +123,6 @@ async function readAuthRecord(filepath: string): Promise<AuthRecord> {
 }
 
 async function writeAuthRecord(filepath: string, data: AuthRecord): Promise<void> {
-    await fs.mkdir(path.dirname(filepath), { recursive: true });
-    const tempPath = `${filepath}.tmp-${process.pid}-${Date.now()}`;
-    await fs.writeFile(tempPath, `${JSON.stringify(data, null, 2)}\n`, {
-        encoding: "utf-8",
-        mode: 0o600,
-    });
-    await fs.rename(tempPath, filepath);
-    await fs.chmod(filepath, 0o600).catch(() => {});
-}
-
-async function readProviderEnvironmentRecord(filepath: string): Promise<ProviderEnvironmentRecord> {
-    try {
-        const content = await fs.readFile(filepath, "utf-8");
-        const parsed = JSON.parse(content) as Record<string, unknown>;
-        const entries: ProviderEnvironmentRecord = {};
-
-        for (const [providerId, value] of Object.entries(parsed)) {
-            if (!value || typeof value !== "object") {
-                continue;
-            }
-
-            const providerEnvironment: Record<string, string> = {};
-            for (const [envKey, envValue] of Object.entries(value as Record<string, unknown>)) {
-                if (!isNonEmptyString(envValue)) {
-                    continue;
-                }
-                providerEnvironment[envKey] = envValue;
-            }
-
-            entries[providerId] = providerEnvironment;
-        }
-
-        return entries;
-    } catch (err) {
-        const nodeError = err as NodeJS.ErrnoException;
-        if (nodeError.code === "ENOENT") {
-            return {};
-        }
-        throw err;
-    }
-}
-
-async function writeProviderEnvironmentRecord(filepath: string, data: ProviderEnvironmentRecord): Promise<void> {
     await fs.mkdir(path.dirname(filepath), { recursive: true });
     const tempPath = `${filepath}.tmp-${process.pid}-${Date.now()}`;
     await fs.writeFile(tempPath, `${JSON.stringify(data, null, 2)}\n`, {
@@ -258,28 +209,9 @@ export async function initializeOpencodeAuthStorage(): Promise<void> {
         }
         await writeAuthRecord(runtimeAuthPath, {});
     }
-
-    const providerEnvironmentPath = getWorkspaceProviderEnvironmentPath();
-    try {
-        await fs.access(providerEnvironmentPath);
-    } catch (err) {
-        const nodeError = err as NodeJS.ErrnoException;
-        if (nodeError.code !== "ENOENT") {
-            throw err;
-        }
-        await writeProviderEnvironmentRecord(providerEnvironmentPath, {});
-    }
 }
 
 function getAuthForProvider(record: AuthRecord, providerId: string): ProviderAuthInfo | undefined {
-    const normalizedProviderId = normalizeProviderId(providerId);
-    return record[providerId] || record[normalizedProviderId] || record[`${normalizedProviderId}/`];
-}
-
-function getProviderEnvironmentForProvider(
-    record: ProviderEnvironmentRecord,
-    providerId: string,
-): Record<string, string> | undefined {
     const normalizedProviderId = normalizeProviderId(providerId);
     return record[providerId] || record[normalizedProviderId] || record[`${normalizedProviderId}/`];
 }
@@ -343,29 +275,25 @@ export function getProviderApiKeyEnvKey(providerId: string): string | undefined 
     return getProviderSetupDefinition(providerId).apiKeyEnvKey;
 }
 
-async function hasRequiredProviderEnvironment(providerId: string): Promise<boolean> {
+async function hasRequiredProviderConfiguration(providerId: string): Promise<boolean> {
     const definition = getProviderSetupDefinition(providerId);
-    if (definition.configFields.length === 0 && !definition.apiKeyEnvKey) {
+    if (definition.configFields.length === 0) {
         return false;
     }
 
-    const record = await readProviderEnvironmentRecord(getWorkspaceProviderEnvironmentPath());
-    const providerEnvironment = getProviderEnvironmentForProvider(record, providerId);
-    if (!providerEnvironment) {
-        return false;
+    const configRecord = await readOpencodeConfig(getWorkspaceOpencodeConfigPath());
+    const providerOptions = getProviderOptionsForProvider(configRecord, providerId) ?? {};
+
+    if (isAzureCustomProvider(providerId)) {
+        const azureConfig = getAzureConfigValuesFromProviderOptions(providerOptions);
+        return azureConfig.endpoint.length > 0 && azureConfig.apiVersion.length > 0;
     }
 
     for (const field of definition.configFields) {
-        if (!isNonEmptyString(providerEnvironment[field.envKey])) {
+        const value = providerOptions[field.envKey];
+        if (typeof value !== "string" || value.trim().length === 0) {
             return false;
         }
-    }
-
-    if (
-        definition.apiKeyEnvKey
-        && !isNonEmptyString(providerEnvironment[definition.apiKeyEnvKey])
-    ) {
-        return false;
     }
 
     return true;
@@ -399,7 +327,8 @@ async function hasRequiredProviderConfig(providerId: string): Promise<boolean> {
 
 export async function hasRuntimeProviderCredentials(providerId: string): Promise<boolean> {
     if (isAzureCustomProvider(providerId)) {
-        return await hasRequiredProviderEnvironment(providerId) && await hasRequiredProviderConfig(providerId);
+        const auth = await getRuntimeProviderAuth(providerId);
+        return Boolean(auth?.type === "api" && auth.key) && await hasRequiredProviderConfiguration(providerId) && await hasRequiredProviderConfig(providerId);
     }
 
     return Boolean(await getRuntimeProviderAuth(providerId));
@@ -424,11 +353,18 @@ export async function getRuntimeProviderConfigValues(providerId: string): Promis
     const values: Record<string, string> = {};
 
     if (definition.configFields.length > 0) {
-        const record = await readProviderEnvironmentRecord(getWorkspaceProviderEnvironmentPath());
-        const providerEnvironment = getProviderEnvironmentForProvider(record, providerId) ?? {};
+        const configRecord = await readOpencodeConfig(getWorkspaceOpencodeConfigPath());
+        const providerOptions = getProviderOptionsForProvider(configRecord, providerId) ?? {};
 
-        for (const field of definition.configFields) {
-            values[field.key] = providerEnvironment[field.envKey] ?? "";
+        if (isAzureCustomProvider(providerId)) {
+            const azureConfig = getAzureConfigValuesFromProviderOptions(providerOptions);
+            values.endpoint = azureConfig.endpoint;
+            values.apiVersion = azureConfig.apiVersion;
+        } else {
+            for (const field of definition.configFields) {
+                const value = providerOptions[field.envKey];
+                values[field.key] = typeof value === "string" ? value : "";
+            }
         }
     }
 
@@ -453,13 +389,23 @@ function normalizeAzureEndpoint(endpoint: string): string {
     return endpoint.trim().replace(/\/+$/, "");
 }
 
+function getAzureConfigValuesFromProviderOptions(providerOptions: Record<string, unknown>): {
+    endpoint: string;
+    apiVersion: string;
+} {
+    const baseURL = typeof providerOptions.baseURL === "string" ? providerOptions.baseURL : "";
+    const endpoint = baseURL.endsWith("/openai") ? baseURL.slice(0, -"/openai".length) : baseURL;
+    const apiVersion = typeof providerOptions.apiVersion === "string" ? providerOptions.apiVersion : "";
+    return { endpoint, apiVersion };
+}
+
 export async function setRuntimeProviderConfigValues(
     providerId: string,
     values: Record<string, string>,
 ): Promise<void> {
     const normalizedProviderId = normalizeProviderId(providerId);
     const definition = getProviderSetupDefinition(providerId);
-    const nextProviderEnvironment: Record<string, string> = {};
+    const nextProviderOptions: Record<string, unknown> = {};
 
     for (const field of definition.configFields) {
         const value = values[field.key];
@@ -467,28 +413,9 @@ export async function setRuntimeProviderConfigValues(
             throw new Error(`${field.label} is required`);
         }
         if (isNonEmptyString(value)) {
-            nextProviderEnvironment[field.envKey] = value.trim();
+            nextProviderOptions[field.envKey] = value.trim();
         }
     }
-
-    if (definition.apiKeyEnvKey) {
-        const apiKey = values.apiKey;
-        if (!isNonEmptyString(apiKey)) {
-            throw new Error("Provider API Key is required");
-        }
-        nextProviderEnvironment[definition.apiKeyEnvKey] = apiKey.trim();
-    }
-
-    const filepath = getWorkspaceProviderEnvironmentPath();
-    if (definition.configFields.length > 0) {
-        const record = await readProviderEnvironmentRecord(filepath);
-        delete record[providerId];
-        delete record[`${normalizedProviderId}/`];
-        record[normalizedProviderId] = nextProviderEnvironment;
-        await writeProviderEnvironmentRecord(filepath, record);
-    }
-
-    applyProviderEnvironmentToProcess(nextProviderEnvironment);
 
     if (definition.optionFields.length > 0) {
         const configPath = getWorkspaceOpencodeConfigPath();
@@ -526,15 +453,13 @@ export async function setRuntimeProviderConfigValues(
     }
 
     if (normalizedProviderId.includes("azure")) {
-        const endpoint = nextProviderEnvironment.AZURE_OPENAI_ENDPOINT;
-        const apiVersion = nextProviderEnvironment.AZURE_OPENAI_API_VERSION;
+        const endpoint = nextProviderOptions.AZURE_OPENAI_ENDPOINT;
+        const apiVersion = nextProviderOptions.AZURE_OPENAI_API_VERSION;
         const deployment = getConfiguredModelId();
 
-        if (!endpoint || !apiVersion) {
+        if (typeof endpoint !== "string" || typeof apiVersion !== "string") {
             throw new Error("Azure Endpoint and API Version are required");
         }
-
-        delete nextProviderEnvironment.AZURE_OPENAI_DEPLOYMENT;
 
         const configPath = getWorkspaceOpencodeConfigPath();
         const configRecord = await readOpencodeConfig(configPath);
@@ -576,8 +501,11 @@ function applyProviderEnvironmentToProcess(providerEnvironment: Record<string, s
 }
 
 export async function applyStoredProviderEnvironmentToProcess(): Promise<void> {
-    const record = await readProviderEnvironmentRecord(getWorkspaceProviderEnvironmentPath());
-    for (const providerEnvironment of Object.values(record)) {
-        applyProviderEnvironmentToProcess(providerEnvironment);
+    const providerId = getConfiguredModelProviderId();
+    const auth = await getRuntimeProviderAuth(providerId);
+    if (isAzureCustomProvider(providerId) && auth?.type === "api") {
+        applyProviderEnvironmentToProcess({
+            [AZURE_API_KEY_ENV_KEY]: auth.key,
+        });
     }
 }
