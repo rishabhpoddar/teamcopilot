@@ -291,35 +291,6 @@ function isAzureCustomProvider(providerId: string): boolean {
 export function getProviderSetupDefinition(providerId: string): ProviderSetupDefinition {
     const normalizedProviderId = normalizeProviderId(providerId).toLowerCase();
 
-    if (normalizedProviderId.includes("cognitive")) {
-        return {
-            configFields: [{
-                key: "endpoint",
-                envKey: "AZURE_OPENAI_ENDPOINT",
-                label: "Azure Endpoint",
-                placeholder: "https://my-resource.openai.azure.com/",
-                help: "Full Azure OpenAI endpoint URL.",
-                required: true,
-                input: "text",
-            }, {
-                key: "apiVersion",
-                envKey: "AZURE_OPENAI_API_VERSION",
-                label: "API Version",
-                placeholder: "2025-01-01-preview",
-                help: "Azure OpenAI API version.",
-                required: true,
-                input: "text",
-            }],
-            optionFields: [],
-            notes: [
-                "Use a custom Azure provider id in OPENCODE_MODEL, for example `azure-openai/gpt-4.1-mini`.",
-                "Azure requests will use /openai/deployments/{deployment}/chat/completions?api-version=...",
-                "The model name in OPENCODE_MODEL must exactly match your Azure deployment name.",
-            ],
-            apiKeyEnvKey: "AZURE_OPENAI_API_KEY",
-        };
-    }
-
     if (normalizedProviderId.includes("azure")) {
         return {
             configFields: [{
