@@ -1,8 +1,12 @@
 .approval-review-page {
   min-height: 100vh;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   background: linear-gradient(180deg, #0b1020 0%, #0a0d14 55%, #07090e 100%);
   color: #e5e7eb;
   padding: 1.25rem;
+  box-sizing: border-box;
 }
 
 .approval-review-header {
@@ -11,6 +15,7 @@
   align-items: flex-start;
   gap: 1rem;
   margin-bottom: 1rem;
+  min-width: 0;
 }
 
 .approval-review-eyebrow {
@@ -38,6 +43,7 @@
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
+  min-width: 0;
 }
 
 .approval-review-btn {
@@ -100,6 +106,7 @@
   border-radius: 10px;
   padding: 0.9rem;
   margin-bottom: 1rem;
+  min-width: 0;
 }
 
 .approval-review-summary-pills {
@@ -143,6 +150,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.9rem;
+  min-width: 0;
 }
 
 .approval-review-empty {
@@ -158,6 +166,8 @@
   border-radius: 10px;
   overflow: hidden;
   background: rgba(10, 15, 24, 0.9);
+  min-width: 0;
+  max-width: 100%;
 }
 
 .approval-review-file-header {
@@ -168,6 +178,7 @@
   padding: 0.65rem 0.8rem;
   background: #101827;
   border-bottom: 1px solid #233047;
+  min-width: 0;
 }
 
 .approval-review-file-toggle {
@@ -201,6 +212,8 @@
   display: flex;
   gap: 0.35rem;
   flex-wrap: wrap;
+  min-width: 0;
+  flex-shrink: 0;
 }
 
 .approval-review-file-badge {
@@ -245,11 +258,15 @@
 .approval-review-patch-scroll {
   margin: 0;
   background: #090e16;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   overflow: auto;
 }
 
 .approval-review-patch {
   display: inline-block;
+  width: max-content;
   min-width: 100%;
   padding: 0.5rem 0;
   font-size: 0.78rem;
@@ -258,7 +275,8 @@
 
 .approval-review-line {
   display: block;
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   box-sizing: border-box;
   padding: 0 0.8rem;
   white-space: pre;
