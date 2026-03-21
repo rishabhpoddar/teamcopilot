@@ -49,6 +49,7 @@ const WORKSPACE_AUTH_FILE = "auth.json";
 const WORKSPACE_PROVIDER_ENV_FILE = "provider-env.json";
 const WORKSPACE_CONFIG_FILE = "opencode.json";
 const RUNTIME_DATA_HOME_DIR = "xdg-data";
+const AZURE_API_KEY_ENV_KEY = "AZURE_API_KEY";
 
 function getWorkspaceOpencodeDir(): string {
     return path.join(getWorkspaceDirFromEnv(), WORKSPACE_OPENCODE_DIR);
@@ -327,7 +328,7 @@ export function getProviderSetupDefinition(providerId: string): ProviderSetupDef
                 "Azure requests will use /openai/deployments/{deployment}/chat/completions?api-version=...",
                 "The model name in OPENCODE_MODEL must exactly match your Azure deployment name.",
             ],
-            apiKeyEnvKey: "AZURE_OPENAI_API_KEY",
+            apiKeyEnvKey: AZURE_API_KEY_ENV_KEY,
         };
     }
 
@@ -360,7 +361,10 @@ async function hasRequiredProviderEnvironment(providerId: string): Promise<boole
         }
     }
 
-    if (definition.apiKeyEnvKey && !isNonEmptyString(providerEnvironment[definition.apiKeyEnvKey])) {
+    if (
+        definition.apiKeyEnvKey
+        && !isNonEmptyString(providerEnvironment[definition.apiKeyEnvKey])
+    ) {
         return false;
     }
 

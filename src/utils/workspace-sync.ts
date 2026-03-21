@@ -225,6 +225,9 @@ function syncTemplateDirectory(
                 mergeGitignoreFile(sourceEntryPath, targetEntryPath);
                 continue;
             }
+            if (relativeEntryPath === ".opencode/opencode.json" && fs.existsSync(targetEntryPath)) {
+                continue;
+            }
             if (entry.name === "package.json") {
                 mergePackageJsonFile(sourceEntryPath, targetEntryPath);
                 continue;
