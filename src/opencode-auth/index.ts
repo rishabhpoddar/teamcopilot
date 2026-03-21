@@ -2,13 +2,9 @@ import express from "express";
 import { apiHandler } from "../utils/index";
 import {
     getConfiguredModelProviderId,
-    getProviderApiKeyEnvKey,
-    getProviderSetupDefinition,
     hasRuntimeProviderCredentials,
     isServiceManagedProvider,
-    getRuntimeProviderConfigValues,
     getRuntimeProviderAuth,
-    setRuntimeProviderConfigValues,
     setRuntimeProviderAuth,
     syncManagedProviderConfiguration,
 } from "../utils/opencode-auth";
@@ -67,76 +63,30 @@ async function fetchProviderAuthMethods(providerId: string): Promise<ProviderAut
     }));
 }
 
-function withProviderSpecificFallbackMethods(
-    providerId: string,
-    methods: ProviderAuthMethod[],
-): ProviderAuthMethod[] {
-    if (isServiceManagedProvider(providerId)) {
-        return [];
-    }
-
-    if (methods.length > 0) {
-        return methods;
-    }
-
-    const definition = getProviderSetupDefinition(providerId);
-    if (definition.configFields.length === 0) {
-        return methods;
-    }
-
-    return [{
-        index: 0,
-        type: "api",
-        label: "Manually enter API Key",
-    }];
-}
-
 router.get("/status", apiHandler(async (_req, res) => {
     const providerId = getConfiguredModelProviderId();
     const model = process.env.OPENCODE_MODEL!;
+    const isServiceManaged = isServiceManagedProvider(providerId);
     await syncManagedProviderConfiguration();
-    const methods = withProviderSpecificFallbackMethods(
-        providerId,
-        await fetchProviderAuthMethods(providerId),
-    );
-    const auth = await getRuntimeProviderAuth(providerId);
-    const hasCredentials = await hasRuntimeProviderCredentials(providerId);
-    const definition = getProviderSetupDefinition(providerId);
-    const configValues = await getRuntimeProviderConfigValues(providerId);
+    const methods = isServiceManaged ? [] : await fetchProviderAuthMethods(providerId);
+    const auth = isServiceManaged ? undefined : await getRuntimeProviderAuth(providerId);
+    const hasCredentials = isServiceManaged
+        ? await hasRuntimeProviderCredentials(providerId)
+        : Boolean(auth);
 
     res.json({
         provider_id: providerId,
         model,
-        is_service_managed: isServiceManagedProvider(providerId),
+        is_service_managed: isServiceManaged,
         has_credentials: hasCredentials,
         configured_auth_type: auth?.type,
         methods,
-        config_fields: definition.configFields.map((field) => ({
-            key: field.key,
-            label: field.label,
-            placeholder: field.placeholder,
-            help: field.help,
-            required: field.required,
-            input: field.input,
-        })).concat(definition.optionFields.map((field) => ({
-            key: field.key,
-            label: field.label,
-            placeholder: field.placeholder,
-            help: field.help,
-            required: field.required,
-            input: field.input,
-        }))),
-        config_values: configValues,
-        setup_notes: definition.notes,
     });
 }, true));
 
 router.post("/api", apiHandler(async (req, res) => {
     const providerId = getConfiguredModelProviderId();
     const key = req.body?.key;
-    const configValues = req.body?.config_values;
-    const definition = getProviderSetupDefinition(providerId);
-    const apiKeyEnvKey = getProviderApiKeyEnvKey(providerId);
 
     if (isServiceManagedProvider(providerId)) {
         throw {
@@ -150,28 +100,6 @@ router.post("/api", apiHandler(async (req, res) => {
             status: 400,
             message: "key is required",
         };
-    }
-
-    if (configValues !== undefined && (typeof configValues !== "object" || configValues === null || Array.isArray(configValues))) {
-        throw {
-            status: 400,
-            message: "config_values must be an object",
-        };
-    }
-
-    if (definition.configFields.length > 0) {
-        try {
-            const nextConfigValues = {
-                ...((configValues ?? {}) as Record<string, string>),
-                ...(apiKeyEnvKey ? { apiKey: key } : {}),
-            };
-            await setRuntimeProviderConfigValues(providerId, nextConfigValues);
-        } catch (err) {
-            throw {
-                status: 400,
-                message: err instanceof Error ? err.message : "Invalid provider configuration",
-            };
-        }
     }
 
     await setRuntimeProviderAuth(providerId, {

@@ -14,15 +14,6 @@ type ProviderAuthMethod = {
     label: string;
 };
 
-type ProviderConfigField = {
-    key: string;
-    label: string;
-    placeholder: string;
-    help: string;
-    required: boolean;
-    input: 'text' | 'checkbox';
-};
-
 type StatusResponse = {
     provider_id: string;
     model: string;
@@ -30,9 +21,6 @@ type StatusResponse = {
     has_credentials: boolean;
     configured_auth_type?: 'api' | 'oauth';
     methods: ProviderAuthMethod[];
-    config_fields: ProviderConfigField[];
-    config_values: Record<string, string>;
-    setup_notes: string[];
 };
 
 type OauthAuthorizeResponse = {
@@ -62,40 +50,31 @@ function isVisibleAuthMethod(method: ProviderAuthMethod): boolean {
     return !method.label.toLowerCase().includes('browser');
 }
 
-function getModelDeploymentName(model: string): string {
-    const [, deployment] = model.split('/');
-    return deployment || '<deployment-name>';
-}
+function getManagedEnvExamples(model: string): ManagedEnvExample[] {
+    const deployment = model.split('/').slice(1).join('/');
 
-function getManagedEnvExamples(status: StatusResponse): ManagedEnvExample[] {
-    const deployment = getModelDeploymentName(status.model);
-
-    if (status.provider_id === 'azure-openai') {
-        return [
-            {
-                key: 'AZURE_API_KEY',
-                value: 'abc123xyz',
-                help: 'API key for the Azure OpenAI resource.',
-            },
-            {
-                key: 'AZURE_OPENAI_ENDPOINT',
-                value: 'https://my-resource.openai.azure.com/',
-                help: 'Base endpoint for the Azure OpenAI resource.',
-            },
-            {
-                key: 'AZURE_OPENAI_API_VERSION',
-                value: '2025-01-01-preview',
-                help: 'Azure API version used for chat completions.',
-            },
-            {
-                key: 'OPENCODE_MODEL',
-                value: `azure-openai/${deployment}`,
-                help: 'Provider id plus the Azure deployment name.',
-            },
-        ];
-    }
-
-    return [];
+    return [
+        {
+            key: 'AZURE_API_KEY',
+            value: 'abc123xyz',
+            help: 'API key for the Azure OpenAI resource.',
+        },
+        {
+            key: 'AZURE_OPENAI_ENDPOINT',
+            value: 'https://my-resource.openai.azure.com/',
+            help: 'Base endpoint for the Azure OpenAI resource.',
+        },
+        {
+            key: 'AZURE_OPENAI_API_VERSION',
+            value: '2025-01-01-preview',
+            help: 'Azure API version used for chat completions.',
+        },
+        {
+            key: 'OPENCODE_MODEL',
+            value: `azure-openai/${deployment}`,
+            help: 'Provider id plus the Azure deployment name.',
+        },
+    ];
 }
 
 export default function OpencodeAuthSetup() {
@@ -108,7 +87,6 @@ export default function OpencodeAuthSetup() {
     const [status, setStatus] = useState<StatusResponse | null>(null);
     const [selectedMethod, setSelectedMethod] = useState<number | null>(null);
     const [apiKey, setApiKey] = useState('');
-    const [providerConfigValues, setProviderConfigValues] = useState<Record<string, string>>({});
     const [oauthAuthorization, setOauthAuthorization] = useState<OauthAuthorizeResponse | null>(null);
     const [oauthCode, setOauthCode] = useState('');
     const [error, setError] = useState('');
@@ -134,7 +112,7 @@ export default function OpencodeAuthSetup() {
     const deviceCode = oauthAuthorization ? extractDeviceCode(oauthAuthorization.instructions) : '';
     const isManagedProviderNotice = !isManualCodeStep && Boolean(status?.is_service_managed);
     const managedEnvExamples = useMemo(
-        () => (status ? getManagedEnvExamples(status) : []),
+        () => (status ? getManagedEnvExamples(status.model) : []),
         [status]
     );
 
@@ -162,7 +140,6 @@ export default function OpencodeAuthSetup() {
                 ...response.data,
                 methods: visibleMethods,
             });
-            setProviderConfigValues(response.data.config_values);
             setError('');
 
             setSelectedMethod((current) => {
@@ -192,7 +169,7 @@ export default function OpencodeAuthSetup() {
     }, []);
 
     const handleSaveApiKey = async () => {
-        if (!token || selectedMethod === null || !status) {
+        if (!token || selectedMethod === null) {
             return;
         }
 
@@ -201,19 +178,9 @@ export default function OpencodeAuthSetup() {
             return;
         }
 
-        for (const field of status.config_fields) {
-            if (field.required && !providerConfigValues[field.key]?.trim()) {
-                toast.error(`${field.label} is required`);
-                return;
-            }
-        }
-
         try {
             await axiosInstance.post('/api/opencode-auth/api',
-                {
-                    key: apiKey,
-                    config_values: providerConfigValues,
-                },
+                { key: apiKey },
                 { headers: authHeaders }
             );
             setApiKey('');
@@ -364,7 +331,7 @@ export default function OpencodeAuthSetup() {
                         <p className="opencode-auth-meta">Provider: <code>{status.provider_id}</code></p>
                     </div>
                     <div className={`opencode-auth-badge ${status.has_credentials ? 'is-connected' : 'is-required'}`}>
-                        {status.has_credentials ? 'Configured' : (isManagedProviderNotice ? 'Admin Managed' : 'Setup Required')}
+                        {status.has_credentials ? 'Connected' : (isManagedProviderNotice ? 'Admin Managed' : 'Setup Required')}
                     </div>
                 </header>
 
@@ -394,7 +361,7 @@ export default function OpencodeAuthSetup() {
                 {!isManualCodeStep && (
                     <section className="opencode-auth-section">
                         <h2>{isManagedProviderNotice ? 'Service Configuration' : 'Choose auth method'}</h2>
-                        {methods.length === 0 && !isManagedProviderNotice && status.setup_notes.length === 0 && (
+                        {methods.length === 0 && !isManagedProviderNotice && (
                             <p className="opencode-auth-error">
                                 No auth methods are available for provider <code>{status.provider_id}</code>.
                             </p>
@@ -408,36 +375,28 @@ export default function OpencodeAuthSetup() {
                                         <p className="opencode-auth-help">This provider is read-only in TeamCopilot.</p>
                                     </div>
                                 </div>
-                                {status.provider_id === 'azure-openai' ? (
-                                    <div className="opencode-auth-managed-layout">
-                                        <p className="opencode-auth-managed-intro">
-                                            Azure OpenAI is configured through service environment variables. To update this model,
-                                            ask the service administrator to change the values below and restart TeamCopilot.
-                                        </p>
-                                        <div className="opencode-auth-managed-example-block">
-                                            <div className="opencode-auth-managed-example-header">
-                                                <h4>Required Values</h4>
-                                                <p>Use your Azure deployment name in <code>OPENCODE_MODEL</code>.</p>
-                                            </div>
-                                            <div className="opencode-auth-managed-example-list">
-                                                {managedEnvExamples.map((example) => (
-                                                    <div key={example.key} className="opencode-auth-managed-example-row">
-                                                        <div className="opencode-auth-managed-example-copy">
-                                                            <code>{example.key}={example.value}</code>
-                                                        </div>
-                                                        <p>{example.help}</p>
+                                <div className="opencode-auth-managed-layout">
+                                    <p className="opencode-auth-managed-intro">
+                                        Azure OpenAI is configured through service environment variables. To update this model,
+                                        ask the service administrator to change the values below and restart TeamCopilot.
+                                    </p>
+                                    <div className="opencode-auth-managed-example-block">
+                                        <div className="opencode-auth-managed-example-header">
+                                            <h4>Required Values</h4>
+                                            <p>Use your Azure deployment name in <code>OPENCODE_MODEL</code>.</p>
+                                        </div>
+                                        <div className="opencode-auth-managed-example-list">
+                                            {managedEnvExamples.map((example) => (
+                                                <div key={example.key} className="opencode-auth-managed-example-row">
+                                                    <div className="opencode-auth-managed-example-copy">
+                                                        <code>{example.key}={example.value}</code>
                                                     </div>
-                                                ))}
-                                            </div>
+                                                    <p>{example.help}</p>
+                                                </div>
+                                            ))}
                                         </div>
                                     </div>
-                                ) : (
-                                    <div className="opencode-auth-managed-copy">
-                                        {status.setup_notes.map((note) => (
-                                            <p key={note}>{note}</p>
-                                        ))}
-                                    </div>
-                                )}
+                                </div>
                             </div>
                         )}
 
@@ -468,72 +427,15 @@ export default function OpencodeAuthSetup() {
                         <h2>API key</h2>
                         <p className="opencode-auth-help">Paste the API key for your selected provider and save it.</p>
                         <div className="opencode-auth-card">
-                            <div className="opencode-auth-card-header">
-                                <div>
-                                    <h3>Credentials</h3>
-                                    <p className="opencode-auth-help">Save the provider configuration required for this model.</p>
-                                </div>
-                            </div>
-                            {status.setup_notes.length > 0 && (
-                                <div className="opencode-auth-note-list">
-                                    {status.setup_notes.map((note) => (
-                                        <div key={note} className="opencode-auth-note">
-                                            {note}
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                            <div className="opencode-auth-form-grid">
-                                {status.config_fields.map((field) => (
-                                    <div key={field.key} className={`opencode-auth-field ${field.input === 'checkbox' ? 'is-checkbox' : ''}`}>
-                                        {field.input === 'checkbox' ? (
-                                            <>
-                                                <label className="opencode-auth-checkbox" htmlFor={`opencode-config-${field.key}`}>
-                                                    <input
-                                                        id={`opencode-config-${field.key}`}
-                                                        type="checkbox"
-                                                        checked={providerConfigValues[field.key] === 'true'}
-                                                        onChange={(event) => setProviderConfigValues((current) => ({
-                                                            ...current,
-                                                            [field.key]: event.target.checked ? 'true' : 'false',
-                                                        }))}
-                                                    />
-                                                    <span>{field.label}</span>
-                                                </label>
-                                                <p className="opencode-auth-field-meta">{field.help}</p>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <label htmlFor={`opencode-config-${field.key}`}>{field.label}</label>
-                                                <input
-                                                    id={`opencode-config-${field.key}`}
-                                                    type="text"
-                                                    value={providerConfigValues[field.key] ?? ''}
-                                                    onChange={(event) => setProviderConfigValues((current) => ({
-                                                        ...current,
-                                                        [field.key]: event.target.value,
-                                                    }))}
-                                                    placeholder={field.placeholder}
-                                                />
-                                                <p className="opencode-auth-field-meta">{field.help}</p>
-                                            </>
-                                        )}
-                                    </div>
-                                ))}
-                                <div className="opencode-auth-field">
-                                    <label htmlFor="opencode-api-key">Provider API Key</label>
-                                    <input
-                                        id="opencode-api-key"
-                                        type="password"
-                                        value={apiKey}
-                                        onChange={(event) => setApiKey(event.target.value)}
-                                        placeholder="Paste API key"
-                                    />
-                                </div>
-                            </div>
-                            <div className="opencode-auth-actions">
-                                <button type="button" onClick={handleSaveApiKey}>Save API Key</button>
-                            </div>
+                            <label htmlFor="opencode-api-key">Provider API Key</label>
+                            <input
+                                id="opencode-api-key"
+                                type="password"
+                                value={apiKey}
+                                onChange={(event) => setApiKey(event.target.value)}
+                                placeholder="Paste API key"
+                            />
+                            <button type="button" onClick={handleSaveApiKey}>Save API Key</button>
                         </div>
                     </section>
                 )}

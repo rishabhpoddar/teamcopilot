@@ -2,7 +2,7 @@ import { exec } from "child_process";
 import path from "path";
 import { promisify } from "util";
 import { assertEnv, assertCondition, parseIntStrict } from "./utils/assert";
-import { applyStoredProviderEnvironmentToProcess, syncManagedProviderConfiguration } from "./utils/opencode-auth";
+import { syncManagedProviderConfiguration } from "./utils/opencode-auth";
 
 const execAsync = promisify(exec);
 
@@ -49,7 +49,6 @@ export async function startOpencodeServer() {
     }
 
     await syncManagedProviderConfiguration();
-    await applyStoredProviderEnvironmentToProcess();
 
     // Ensure plugins running inside opencode can resolve backend base URL from TEAMCOPILOT_PORT.
     process.env.TEAMCOPILOT_PORT = assertEnv("TEAMCOPILOT_PORT");
