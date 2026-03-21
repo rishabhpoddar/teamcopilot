@@ -25,7 +25,7 @@ The release must stop if the version in `package.json` and `package-lock.json` d
 7. If TOTP is not required for the publish path, run:
    `./release-teamcopilot-npm/scripts/publish.sh --publish`
 8. After a successful publish, create a Git tag that exactly matches the package version, for example `0.0.1`.
-9. Use `gh` to create a GitHub release for that tag with release notes based on the changes since the previous release.
+9. Use `gh` to create a GitHub release for that tag with detailed release notes based on the changes since the previous release. It is IMPORTANT that you also add release notes.
 
 ## What The Script Does
 

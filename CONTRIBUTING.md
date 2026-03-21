@@ -112,11 +112,11 @@ Use the root-level [release-teamcopilot-npm/SKILL.md](/Users/rishabhpoddar/Deskt
 Example prompts:
 
 ```text
-Use $release-teamcopilot-npm to dry-run the next npm release.
+Use ./release-teamcopilot-npm/SKILL.md to dry-run the next npm release.
 ```
 
 ```text
-Use $release-teamcopilot-npm to publish the current package.json version to npm, then create the matching GitHub release.
+Use ./release-teamcopilot-npm/SKILL.md to publish the current package.json version to npm, then create the matching GitHub release.
 ```
 
 The skill enforces these release checks:
