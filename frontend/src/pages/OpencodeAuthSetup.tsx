@@ -17,7 +17,6 @@ type ProviderAuthMethod = {
 type StatusResponse = {
     provider_id: string;
     model: string;
-    is_service_managed: boolean;
     has_credentials: boolean;
     configured_auth_type?: 'api' | 'oauth';
     methods: ProviderAuthMethod[];
@@ -110,11 +109,8 @@ export default function OpencodeAuthSetup() {
     const isManualCodeStep = oauthAuthorization?.method === 'code';
     const isAutoCodeStep = oauthAuthorization?.method === 'auto';
     const deviceCode = oauthAuthorization ? extractDeviceCode(oauthAuthorization.instructions) : '';
-    const isManagedProviderNotice = !isManualCodeStep && Boolean(status?.is_service_managed);
-    const managedEnvExamples = useMemo(
-        () => (status ? getManagedEnvExamples(status.model) : []),
-        [status]
-    );
+    const isManagedProviderNotice = !isManualCodeStep && status?.provider_id === 'azure-openai';
+    const managedEnvExamples = status ? getManagedEnvExamples(status.model) : [];
 
     function resetOauthFlowState() {
         if (autoOauthRequestRef.current) {

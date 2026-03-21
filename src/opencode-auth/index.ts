@@ -77,7 +77,6 @@ router.get("/status", apiHandler(async (_req, res) => {
     res.json({
         provider_id: providerId,
         model,
-        is_service_managed: isServiceManaged,
         has_credentials: hasCredentials,
         configured_auth_type: auth?.type,
         methods,
