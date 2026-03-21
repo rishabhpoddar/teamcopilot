@@ -63,7 +63,7 @@ function getRuntimeAuthPath(): string {
 }
 
 function getWorkspaceProviderEnvironmentPath(): string {
-    return path.join(getWorkspaceOpencodeDir(), WORKSPACE_PROVIDER_ENV_FILE);
+    return path.join(getRuntimeDataHomePath(), "opencode", WORKSPACE_PROVIDER_ENV_FILE);
 }
 
 function getWorkspaceOpencodeConfigPath(): string {
@@ -257,6 +257,17 @@ export async function initializeOpencodeAuthStorage(): Promise<void> {
         }
         await writeAuthRecord(runtimeAuthPath, {});
     }
+
+    const providerEnvironmentPath = getWorkspaceProviderEnvironmentPath();
+    try {
+        await fs.access(providerEnvironmentPath);
+    } catch (err) {
+        const nodeError = err as NodeJS.ErrnoException;
+        if (nodeError.code !== "ENOENT") {
+            throw err;
+        }
+        await writeProviderEnvironmentRecord(providerEnvironmentPath, {});
+    }
 }
 
 function getAuthForProvider(record: AuthRecord, providerId: string): ProviderAuthInfo | undefined {
@@ -329,6 +340,65 @@ export function getProviderSetupDefinition(providerId: string): ProviderSetupDef
 
 export function getProviderApiKeyEnvKey(providerId: string): string | undefined {
     return getProviderSetupDefinition(providerId).apiKeyEnvKey;
+}
+
+async function hasRequiredProviderEnvironment(providerId: string): Promise<boolean> {
+    const definition = getProviderSetupDefinition(providerId);
+    if (definition.configFields.length === 0 && !definition.apiKeyEnvKey) {
+        return false;
+    }
+
+    const record = await readProviderEnvironmentRecord(getWorkspaceProviderEnvironmentPath());
+    const providerEnvironment = getProviderEnvironmentForProvider(record, providerId);
+    if (!providerEnvironment) {
+        return false;
+    }
+
+    for (const field of definition.configFields) {
+        if (!isNonEmptyString(providerEnvironment[field.envKey])) {
+            return false;
+        }
+    }
+
+    if (definition.apiKeyEnvKey && !isNonEmptyString(providerEnvironment[definition.apiKeyEnvKey])) {
+        return false;
+    }
+
+    return true;
+}
+
+async function hasRequiredProviderConfig(providerId: string): Promise<boolean> {
+    if (!isAzureCustomProvider(providerId)) {
+        return true;
+    }
+
+    const configRecord = await readOpencodeConfig(getWorkspaceOpencodeConfigPath());
+    const normalizedProviderId = normalizeProviderId(providerId);
+    const providerConfig = configRecord.provider?.[normalizedProviderId];
+    if (!providerConfig || providerConfig.npm !== "@ai-sdk/azure") {
+        return false;
+    }
+
+    const deployment = getConfiguredModelId().trim();
+    const modelConfig = providerConfig.models;
+    if (!modelConfig || typeof modelConfig !== "object" || Array.isArray(modelConfig)) {
+        return false;
+    }
+
+    const configuredModel = (modelConfig as Record<string, unknown>)[deployment];
+    if (!configuredModel || typeof configuredModel !== "object" || Array.isArray(configuredModel)) {
+        return false;
+    }
+
+    return true;
+}
+
+export async function hasRuntimeProviderCredentials(providerId: string): Promise<boolean> {
+    if (isAzureCustomProvider(providerId)) {
+        return await hasRequiredProviderEnvironment(providerId) && await hasRequiredProviderConfig(providerId);
+    }
+
+    return Boolean(await getRuntimeProviderAuth(providerId));
 }
 
 export async function getRuntimeProviderAuth(providerId: string): Promise<ProviderAuthInfo | undefined> {

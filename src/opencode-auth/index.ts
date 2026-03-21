@@ -4,6 +4,7 @@ import {
     getConfiguredModelProviderId,
     getProviderApiKeyEnvKey,
     getProviderSetupDefinition,
+    hasRuntimeProviderCredentials,
     getRuntimeProviderConfigValues,
     getRuntimeProviderAuth,
     setRuntimeProviderConfigValues,
@@ -93,13 +94,14 @@ router.get("/status", apiHandler(async (_req, res) => {
         await fetchProviderAuthMethods(providerId),
     );
     const auth = await getRuntimeProviderAuth(providerId);
+    const hasCredentials = await hasRuntimeProviderCredentials(providerId);
     const definition = getProviderSetupDefinition(providerId);
     const configValues = await getRuntimeProviderConfigValues(providerId);
 
     res.json({
         provider_id: providerId,
         model,
-        has_credentials: Boolean(auth),
+        has_credentials: hasCredentials,
         configured_auth_type: auth?.type,
         methods,
         config_fields: definition.configFields.map((field) => ({
@@ -158,10 +160,12 @@ router.post("/api", apiHandler(async (req, res) => {
         }
     }
 
-    await setRuntimeProviderAuth(providerId, {
-        type: "api",
-        key,
-    });
+    if (!apiKeyEnvKey) {
+        await setRuntimeProviderAuth(providerId, {
+            type: "api",
+            key,
+        });
+    }
     await restartOpencodeServer();
 
     res.json({ success: true });
