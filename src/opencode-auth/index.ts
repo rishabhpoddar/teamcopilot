@@ -2,10 +2,15 @@ import express from "express";
 import { apiHandler } from "../utils/index";
 import {
     getConfiguredModelProviderId,
+    getProviderApiKeyEnvKey,
+    getProviderSetupDefinition,
+    getRuntimeProviderConfigValues,
     getRuntimeProviderAuth,
+    setRuntimeProviderConfigValues,
     setRuntimeProviderAuth,
 } from "../utils/opencode-auth";
 import { getOpencodePort, getWorkspaceDir } from "../utils/opencode-client";
+import { restartOpencodeServer } from "../opencode-server";
 
 const router = express.Router({ mergeParams: true });
 
@@ -60,11 +65,36 @@ async function fetchProviderAuthMethods(providerId: string): Promise<ProviderAut
     }));
 }
 
+function withProviderSpecificFallbackMethods(
+    providerId: string,
+    methods: ProviderAuthMethod[],
+): ProviderAuthMethod[] {
+    if (methods.length > 0) {
+        return methods;
+    }
+
+    const definition = getProviderSetupDefinition(providerId);
+    if (definition.configFields.length === 0) {
+        return methods;
+    }
+
+    return [{
+        index: 0,
+        type: "api",
+        label: "Manually enter API Key",
+    }];
+}
+
 router.get("/status", apiHandler(async (_req, res) => {
     const providerId = getConfiguredModelProviderId();
     const model = process.env.OPENCODE_MODEL!;
-    const methods = await fetchProviderAuthMethods(providerId);
+    const methods = withProviderSpecificFallbackMethods(
+        providerId,
+        await fetchProviderAuthMethods(providerId),
+    );
     const auth = await getRuntimeProviderAuth(providerId);
+    const definition = getProviderSetupDefinition(providerId);
+    const configValues = await getRuntimeProviderConfigValues(providerId);
 
     res.json({
         provider_id: providerId,
@@ -72,12 +102,32 @@ router.get("/status", apiHandler(async (_req, res) => {
         has_credentials: Boolean(auth),
         configured_auth_type: auth?.type,
         methods,
+        config_fields: definition.configFields.map((field) => ({
+            key: field.key,
+            label: field.label,
+            placeholder: field.placeholder,
+            help: field.help,
+            required: field.required,
+            input: field.input,
+        })).concat(definition.optionFields.map((field) => ({
+            key: field.key,
+            label: field.label,
+            placeholder: field.placeholder,
+            help: field.help,
+            required: field.required,
+            input: field.input,
+        }))),
+        config_values: configValues,
+        setup_notes: definition.notes,
     });
 }, true));
 
 router.post("/api", apiHandler(async (req, res) => {
     const providerId = getConfiguredModelProviderId();
     const key = req.body?.key;
+    const configValues = req.body?.config_values;
+    const definition = getProviderSetupDefinition(providerId);
+    const apiKeyEnvKey = getProviderApiKeyEnvKey(providerId);
 
     if (typeof key !== "string" || key.length === 0) {
         throw {
@@ -86,10 +136,33 @@ router.post("/api", apiHandler(async (req, res) => {
         };
     }
 
+    if (configValues !== undefined && (typeof configValues !== "object" || configValues === null || Array.isArray(configValues))) {
+        throw {
+            status: 400,
+            message: "config_values must be an object",
+        };
+    }
+
+    if (definition.configFields.length > 0) {
+        try {
+            const nextConfigValues = {
+                ...((configValues ?? {}) as Record<string, string>),
+                ...(apiKeyEnvKey ? { apiKey: key } : {}),
+            };
+            await setRuntimeProviderConfigValues(providerId, nextConfigValues);
+        } catch (err) {
+            throw {
+                status: 400,
+                message: err instanceof Error ? err.message : "Invalid provider configuration",
+            };
+        }
+    }
+
     await setRuntimeProviderAuth(providerId, {
         type: "api",
         key,
     });
+    await restartOpencodeServer();
 
     res.json({ success: true });
 }, true));
@@ -169,6 +242,8 @@ router.post("/oauth/callback", apiHandler(async (req, res) => {
             message: `OAuth callback completed but no credentials were stored for provider ${providerId}`,
         };
     }
+
+    await restartOpencodeServer();
 
     res.json({ success: true });
 }, true));

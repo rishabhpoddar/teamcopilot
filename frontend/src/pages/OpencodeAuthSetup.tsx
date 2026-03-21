@@ -14,12 +14,24 @@ type ProviderAuthMethod = {
     label: string;
 };
 
+type ProviderConfigField = {
+    key: string;
+    label: string;
+    placeholder: string;
+    help: string;
+    required: boolean;
+    input: 'text' | 'checkbox';
+};
+
 type StatusResponse = {
     provider_id: string;
     model: string;
     has_credentials: boolean;
     configured_auth_type?: 'api' | 'oauth';
     methods: ProviderAuthMethod[];
+    config_fields: ProviderConfigField[];
+    config_values: Record<string, string>;
+    setup_notes: string[];
 };
 
 type OauthAuthorizeResponse = {
@@ -53,6 +65,7 @@ export default function OpencodeAuthSetup() {
     const [status, setStatus] = useState<StatusResponse | null>(null);
     const [selectedMethod, setSelectedMethod] = useState<number | null>(null);
     const [apiKey, setApiKey] = useState('');
+    const [providerConfigValues, setProviderConfigValues] = useState<Record<string, string>>({});
     const [oauthAuthorization, setOauthAuthorization] = useState<OauthAuthorizeResponse | null>(null);
     const [oauthCode, setOauthCode] = useState('');
     const [error, setError] = useState('');
@@ -101,6 +114,7 @@ export default function OpencodeAuthSetup() {
                 ...response.data,
                 methods: visibleMethods,
             });
+            setProviderConfigValues(response.data.config_values);
             setError('');
 
             setSelectedMethod((current) => {
@@ -130,7 +144,7 @@ export default function OpencodeAuthSetup() {
     }, []);
 
     const handleSaveApiKey = async () => {
-        if (!token || selectedMethod === null) {
+        if (!token || selectedMethod === null || !status) {
             return;
         }
 
@@ -139,9 +153,19 @@ export default function OpencodeAuthSetup() {
             return;
         }
 
+        for (const field of status.config_fields) {
+            if (field.required && !providerConfigValues[field.key]?.trim()) {
+                toast.error(`${field.label} is required`);
+                return;
+            }
+        }
+
         try {
             await axiosInstance.post('/api/opencode-auth/api',
-                { key: apiKey },
+                {
+                    key: apiKey,
+                    config_values: providerConfigValues,
+                },
                 { headers: authHeaders }
             );
             setApiKey('');
@@ -351,15 +375,72 @@ export default function OpencodeAuthSetup() {
                         <h2>API key</h2>
                         <p className="opencode-auth-help">Paste the API key for your selected provider and save it.</p>
                         <div className="opencode-auth-card">
-                            <label htmlFor="opencode-api-key">Provider API Key</label>
-                            <input
-                                id="opencode-api-key"
-                                type="password"
-                                value={apiKey}
-                                onChange={(event) => setApiKey(event.target.value)}
-                                placeholder="Paste API key"
-                            />
-                            <button type="button" onClick={handleSaveApiKey}>Save API Key</button>
+                            <div className="opencode-auth-card-header">
+                                <div>
+                                    <h3>Credentials</h3>
+                                    <p className="opencode-auth-help">Save the provider configuration required for this model.</p>
+                                </div>
+                            </div>
+                            {status.setup_notes.length > 0 && (
+                                <div className="opencode-auth-note-list">
+                                    {status.setup_notes.map((note) => (
+                                        <div key={note} className="opencode-auth-note">
+                                            {note}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                            <div className="opencode-auth-form-grid">
+                            {status.config_fields.map((field) => (
+                                <div key={field.key} className={`opencode-auth-field ${field.input === 'checkbox' ? 'is-checkbox' : ''}`}>
+                                    {field.input === 'checkbox' ? (
+                                        <>
+                                            <label className="opencode-auth-checkbox" htmlFor={`opencode-config-${field.key}`}>
+                                                <input
+                                                    id={`opencode-config-${field.key}`}
+                                                    type="checkbox"
+                                                    checked={providerConfigValues[field.key] === 'true'}
+                                                    onChange={(event) => setProviderConfigValues((current) => ({
+                                                        ...current,
+                                                        [field.key]: event.target.checked ? 'true' : 'false',
+                                                    }))}
+                                                />
+                                                <span>{field.label}</span>
+                                            </label>
+                                            <p className="opencode-auth-field-meta">{field.help}</p>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <label htmlFor={`opencode-config-${field.key}`}>{field.label}</label>
+                                            <input
+                                                id={`opencode-config-${field.key}`}
+                                                type="text"
+                                                value={providerConfigValues[field.key] ?? ''}
+                                                onChange={(event) => setProviderConfigValues((current) => ({
+                                                    ...current,
+                                                    [field.key]: event.target.value,
+                                                }))}
+                                                placeholder={field.placeholder}
+                                            />
+                                            <p className="opencode-auth-field-meta">{field.help}</p>
+                                        </>
+                                    )}
+                                </div>
+                            ))}
+                                <div className="opencode-auth-field">
+                                    <label htmlFor="opencode-api-key">Provider API Key</label>
+                                    <input
+                                        id="opencode-api-key"
+                                        type="password"
+                                        value={apiKey}
+                                        onChange={(event) => setApiKey(event.target.value)}
+                                        placeholder="Paste API key"
+                                    />
+                                </div>
+                            </div>
+                            <div className="opencode-auth-actions">
+                                <button type="button" onClick={handleSaveApiKey}>Save API Key</button>
+                            </div>
                         </div>
                     </section>
                 )}
