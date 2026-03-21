@@ -130,7 +130,7 @@ async function writeAuthRecord(filepath: string, data: AuthRecord): Promise<void
         mode: 0o600,
     });
     await fs.rename(tempPath, filepath);
-    await fs.chmod(filepath, 0o600).catch(() => {});
+    await fs.chmod(filepath, 0o600).catch(() => { });
 }
 
 type OpencodeConfigRecord = {
@@ -169,7 +169,7 @@ async function writeOpencodeConfig(filepath: string, data: OpencodeConfigRecord)
         mode: 0o600,
     });
     await fs.rename(tempPath, filepath);
-    await fs.chmod(filepath, 0o600).catch(() => {});
+    await fs.chmod(filepath, 0o600).catch(() => { });
 }
 
 export function getConfiguredModelProviderId(): string {
@@ -232,35 +232,16 @@ function isAzureCustomProvider(providerId: string): boolean {
     return normalizedProviderId.includes("azure") && normalizedProviderId !== "azure";
 }
 
-export function getProviderSetupDefinition(providerId: string): ProviderSetupDefinition {
-    const normalizedProviderId = normalizeProviderId(providerId).toLowerCase();
+export function isServiceManagedProvider(providerId: string): boolean {
+    return isAzureCustomProvider(providerId);
+}
 
-    if (normalizedProviderId.includes("azure")) {
+export function getProviderSetupDefinition(providerId: string): ProviderSetupDefinition {
+    if (isAzureCustomProvider(providerId)) {
         return {
-            configFields: [{
-                key: "endpoint",
-                envKey: "AZURE_OPENAI_ENDPOINT",
-                label: "Azure Endpoint",
-                placeholder: "https://my-resource.openai.azure.com/",
-                help: "Full Azure OpenAI endpoint URL.",
-                required: true,
-                input: "text",
-            }, {
-                key: "apiVersion",
-                envKey: "AZURE_OPENAI_API_VERSION",
-                label: "API Version",
-                placeholder: "2025-01-01-preview",
-                help: "Azure OpenAI API version.",
-                required: true,
-                input: "text",
-            }],
+            configFields: [],
             optionFields: [],
-            notes: [
-                "Use a custom Azure provider id in OPENCODE_MODEL, for example `azure-openai/gpt-4.1-mini`.",
-                "Azure requests will use /openai/deployments/{deployment}/chat/completions?api-version=...",
-                "The model name in OPENCODE_MODEL must exactly match your Azure deployment name.",
-            ],
-            apiKeyEnvKey: AZURE_API_KEY_ENV_KEY,
+            notes: [],
         };
     }
 
@@ -275,28 +256,10 @@ export function getProviderApiKeyEnvKey(providerId: string): string | undefined 
     return getProviderSetupDefinition(providerId).apiKeyEnvKey;
 }
 
-async function hasRequiredProviderConfiguration(providerId: string): Promise<boolean> {
-    const definition = getProviderSetupDefinition(providerId);
-    if (definition.configFields.length === 0) {
-        return false;
-    }
-
-    const configRecord = await readOpencodeConfig(getWorkspaceOpencodeConfigPath());
-    const providerOptions = getProviderOptionsForProvider(configRecord, providerId) ?? {};
-
-    if (isAzureCustomProvider(providerId)) {
-        const azureConfig = getAzureConfigValuesFromProviderOptions(providerOptions);
-        return azureConfig.endpoint.length > 0 && azureConfig.apiVersion.length > 0;
-    }
-
-    for (const field of definition.configFields) {
-        const value = providerOptions[field.envKey];
-        if (typeof value !== "string" || value.trim().length === 0) {
-            return false;
-        }
-    }
-
-    return true;
+function hasRequiredAzureEnvironment(): boolean {
+    return isNonEmptyString(process.env.AZURE_API_KEY)
+        && isNonEmptyString(process.env.AZURE_OPENAI_ENDPOINT)
+        && isNonEmptyString(process.env.AZURE_OPENAI_API_VERSION);
 }
 
 async function hasRequiredProviderConfig(providerId: string): Promise<boolean> {
@@ -327,19 +290,24 @@ async function hasRequiredProviderConfig(providerId: string): Promise<boolean> {
 
 export async function hasRuntimeProviderCredentials(providerId: string): Promise<boolean> {
     if (isAzureCustomProvider(providerId)) {
-        const auth = await getRuntimeProviderAuth(providerId);
-        return Boolean(auth?.type === "api" && auth.key) && await hasRequiredProviderConfiguration(providerId) && await hasRequiredProviderConfig(providerId);
+        return hasRequiredAzureEnvironment() && await hasRequiredProviderConfig(providerId);
     }
 
     return Boolean(await getRuntimeProviderAuth(providerId));
 }
 
 export async function getRuntimeProviderAuth(providerId: string): Promise<ProviderAuthInfo | undefined> {
+    if (isAzureCustomProvider(providerId)) {
+        return undefined;
+    }
     const record = await readAuthRecord(getRuntimeAuthPath());
     return getAuthForProvider(record, providerId);
 }
 
 export async function setRuntimeProviderAuth(providerId: string, info: ProviderAuthInfo): Promise<void> {
+    if (isAzureCustomProvider(providerId)) {
+        throw new Error("Azure OpenAI is managed through service environment variables");
+    }
     const normalizedProviderId = normalizeProviderId(providerId);
     const runtimeRecord = await readAuthRecord(getRuntimeAuthPath());
     delete runtimeRecord[providerId];
@@ -351,6 +319,10 @@ export async function setRuntimeProviderAuth(providerId: string, info: ProviderA
 export async function getRuntimeProviderConfigValues(providerId: string): Promise<Record<string, string>> {
     const definition = getProviderSetupDefinition(providerId);
     const values: Record<string, string> = {};
+
+    if (isAzureCustomProvider(providerId)) {
+        return values;
+    }
 
     if (definition.configFields.length > 0) {
         const configRecord = await readOpencodeConfig(getWorkspaceOpencodeConfigPath());
@@ -403,6 +375,10 @@ export async function setRuntimeProviderConfigValues(
     providerId: string,
     values: Record<string, string>,
 ): Promise<void> {
+    if (isAzureCustomProvider(providerId)) {
+        throw new Error("Azure OpenAI is managed through service environment variables");
+    }
+
     const normalizedProviderId = normalizeProviderId(providerId);
     const definition = getProviderSetupDefinition(providerId);
     const nextProviderOptions: Record<string, unknown> = {};
@@ -452,7 +428,7 @@ export async function setRuntimeProviderConfigValues(
         await writeOpencodeConfig(configPath, configRecord);
     }
 
-    if (normalizedProviderId.includes("azure")) {
+    if (isAzureCustomProvider(normalizedProviderId)) {
         const endpoint = nextProviderOptions.AZURE_OPENAI_ENDPOINT;
         const apiVersion = nextProviderOptions.AZURE_OPENAI_API_VERSION;
         const deployment = getConfiguredModelId();
@@ -476,17 +452,13 @@ export async function setRuntimeProviderConfigValues(
             ...providerRecord,
             [normalizedProviderId]: {
                 ...(existingProviderConfig ?? {}),
-                ...(isAzureCustomProvider(normalizedProviderId)
-                    ? {
-                        npm: "@ai-sdk/azure",
-                        name: "Azure OpenAI",
-                        models: {
-                            [deployment.trim()]: {
-                                name: deployment.trim(),
-                            },
-                        },
-                    }
-                    : {}),
+                npm: "@ai-sdk/azure",
+                name: "Azure OpenAI",
+                models: {
+                    [deployment.trim()]: {
+                        name: deployment.trim(),
+                    },
+                },
                 options: nextOptions,
             },
         };
@@ -508,4 +480,44 @@ export async function applyStoredProviderEnvironmentToProcess(): Promise<void> {
             [AZURE_API_KEY_ENV_KEY]: auth.key,
         });
     }
+}
+
+export async function syncManagedProviderConfiguration(): Promise<void> {
+    const providerId = getConfiguredModelProviderId();
+    if (!isAzureCustomProvider(providerId)) {
+        return;
+    }
+
+    const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
+    const apiVersion = process.env.AZURE_OPENAI_API_VERSION;
+    if (!isNonEmptyString(endpoint) || !isNonEmptyString(apiVersion)) {
+        return;
+    }
+
+    const normalizedProviderId = normalizeProviderId(providerId);
+    const deployment = getConfiguredModelId().trim();
+    const configPath = getWorkspaceOpencodeConfigPath();
+    const configRecord = await readOpencodeConfig(configPath);
+    const providerRecord = configRecord.provider ?? {};
+    const existingProviderConfig = providerRecord[normalizedProviderId];
+    configRecord.provider = {
+        ...providerRecord,
+        [normalizedProviderId]: {
+            ...(existingProviderConfig ?? {}),
+            npm: "@ai-sdk/azure",
+            name: "Azure OpenAI",
+            models: {
+                [deployment]: {
+                    name: deployment,
+                },
+            },
+            options: {
+                ...((existingProviderConfig?.options ?? {}) as Record<string, unknown>),
+                baseURL: `${normalizeAzureEndpoint(endpoint)}/openai`,
+                apiVersion: apiVersion.trim(),
+                useDeploymentBasedUrls: true,
+            },
+        },
+    };
+    await writeOpencodeConfig(configPath, configRecord);
 }

@@ -5,13 +5,14 @@ import {
     getProviderApiKeyEnvKey,
     getProviderSetupDefinition,
     hasRuntimeProviderCredentials,
+    isServiceManagedProvider,
     getRuntimeProviderConfigValues,
     getRuntimeProviderAuth,
     setRuntimeProviderConfigValues,
     setRuntimeProviderAuth,
+    syncManagedProviderConfiguration,
 } from "../utils/opencode-auth";
 import { getOpencodePort, getWorkspaceDir } from "../utils/opencode-client";
-import { restartOpencodeServer } from "../opencode-server";
 
 const router = express.Router({ mergeParams: true });
 
@@ -70,6 +71,10 @@ function withProviderSpecificFallbackMethods(
     providerId: string,
     methods: ProviderAuthMethod[],
 ): ProviderAuthMethod[] {
+    if (isServiceManagedProvider(providerId)) {
+        return [];
+    }
+
     if (methods.length > 0) {
         return methods;
     }
@@ -89,6 +94,7 @@ function withProviderSpecificFallbackMethods(
 router.get("/status", apiHandler(async (_req, res) => {
     const providerId = getConfiguredModelProviderId();
     const model = process.env.OPENCODE_MODEL!;
+    await syncManagedProviderConfiguration();
     const methods = withProviderSpecificFallbackMethods(
         providerId,
         await fetchProviderAuthMethods(providerId),
@@ -101,6 +107,7 @@ router.get("/status", apiHandler(async (_req, res) => {
     res.json({
         provider_id: providerId,
         model,
+        is_service_managed: isServiceManagedProvider(providerId),
         has_credentials: hasCredentials,
         configured_auth_type: auth?.type,
         methods,
@@ -130,6 +137,13 @@ router.post("/api", apiHandler(async (req, res) => {
     const configValues = req.body?.config_values;
     const definition = getProviderSetupDefinition(providerId);
     const apiKeyEnvKey = getProviderApiKeyEnvKey(providerId);
+
+    if (isServiceManagedProvider(providerId)) {
+        throw {
+            status: 400,
+            message: "This provider is managed through service environment variables and cannot be edited from this screen",
+        };
+    }
 
     if (typeof key !== "string" || key.length === 0) {
         throw {
@@ -164,7 +178,6 @@ router.post("/api", apiHandler(async (req, res) => {
         type: "api",
         key,
     });
-    await restartOpencodeServer();
 
     res.json({ success: true });
 }, true));
@@ -172,6 +185,13 @@ router.post("/api", apiHandler(async (req, res) => {
 router.post("/oauth/authorize", apiHandler(async (req, res) => {
     const providerId = getConfiguredModelProviderId();
     const method = req.body?.method;
+
+    if (isServiceManagedProvider(providerId)) {
+        throw {
+            status: 400,
+            message: "This provider is managed through service environment variables and does not support OAuth setup",
+        };
+    }
 
     if (typeof method !== "number") {
         throw {
@@ -210,6 +230,13 @@ router.post("/oauth/callback", apiHandler(async (req, res) => {
     const method = req.body?.method;
     const code = req.body?.code;
 
+    if (isServiceManagedProvider(providerId)) {
+        throw {
+            status: 400,
+            message: "This provider is managed through service environment variables and does not support OAuth setup",
+        };
+    }
+
     if (typeof method !== "number") {
         throw {
             status: 400,
@@ -244,8 +271,6 @@ router.post("/oauth/callback", apiHandler(async (req, res) => {
             message: `OAuth callback completed but no credentials were stored for provider ${providerId}`,
         };
     }
-
-    await restartOpencodeServer();
 
     res.json({ success: true });
 }, true));
