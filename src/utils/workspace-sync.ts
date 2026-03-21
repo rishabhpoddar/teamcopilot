@@ -16,6 +16,7 @@ const WORKSPACE_DB_DIRECTORY = ".sqlite";
 const WORKSPACE_DB_FILENAME = "data.db";
 const HONEYTOKEN_UUID = "1f9f0b72-5f9f-4c9b-aef1-2fb2e0f6d8c4";
 const HONEYTOKEN_FILE_NAME = `honeytoken-${HONEYTOKEN_UUID}.txt`;
+const WORKSPACE_AZURE_PROVIDER_VERSION = "3.0.48";
 
 export function getWorkspaceDirFromEnv(): string {
     let workspaceDir = assertEnv("WORKSPACE_DIR");
@@ -223,6 +224,9 @@ function syncTemplateDirectory(
                 mergeGitignoreFile(sourceEntryPath, targetEntryPath);
                 continue;
             }
+            if (relativeEntryPath === ".opencode/opencode.json" && fs.existsSync(targetEntryPath)) {
+                continue;
+            }
             if (entry.name === "package.json") {
                 mergePackageJsonFile(sourceEntryPath, targetEntryPath);
                 continue;
@@ -241,6 +245,9 @@ async function initializeWorkspaceNodeDependencies(workspaceDir: string): Promis
         ...(existingPackageJson.dependencies ?? {}),
         "opencode-ai": "1.1.65",
     };
+    if (assertEnv("OPENCODE_MODEL").startsWith("azure-openai/")) {
+        dependencies["@ai-sdk/azure"] = WORKSPACE_AZURE_PROVIDER_VERSION;
+    }
     const workspacePackageJson = {
         ...existingPackageJson,
         dependencies,

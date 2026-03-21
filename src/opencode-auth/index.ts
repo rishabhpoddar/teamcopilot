@@ -2,8 +2,11 @@ import express from "express";
 import { apiHandler } from "../utils/index";
 import {
     getConfiguredModelProviderId,
+    hasRuntimeProviderCredentials,
+    isServiceManagedProvider,
     getRuntimeProviderAuth,
     setRuntimeProviderAuth,
+    syncManagedProviderConfiguration,
 } from "../utils/opencode-auth";
 import { getOpencodePort, getWorkspaceDir } from "../utils/opencode-client";
 
@@ -63,13 +66,18 @@ async function fetchProviderAuthMethods(providerId: string): Promise<ProviderAut
 router.get("/status", apiHandler(async (_req, res) => {
     const providerId = getConfiguredModelProviderId();
     const model = process.env.OPENCODE_MODEL!;
-    const methods = await fetchProviderAuthMethods(providerId);
-    const auth = await getRuntimeProviderAuth(providerId);
+    const isServiceManaged = isServiceManagedProvider(providerId);
+    await syncManagedProviderConfiguration();
+    const methods = isServiceManaged ? [] : await fetchProviderAuthMethods(providerId);
+    const auth = isServiceManaged ? undefined : await getRuntimeProviderAuth(providerId);
+    const hasCredentials = isServiceManaged
+        ? await hasRuntimeProviderCredentials(providerId)
+        : Boolean(auth);
 
     res.json({
         provider_id: providerId,
         model,
-        has_credentials: Boolean(auth),
+        has_credentials: hasCredentials,
         configured_auth_type: auth?.type,
         methods,
     });
@@ -78,6 +86,13 @@ router.get("/status", apiHandler(async (_req, res) => {
 router.post("/api", apiHandler(async (req, res) => {
     const providerId = getConfiguredModelProviderId();
     const key = req.body?.key;
+
+    if (isServiceManagedProvider(providerId)) {
+        throw {
+            status: 400,
+            message: "This provider is managed through service environment variables and cannot be edited from this screen",
+        };
+    }
 
     if (typeof key !== "string" || key.length === 0) {
         throw {
@@ -97,6 +112,13 @@ router.post("/api", apiHandler(async (req, res) => {
 router.post("/oauth/authorize", apiHandler(async (req, res) => {
     const providerId = getConfiguredModelProviderId();
     const method = req.body?.method;
+
+    if (isServiceManagedProvider(providerId)) {
+        throw {
+            status: 400,
+            message: "This provider is managed through service environment variables and does not support OAuth setup",
+        };
+    }
 
     if (typeof method !== "number") {
         throw {
@@ -134,6 +156,13 @@ router.post("/oauth/callback", apiHandler(async (req, res) => {
     const providerId = getConfiguredModelProviderId();
     const method = req.body?.method;
     const code = req.body?.code;
+
+    if (isServiceManagedProvider(providerId)) {
+        throw {
+            status: 400,
+            message: "This provider is managed through service environment variables and does not support OAuth setup",
+        };
+    }
 
     if (typeof method !== "number") {
         throw {

@@ -28,6 +28,12 @@ type OauthAuthorizeResponse = {
     instructions: string;
 };
 
+type ManagedEnvExample = {
+    key: string;
+    value: string;
+    help: string;
+};
+
 function extractDeviceCode(instructions: string): string {
     const match = instructions.match(/enter code:\s*(.+)$/i);
     if (!match || !match[1]) {
@@ -41,6 +47,33 @@ function isVisibleAuthMethod(method: ProviderAuthMethod): boolean {
         return true;
     }
     return !method.label.toLowerCase().includes('browser');
+}
+
+function getManagedEnvExamples(model: string): ManagedEnvExample[] {
+    const deployment = model.split('/').slice(1).join('/');
+
+    return [
+        {
+            key: 'AZURE_API_KEY',
+            value: 'abc123xyz',
+            help: 'API key for the Azure OpenAI resource.',
+        },
+        {
+            key: 'AZURE_OPENAI_ENDPOINT',
+            value: 'https://my-resource.openai.azure.com/',
+            help: 'Base endpoint for the Azure OpenAI resource.',
+        },
+        {
+            key: 'AZURE_OPENAI_API_VERSION',
+            value: '2025-01-01-preview',
+            help: 'Azure API version used for chat completions.',
+        },
+        {
+            key: 'OPENCODE_MODEL',
+            value: `azure-openai/${deployment}`,
+            help: 'Provider id plus the Azure deployment name.',
+        },
+    ];
 }
 
 export default function OpencodeAuthSetup() {
@@ -76,6 +109,8 @@ export default function OpencodeAuthSetup() {
     const isManualCodeStep = oauthAuthorization?.method === 'code';
     const isAutoCodeStep = oauthAuthorization?.method === 'auto';
     const deviceCode = oauthAuthorization ? extractDeviceCode(oauthAuthorization.instructions) : '';
+    const isManagedProviderNotice = !isManualCodeStep && status?.provider_id === 'azure-openai';
+    const managedEnvExamples = status ? getManagedEnvExamples(status.model) : [];
 
     function resetOauthFlowState() {
         if (autoOauthRequestRef.current) {
@@ -283,12 +318,16 @@ export default function OpencodeAuthSetup() {
                     <div>
                         <h1>Model Authentication Setup</h1>
                         <p className="opencode-auth-subtitle">
-                            Configure credentials for <strong>{status.model}</strong>
+                            {isManagedProviderNotice ? (
+                                <>This model is configured at the service level for <strong>{status.model}</strong></>
+                            ) : (
+                                <>Configure credentials for <strong>{status.model}</strong></>
+                            )}
                         </p>
                         <p className="opencode-auth-meta">Provider: <code>{status.provider_id}</code></p>
                     </div>
                     <div className={`opencode-auth-badge ${status.has_credentials ? 'is-connected' : 'is-required'}`}>
-                        {status.has_credentials ? 'Connected' : 'Setup Required'}
+                        {status.has_credentials ? 'Connected' : (isManagedProviderNotice ? 'Admin Managed' : 'Setup Required')}
                     </div>
                 </header>
 
@@ -316,34 +355,67 @@ export default function OpencodeAuthSetup() {
                 )}
 
                 {!isManualCodeStep && (
-                <section className="opencode-auth-section">
-                    <h2>Choose auth method</h2>
-                    {methods.length === 0 && (
-                        <p className="opencode-auth-error">
-                            No auth methods are available for provider <code>{status.provider_id}</code>.
-                        </p>
-                    )}
+                    <section className="opencode-auth-section">
+                        <h2>{isManagedProviderNotice ? 'Service Configuration' : 'Choose auth method'}</h2>
+                        {methods.length === 0 && !isManagedProviderNotice && (
+                            <p className="opencode-auth-error">
+                                No auth methods are available for provider <code>{status.provider_id}</code>.
+                            </p>
+                        )}
 
-                    {methods.length > 0 && (
-                        <div className="opencode-auth-method-grid">
-                            {methods.map((method) => (
-                                <button
-                                    key={method.index}
-                                    type="button"
-                                    className={`opencode-auth-method ${selectedMethod === method.index ? 'is-selected' : ''}`}
-                                    onClick={() => {
-                                        setSelectedMethod(method.index);
-                                        setOauthAuthorization(null);
-                                        setOauthCode('');
-                                    }}
-                                >
-                                    <span className="opencode-auth-method-label">{method.label}</span>
-                                    <span className="opencode-auth-method-type">{method.type.toUpperCase()}</span>
-                                </button>
-                            ))}
-                        </div>
-                    )}
-                </section>
+                        {isManagedProviderNotice && (
+                            <div className="opencode-auth-card opencode-auth-managed-card">
+                                <div className="opencode-auth-card-header opencode-auth-managed-header">
+                                    <div>
+                                        <h3>Managed By Administrator</h3>
+                                        <p className="opencode-auth-help">This provider is read-only in TeamCopilot.</p>
+                                    </div>
+                                </div>
+                                <div className="opencode-auth-managed-layout">
+                                    <p className="opencode-auth-managed-intro">
+                                        Azure OpenAI is configured through service environment variables. To update this model,
+                                        ask the service administrator to change the values below and restart TeamCopilot.
+                                    </p>
+                                    <div className="opencode-auth-managed-example-block">
+                                        <div className="opencode-auth-managed-example-header">
+                                            <h4>Required Values</h4>
+                                            <p>Use your Azure deployment name in <code>OPENCODE_MODEL</code>.</p>
+                                        </div>
+                                        <div className="opencode-auth-managed-example-list">
+                                            {managedEnvExamples.map((example) => (
+                                                <div key={example.key} className="opencode-auth-managed-example-row">
+                                                    <div className="opencode-auth-managed-example-copy">
+                                                        <code>{example.key}={example.value}</code>
+                                                    </div>
+                                                    <p>{example.help}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {methods.length > 0 && (
+                            <div className="opencode-auth-method-grid">
+                                {methods.map((method) => (
+                                    <button
+                                        key={method.index}
+                                        type="button"
+                                        className={`opencode-auth-method ${selectedMethod === method.index ? 'is-selected' : ''}`}
+                                        onClick={() => {
+                                            setSelectedMethod(method.index);
+                                            setOauthAuthorization(null);
+                                            setOauthCode('');
+                                        }}
+                                    >
+                                        <span className="opencode-auth-method-label">{method.label}</span>
+                                        <span className="opencode-auth-method-type">{method.type.toUpperCase()}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </section>
                 )}
 
                 {!isManualCodeStep && selectedAuthMethod?.type === 'api' && (
