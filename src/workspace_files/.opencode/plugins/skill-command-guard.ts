@@ -36,8 +36,10 @@ async function readErrorMessageFromResponse(
   }
 }
 
-function normalizeCommandSlug(command: string): string {
-  return command.trim().replace(/^\/+/, "")
+export function normalizeCommandSlug(command: string): string {
+  const trimmed = command.trim()
+  const match = trimmed.match(/^\/+([^\s]+)/)
+  return match?.[1] ?? ""
 }
 
 function getTaskCommand(args: unknown): string | null {
