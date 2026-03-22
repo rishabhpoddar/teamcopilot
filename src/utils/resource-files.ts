@@ -43,7 +43,6 @@ type ParsedEnvAssignment =
 export function createResourceFileManager(options: ResourceFileManagerOptions): ResourceFileManager {
     const { getResourcePath, resourceLabel, editorLabel } = options;
     const rootLabel = `${resourceLabel} root`;
-    const symlinkRootError = `${editorLabel} editor does not support symlinked ${resourceLabel} directories`;
     const symlinkError = `${editorLabel} editor does not support symlinks`;
 
     function toEtag(buffer: Buffer): string {
@@ -102,20 +101,6 @@ export function createResourceFileManager(options: ResourceFileManagerOptions): 
         return absolute;
     }
 
-    function assertRootNotSymlink(slug: string): void {
-        const resourceRoot = getResourcePath(slug);
-        if (!fs.existsSync(resourceRoot)) {
-            return;
-        }
-        const rootLstat = fs.lstatSync(resourceRoot);
-        if (rootLstat.isSymbolicLink()) {
-            throw {
-                status: 400,
-                message: symlinkRootError
-            };
-        }
-    }
-
     function assertRealPathWithinRoot(slug: string, absolutePath: string): void {
         const realRoot = fs.realpathSync(getResourcePath(slug));
         const realTarget = fs.realpathSync(absolutePath);
@@ -128,18 +113,19 @@ export function createResourceFileManager(options: ResourceFileManagerOptions): 
     }
 
     function assertNoSymlinkInAncestors(slug: string, absolutePath: string): void {
-        const root = path.resolve(getResourcePath(slug));
+        const configuredRoot = path.resolve(getResourcePath(slug));
+        const realRoot = fs.realpathSync(getResourcePath(slug));
         let current = path.resolve(absolutePath);
         while (true) {
+            if (current === configuredRoot || current === realRoot) {
+                return;
+            }
             const lstat = fs.lstatSync(current);
             if (lstat.isSymbolicLink()) {
                 throw {
                     status: 400,
                     message: symlinkError
                 };
-            }
-            if (current === root) {
-                return;
             }
             const parent = path.dirname(current);
             if (parent === current) {
@@ -153,13 +139,11 @@ export function createResourceFileManager(options: ResourceFileManagerOptions): 
     }
 
     function assertExistingPathIsSafe(slug: string, absolutePath: string): void {
-        assertRootNotSymlink(slug);
         assertRealPathWithinRoot(slug, absolutePath);
         assertNoSymlinkInAncestors(slug, absolutePath);
     }
 
     function assertParentDirectoryIsSafeForCreate(slug: string, parentAbsolutePath: string): void {
-        assertRootNotSymlink(slug);
         assertRealPathWithinRoot(slug, parentAbsolutePath);
         assertNoSymlinkInAncestors(slug, parentAbsolutePath);
     }
