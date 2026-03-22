@@ -83,8 +83,12 @@ export function listSkillSlugs(): string[] {
     const slugs: string[] = [];
 
     for (const entry of entries) {
-        if (!entry.isDirectory()) continue;
-        const canonicalManifestPath = path.join(skillsDir, entry.name, "SKILL.md");
+        const skillEntryPath = path.join(skillsDir, entry.name);
+        if (!entry.isDirectory()) {
+            if (!entry.isSymbolicLink()) continue;
+            if (!fs.statSync(skillEntryPath).isDirectory()) continue;
+        }
+        const canonicalManifestPath = path.join(skillEntryPath, "SKILL.md");
         if (fs.existsSync(canonicalManifestPath)) {
             slugs.push(entry.name);
         }
@@ -94,12 +98,40 @@ export function listSkillSlugs(): string[] {
 }
 
 function extractFrontmatterValue(frontmatter: string, key: string): string | null {
-    const pattern = new RegExp(`^${key}\\s*:\\s*(.+)$`, "m");
-    const match = frontmatter.match(pattern);
-    if (!match) {
-        return null;
+    const lines = frontmatter.split("\n");
+
+    for (let index = 0; index < lines.length; index += 1) {
+        const line = lines[index];
+        const match = line.match(new RegExp(`^${key}\\s*:\\s*(.*)$`));
+        if (!match) {
+            continue;
+        }
+
+        const rawValue = match[1]?.trim() ?? "";
+        if (rawValue === "|" || rawValue === ">") {
+            const blockLines: string[] = [];
+
+            for (let blockIndex = index + 1; blockIndex < lines.length; blockIndex += 1) {
+                const blockLine = lines[blockIndex] ?? "";
+                if (blockLine.length === 0) {
+                    blockLines.push("");
+                    continue;
+                }
+
+                if (!/^\s+/.test(blockLine)) {
+                    break;
+                }
+
+                blockLines.push(blockLine.replace(/^\s+/, ""));
+            }
+
+            return blockLines.join(rawValue === ">" ? " " : "\n").trim();
+        }
+
+        return rawValue.replace(/^["']|["']$/g, "");
     }
-    return match[1]?.trim().replace(/^["']|["']$/g, "") ?? null;
+
+    return null;
 }
 
 function readSkillManifest(slug: string): SkillManifest {
