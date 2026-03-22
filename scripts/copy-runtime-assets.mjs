@@ -10,7 +10,6 @@ const skippedPathSegments = new Set([
     ".env",
     ".sqlite",
     ".venv",
-    "custom-skills",
     "node_modules",
     "workflows",
     "workflow-runs",
@@ -35,6 +34,10 @@ fs.cpSync(workspaceSourceDirectory, workspaceTargetDirectory, {
 
         const segments = relativePath.split(path.sep);
         if (segments.some((segment) => skippedPathSegments.has(segment))) {
+            return false;
+        }
+
+        if (segments[0] === ".agents" && segments[1] === "skills") {
             return false;
         }
 

@@ -68,6 +68,9 @@ export async function startOpencodeServer() {
             config: {
                 model: fullModel,
                 autoupdate: false,
+                tools: {
+                    skill: false,
+                },
             },
         });
     };

@@ -290,6 +290,13 @@
   flex-grow: 1;
 }
 
+.workflow-card-description-scrollable {
+  max-height: 7.5rem;
+  overflow-y: auto;
+  padding-right: 0.35rem;
+  scrollbar-width: thin;
+}
+
 .workflow-card-meta {
   margin: 0;
   font-size: 0.8rem;

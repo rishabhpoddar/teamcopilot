@@ -194,7 +194,7 @@ export default function UnifiedCard({
                 </span>
             </div>
             {kind === 'skill'
-                ? <p className="workflow-card-description">{description.trim() || 'No description available'}</p>
+                ? <p className="workflow-card-description workflow-card-description-scrollable">{description.trim() || 'No description available'}</p>
                 : description && <p className="workflow-card-description">{description}</p>}
             <p className="workflow-card-meta">
                 Created by: {created_by_user_name ?? created_by_user_email ?? 'Unknown User'}

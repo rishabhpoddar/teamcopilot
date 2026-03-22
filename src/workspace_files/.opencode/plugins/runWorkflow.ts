@@ -64,7 +64,37 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-export const RunWorkflowPlugin: Plugin = async (_ctx) => {
+interface SessionLookupResponse {
+  error?: unknown
+  data?: {
+    id?: string
+    parentID?: string
+  }
+}
+
+export const RunWorkflowPlugin: Plugin = async ({ client }) => {
+  async function resolveRootSessionID(sessionID: string): Promise<string> {
+    let currentSessionID = sessionID
+
+    while (true) {
+      const response = (await client.session.get({
+        path: {
+          id: currentSessionID,
+        },
+      })) as SessionLookupResponse
+      if (response.error) {
+        throw new Error(`Failed to resolve root session for ${currentSessionID}`)
+      }
+
+      const parentID = response.data?.parentID
+      if (!parentID) {
+        return currentSessionID
+      }
+
+      currentSessionID = parentID
+    }
+  }
+
   return {
     tool: {
       runWorkflow: tool({
@@ -86,6 +116,7 @@ export const RunWorkflowPlugin: Plugin = async (_ctx) => {
         },
         async execute(args, context) {
           const { sessionID } = context
+          const authSessionID = await resolveRootSessionID(sessionID)
           const { slug, inputs = {} } = args
           const messageId = extractMessageId(context)
           const callId = extractCallId(context)
@@ -102,7 +133,7 @@ export const RunWorkflowPlugin: Plugin = async (_ctx) => {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${sessionID}`,
+              Authorization: `Bearer ${authSessionID}`,
             },
             body: JSON.stringify({
               slug,
@@ -134,7 +165,7 @@ export const RunWorkflowPlugin: Plugin = async (_ctx) => {
               {
                 method: "GET",
                 headers: {
-                  Authorization: `Bearer ${sessionID}`,
+                  Authorization: `Bearer ${authSessionID}`,
                 },
               }
             )

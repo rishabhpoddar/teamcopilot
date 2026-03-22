@@ -52,14 +52,12 @@ function normalizeRelativePath(relativePath: string): string {
     return relativePath.split(path.sep).join("/");
 }
 
-const MANAGED_WORKSPACE_DIRECTORIES = new Set([
-    "workflows",
-    "custom-skills",
-]);
-
 function shouldSkipManagedDirectoryContent(relativePath: string): boolean {
-    const [topLevelSegment] = relativePath.split("/");
-    if (MANAGED_WORKSPACE_DIRECTORIES.has(topLevelSegment)) {
+    if (relativePath === "workflows" || relativePath.startsWith("workflows/")) {
+        return true;
+    }
+
+    if (relativePath === ".agents/skills" || relativePath.startsWith(".agents/skills/")) {
         return true;
     }
 
@@ -264,7 +262,7 @@ export async function initializeWorkspaceDirectory(): Promise<void> {
     fs.mkdirSync(workspaceDir, { recursive: true });
     const workflowsDir = path.join(workspaceDir, "workflows");
     fs.mkdirSync(workflowsDir, { recursive: true });
-    const skillsDir = path.join(workspaceDir, "custom-skills");
+    const skillsDir = path.join(workspaceDir, ".agents", "skills");
     fs.mkdirSync(skillsDir, { recursive: true });
     const honeytokenValue = `DO_NOT_EXPOSE:${HONEYTOKEN_UUID}\n`;
     fs.writeFileSync(path.join(workflowsDir, HONEYTOKEN_FILE_NAME), honeytokenValue, "utf-8");

@@ -31,6 +31,14 @@ interface SkillMatch {
   similarity: number
 }
 
+interface SessionLookupResponse {
+  error?: unknown
+  data?: {
+    id?: string
+    parentID?: string
+  }
+}
+
 async function readErrorMessageFromResponse(
   response: Response,
   fallbackMessage: string
@@ -90,14 +98,14 @@ function cosineSimilarity(vecA: number[], vecB: number[]): number {
 }
 
 async function readSkillMarkdown(
-  sessionID: string,
+  authSessionID: string,
   slug: string
 ): Promise<string> {
   const response = await fetch(
     `${getApiBaseUrl()}/api/skills/${encodeURIComponent(slug)}/files/content?path=${encodeURIComponent("SKILL.md")}`,
     {
       headers: {
-        Authorization: `Bearer ${sessionID}`,
+        Authorization: `Bearer ${authSessionID}`,
       },
     }
   )
@@ -118,7 +126,29 @@ async function readSkillMarkdown(
   return payload.content ?? ""
 }
 
-export const FindSkillPlugin: Plugin = async (_ctx) => {
+export const FindSkillPlugin: Plugin = async ({ client, directory }) => {
+  async function resolveRootSessionID(sessionID: string): Promise<string> {
+    let currentSessionID = sessionID
+
+    while (true) {
+      const response = (await client.session.get({
+        path: {
+          id: currentSessionID,
+        },
+      })) as SessionLookupResponse
+      if (response.error) {
+        throw new Error(`Failed to resolve root session for ${currentSessionID}`)
+      }
+
+      const parentID = response.data?.parentID
+      if (!parentID) {
+        return currentSessionID
+      }
+
+      currentSessionID = parentID
+    }
+  }
+
   return {
     tool: {
       findSkill: tool({
@@ -143,9 +173,10 @@ export const FindSkillPlugin: Plugin = async (_ctx) => {
             throw new Error("description is required")
           }
 
+          const authSessionID = await resolveRootSessionID(sessionID)
           const skillsResponse = await fetch(`${getApiBaseUrl()}/api/skills`, {
             headers: {
-              Authorization: `Bearer ${sessionID}`,
+              Authorization: `Bearer ${authSessionID}`,
             },
           })
 
@@ -180,7 +211,7 @@ export const FindSkillPlugin: Plugin = async (_ctx) => {
           const matches: SkillMatch[] = []
 
           for (const skill of candidateSkills) {
-            const markdown = await readSkillMarkdown(sessionID, skill.slug)
+            const markdown = await readSkillMarkdown(authSessionID, skill.slug)
             const searchableText = `${skill.description}\n\n${stripLeadingFrontmatter(markdown)}`
             const skillEmbedding = await getEmbedding(searchableText)
             const similarity = cosineSimilarity(queryEmbedding, skillEmbedding)
