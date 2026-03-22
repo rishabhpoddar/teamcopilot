@@ -21,7 +21,7 @@ interface CreateSkillInput {
 }
 
 function getSkillsRootPath(): string {
-    return path.join(getWorkspaceDirFromEnv(), "custom-skills");
+    return path.join(getWorkspaceDirFromEnv(), ".agents", "skills");
 }
 
 export function getSkillPath(slug: string): string {

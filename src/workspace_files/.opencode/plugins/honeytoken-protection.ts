@@ -18,7 +18,7 @@ async function ensureHoneytokenFile(workspaceDirectory: string): Promise<void> {
     const workflowsHoneytokenPath = path.join(workflowsDirectory, HONEYTOKEN_FILE_NAME)
     await fs.writeFile(workflowsHoneytokenPath, honeytokenValue, "utf-8")
 
-    const skillsDirectory = path.join(workspaceDirectory, "custom-skills")
+    const skillsDirectory = path.join(workspaceDirectory, ".agents", "skills")
     await fs.mkdir(skillsDirectory, { recursive: true })
     const honeytokenPath = path.join(skillsDirectory, HONEYTOKEN_FILE_NAME)
     await fs.writeFile(honeytokenPath, honeytokenValue, "utf-8")
