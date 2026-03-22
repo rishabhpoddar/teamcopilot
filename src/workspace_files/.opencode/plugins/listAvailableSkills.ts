@@ -18,6 +18,14 @@ interface SkillSummary {
   can_edit: boolean
 }
 
+interface SessionLookupResponse {
+  error?: unknown
+  data?: {
+    id?: string
+    parentID?: string
+  }
+}
+
 async function readErrorMessageFromResponse(
   response: Response,
   fallbackMessage: string
@@ -40,7 +48,29 @@ async function readErrorMessageFromResponse(
   }
 }
 
-export const ListAvailableSkillsPlugin: Plugin = async (_ctx) => {
+export const ListAvailableSkillsPlugin: Plugin = async ({ client }) => {
+  async function resolveRootSessionID(sessionID: string): Promise<string> {
+    let currentSessionID = sessionID
+
+    while (true) {
+      const response = (await client.session.get({
+        path: {
+          id: currentSessionID,
+        },
+      })) as SessionLookupResponse
+      if (response.error) {
+        return currentSessionID
+      }
+
+      const parentID = response.data?.parentID
+      if (!parentID) {
+        return currentSessionID
+      }
+
+      currentSessionID = parentID
+    }
+  }
+
   return {
     tool: {
       listAvailableSkills: tool({
@@ -49,10 +79,11 @@ export const ListAvailableSkillsPlugin: Plugin = async (_ctx) => {
         args: {},
         async execute(_args, context) {
           const { sessionID } = context
+          const authSessionID = await resolveRootSessionID(sessionID)
 
           const response = await fetch(`${getApiBaseUrl()}/api/skills`, {
             headers: {
-              Authorization: `Bearer ${sessionID}`,
+              Authorization: `Bearer ${authSessionID}`,
             },
           })
 

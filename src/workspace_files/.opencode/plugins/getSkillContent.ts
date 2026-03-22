@@ -23,6 +23,14 @@ interface SkillDetailsResponse {
   }
 }
 
+interface SessionLookupResponse {
+  error?: unknown
+  data?: {
+    id?: string
+    parentID?: string
+  }
+}
+
 async function readErrorMessageFromResponse(
   response: Response,
   fallbackMessage: string
@@ -45,7 +53,29 @@ async function readErrorMessageFromResponse(
   }
 }
 
-export const GetSkillContentPlugin: Plugin = async (_ctx) => {
+export const GetSkillContentPlugin: Plugin = async ({ client }) => {
+  async function resolveRootSessionID(sessionID: string): Promise<string> {
+    let currentSessionID = sessionID
+
+    while (true) {
+      const response = (await client.session.get({
+        path: {
+          id: currentSessionID,
+        },
+      })) as SessionLookupResponse
+      if (response.error) {
+        return currentSessionID
+      }
+
+      const parentID = response.data?.parentID
+      if (!parentID) {
+        return currentSessionID
+      }
+
+      currentSessionID = parentID
+    }
+  }
+
   return {
     tool: {
       getSkillContent: tool({
@@ -59,6 +89,7 @@ export const GetSkillContentPlugin: Plugin = async (_ctx) => {
         async execute(args, context) {
           const { sessionID } = context
           const slug = args.slug.trim()
+          const authSessionID = await resolveRootSessionID(sessionID)
 
           if (!SLUG_REGEX.test(slug)) {
             throw new Error(
@@ -70,7 +101,7 @@ export const GetSkillContentPlugin: Plugin = async (_ctx) => {
             `${getApiBaseUrl()}/api/skills/${encodeURIComponent(slug)}`,
             {
               headers: {
-                Authorization: `Bearer ${sessionID}`,
+                Authorization: `Bearer ${authSessionID}`,
               },
             }
           )
@@ -97,7 +128,7 @@ export const GetSkillContentPlugin: Plugin = async (_ctx) => {
             `${getApiBaseUrl()}/api/skills/${encodeURIComponent(slug)}/files/content?path=${encodeURIComponent("SKILL.md")}`,
             {
               headers: {
-                Authorization: `Bearer ${sessionID}`,
+                Authorization: `Bearer ${authSessionID}`,
               },
             }
           )

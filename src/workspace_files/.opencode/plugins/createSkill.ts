@@ -24,6 +24,14 @@ interface PermissionResponse {
   approved: boolean
 }
 
+interface SessionLookupResponse {
+  error?: unknown
+  data?: {
+    id?: string
+    parentID?: string
+  }
+}
+
 async function readErrorMessageFromResponse(
   response: Response,
   fallbackMessage: string
@@ -191,7 +199,29 @@ function buildSkillMarkdown(
   return `---\nname: ${JSON.stringify(slug)}\ndescription: ${JSON.stringify(description)}\n---\n\n${body}\n`
 }
 
-export const CreateSkillPlugin: Plugin = async (_ctx) => {
+export const CreateSkillPlugin: Plugin = async ({ client }) => {
+  async function resolveRootSessionID(sessionID: string): Promise<string> {
+    let currentSessionID = sessionID
+
+    while (true) {
+      const response = (await client.session.get({
+        path: {
+          id: currentSessionID,
+        },
+      })) as SessionLookupResponse
+      if (response.error) {
+        return currentSessionID
+      }
+
+      const parentID = response.data?.parentID
+      if (!parentID) {
+        return currentSessionID
+      }
+
+      currentSessionID = parentID
+    }
+  }
+
   return {
     tool: {
       createSkill: tool({
@@ -210,6 +240,7 @@ export const CreateSkillPlugin: Plugin = async (_ctx) => {
         },
         async execute(args, context) {
           const { directory, sessionID } = context
+          const authSessionID = await resolveRootSessionID(sessionID)
           const slug = args.slug.trim()
           const description = args.description.trim()
           const content = args.content.trim()
@@ -250,7 +281,7 @@ export const CreateSkillPlugin: Plugin = async (_ctx) => {
           }
 
           await requestCreationPermission(
-            sessionID,
+            authSessionID,
             messageId,
             callId
           )
@@ -259,7 +290,7 @@ export const CreateSkillPlugin: Plugin = async (_ctx) => {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${sessionID}`,
+              Authorization: `Bearer ${authSessionID}`,
             },
             body: JSON.stringify({
               name: slug,
@@ -278,7 +309,7 @@ export const CreateSkillPlugin: Plugin = async (_ctx) => {
             `${getApiBaseUrl()}/api/skills/${encodeURIComponent(slug)}/files/content?path=${encodeURIComponent("SKILL.md")}`,
             {
               headers: {
-                Authorization: `Bearer ${sessionID}`,
+                Authorization: `Bearer ${authSessionID}`,
               },
             }
           )
@@ -302,7 +333,7 @@ export const CreateSkillPlugin: Plugin = async (_ctx) => {
             method: "PUT",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${sessionID}`,
+              Authorization: `Bearer ${authSessionID}`,
             },
             body: JSON.stringify({
               path: "SKILL.md",

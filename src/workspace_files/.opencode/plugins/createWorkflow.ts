@@ -37,6 +37,14 @@ interface PermissionResponse {
   approved: boolean
 }
 
+interface SessionLookupResponse {
+  error?: unknown
+  data?: {
+    id?: string
+    parentID?: string
+  }
+}
+
 // ============================================================================
 // Constants
 // ============================================================================
@@ -195,7 +203,29 @@ async function requestWorkflowPermission(
 // Plugin
 // ============================================================================
 
-export const CreateWorkflowPlugin: Plugin = async (_ctx) => {
+export const CreateWorkflowPlugin: Plugin = async ({ client }) => {
+  async function resolveRootSessionID(sessionID: string): Promise<string> {
+    let currentSessionID = sessionID
+
+    while (true) {
+      const response = (await client.session.get({
+        path: {
+          id: currentSessionID,
+        },
+      })) as SessionLookupResponse
+      if (response.error) {
+        return currentSessionID
+      }
+
+      const parentID = response.data?.parentID
+      if (!parentID) {
+        return currentSessionID
+      }
+
+      currentSessionID = parentID
+    }
+  }
+
   return {
     tool: {
       createWorkflow: tool({
@@ -237,6 +267,7 @@ export const CreateWorkflowPlugin: Plugin = async (_ctx) => {
         },
         async execute(args, context) {
           const { directory, sessionID } = context
+          const authSessionID = await resolveRootSessionID(sessionID)
           const { slug, intent_summary, inputs = {}, timeout_seconds = 300 } = args
           const messageId = extractMessageId(context)
           const callId = extractCallId(context)
@@ -278,7 +309,7 @@ export const CreateWorkflowPlugin: Plugin = async (_ctx) => {
 
           // Request permission after basic validation and existence checks pass.
           await requestWorkflowPermission(
-            sessionID,
+            authSessionID,
             messageId,
             callId
           )
@@ -316,7 +347,7 @@ export const CreateWorkflowPlugin: Plugin = async (_ctx) => {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
-                Authorization: `Bearer ${sessionID}`,
+                Authorization: `Bearer ${authSessionID}`,
               },
             }
           )

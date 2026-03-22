@@ -26,6 +26,14 @@ interface WorkflowSummary {
   intent_summary: string
 }
 
+interface SessionLookupResponse {
+  error?: unknown
+  data?: {
+    id?: string
+    parentID?: string
+  }
+}
+
 async function readErrorMessageFromResponse(
   response: Response,
   fallbackMessage: string
@@ -85,7 +93,29 @@ function cosineSimilarity(vecA: number[], vecB: number[]): number {
 // Plugin
 // ============================================================================
 
-export const FindSimilarWorkflowPlugin: Plugin = async (_ctx) => {
+export const FindSimilarWorkflowPlugin: Plugin = async ({ client }) => {
+  async function resolveRootSessionID(sessionID: string): Promise<string> {
+    let currentSessionID = sessionID
+
+    while (true) {
+      const response = (await client.session.get({
+        path: {
+          id: currentSessionID,
+        },
+      })) as SessionLookupResponse
+      if (response.error) {
+        return currentSessionID
+      }
+
+      const parentID = response.data?.parentID
+      if (!parentID) {
+        return currentSessionID
+      }
+
+      currentSessionID = parentID
+    }
+  }
+
   return {
     tool: {
       findSimilarWorkflow: tool({
@@ -105,11 +135,12 @@ export const FindSimilarWorkflowPlugin: Plugin = async (_ctx) => {
         },
         async execute(args, context) {
           const { sessionID } = context
+          const authSessionID = await resolveRootSessionID(sessionID)
           const { description, limit = 5 } = args
 
           const workflowsResponse = await fetch(`${getApiBaseUrl()}/api/workflows`, {
             headers: {
-              Authorization: `Bearer ${sessionID}`,
+              Authorization: `Bearer ${authSessionID}`,
             },
           })
 

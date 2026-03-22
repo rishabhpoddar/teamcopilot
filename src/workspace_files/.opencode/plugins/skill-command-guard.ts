@@ -54,13 +54,42 @@ function getTaskCommand(args: unknown): string | null {
   return normalized.length > 0 ? normalized : null
 }
 
-export const SkillCommandGuard: Plugin = async () => {
+interface SessionLookupResponse {
+  error?: unknown
+  data?: {
+    id?: string
+    parentID?: string
+  }
+}
+
+export const SkillCommandGuard: Plugin = async ({ client }) => {
+  async function resolveRootSessionID(sessionID: string): Promise<string> {
+    let currentSessionID = sessionID
+
+    while (true) {
+      const response = (await client.session.get({
+        path: {
+          id: currentSessionID,
+        },
+      })) as SessionLookupResponse
+      if (response.error) {
+        return currentSessionID
+      }
+      const parentID = response.data?.parentID
+      if (!parentID) {
+        return currentSessionID
+      }
+      currentSessionID = parentID
+    }
+  }
+
   async function assertAuthorizedSkillCommand(sessionID: string, slug: string): Promise<void> {
+    const rootSessionID = await resolveRootSessionID(sessionID)
     const skillDetailsResponse = await fetch(
       `${getApiBaseUrl()}/api/skills/${encodeURIComponent(slug)}`,
       {
         headers: {
-          Authorization: `Bearer ${sessionID}`,
+          Authorization: `Bearer ${rootSessionID}`,
         },
       }
     )
