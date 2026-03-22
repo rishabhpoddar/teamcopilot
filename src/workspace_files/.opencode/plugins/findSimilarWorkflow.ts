@@ -104,7 +104,7 @@ export const FindSimilarWorkflowPlugin: Plugin = async ({ client }) => {
         },
       })) as SessionLookupResponse
       if (response.error) {
-        return currentSessionID
+        throw new Error(`Failed to resolve root session for ${currentSessionID}`)
       }
 
       const parentID = response.data?.parentID

@@ -7,7 +7,7 @@ type NormalizeResult = {
     value: string;
 };
 
-function runNormalizeCase(command: string): string {
+function runNormalizeCase(command: unknown): string {
     const pluginFile = path.resolve(
         process.cwd(),
         "src/workspace_files/.opencode/plugins/skill-command-guard.ts",
@@ -16,7 +16,7 @@ function runNormalizeCase(command: string): string {
 
     const script = `
 const pluginPath = process.env.SKILL_COMMAND_GUARD_PLUGIN_PATH;
-const command = process.env.SKILL_COMMAND_GUARD_COMMAND ?? "";
+const command = JSON.parse(process.env.SKILL_COMMAND_GUARD_COMMAND_JSON ?? "null");
 const mod = await import(pluginPath);
 console.log(JSON.stringify({ value: mod.normalizeCommandSlug(command) }));
 `;
@@ -29,7 +29,7 @@ console.log(JSON.stringify({ value: mod.normalizeCommandSlug(command) }));
             env: {
                 ...process.env,
                 SKILL_COMMAND_GUARD_PLUGIN_PATH: pluginUrl,
-                SKILL_COMMAND_GUARD_COMMAND: command,
+                SKILL_COMMAND_GUARD_COMMAND_JSON: JSON.stringify(command),
             },
         },
     );
@@ -58,8 +58,10 @@ async function main(): Promise<void> {
     assert.equal(runNormalizeCase(" /skill-name   extra"), "skill-name");
     assert.equal(runNormalizeCase("skill-name"), "");
     assert.equal(runNormalizeCase(""), "");
+    assert.equal(runNormalizeCase(undefined), "");
+    assert.equal(runNormalizeCase({ command: "/skill-name" }), "");
 
-    console.log("Skill command guard tests passed: 7");
+    console.log("Skill command guard tests passed: 9");
 }
 
 main().catch((err) => {

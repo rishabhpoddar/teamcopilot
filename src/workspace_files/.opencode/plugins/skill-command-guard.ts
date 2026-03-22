@@ -36,7 +36,10 @@ async function readErrorMessageFromResponse(
   }
 }
 
-export function normalizeCommandSlug(command: string): string {
+export function normalizeCommandSlug(command: unknown): string {
+  if (typeof command !== "string") {
+    return ""
+  }
   const trimmed = command.trim()
   const match = trimmed.match(/^\/+([^\s]+)/)
   return match?.[1] ?? ""
@@ -48,10 +51,6 @@ function getTaskCommand(args: unknown): string | null {
   }
 
   const command = (args as { command?: unknown }).command
-  if (typeof command !== "string") {
-    return null
-  }
-
   const normalized = normalizeCommandSlug(command)
   return normalized.length > 0 ? normalized : null
 }
@@ -75,7 +74,7 @@ export const SkillCommandGuard: Plugin = async ({ client }) => {
         },
       })) as SessionLookupResponse
       if (response.error) {
-        return currentSessionID
+        throw new Error(`Failed to resolve root session for ${currentSessionID}`)
       }
       const parentID = response.data?.parentID
       if (!parentID) {
