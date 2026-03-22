@@ -80,6 +80,36 @@ function assertNoSymlink(absolutePath: string, resourceLabel: string): void {
     }
 }
 
+function resolveSnapshotRootPath(rootPath: string, slug: string, resourceLabel: string): string {
+    if (!fs.existsSync(rootPath)) {
+        throw {
+            status: 404,
+            message: `${capitalize(resourceLabel)} not found for slug: ${slug}`
+        };
+    }
+
+    const lstat = fs.lstatSync(rootPath);
+    if (lstat.isSymbolicLink()) {
+        const resolvedPath = fs.realpathSync(rootPath);
+        if (!fs.statSync(resolvedPath).isDirectory()) {
+            throw {
+                status: 400,
+                message: `${capitalize(resourceLabel)} path is not a directory`
+            };
+        }
+        return resolvedPath;
+    }
+
+    if (!lstat.isDirectory()) {
+        throw {
+            status: 400,
+            message: `${capitalize(resourceLabel)} path is not a directory`
+        };
+    }
+
+    return rootPath;
+}
+
 function ensureDirectoryExists(absoluteDir: string): void {
     fs.mkdirSync(absoluteDir, { recursive: true });
 }
@@ -194,21 +224,8 @@ function computeSnapshotHash(files: WorkflowSnapshotFile[]): string {
 }
 
 export function collectCurrentResourceSnapshot(options: CollectSnapshotOptions): WorkflowSnapshot {
-    const { root_path: rootPath, slug, resource_label: resourceLabel } = options;
-
-    if (!fs.existsSync(rootPath)) {
-        throw {
-            status: 404,
-            message: `${capitalize(resourceLabel)} not found for slug: ${slug}`
-        };
-    }
-    assertNoSymlink(rootPath, resourceLabel);
-    if (!fs.statSync(rootPath).isDirectory()) {
-        throw {
-            status: 400,
-            message: `${capitalize(resourceLabel)} path is not a directory`
-        };
-    }
+    const { root_path: configuredRootPath, slug, resource_label: resourceLabel } = options;
+    const rootPath = resolveSnapshotRootPath(configuredRootPath, slug, resourceLabel);
 
     const files: WorkflowSnapshotFile[] = [];
     collectFilesRecursive(rootPath, "", files, resourceLabel);
@@ -399,8 +416,7 @@ export async function restoreResourceToApprovedSnapshot(
         };
     }
 
-    const rootPath = config.root_path;
-    assertNoSymlink(rootPath, config.resource_label);
+    const rootPath = resolveSnapshotRootPath(config.root_path, config.slug, config.resource_label);
 
     const currentPaths: string[] = [];
     collectCurrentNonIgnoredFilePaths(rootPath, "", currentPaths, config.resource_label);
