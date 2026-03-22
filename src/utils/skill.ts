@@ -86,7 +86,11 @@ export function listSkillSlugs(): string[] {
         const skillEntryPath = path.join(skillsDir, entry.name);
         if (!entry.isDirectory()) {
             if (!entry.isSymbolicLink()) continue;
-            if (!fs.statSync(skillEntryPath).isDirectory()) continue;
+            try {
+                if (!fs.statSync(skillEntryPath).isDirectory()) continue;
+            } catch {
+                continue;
+            }
         }
         const canonicalManifestPath = path.join(skillEntryPath, "SKILL.md");
         if (fs.existsSync(canonicalManifestPath)) {
