@@ -42,7 +42,10 @@ function extractDeviceCode(instructions: string): string {
     return match[1].trim();
 }
 
-function isVisibleAuthMethod(method: ProviderAuthMethod): boolean {
+function isVisibleAuthMethod(method: ProviderAuthMethod, providerId: string): boolean {
+    if (providerId === 'anthropic' && method.type === 'oauth') {
+        return false;
+    }
     if (method.type !== 'oauth') {
         return true;
     }
@@ -92,7 +95,12 @@ export default function OpencodeAuthSetup() {
     const [isLoading, setIsLoading] = useState(true);
     const autoOauthRequestRef = useRef<AbortController | null>(null);
 
-    const methods = useMemo(() => (status?.methods || []).filter(isVisibleAuthMethod), [status?.methods]);
+    const methods = useMemo(() => {
+        if (!status) {
+            return [];
+        }
+        return status.methods.filter((method) => isVisibleAuthMethod(method, status.provider_id));
+    }, [status]);
     const authHeaders = token ? { Authorization: `Bearer ${token}` } : undefined;
 
     function getAxiosErrorMessage(err: unknown, fallback: string): string {
@@ -131,7 +139,7 @@ export default function OpencodeAuthSetup() {
             const response = await axiosInstance.get<StatusResponse>('/api/opencode-auth/status', {
                 headers: authHeaders
             });
-            const visibleMethods = response.data.methods.filter(isVisibleAuthMethod);
+            const visibleMethods = response.data.methods.filter((method) => isVisibleAuthMethod(method, response.data.provider_id));
             setStatus({
                 ...response.data,
                 methods: visibleMethods,
