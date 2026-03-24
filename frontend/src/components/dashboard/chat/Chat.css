@@ -150,7 +150,14 @@
     flex: 1;
     min-height: 0;
     display: grid;
-    grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+}
+
+.chat-workspace.with-diff {
+    grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.55fr);
+}
+
+.chat-workspace.without-diff {
+    grid-template-columns: minmax(0, 1fr);
 }
 
 .chat-column {
@@ -1188,9 +1195,17 @@
         grid-template-rows: minmax(0, 1fr) minmax(240px, 38%);
     }
 
+    .chat-workspace.without-diff {
+        grid-template-rows: minmax(0, 1fr);
+    }
+
     .chat-column-main {
         border-right: 0;
         border-bottom: 1px solid #333;
+    }
+
+    .chat-workspace.without-diff .chat-column-main {
+        border-bottom: 0;
     }
 }
 

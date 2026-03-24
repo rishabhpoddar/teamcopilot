@@ -800,6 +800,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
     }, [activeSessionId, loadSessionDiff]);
 
     const activeDraftMessage = activeSessionId ? (draftMessagesBySessionId[activeSessionId] ?? '') : '';
+    const hasVisibleSessionDiff = Boolean(sessionDiff && sessionDiff.files.length > 0);
     const toggleExpandedDiffPath = useCallback((path: string) => {
         setExpandedDiffPaths((prev) => (
             prev.includes(path)
@@ -854,7 +855,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
             />
             <div className="chat-main">
                 {activeSessionId ? (
-                    <div className="chat-workspace">
+                    <div className={`chat-workspace ${hasVisibleSessionDiff ? 'with-diff' : 'without-diff'}`}>
                         <div className="chat-column chat-column-main">
                             <MessageList
                                 messages={messages}
@@ -884,20 +885,22 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                                 draftMessage={activeDraftMessage}
                             />
                         </div>
-                        <div className="chat-column chat-column-diff">
-                            <SessionFileDiffPanel
-                                diff={sessionDiff}
-                                loading={sessionDiffLoading}
-                                error={sessionDiffError}
-                                expandedPaths={expandedDiffPaths}
-                                onSelectPath={toggleExpandedDiffPath}
-                                onRefresh={() => {
-                                    if (activeSessionId && activeSessionId !== PENDING_SESSION_ID) {
-                                        void loadSessionDiff(activeSessionId);
-                                    }
-                                }}
-                            />
-                        </div>
+                        {hasVisibleSessionDiff && (
+                            <div className="chat-column chat-column-diff">
+                                <SessionFileDiffPanel
+                                    diff={sessionDiff}
+                                    loading={sessionDiffLoading}
+                                    error={sessionDiffError}
+                                    expandedPaths={expandedDiffPaths}
+                                    onSelectPath={toggleExpandedDiffPath}
+                                    onRefresh={() => {
+                                        if (activeSessionId && activeSessionId !== PENDING_SESSION_ID) {
+                                            void loadSessionDiff(activeSessionId);
+                                        }
+                                    }}
+                                />
+                            </div>
+                        )}
                     </div>
                 ) : (
                     <div className="chat-empty">
