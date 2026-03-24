@@ -1,3 +1,5 @@
+import type { WorkflowApprovalDiffResponse } from "../../../src/types/shared/workflow";
+
 // Session type for our local database
 export interface ChatSession {
     id: string;
@@ -276,6 +278,8 @@ export interface PermissionRequest {
         callID: string;
     };
 }
+
+export type ChatSessionDiffResponse = WorkflowApprovalDiffResponse;
 
 interface PermissionAskedEvent {
     type: "permission.asked";

@@ -971,6 +971,195 @@
     font-size: 0.875rem;
 }
 
+.chat-session-diff-panel {
+    border-top: 1px solid #333;
+    background: #171717;
+    min-height: 220px;
+    max-height: 320px;
+    display: flex;
+    flex-direction: column;
+}
+
+.chat-session-diff-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #2a2a2a;
+}
+
+.chat-session-diff-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.chat-session-diff-summary {
+    font-size: 0.8rem;
+    color: #999;
+    margin-top: 0.2rem;
+}
+
+.chat-session-diff-refresh {
+    padding: 0.45rem 0.75rem;
+    font-size: 0.8rem;
+}
+
+.chat-session-diff-state {
+    padding: 1rem;
+    color: #999;
+    font-size: 0.9rem;
+}
+
+.chat-session-diff-state.error {
+    color: #ff8f8f;
+}
+
+.chat-session-diff-body {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 240px minmax(0, 1fr);
+}
+
+.chat-session-diff-file-list {
+    overflow-y: auto;
+    border-right: 1px solid #2a2a2a;
+    padding: 0.5rem;
+}
+
+.chat-session-diff-file-item {
+    width: 100%;
+    margin-bottom: 0.35rem;
+    padding: 0.6rem 0.7rem;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.chat-session-diff-file-item:hover {
+    background: #202020;
+}
+
+.chat-session-diff-file-item.active {
+    background: #232a31;
+    border-color: #35516c;
+}
+
+.chat-session-diff-file-path {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.82rem;
+}
+
+.chat-session-diff-file-badge {
+    flex: 0 0 auto;
+    border-radius: 999px;
+    padding: 0.18rem 0.5rem;
+    font-size: 0.72rem;
+    text-transform: capitalize;
+    background: #2d2d2d;
+    color: #ddd;
+}
+
+.chat-session-diff-file-badge.added {
+    background: rgba(46, 160, 67, 0.18);
+    color: #7ee787;
+}
+
+.chat-session-diff-file-badge.modified {
+    background: rgba(187, 128, 9, 0.2);
+    color: #f2cc60;
+}
+
+.chat-session-diff-file-badge.deleted {
+    background: rgba(248, 81, 73, 0.18);
+    color: #ff938a;
+}
+
+.chat-session-diff-file-badge.kind {
+    background: #2a2a2a;
+    color: #bbb;
+}
+
+.chat-session-diff-viewer {
+    min-width: 0;
+    overflow: auto;
+    padding: 0.75rem 1rem 1rem;
+}
+
+.chat-session-diff-viewer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+}
+
+.chat-session-diff-viewer-path {
+    font-size: 0.88rem;
+    font-weight: 600;
+    word-break: break-word;
+}
+
+.chat-session-diff-viewer-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.chat-session-diff-message {
+    margin-bottom: 0.75rem;
+    color: #bfbfbf;
+    font-size: 0.82rem;
+}
+
+.chat-session-diff-patch {
+    border: 1px solid #2f2f2f;
+    border-radius: 8px;
+    background: #111;
+    overflow: auto;
+}
+
+.chat-session-diff-line {
+    padding: 0.08rem 0.75rem;
+    font-family: 'Monaco', 'Menlo', monospace;
+    font-size: 0.79rem;
+    line-height: 1.5;
+    white-space: pre;
+}
+
+.chat-session-diff-line.context {
+    color: #c6c6c6;
+}
+
+.chat-session-diff-line.hunk {
+    color: #8ab4f8;
+    background: rgba(138, 180, 248, 0.08);
+}
+
+.chat-session-diff-line.added {
+    color: #7ee787;
+    background: rgba(46, 160, 67, 0.14);
+}
+
+.chat-session-diff-line.removed {
+    color: #ff938a;
+    background: rgba(248, 81, 73, 0.14);
+}
+
+.chat-session-diff-line.truncated {
+    color: #f2cc60;
+}
+
 /* Light Mode Overrides */
 @media (prefers-color-scheme: light) {
     .chat-layout {

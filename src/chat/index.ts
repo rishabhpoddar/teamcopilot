@@ -25,6 +25,11 @@ import {
 import { assertCondition } from "../utils/assert";
 import { sanitizeForClient } from "../utils/redact";
 import { abortOpencodeSession } from "../utils/session-abort";
+import {
+    buildChatSessionFileDiffResponse,
+    captureCurrentFileBaseline,
+    normalizeWorkspaceRelativePath,
+} from "../utils/chat-session-file-diff";
 
 const router = express.Router({ mergeParams: true });
 const USER_INSTRUCTIONS_FILENAME = "USER_INSTRUCTIONS.md";
@@ -51,17 +56,6 @@ interface ChatFilePartInput {
 }
 
 type ChatMessagePartInput = ChatTextPartInput | ChatFilePartInput;
-
-function normalizeWorkspaceRelativePath(rawPath: string): string {
-    const normalized = path.posix.normalize(rawPath.split("\\").join("/").trim());
-    if (!normalized || normalized === "." || normalized.startsWith("../") || normalized === ".." || normalized.startsWith("/")) {
-        throw {
-            status: 400,
-            message: "file path must be a workspace-relative path"
-        };
-    }
-    return normalized;
-}
 
 function parseMessageParts(rawParts: unknown): ChatMessagePartInput[] {
     if (!Array.isArray(rawParts)) {
@@ -518,6 +512,108 @@ router.get('/sessions/:id', apiHandler(async (req, res) => {
             opencode_data: result.data
         }
     });
+}, true));
+
+// POST /api/chat/sessions/file-diff/capture-baseline - Capture pre-apply_patch baseline for current opencode session
+router.post('/sessions/file-diff/capture-baseline', apiHandler(async (req, res) => {
+    if (!req.opencode_session_id) {
+        throw {
+            status: 403,
+            message: 'This endpoint requires an opencode session token'
+        };
+    }
+
+    const rawPath = req.body?.path;
+    if (typeof rawPath !== 'string') {
+        throw {
+            status: 400,
+            message: 'path is required and must be a string'
+        };
+    }
+
+    const relativePath = normalizeWorkspaceRelativePath(rawPath);
+    const session = await prisma.chat_sessions.findFirst({
+        where: {
+            opencode_session_id: req.opencode_session_id,
+            user_id: req.userId!,
+        }
+    });
+
+    if (!session) {
+        throw {
+            status: 404,
+            message: 'Session not found'
+        };
+    }
+
+    const existing = await prisma.chat_session_tracked_files.findUnique({
+        where: {
+            chat_session_id_relative_path: {
+                chat_session_id: session.id,
+                relative_path: relativePath,
+            }
+        }
+    });
+
+    if (!existing) {
+        const baseline = captureCurrentFileBaseline(relativePath);
+        const now = BigInt(Date.now());
+        await prisma.chat_session_tracked_files.create({
+            data: {
+                chat_session_id: session.id,
+                relative_path: relativePath,
+                existed_at_baseline: baseline.existed_at_baseline,
+                content_kind: baseline.content_kind,
+                text_content: baseline.text_content,
+                binary_content: baseline.binary_content ? new Uint8Array(baseline.binary_content) : null,
+                size_bytes: baseline.size_bytes,
+                content_sha256: baseline.content_sha256,
+                created_at: now,
+                updated_at: now,
+            }
+        });
+    }
+
+    res.json({ success: true });
+}, true));
+
+// GET /api/chat/sessions/:id/file-diff - Get tracked file diffs for a chat session
+router.get('/sessions/:id/file-diff', apiHandler(async (req, res) => {
+    const id = req.params.id as string;
+    const session = await prisma.chat_sessions.findFirst({
+        where: {
+            id,
+            user_id: req.userId!,
+        }
+    });
+
+    if (!session) {
+        throw {
+            status: 404,
+            message: 'Session not found'
+        };
+    }
+
+    const trackedFiles = await prisma.chat_session_tracked_files.findMany({
+        where: {
+            chat_session_id: session.id,
+        },
+        orderBy: {
+            relative_path: 'asc'
+        }
+    });
+
+    const diff = buildChatSessionFileDiffResponse(trackedFiles.map((trackedFile) => ({
+        relative_path: trackedFile.relative_path,
+        existed_at_baseline: trackedFile.existed_at_baseline,
+        content_kind: trackedFile.content_kind as "text" | "binary" | "missing",
+        text_content: trackedFile.text_content,
+        binary_content: trackedFile.binary_content ? new Uint8Array(trackedFile.binary_content) : null,
+        size_bytes: trackedFile.size_bytes,
+        content_sha256: trackedFile.content_sha256,
+    })));
+
+    res.json(diff);
 }, true));
 
 /*

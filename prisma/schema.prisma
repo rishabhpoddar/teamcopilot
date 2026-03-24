@@ -60,7 +60,26 @@ model chat_sessions {
   title               String
   created_at          BigInt
   updated_at          BigInt
-  user                users  @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  trackedFiles        chat_session_tracked_files[]
+  user                users                      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+}
+
+model chat_session_tracked_files {
+  id                  String        @id @default(uuid())
+  chat_session_id     String
+  relative_path       String
+  existed_at_baseline Boolean
+  content_kind        String // "text" | "binary" | "missing"
+  text_content        String?
+  binary_content      Bytes?
+  size_bytes          Int?
+  content_sha256      String?
+  created_at          BigInt
+  updated_at          BigInt
+  session             chat_sessions @relation(fields: [chat_session_id], references: [id], onDelete: Cascade)
+
+  @@unique([chat_session_id, relative_path])
+  @@index([chat_session_id])
 }
 
 model tool_execution_permissions {
