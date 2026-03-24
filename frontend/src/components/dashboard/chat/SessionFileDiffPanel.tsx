@@ -4,7 +4,7 @@ interface SessionFileDiffPanelProps {
     diff: ChatSessionDiffResponse | null;
     loading: boolean;
     error: string | null;
-    selectedPath: string | null;
+    expandedPaths: string[];
     onSelectPath: (path: string) => void;
     onRefresh: () => void;
 }
@@ -13,12 +13,10 @@ export default function SessionFileDiffPanel({
     diff,
     loading,
     error,
-    selectedPath,
+    expandedPaths,
     onSelectPath,
     onRefresh
 }: SessionFileDiffPanelProps) {
-    const selectedFile = diff?.files.find((file) => file.path === selectedPath) ?? diff?.files[0] ?? null;
-
     return (
         <section className="chat-session-diff-panel">
             <div className="chat-session-diff-header">
@@ -36,76 +34,74 @@ export default function SessionFileDiffPanel({
                     onClick={onRefresh}
                     disabled={loading}
                 >
-                    {loading ? 'Refreshing...' : 'Refresh'}
+                    {'Refresh'}
                 </button>
             </div>
 
             {error && <div className="chat-session-diff-state error">{error}</div>}
-            {!error && loading && <div className="chat-session-diff-state">Loading session diff...</div>}
+            {!error && loading && null}
             {!error && !loading && diff && diff.files.length === 0 && (
                 <div className="chat-session-diff-state">No files changed via this AI session yet.</div>
             )}
 
             {!error && !loading && diff && diff.files.length > 0 && (
-                <div className="chat-session-diff-body">
-                    <div className="chat-session-diff-file-list">
-                        {diff.files.map((file) => (
-                            <button
-                                key={`${file.status}:${file.path}`}
-                                type="button"
-                                className={`chat-session-diff-file-item ${selectedFile?.path === file.path ? 'active' : ''}`}
-                                onClick={() => onSelectPath(file.path)}
-                            >
-                                <span className="chat-session-diff-file-path">{file.path}</span>
-                                <span className={`chat-session-diff-file-badge ${file.status}`}>{file.status}</span>
-                            </button>
-                        ))}
-                    </div>
-
-                    <div className="chat-session-diff-viewer">
-                        {selectedFile && (
-                            <>
-                                <div className="chat-session-diff-viewer-header">
-                                    <div className="chat-session-diff-viewer-path">{selectedFile.path}</div>
+                <div className="chat-session-diff-body vertical">
+                    {diff.files.map((file) => {
+                        const isExpanded = expandedPaths.includes(file.path);
+                        return (
+                            <article key={`${file.status}:${file.path}`} className="chat-session-diff-file-card">
+                                <button
+                                    type="button"
+                                    className={`chat-session-diff-file-item ${isExpanded ? 'active' : ''}`}
+                                    onClick={() => onSelectPath(file.path)}
+                                >
+                                    <div className="chat-session-diff-file-item-main">
+                                        <span className="chat-session-diff-file-chevron">{isExpanded ? '▾' : '▸'}</span>
+                                        <span className="chat-session-diff-file-path">{file.path}</span>
+                                    </div>
                                     <div className="chat-session-diff-viewer-meta">
-                                        <span className={`chat-session-diff-file-badge ${selectedFile.status}`}>{selectedFile.status}</span>
-                                        <span className="chat-session-diff-file-badge kind">{selectedFile.kind}</span>
+                                        <span className={`chat-session-diff-file-badge ${file.status}`}>{file.status}</span>
+                                        <span className="chat-session-diff-file-badge kind">{file.kind}</span>
                                     </div>
-                                </div>
+                                </button>
 
-                                {selectedFile.message && (
-                                    <div className="chat-session-diff-message">
-                                        {selectedFile.message}
-                                        {(selectedFile.old_size_bytes !== null || selectedFile.new_size_bytes !== null) && (
-                                            <span> ({selectedFile.old_size_bytes ?? 0}B → {selectedFile.new_size_bytes ?? 0}B)</span>
+                                {isExpanded && (
+                                    <div className="chat-session-diff-file-expanded">
+                                        {file.message && (
+                                            <div className="chat-session-diff-message">
+                                                {file.message}
+                                                {(file.old_size_bytes !== null || file.new_size_bytes !== null) && (
+                                                    <span> ({file.old_size_bytes ?? 0}B → {file.new_size_bytes ?? 0}B)</span>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {file.patch_lines && (
+                                            <div className="chat-session-diff-patch">
+                                                {file.patch_lines.map((line, index) => {
+                                                    const lineClass = line.startsWith('+')
+                                                        ? 'added'
+                                                        : line.startsWith('-')
+                                                            ? 'removed'
+                                                            : line.startsWith('@@')
+                                                                ? 'hunk'
+                                                                : 'context';
+                                                    return (
+                                                        <div key={`${file.path}-${index}`} className={`chat-session-diff-line ${lineClass}`}>
+                                                            {line}
+                                                        </div>
+                                                    );
+                                                })}
+                                                {file.is_truncated && (
+                                                    <div className="chat-session-diff-line truncated">... diff truncated ...</div>
+                                                )}
+                                            </div>
                                         )}
                                     </div>
                                 )}
-
-                                {selectedFile.patch_lines && (
-                                    <div className="chat-session-diff-patch">
-                                        {selectedFile.patch_lines.map((line, index) => {
-                                            const lineClass = line.startsWith('+')
-                                                ? 'added'
-                                                : line.startsWith('-')
-                                                    ? 'removed'
-                                                    : line.startsWith('@@')
-                                                        ? 'hunk'
-                                                        : 'context';
-                                            return (
-                                                <div key={`${selectedFile.path}-${index}`} className={`chat-session-diff-line ${lineClass}`}>
-                                                    {line}
-                                                </div>
-                                            );
-                                        })}
-                                        {selectedFile.is_truncated && (
-                                            <div className="chat-session-diff-line truncated">... diff truncated ...</div>
-                                        )}
-                                    </div>
-                                )}
-                            </>
-                        )}
-                    </div>
+                            </article>
+                        );
+                    })}
                 </div>
             )}
         </section>

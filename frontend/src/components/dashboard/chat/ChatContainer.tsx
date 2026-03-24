@@ -72,7 +72,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
     const [sessionDiff, setSessionDiff] = useState<ChatSessionDiffResponse | null>(null);
     const [sessionDiffLoading, setSessionDiffLoading] = useState(false);
     const [sessionDiffError, setSessionDiffError] = useState<string | null>(null);
-    const [selectedDiffPath, setSelectedDiffPath] = useState<string | null>(null);
+    const [expandedDiffPaths, setExpandedDiffPaths] = useState<string[]>([]);
     const [draftMessagesBySessionId, setDraftMessagesBySessionId] = useState<Record<string, string>>({});
     const [pendingPermissions, setPendingPermissions] = useState<PermissionRequest[]>([]);
     const [respondingPermissionIds, setRespondingPermissionIds] = useState<Record<string, boolean>>({});
@@ -428,11 +428,9 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
             });
             const nextDiff = response.data as ChatSessionDiffResponse;
             setSessionDiff(nextDiff);
-            setSelectedDiffPath((prev) => {
-                if (prev && nextDiff.files.some((file) => file.path === prev)) {
-                    return prev;
-                }
-                return nextDiff.files[0]?.path ?? null;
+            setExpandedDiffPaths((prev) => {
+                const validExpandedPaths = prev.filter((path) => nextDiff.files.some((file) => file.path === path));
+                return validExpandedPaths;
             });
         } catch (err: unknown) {
             const errorMessage = err instanceof AxiosError
@@ -470,7 +468,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
             setRespondingPermissionIds({});
             setSessionDiff(null);
             setSessionDiffError(null);
-            setSelectedDiffPath(null);
+            setExpandedDiffPaths([]);
         }
 
         return () => {
@@ -802,6 +800,13 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
     }, [activeSessionId, loadSessionDiff]);
 
     const activeDraftMessage = activeSessionId ? (draftMessagesBySessionId[activeSessionId] ?? '') : '';
+    const toggleExpandedDiffPath = useCallback((path: string) => {
+        setExpandedDiffPaths((prev) => (
+            prev.includes(path)
+                ? prev.filter((item) => item !== path)
+                : [...prev, path]
+        ));
+    }, []);
 
     // Double-escape to abort
     useEffect(() => {
@@ -849,47 +854,51 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
             />
             <div className="chat-main">
                 {activeSessionId ? (
-                    <>
-                        <MessageList
-                            messages={messages}
-                            parts={parts}
-                            isStreaming={isStreaming}
-                            isWaitingForInput={isWaitingForInput || pendingPermissions.length > 0}
-                            onAnswer={sendToolAnswer}
-                            pendingPermissions={pendingPermissions}
-                            onPermissionRespond={sendPermissionResponse}
-                            respondingPermissionIds={respondingPermissionIds}
-                        />
-                        <SessionFileDiffPanel
-                            diff={sessionDiff}
-                            loading={sessionDiffLoading}
-                            error={sessionDiffError}
-                            selectedPath={selectedDiffPath}
-                            onSelectPath={setSelectedDiffPath}
-                            onRefresh={() => {
-                                if (activeSessionId && activeSessionId !== PENDING_SESSION_ID) {
-                                    void loadSessionDiff(activeSessionId);
-                                }
-                            }}
-                        />
-                        <ChatInput
-                            onSend={sendMessage}
-                            fetchFileSuggestions={searchMentionFiles}
-                            onDraftChange={(content: string) => {
-                                if (!activeSessionId) {
-                                    return;
-                                }
-                                setDraftMessagesBySessionId(prev => ({
-                                    ...prev,
-                                    [activeSessionId]: content
-                                }));
-                            }}
-                            onAbort={abortResponse}
-                            disabled={!activeSessionId}
-                            isStreaming={isStreaming}
-                            draftMessage={activeDraftMessage}
-                        />
-                    </>
+                    <div className="chat-workspace">
+                        <div className="chat-column chat-column-main">
+                            <MessageList
+                                messages={messages}
+                                parts={parts}
+                                isStreaming={isStreaming}
+                                isWaitingForInput={isWaitingForInput || pendingPermissions.length > 0}
+                                onAnswer={sendToolAnswer}
+                                pendingPermissions={pendingPermissions}
+                                onPermissionRespond={sendPermissionResponse}
+                                respondingPermissionIds={respondingPermissionIds}
+                            />
+                            <ChatInput
+                                onSend={sendMessage}
+                                fetchFileSuggestions={searchMentionFiles}
+                                onDraftChange={(content: string) => {
+                                    if (!activeSessionId) {
+                                        return;
+                                    }
+                                    setDraftMessagesBySessionId(prev => ({
+                                        ...prev,
+                                        [activeSessionId]: content
+                                    }));
+                                }}
+                                onAbort={abortResponse}
+                                disabled={!activeSessionId}
+                                isStreaming={isStreaming}
+                                draftMessage={activeDraftMessage}
+                            />
+                        </div>
+                        <div className="chat-column chat-column-diff">
+                            <SessionFileDiffPanel
+                                diff={sessionDiff}
+                                loading={sessionDiffLoading}
+                                error={sessionDiffError}
+                                expandedPaths={expandedDiffPaths}
+                                onSelectPath={toggleExpandedDiffPath}
+                                onRefresh={() => {
+                                    if (activeSessionId && activeSessionId !== PENDING_SESSION_ID) {
+                                        void loadSessionDiff(activeSessionId);
+                                    }
+                                }}
+                            />
+                        </div>
+                    </div>
                 ) : (
                     <div className="chat-empty">
                         <h3>AI Assistant</h3>
