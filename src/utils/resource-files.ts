@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { diffChars } from "diff";
 import fs from "fs";
 import path from "path";
 import {
@@ -222,124 +223,36 @@ export function createResourceFileManager(options: ResourceFileManagerOptions): 
         return false;
     }
 
-    function splitLinesPreserveNewline(input: string): Array<{ line: string; newline: string }> {
-        const parts: Array<{ line: string; newline: string }> = [];
-        const regex = /([^\r\n]*)(\r\n|\n|\r|$)/g;
-        let match: RegExpExecArray | null;
-        while ((match = regex.exec(input)) !== null) {
-            const line = match[1];
-            const newline = match[2];
-            if (line === "" && newline === "" && match.index === input.length) {
-                break;
-            }
-            parts.push({ line, newline });
-            if (newline === "") {
-                break;
-            }
-        }
-        return parts;
-    }
-
-    function toLineTokens(input: string): string[] {
-        return splitLinesPreserveNewline(input).map((item) => item.line + item.newline);
-    }
-
-    function buildLcsMatrix(a: string[], b: string[]): number[][] {
-        const matrix = Array.from({ length: a.length + 1 }, () => Array<number>(b.length + 1).fill(0));
-        for (let i = a.length - 1; i >= 0; i -= 1) {
-            for (let j = b.length - 1; j >= 0; j -= 1) {
-                matrix[i][j] = a[i] === b[j]
-                    ? matrix[i + 1][j + 1] + 1
-                    : Math.max(matrix[i + 1][j], matrix[i][j + 1]);
-            }
-        }
-        return matrix;
-    }
-
-    function commonPrefixLength(a: string, b: string): number {
-        const limit = Math.min(a.length, b.length);
-        let index = 0;
-        while (index < limit && a[index] === b[index]) {
-            index += 1;
-        }
-        return index;
-    }
-
-    function commonSuffixLength(a: string, b: string, maxLength: number): number {
-        let index = 0;
-        while (
-            index < maxLength
-            && a[a.length - 1 - index] === b[b.length - 1 - index]
-        ) {
-            index += 1;
-        }
-        return index;
-    }
-
     function buildSanitizedBoundaryMap(raw: string, sanitized: string): number[] {
-        const rawChars = Array.from(raw);
-        const sanitizedChars = Array.from(sanitized);
-        const lcs = Array.from({ length: rawChars.length + 1 }, () => Array<number>(sanitizedChars.length + 1).fill(0));
-
-        for (let i = rawChars.length - 1; i >= 0; i -= 1) {
-            for (let j = sanitizedChars.length - 1; j >= 0; j -= 1) {
-                lcs[i][j] = rawChars[i] === sanitizedChars[j]
-                    ? lcs[i + 1][j + 1] + 1
-                    : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
-            }
-        }
-
-        const boundaries = Array<number>(sanitizedChars.length + 1).fill(rawChars.length);
+        const boundaries = Array<number>(sanitized.length + 1).fill(raw.length);
         let rawIndex = 0;
         let sanitizedIndex = 0;
         boundaries[0] = 0;
 
-        while (rawIndex < rawChars.length && sanitizedIndex < sanitizedChars.length) {
-            if (rawChars[rawIndex] === sanitizedChars[sanitizedIndex]) {
+        for (const change of diffChars(raw, sanitized)) {
+            const segmentLength = change.value.length;
+
+            if (change.added) {
+                for (let offset = 0; offset < segmentLength; offset += 1) {
+                    sanitizedIndex += 1;
+                    boundaries[sanitizedIndex] = rawIndex;
+                }
+                continue;
+            }
+
+            if (change.removed) {
+                rawIndex += segmentLength;
+                continue;
+            }
+
+            for (let offset = 0; offset < segmentLength; offset += 1) {
                 rawIndex += 1;
                 sanitizedIndex += 1;
                 boundaries[sanitizedIndex] = rawIndex;
-                continue;
             }
-
-            if (lcs[rawIndex + 1][sanitizedIndex] >= lcs[rawIndex][sanitizedIndex + 1]) {
-                rawIndex += 1;
-                continue;
-            }
-
-            sanitizedIndex += 1;
-            boundaries[sanitizedIndex] = rawIndex;
-        }
-
-        while (sanitizedIndex < sanitizedChars.length) {
-            sanitizedIndex += 1;
-            boundaries[sanitizedIndex] = rawIndex;
         }
 
         return boundaries;
-    }
-
-    function applyEditedTokenToRawToken(rawToken: string, sanitizedToken: string, editedToken: string): string {
-        if (editedToken === sanitizedToken) {
-            return rawToken;
-        }
-        if (rawToken === sanitizedToken) {
-            return editedToken;
-        }
-
-        const prefixLength = commonPrefixLength(sanitizedToken, editedToken);
-        const suffixLength = commonSuffixLength(
-            sanitizedToken,
-            editedToken,
-            Math.min(sanitizedToken.length, editedToken.length) - prefixLength
-        );
-        const boundaries = buildSanitizedBoundaryMap(rawToken, sanitizedToken);
-        const rawStart = boundaries[prefixLength] ?? rawToken.length;
-        const rawEnd = boundaries[sanitizedToken.length - suffixLength] ?? rawToken.length;
-
-        return rawToken.slice(0, rawStart)
-            + editedToken.slice(prefixLength, editedToken.length - suffixLength)
-            + rawToken.slice(rawEnd);
     }
 
     function mergeRedactedEditorContent(currentRaw: string, editedContent: string): string {
@@ -348,63 +261,24 @@ export function createResourceFileManager(options: ResourceFileManagerOptions): 
             return currentRaw;
         }
 
-        const rawTokens = toLineTokens(currentRaw);
-        const sanitizedTokens = toLineTokens(sanitizedCurrent);
-        const editedTokens = toLineTokens(editedContent);
-        const lcs = buildLcsMatrix(sanitizedTokens, editedTokens);
-
+        const boundaries = buildSanitizedBoundaryMap(currentRaw, sanitizedCurrent);
         const output: string[] = [];
-        let currentIndex = 0;
-        let editedIndex = 0;
+        let sanitizedIndex = 0;
 
-        while (currentIndex < sanitizedTokens.length || editedIndex < editedTokens.length) {
-            if (
-                currentIndex < sanitizedTokens.length
-                && editedIndex < editedTokens.length
-                && sanitizedTokens[currentIndex] === editedTokens[editedIndex]
-            ) {
-                output.push(rawTokens[currentIndex]);
-                currentIndex += 1;
-                editedIndex += 1;
+        for (const change of diffChars(sanitizedCurrent, editedContent)) {
+            if (change.added) {
+                output.push(change.value);
                 continue;
             }
 
-            const startCurrent = currentIndex;
-            const startEdited = editedIndex;
+            const nextSanitizedIndex = sanitizedIndex + change.value.length;
+            const rawStart = boundaries[sanitizedIndex] ?? currentRaw.length;
+            const rawEnd = boundaries[nextSanitizedIndex] ?? currentRaw.length;
 
-            while (
-                currentIndex < sanitizedTokens.length
-                && editedIndex < editedTokens.length
-                && sanitizedTokens[currentIndex] !== editedTokens[editedIndex]
-            ) {
-                if (lcs[currentIndex + 1][editedIndex] >= lcs[currentIndex][editedIndex + 1]) {
-                    currentIndex += 1;
-                } else {
-                    editedIndex += 1;
-                }
+            if (!change.removed) {
+                output.push(currentRaw.slice(rawStart, rawEnd));
             }
-
-            if (editedIndex === editedTokens.length) {
-                currentIndex = sanitizedTokens.length;
-            } else if (currentIndex === sanitizedTokens.length) {
-                editedIndex = editedTokens.length;
-            }
-
-            const removedCount = currentIndex - startCurrent;
-            const insertedCount = editedIndex - startEdited;
-            const pairedCount = Math.min(removedCount, insertedCount);
-
-            for (let offset = 0; offset < pairedCount; offset += 1) {
-                output.push(applyEditedTokenToRawToken(
-                    rawTokens[startCurrent + offset],
-                    sanitizedTokens[startCurrent + offset],
-                    editedTokens[startEdited + offset]
-                ));
-            }
-
-            for (let offset = pairedCount; offset < insertedCount; offset += 1) {
-                output.push(editedTokens[startEdited + offset]);
-            }
+            sanitizedIndex = nextSanitizedIndex;
         }
 
         return output.join("");
