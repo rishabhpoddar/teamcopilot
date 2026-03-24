@@ -1,6 +1,6 @@
 const SENSITIVE_KEY_PATTERN = /(token|secret|password|passwd|api[_-]?key|auth|credential)/i;
 
-export function maskValue(value: string): string {
+function maskValue(value: string): string {
     if (value.startsWith("***")) {
         return value;
     }
@@ -9,7 +9,7 @@ export function maskValue(value: string): string {
     return `***${tail}`;
 }
 
-export function isLikelySensitiveKey(key: string): boolean {
+function isLikelySensitiveKey(key: string): boolean {
     return SENSITIVE_KEY_PATTERN.test(key);
 }
 
