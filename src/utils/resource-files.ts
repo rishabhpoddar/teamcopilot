@@ -10,7 +10,7 @@ import {
     FileSaveResponse,
     FileTreeResponse,
 } from "../types/workflow-files";
-import { isLikelySensitiveKey, maskValue, sanitizeStringContent } from "./redact";
+import { sanitizeStringContent } from "./redact";
 
 interface ResourceFileManagerOptions {
     getResourcePath: (slug: string) => string;
@@ -27,18 +27,6 @@ interface ResourceFileManager {
     renamePath: (slug: string, rawPath: string | undefined, newName: string) => { old_path: string; new_path: string; node: FileNode };
     deletePath: (slug: string, rawPath: string | undefined) => void;
 }
-
-type ParsedEnvAssignment =
-    | {
-        kind: "assignment";
-        prefix: string;
-        key: string;
-        separator: string;
-        quote: '"' | "'" | null;
-        value: string;
-        suffix: string;
-    }
-    | { kind: "other" };
 
 export function createResourceFileManager(options: ResourceFileManagerOptions): ResourceFileManager {
     const { getResourcePath, resourceLabel, editorLabel } = options;
@@ -180,20 +168,6 @@ export function createResourceFileManager(options: ResourceFileManagerOptions): 
         }
     }
 
-    function findClosingQuoteIndex(input: string, quote: '"' | "'"): number {
-        for (let i = 1; i < input.length; i += 1) {
-            const ch = input[i];
-            if (ch === "\\") {
-                i += 1;
-                continue;
-            }
-            if (ch === quote) {
-                return i;
-            }
-        }
-        return -1;
-    }
-
     function toFileNode(parentRelativePath: string, name: string, absolutePath: string): FileNode {
         const lstat = fs.lstatSync(absolutePath);
         const isDir = lstat.isDirectory();
@@ -248,80 +222,6 @@ export function createResourceFileManager(options: ResourceFileManagerOptions): 
         return false;
     }
 
-    function parseEnvAssignmentLine(line: string): ParsedEnvAssignment {
-        const match = line.match(/^(\s*(?:export\s+)?)([A-Za-z_][A-Za-z0-9_-]*)(\s*=\s*)(.*)$/);
-        if (!match) {
-            return { kind: "other" };
-        }
-        const [, prefix, key, separator, remainder] = match;
-
-        if (remainder.startsWith('"')) {
-            const closeIdx = findClosingQuoteIndex(remainder, '"');
-            if (closeIdx === -1) {
-                return { kind: "other" };
-            }
-            return {
-                kind: "assignment",
-                prefix,
-                key,
-                separator,
-                quote: '"',
-                value: remainder.slice(1, closeIdx),
-                suffix: remainder.slice(closeIdx + 1),
-            };
-        }
-        if (remainder.startsWith("'")) {
-            const closeIdx = findClosingQuoteIndex(remainder, "'");
-            if (closeIdx === -1) {
-                return { kind: "other" };
-            }
-            return {
-                kind: "assignment",
-                prefix,
-                key,
-                separator,
-                quote: "'",
-                value: remainder.slice(1, closeIdx),
-                suffix: remainder.slice(closeIdx + 1),
-            };
-        }
-
-        const commentStart = remainder.search(/\s#/);
-        if (commentStart === -1) {
-            return {
-                kind: "assignment",
-                prefix,
-                key,
-                separator,
-                quote: null,
-                value: remainder.trim(),
-                suffix: "",
-            };
-        }
-
-        const valuePart = remainder.slice(0, commentStart).trim();
-        const suffix = remainder.slice(commentStart);
-        return {
-            kind: "assignment",
-            prefix,
-            key,
-            separator,
-            quote: null,
-            value: valuePart,
-            suffix,
-        };
-    }
-
-    function serializeEnvAssignment(parsed: Exclude<ParsedEnvAssignment, { kind: "other" }>): string {
-        if (parsed.quote === '"') {
-            return `${parsed.prefix}${parsed.key}${parsed.separator}"${parsed.value}"${parsed.suffix}`;
-        }
-        if (parsed.quote === "'") {
-            return `${parsed.prefix}${parsed.key}${parsed.separator}'${parsed.value}'${parsed.suffix}`;
-        }
-        return `${parsed.prefix}${parsed.key}${parsed.separator}${parsed.value}${parsed.suffix}`;
-    }
-
     function splitLinesPreserveNewline(input: string): Array<{ line: string; newline: string }> {
         const parts: Array<{ line: string; newline: string }> = [];
         const regex = /([^\r\n]*)(\r\n|\n|\r|$)/g;
@@ -340,50 +240,171 @@ export function createResourceFileManager(options: ResourceFileManagerOptions): 
         return parts;
     }
 
-    function mergeDotenvMaskedValues(currentRaw: string, editedContent: string): string {
-        const currentLines = splitLinesPreserveNewline(currentRaw);
-        const editedLines = splitLinesPreserveNewline(editedContent);
-        const currentQueuesByKey = new Map<string, Array<Exclude<ParsedEnvAssignment, { kind: "other" }>>>();
+    function toLineTokens(input: string): string[] {
+        return splitLinesPreserveNewline(input).map((item) => item.line + item.newline);
+    }
 
-        for (const item of currentLines) {
-            const parsed = parseEnvAssignmentLine(item.line);
-            if (parsed.kind !== "assignment") continue;
-            const arr = currentQueuesByKey.get(parsed.key) ?? [];
-            arr.push(parsed);
-            currentQueuesByKey.set(parsed.key, arr);
+    function buildLcsMatrix(a: string[], b: string[]): number[][] {
+        const matrix = Array.from({ length: a.length + 1 }, () => Array<number>(b.length + 1).fill(0));
+        for (let i = a.length - 1; i >= 0; i -= 1) {
+            for (let j = b.length - 1; j >= 0; j -= 1) {
+                matrix[i][j] = a[i] === b[j]
+                    ? matrix[i + 1][j + 1] + 1
+                    : Math.max(matrix[i + 1][j], matrix[i][j + 1]);
+            }
+        }
+        return matrix;
+    }
+
+    function commonPrefixLength(a: string, b: string): number {
+        const limit = Math.min(a.length, b.length);
+        let index = 0;
+        while (index < limit && a[index] === b[index]) {
+            index += 1;
+        }
+        return index;
+    }
+
+    function commonSuffixLength(a: string, b: string, maxLength: number): number {
+        let index = 0;
+        while (
+            index < maxLength
+            && a[a.length - 1 - index] === b[b.length - 1 - index]
+        ) {
+            index += 1;
+        }
+        return index;
+    }
+
+    function buildSanitizedBoundaryMap(raw: string, sanitized: string): number[] {
+        const rawChars = Array.from(raw);
+        const sanitizedChars = Array.from(sanitized);
+        const lcs = Array.from({ length: rawChars.length + 1 }, () => Array<number>(sanitizedChars.length + 1).fill(0));
+
+        for (let i = rawChars.length - 1; i >= 0; i -= 1) {
+            for (let j = sanitizedChars.length - 1; j >= 0; j -= 1) {
+                lcs[i][j] = rawChars[i] === sanitizedChars[j]
+                    ? lcs[i + 1][j + 1] + 1
+                    : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
+            }
         }
 
+        const boundaries = Array<number>(sanitizedChars.length + 1).fill(rawChars.length);
+        let rawIndex = 0;
+        let sanitizedIndex = 0;
+        boundaries[0] = 0;
+
+        while (rawIndex < rawChars.length && sanitizedIndex < sanitizedChars.length) {
+            if (rawChars[rawIndex] === sanitizedChars[sanitizedIndex]) {
+                rawIndex += 1;
+                sanitizedIndex += 1;
+                boundaries[sanitizedIndex] = rawIndex;
+                continue;
+            }
+
+            if (lcs[rawIndex + 1][sanitizedIndex] >= lcs[rawIndex][sanitizedIndex + 1]) {
+                rawIndex += 1;
+                continue;
+            }
+
+            sanitizedIndex += 1;
+            boundaries[sanitizedIndex] = rawIndex;
+        }
+
+        while (sanitizedIndex < sanitizedChars.length) {
+            sanitizedIndex += 1;
+            boundaries[sanitizedIndex] = rawIndex;
+        }
+
+        return boundaries;
+    }
+
+    function applyEditedTokenToRawToken(rawToken: string, sanitizedToken: string, editedToken: string): string {
+        if (editedToken === sanitizedToken) {
+            return rawToken;
+        }
+        if (rawToken === sanitizedToken) {
+            return editedToken;
+        }
+
+        const prefixLength = commonPrefixLength(sanitizedToken, editedToken);
+        const suffixLength = commonSuffixLength(
+            sanitizedToken,
+            editedToken,
+            Math.min(sanitizedToken.length, editedToken.length) - prefixLength
+        );
+        const boundaries = buildSanitizedBoundaryMap(rawToken, sanitizedToken);
+        const rawStart = boundaries[prefixLength] ?? rawToken.length;
+        const rawEnd = boundaries[sanitizedToken.length - suffixLength] ?? rawToken.length;
+
+        return rawToken.slice(0, rawStart)
+            + editedToken.slice(prefixLength, editedToken.length - suffixLength)
+            + rawToken.slice(rawEnd);
+    }
+
+    function mergeRedactedEditorContent(currentRaw: string, editedContent: string): string {
+        const sanitizedCurrent = sanitizeStringContent(currentRaw);
+        if (editedContent === sanitizedCurrent) {
+            return currentRaw;
+        }
+
+        const rawTokens = toLineTokens(currentRaw);
+        const sanitizedTokens = toLineTokens(sanitizedCurrent);
+        const editedTokens = toLineTokens(editedContent);
+        const lcs = buildLcsMatrix(sanitizedTokens, editedTokens);
+
         const output: string[] = [];
-        for (const item of editedLines) {
-            const parsedEdited = parseEnvAssignmentLine(item.line);
-            if (parsedEdited.kind !== "assignment" || !isLikelySensitiveKey(parsedEdited.key)) {
-                output.push(item.line + item.newline);
+        let currentIndex = 0;
+        let editedIndex = 0;
+
+        while (currentIndex < sanitizedTokens.length || editedIndex < editedTokens.length) {
+            if (
+                currentIndex < sanitizedTokens.length
+                && editedIndex < editedTokens.length
+                && sanitizedTokens[currentIndex] === editedTokens[editedIndex]
+            ) {
+                output.push(rawTokens[currentIndex]);
+                currentIndex += 1;
+                editedIndex += 1;
                 continue;
             }
 
-            const queue = currentQueuesByKey.get(parsedEdited.key);
-            const currentParsed = queue?.shift();
-            if (!currentParsed) {
-                output.push(item.line + item.newline);
-                continue;
+            const startCurrent = currentIndex;
+            const startEdited = editedIndex;
+
+            while (
+                currentIndex < sanitizedTokens.length
+                && editedIndex < editedTokens.length
+                && sanitizedTokens[currentIndex] !== editedTokens[editedIndex]
+            ) {
+                if (lcs[currentIndex + 1][editedIndex] >= lcs[currentIndex][editedIndex + 1]) {
+                    currentIndex += 1;
+                } else {
+                    editedIndex += 1;
+                }
             }
 
-            if (parsedEdited.quote !== currentParsed.quote) {
-                output.push(item.line + item.newline);
-                continue;
+            if (editedIndex === editedTokens.length) {
+                currentIndex = sanitizedTokens.length;
+            } else if (currentIndex === sanitizedTokens.length) {
+                editedIndex = editedTokens.length;
             }
 
-            const maskedCurrent = maskValue(currentParsed.value);
-            if (parsedEdited.value !== maskedCurrent) {
-                output.push(item.line + item.newline);
-                continue;
+            const removedCount = currentIndex - startCurrent;
+            const insertedCount = editedIndex - startEdited;
+            const pairedCount = Math.min(removedCount, insertedCount);
+
+            for (let offset = 0; offset < pairedCount; offset += 1) {
+                output.push(applyEditedTokenToRawToken(
+                    rawTokens[startCurrent + offset],
+                    sanitizedTokens[startCurrent + offset],
+                    editedTokens[startEdited + offset]
+                ));
             }
 
-            const mergedLine = serializeEnvAssignment({
-                ...parsedEdited,
-                value: currentParsed.value,
-            });
-            output.push(mergedLine + item.newline);
+            for (let offset = pairedCount; offset < insertedCount; offset += 1) {
+                output.push(editedTokens[startEdited + offset]);
+            }
         }
 
         return output.join("");
@@ -506,9 +527,10 @@ export function createResourceFileManager(options: ResourceFileManagerOptions): 
         }
 
         const name = path.basename(relativePath);
-        const isDotenv = name === ".env";
-        const nextContent = isDotenv
-            ? mergeDotenvMaskedValues(currentBytes.toString("utf-8"), request.content)
+        const currentRawContent = currentBytes.toString("utf-8");
+        const wasServedRedacted = name === ".env" || resourceLabel === "skill";
+        const nextContent = wasServedRedacted
+            ? mergeRedactedEditorContent(currentRawContent, request.content)
             : request.content;
 
         fs.writeFileSync(absolutePath, nextContent, "utf-8");
