@@ -107,16 +107,16 @@ npm run prisma:migrate:reset
 
 ## Releasing to npm
 
-Use the root-level [release-teamcopilot-npm/SKILL.md](/Users/rishabhpoddar/Desktop/trythisapp/teamcopilot/release-teamcopilot-npm/SKILL.md) skill when preparing an npm release.
+Use the root-level [.agents/skills/release-teamcopilot-npm/SKILL.md](/Users/rishabhpoddar/Desktop/trythisapp/teamcopilot/.agents/skills/release-teamcopilot-npm/SKILL.md) skill when preparing an npm release.
 
 Example prompts:
 
 ```text
-Use ./release-teamcopilot-npm/SKILL.md to dry-run the next npm release.
+Use /release-teamcopilot-npm to dry-run the next npm release.
 ```
 
 ```text
-Use ./release-teamcopilot-npm/SKILL.md to publish the current package.json version to npm, then create the matching GitHub release.
+Use /release-teamcopilot-npm to publish the current package.json version to npm, then create the matching GitHub release.
 ```
 
 The skill enforces these release checks:
