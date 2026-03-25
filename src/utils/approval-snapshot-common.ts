@@ -36,11 +36,11 @@ function capitalize(value: string): string {
     return value[0].toUpperCase() + value.slice(1);
 }
 
-function sha256(buffer: Buffer): string {
+export function sha256(buffer: Buffer): string {
     return crypto.createHash("sha256").update(buffer).digest("hex");
 }
 
-function looksBinary(buffer: Buffer): boolean {
+export function looksBinary(buffer: Buffer): boolean {
     if (buffer.length === 0) return false;
     const sample = buffer.subarray(0, Math.min(buffer.length, 8000));
     for (let i = 0; i < sample.length; i += 1) {

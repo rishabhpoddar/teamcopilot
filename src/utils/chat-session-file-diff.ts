@@ -1,8 +1,7 @@
-import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import type { WorkflowApprovalDiffResponse, WorkflowSnapshot, WorkflowSnapshotFile } from "../types/workflow";
-import { buildApprovalDiffResponse } from "./approval-snapshot-common";
+import { buildApprovalDiffResponse, looksBinary, sha256 } from "./approval-snapshot-common";
 import { getWorkspaceDirFromEnv } from "./workspace-sync";
 
 type BaselineContentKind = "text" | "binary" | "missing";
@@ -24,23 +23,6 @@ interface FileBaselineCapture {
     binary_content: Buffer | null;
     size_bytes: number | null;
     content_sha256: string | null;
-}
-
-function sha256(buffer: Buffer): string {
-    return crypto.createHash("sha256").update(buffer).digest("hex");
-}
-
-function looksBinary(buffer: Buffer): boolean {
-    if (buffer.length === 0) {
-        return false;
-    }
-    const sample = buffer.subarray(0, Math.min(buffer.length, 8000));
-    for (let i = 0; i < sample.length; i += 1) {
-        if (sample[i] === 0) {
-            return true;
-        }
-    }
-    return false;
 }
 
 export function normalizeWorkspaceRelativePath(rawPath: string): string {
