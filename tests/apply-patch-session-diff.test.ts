@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -7,8 +9,6 @@ type HookResult = {
     capturedPaths: string[];
     authorizationHeaders: string[];
 };
-
-const DUMMY_WORKSPACE_ROOT = "/tmp/teamcopilot-apply-patch-test-workspace";
 
 function runToolCase(
     workspaceRoot: string,
@@ -110,14 +110,35 @@ console.log(JSON.stringify({ capturedPaths, authorizationHeaders }));
     return JSON.parse(jsonLine) as HookResult;
 }
 
+async function createWorkspaceFixture(): Promise<string> {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "teamcopilot-apply-patch-test-workspace-"));
+
+    await fs.writeFile(path.join(root, "a.txt"), "a\n", "utf8");
+    await fs.writeFile(path.join(root, "b.txt"), "b\n", "utf8");
+    await fs.writeFile(path.join(root, "c.txt"), "c\n", "utf8");
+    await fs.writeFile(path.join(root, "root.txt"), "root\n", "utf8");
+    await fs.writeFile(path.join(root, "space name.txt"), "space\n", "utf8");
+
+    await fs.mkdir(path.join(root, "subdir"), { recursive: true });
+    await fs.writeFile(path.join(root, "subdir", "nested-a.txt"), "nested-a\n", "utf8");
+    await fs.writeFile(path.join(root, "subdir", "nested-b.txt"), "nested-b\n", "utf8");
+
+    await fs.mkdir(path.join(root, "temp", "nested"), { recursive: true });
+    await fs.writeFile(path.join(root, "temp", "one.txt"), "one\n", "utf8");
+    await fs.writeFile(path.join(root, "temp", "nested", "two.txt"), "two\n", "utf8");
+
+    return root;
+}
+
 function assertCapturedPaths(
+    workspaceRoot: string,
     label: string,
     tool: string,
     inputArgs: Record<string, unknown>,
     outputArgs: Record<string, unknown>,
     expectedPaths: string[],
 ): void {
-    const result = runToolCase(DUMMY_WORKSPACE_ROOT, tool, inputArgs, outputArgs);
+    const result = runToolCase(workspaceRoot, tool, inputArgs, outputArgs);
 
     assert.deepEqual(result.capturedPaths, expectedPaths, label);
     assert.deepEqual(
@@ -128,139 +149,249 @@ function assertCapturedPaths(
 }
 
 async function main(): Promise<void> {
-    assertCapturedPaths(
-        "Captures a single added file from a patch",
-        "apply_patch",
-        { patch: `*** Begin Patch
-  *** Add File: ${DUMMY_WORKSPACE_ROOT}/a.txt
+    const workspaceRoot = await createWorkspaceFixture();
+    try {
+        assertCapturedPaths(
+            workspaceRoot,
+            "Captures a single added file from a patch",
+            "apply_patch",
+            { patch: `*** Begin Patch
+  *** Add File: ${workspaceRoot}/a.txt
 +
   *** End Patch` },
-        { patch: `*** Begin Patch
-  *** Add File: ${DUMMY_WORKSPACE_ROOT}/a.txt
+            { patch: `*** Begin Patch
+  *** Add File: ${workspaceRoot}/a.txt
 +
   *** End Patch` },
-        ["a.txt"],
-    );
+            ["a.txt"],
+        );
 
-    assertCapturedPaths(
-        "Captures multiple added files from a single patch",
-        "apply_patch",
-        { patch: `*** Begin Patch
-  *** Add File: ${DUMMY_WORKSPACE_ROOT}/b.txt
+        assertCapturedPaths(
+            workspaceRoot,
+            "Captures multiple added files from a single patch",
+            "apply_patch",
+            { patch: `*** Begin Patch
+  *** Add File: ${workspaceRoot}/b.txt
 +
-  *** Add File: ${DUMMY_WORKSPACE_ROOT}/c.txt
+  *** Add File: ${workspaceRoot}/c.txt
 +
-  *** Add File: ${DUMMY_WORKSPACE_ROOT}/d.txt
-+
-  *** End Patch` },
-        { patch: `*** Begin Patch
-  *** Add File: ${DUMMY_WORKSPACE_ROOT}/b.txt
-+
-  *** Add File: ${DUMMY_WORKSPACE_ROOT}/c.txt
-+
-  *** Add File: ${DUMMY_WORKSPACE_ROOT}/d.txt
+  *** Add File: ${workspaceRoot}/d.txt
 +
   *** End Patch` },
-        ["b.txt", "c.txt", "d.txt"],
-    );
+            { patch: `*** Begin Patch
+  *** Add File: ${workspaceRoot}/b.txt
++
+  *** Add File: ${workspaceRoot}/c.txt
++
+  *** Add File: ${workspaceRoot}/d.txt
++
+  *** End Patch` },
+            ["b.txt", "c.txt", "d.txt"],
+        );
 
-    assertCapturedPaths(
-        "Captures a single deleted file from a patch",
-        "apply_patch",
-        { patch: `*** Begin Patch
-  *** Delete File: ${DUMMY_WORKSPACE_ROOT}/a.txt
+        assertCapturedPaths(
+            workspaceRoot,
+            "Captures a single deleted file from a patch",
+            "apply_patch",
+            { patch: `*** Begin Patch
+  *** Delete File: ${workspaceRoot}/a.txt
   *** End Patch` },
-        { patch: `*** Begin Patch
-  *** Delete File: ${DUMMY_WORKSPACE_ROOT}/a.txt
+            { patch: `*** Begin Patch
+  *** Delete File: ${workspaceRoot}/a.txt
   *** End Patch` },
-        ["a.txt"],
-    );
+            ["a.txt"],
+        );
 
-    assertCapturedPaths(
-        "Captures multiple deleted files from a single patch",
-        "apply_patch",
-        { patch: `*** Begin Patch
-  *** Delete File: ${DUMMY_WORKSPACE_ROOT}/b.txt
-  *** Delete File: ${DUMMY_WORKSPACE_ROOT}/c.txt
-  *** Delete File: ${DUMMY_WORKSPACE_ROOT}/d.txt
+        assertCapturedPaths(
+            workspaceRoot,
+            "Captures multiple deleted files from a single patch",
+            "apply_patch",
+            { patch: `*** Begin Patch
+  *** Delete File: ${workspaceRoot}/b.txt
+  *** Delete File: ${workspaceRoot}/c.txt
+  *** Delete File: ${workspaceRoot}/d.txt
   *** End Patch` },
-        { patch: `*** Begin Patch
-  *** Delete File: ${DUMMY_WORKSPACE_ROOT}/b.txt
-  *** Delete File: ${DUMMY_WORKSPACE_ROOT}/c.txt
-  *** Delete File: ${DUMMY_WORKSPACE_ROOT}/d.txt
+            { patch: `*** Begin Patch
+  *** Delete File: ${workspaceRoot}/b.txt
+  *** Delete File: ${workspaceRoot}/c.txt
+  *** Delete File: ${workspaceRoot}/d.txt
   *** End Patch` },
-        ["b.txt", "c.txt", "d.txt"],
-    );
+            ["b.txt", "c.txt", "d.txt"],
+        );
 
-    assertCapturedPaths(
-        "Captures a single updated file from a patch",
-        "apply_patch",
-        { patch: `*** Begin Patch
-  *** Update File: ${DUMMY_WORKSPACE_ROOT}/a.txt
+        assertCapturedPaths(
+            workspaceRoot,
+            "Captures a single updated file from a patch",
+            "apply_patch",
+            { patch: `*** Begin Patch
+  *** Update File: ${workspaceRoot}/a.txt
   @@
 - 
 + hello
   *** End Patch` },
-        { patch: `*** Begin Patch
-  *** Update File: ${DUMMY_WORKSPACE_ROOT}/a.txt
+            { patch: `*** Begin Patch
+  *** Update File: ${workspaceRoot}/a.txt
   @@
 - 
 + hello
   *** End Patch` },
-        ["a.txt"],
-    );
+            ["a.txt"],
+        );
 
-    assertCapturedPaths(
-        "Captures multiple updated files from a single patch",
-        "apply_patch",
-        { patch: `*** Begin Patch
-  *** Update File: ${DUMMY_WORKSPACE_ROOT}/a.txt
+        assertCapturedPaths(
+            workspaceRoot,
+            "Captures multiple updated files from a single patch",
+            "apply_patch",
+            { patch: `*** Begin Patch
+  *** Update File: ${workspaceRoot}/a.txt
   @@
 - 
 + hello
-  *** Update File: ${DUMMY_WORKSPACE_ROOT}/b.txt
+  *** Update File: ${workspaceRoot}/b.txt
   @@
 - 
 + hello
-  *** Update File: ${DUMMY_WORKSPACE_ROOT}/c.txt
+  *** Update File: ${workspaceRoot}/c.txt
   @@
 - 
 + hello
   *** End Patch` },
-        { patch: `*** Begin Patch
-  *** Update File: ${DUMMY_WORKSPACE_ROOT}/a.txt
+            { patch: `*** Begin Patch
+  *** Update File: ${workspaceRoot}/a.txt
   @@
 - 
 + hello
-  *** Update File: ${DUMMY_WORKSPACE_ROOT}/b.txt
+  *** Update File: ${workspaceRoot}/b.txt
   @@
 - 
 + hello
-  *** Update File: ${DUMMY_WORKSPACE_ROOT}/c.txt
+  *** Update File: ${workspaceRoot}/c.txt
   @@
 - 
 + hello
   *** End Patch` },
-        ["a.txt", "b.txt", "c.txt"],
-    );
+            ["a.txt", "b.txt", "c.txt"],
+        );
 
-    assertCapturedPaths(
-        "Captures a single file written via write tool",
-        "write",
-        { filepath: `${DUMMY_WORKSPACE_ROOT}/written.txt`, content: "hello" },
-        { filepath: `${DUMMY_WORKSPACE_ROOT}/written.txt`, content: "hello" },
-        ["written.txt"],
-    );
+        assertCapturedPaths(
+            workspaceRoot,
+            "Captures a single file written via write tool",
+            "write",
+            { filepath: `${workspaceRoot}/written.txt`, content: "hello" },
+            { filepath: `${workspaceRoot}/written.txt`, content: "hello" },
+            ["written.txt"],
+        );
 
-    assertCapturedPaths(
-        "Captures multiple files deleted via bash rm",
-        "bash",
-        { command: "rm a.txt b.txt c.txt", workdir: DUMMY_WORKSPACE_ROOT },
-        { command: "rm a.txt b.txt c.txt", workdir: DUMMY_WORKSPACE_ROOT },
-        ["a.txt", "b.txt", "c.txt"],
-    );
+        assertCapturedPaths(
+            workspaceRoot,
+            "Skips outside-workspace file paths from write tool",
+            "write",
+            { filepath: "/tmp/teamcopilot-outside-write.txt", content: "hello" },
+            { filepath: "/tmp/teamcopilot-outside-write.txt", content: "hello" },
+            [],
+        );
 
-    console.log("Apply patch session diff tests passed: 8");
+        assertCapturedPaths(
+            workspaceRoot,
+            "Captures multiple files deleted via bash rm",
+            "bash",
+            { command: "rm a.txt b.txt c.txt", workdir: workspaceRoot },
+            { command: "rm a.txt b.txt c.txt", workdir: workspaceRoot },
+            ["a.txt", "b.txt", "c.txt"],
+        );
+
+        assertCapturedPaths(
+            workspaceRoot,
+            "Skips outside-workspace file paths in bash rm",
+            "bash",
+            { command: `rm ${JSON.stringify("/tmp/teamcopilot-outside-rm.txt")} a.txt`, workdir: workspaceRoot },
+            { command: `rm ${JSON.stringify("/tmp/teamcopilot-outside-rm.txt")} a.txt`, workdir: workspaceRoot },
+            ["a.txt"],
+        );
+
+        assertCapturedPaths(
+            workspaceRoot,
+            "Captures files deleted after changing directories in bash",
+            "bash",
+            { command: "cd subdir && rm nested-a.txt nested-b.txt", workdir: workspaceRoot },
+            { command: "cd subdir && rm nested-a.txt nested-b.txt", workdir: workspaceRoot },
+            ["subdir/nested-a.txt", "subdir/nested-b.txt"],
+        );
+
+        assertCapturedPaths(
+            workspaceRoot,
+            "Captures files from multiple rm segments in one bash command",
+            "bash",
+            { command: "rm a.txt && cd subdir && rm nested-a.txt", workdir: workspaceRoot },
+            { command: "rm a.txt && cd subdir && rm nested-a.txt", workdir: workspaceRoot },
+            ["a.txt", "subdir/nested-a.txt"],
+        );
+
+        assertCapturedPaths(
+            workspaceRoot,
+            "Captures quoted file paths and ignores rm flags",
+            "bash",
+            { command: "rm -f -- \"space name.txt\" a.txt", workdir: workspaceRoot },
+            { command: "rm -f -- \"space name.txt\" a.txt", workdir: workspaceRoot },
+            ["space name.txt", "a.txt"],
+        );
+
+        assertCapturedPaths(
+            workspaceRoot,
+            "Captures absolute file paths in bash rm",
+            "bash",
+            {
+                command: `rm ${JSON.stringify(path.join(workspaceRoot, "a.txt"))} ${JSON.stringify(path.join(workspaceRoot, "subdir", "nested-a.txt"))}`,
+                workdir: workspaceRoot,
+            },
+            {
+                command: `rm ${JSON.stringify(path.join(workspaceRoot, "a.txt"))} ${JSON.stringify(path.join(workspaceRoot, "subdir", "nested-a.txt"))}`,
+                workdir: workspaceRoot,
+            },
+            ["a.txt", "subdir/nested-a.txt"],
+        );
+
+        assertCapturedPaths(
+            workspaceRoot,
+            "Skips absolute directory paths in bash rm",
+            "bash",
+            {
+                command: `rm -rf ${JSON.stringify(path.join(workspaceRoot, "temp"))}`,
+                workdir: workspaceRoot,
+            },
+            {
+                command: `rm -rf ${JSON.stringify(path.join(workspaceRoot, "temp"))}`,
+                workdir: workspaceRoot,
+            },
+            [],
+        );
+
+        assertCapturedPaths(
+            workspaceRoot,
+            "Skips relative directory paths in bash rm",
+            "bash",
+            { command: "rm -rf temp", workdir: workspaceRoot },
+            { command: "rm -rf temp", workdir: workspaceRoot },
+            [],
+        );
+
+        assertCapturedPaths(
+            workspaceRoot,
+            "Skips outside-workspace apply_patch paths without failing",
+            "apply_patch",
+            { patch: `*** Begin Patch
+  *** Delete File: /tmp/teamcopilot-outside-apply-patch.txt
+  *** End Patch` },
+            { patch: `*** Begin Patch
+  *** Delete File: /tmp/teamcopilot-outside-apply-patch.txt
+  *** End Patch` },
+            [],
+        );
+
+        console.log("Apply patch session diff tests passed: 17");
+    } finally {
+        await fs.rm(workspaceRoot, { recursive: true, force: true });
+    }
 }
 
 main().catch((err) => {

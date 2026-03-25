@@ -1,3 +1,4 @@
+import fs from "node:fs"
 import path from "node:path"
 import type { Plugin } from "@opencode-ai/plugin"
 
@@ -97,31 +98,7 @@ function tokenizeCommand(command: string): string[] {
   })
 }
 
-function extractTrackedPathsFromRmCommand(command: string): string[] {
-  const tokens = tokenizeCommand(command.trim())
-  if (tokens.length === 0) {
-    return []
-  }
-
-  const rmTokenIndex = tokens.findIndex((token) => path.basename(token) === "rm")
-  if (rmTokenIndex === -1) {
-    return []
-  }
-
-  const paths: string[] = []
-  for (let index = rmTokenIndex + 1; index < tokens.length; index += 1) {
-    const token = tokens[index]
-    if (token === "&&" || token === "||" || token === ";" || token === "|") {
-      break
-    }
-    if (token.startsWith("-")) {
-      continue
-    }
-    paths.push(token)
-  }
-
-  return Array.from(new Set(paths.filter((candidate) => candidate.trim().length > 0)))
-}
+const CONTROL_TOKENS = new Set(["&&", "||", ";", "|"])
 
 function resolveExecutionDirectory(rawCwd: unknown, fallbackDirectory: string): string {
   if (typeof rawCwd !== "string" || rawCwd.trim() === "") {
@@ -129,6 +106,75 @@ function resolveExecutionDirectory(rawCwd: unknown, fallbackDirectory: string): 
   }
 
   return path.isAbsolute(rawCwd) ? rawCwd : path.resolve(fallbackDirectory, rawCwd)
+}
+
+function resolveTrackedDeleteTargets(command: string, executionDirectory: string): string[] {
+  const tokens = tokenizeCommand(command.trim())
+  if (tokens.length === 0) {
+    return []
+  }
+
+  const resolvedTargets: string[] = []
+  let currentDirectory = executionDirectory
+  let index = 0
+  let atCommandStart = true
+
+  while (index < tokens.length) {
+    const token = tokens[index]
+
+    if (CONTROL_TOKENS.has(token)) {
+      atCommandStart = true
+      index += 1
+      continue
+    }
+
+    if (!atCommandStart) {
+      index += 1
+      continue
+    }
+
+    if (token === "cd") {
+      const destination = tokens[index + 1]
+      if (destination && !CONTROL_TOKENS.has(destination)) {
+        currentDirectory = path.isAbsolute(destination)
+          ? path.resolve(destination)
+          : path.resolve(currentDirectory, destination)
+        index += 2
+      } else {
+        index += 1
+      }
+      atCommandStart = false
+      continue
+    }
+
+    if (path.basename(token) === "rm") {
+      index += 1
+      while (index < tokens.length && !CONTROL_TOKENS.has(tokens[index])) {
+        const candidate = tokens[index]
+        if (candidate === "--" || candidate.startsWith("-")) {
+          index += 1
+          continue
+        }
+
+        const resolvedCandidate = path.isAbsolute(candidate)
+          ? path.resolve(candidate)
+          : path.resolve(currentDirectory, candidate)
+        if (fs.existsSync(resolvedCandidate) && fs.statSync(resolvedCandidate).isDirectory()) {
+          index += 1
+          continue
+        }
+        resolvedTargets.push(resolvedCandidate)
+        index += 1
+      }
+      atCommandStart = false
+      continue
+    }
+
+    atCommandStart = false
+    index += 1
+  }
+
+  return Array.from(new Set(resolvedTargets))
 }
 
 function normalizeRelativePath(rawPath: string, workspaceDir: string): string {
@@ -147,6 +193,14 @@ function normalizeRelativePath(rawPath: string, workspaceDir: string): string {
   }
 
   return relativePath.split(path.sep).join("/")
+}
+
+function tryNormalizeRelativePath(rawPath: string, workspaceDir: string): string | null {
+  try {
+    return normalizeRelativePath(rawPath, workspaceDir)
+  } catch {
+    return null
+  }
 }
 
 async function readErrorMessageFromResponse(
@@ -182,7 +236,7 @@ function collectTrackedPathsForTool(
   if (tool === "apply_patch") {
     const patchPayload = findPatchPayload(outputArgs) ?? findPatchPayload(inputArgs)
     if (!patchPayload) {
-      throw new Error("apply_patch hook could not find patch payload.")
+      return []
     }
 
     return extractTrackedPathsFromPatch(patchPayload)
@@ -193,7 +247,7 @@ function collectTrackedPathsForTool(
       findNestedStringByKeys(outputArgs, new Set(["filepath", "filePath"])) ??
       findNestedStringByKeys(inputArgs, new Set(["filepath", "filePath"]))
     if (!filepath) {
-      throw new Error("write hook could not determine filepath.")
+      return []
     }
 
     return [filepath]
@@ -212,9 +266,7 @@ function collectTrackedPathsForTool(
       (inputArgs && (inputArgs.workdir ?? inputArgs.cwd))
     const executionDirectory = resolveExecutionDirectory(rawCwd, workspaceDir)
 
-    return extractTrackedPathsFromRmCommand(command).map((candidatePath) =>
-      path.isAbsolute(candidatePath) ? candidatePath : path.resolve(executionDirectory, candidatePath)
-    )
+    return resolveTrackedDeleteTargets(command, executionDirectory)
   }
 
   return []
@@ -272,13 +324,16 @@ export const ApplyPatchSessionDiffPlugin: Plugin = async ({ client, directory })
 
       const rawSessionID = typeof input.sessionID === "string" ? input.sessionID.trim() : ""
       if (!rawSessionID) {
-        throw new Error(`${input.tool} hook could not determine session ID.`)
+        return
       }
 
       const rootSessionID = await resolveRootSessionID(rawSessionID)
       const paths = collectTrackedPathsForTool(input.tool, input.args, output.args, directory)
       for (const candidatePath of paths) {
-        const relativePath = normalizeRelativePath(candidatePath, directory)
+        const relativePath = tryNormalizeRelativePath(candidatePath, directory)
+        if (!relativePath) {
+          continue
+        }
         await captureBaselineForPath(rootSessionID, relativePath)
       }
     },
