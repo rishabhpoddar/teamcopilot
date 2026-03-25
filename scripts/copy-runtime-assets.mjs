@@ -45,6 +45,10 @@ fs.cpSync(workspaceSourceDirectory, workspaceTargetDirectory, {
             return false;
         }
 
+        if (segments[0] === ".opencode" && segments[1] === "install-state.json") {
+            return false;
+        }
+
         return true;
     },
 });

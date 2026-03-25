@@ -67,6 +67,10 @@ function shouldSkipManagedDirectoryContent(relativePath: string): boolean {
         return true;
     }
 
+    if (relativePath === normalizeRelativePath(WORKSPACE_INSTALL_STATE_RELATIVE_PATH)) {
+        return true;
+    }
+
     return false;
 }
 
