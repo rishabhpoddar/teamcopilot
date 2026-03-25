@@ -38,6 +38,10 @@ export default function SessionFileDiffPanel({
                 </button>
             </div>
 
+            <div className="chat-session-diff-warning">
+                This diff is best-effort only. It may miss some file changes or show an incomplete view.
+            </div>
+
             {error && <div className="chat-session-diff-state error">{error}</div>}
             {!error && loading && null}
             {!error && !loading && diff && diff.files.length === 0 && (

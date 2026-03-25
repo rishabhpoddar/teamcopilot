@@ -1036,6 +1036,17 @@
     font-size: 0.8rem;
 }
 
+.chat-session-diff-warning {
+    margin: 0.75rem 0.75rem 0;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid #5b4a21;
+    border-radius: 8px;
+    background: rgba(139, 105, 20, 0.12);
+    color: #e6d08a;
+    font-size: 0.78rem;
+    line-height: 1.4;
+}
+
 .chat-session-diff-state {
     padding: 1rem;
     color: #999;
