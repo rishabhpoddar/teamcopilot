@@ -1143,6 +1143,8 @@
 
 .chat-session-diff-file-expanded {
     padding: 0 0.75rem 0.75rem;
+    max-height: 420px;
+    overflow-y: auto;
 }
 
 .chat-session-diff-message {
@@ -1155,10 +1157,16 @@
     border: 1px solid #2f2f2f;
     border-radius: 8px;
     background: #111;
-    overflow: auto;
+    overflow-x: auto;
+    overflow-y: auto;
+    max-height: 340px;
 }
 
 .chat-session-diff-line {
+    display: block;
+    min-width: 100%;
+    width: max-content;
+    box-sizing: border-box;
     padding: 0.08rem 0.75rem;
     font-family: 'Monaco', 'Menlo', monospace;
     font-size: 0.79rem;
