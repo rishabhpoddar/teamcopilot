@@ -417,6 +417,15 @@ async function main(): Promise<void> {
 
         assertCapturedPaths(
             workspaceRoot,
+            "Captures quoted relative paths from subdirectories in bash rm",
+            "bash",
+            { command: "rm \"temp/one.txt\" \"subdir/nested-a.txt\"", workdir: workspaceRoot },
+            { command: "rm \"temp/one.txt\" \"subdir/nested-a.txt\"", workdir: workspaceRoot },
+            ["temp/one.txt", "subdir/nested-a.txt"],
+        );
+
+        assertCapturedPaths(
+            workspaceRoot,
             "Captures absolute file paths in bash rm",
             "bash",
             {
