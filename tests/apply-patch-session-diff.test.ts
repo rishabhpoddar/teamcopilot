@@ -275,6 +275,49 @@ async function main(): Promise<void> {
 
         assertCapturedPaths(
             workspaceRoot,
+            "Captures both source and destination paths for apply_patch move",
+            "apply_patch",
+            { patch: `*** Begin Patch
+  *** Update File: ${workspaceRoot}/a.txt
+  *** Move to: ${workspaceRoot}/moved-a.txt
+  @@
+-a
++moved
+  *** End Patch` },
+            { patch: `*** Begin Patch
+  *** Update File: ${workspaceRoot}/a.txt
+  *** Move to: ${workspaceRoot}/moved-a.txt
+  @@
+-a
++moved
+  *** End Patch` },
+            ["a.txt", "moved-a.txt"],
+        );
+
+        assertCapturedPaths(
+            workspaceRoot,
+            "Reads nested apply_patch payloads",
+            "apply_patch",
+            { toolInput: { patch: `*** Begin Patch
+  *** Delete File: ${workspaceRoot}/root.txt
+  *** End Patch` } },
+            { nested: { patch: `*** Begin Patch
+  *** Delete File: ${workspaceRoot}/root.txt
+  *** End Patch` } },
+            ["root.txt"],
+        );
+
+        assertCapturedPaths(
+            workspaceRoot,
+            "Skips apply_patch when payload is missing",
+            "apply_patch",
+            {},
+            {},
+            [],
+        );
+
+        assertCapturedPaths(
+            workspaceRoot,
             "Captures a single file written via write tool",
             "write",
             { filepath: `${workspaceRoot}/written.txt`, content: "hello" },
@@ -284,10 +327,28 @@ async function main(): Promise<void> {
 
         assertCapturedPaths(
             workspaceRoot,
+            "Captures write tool path from filePath alias in nested output",
+            "write",
+            {},
+            { result: { filePath: `${workspaceRoot}/alias-written.txt` } },
+            ["alias-written.txt"],
+        );
+
+        assertCapturedPaths(
+            workspaceRoot,
             "Skips outside-workspace file paths from write tool",
             "write",
             { filepath: "/tmp/teamcopilot-outside-write.txt", content: "hello" },
             { filepath: "/tmp/teamcopilot-outside-write.txt", content: "hello" },
+            [],
+        );
+
+        assertCapturedPaths(
+            workspaceRoot,
+            "Skips write tool when filepath is missing",
+            "write",
+            { content: "hello" },
+            { content: "hello" },
             [],
         );
 
@@ -311,6 +372,15 @@ async function main(): Promise<void> {
 
         assertCapturedPaths(
             workspaceRoot,
+            "Ignores non-rm bash commands",
+            "bash",
+            { command: "echo hello && ls -la", workdir: workspaceRoot },
+            { command: "echo hello && ls -la", workdir: workspaceRoot },
+            [],
+        );
+
+        assertCapturedPaths(
+            workspaceRoot,
             "Captures files deleted after changing directories in bash",
             "bash",
             { command: "cd subdir && rm nested-a.txt nested-b.txt", workdir: workspaceRoot },
@@ -325,6 +395,15 @@ async function main(): Promise<void> {
             { command: "rm a.txt && cd subdir && rm nested-a.txt", workdir: workspaceRoot },
             { command: "rm a.txt && cd subdir && rm nested-a.txt", workdir: workspaceRoot },
             ["a.txt", "subdir/nested-a.txt"],
+        );
+
+        assertCapturedPaths(
+            workspaceRoot,
+            "Tracks cwd changes back and forth across bash segments",
+            "bash",
+            { command: "cd subdir && rm nested-a.txt && cd .. && rm root.txt", workdir: workspaceRoot },
+            { command: "cd subdir && rm nested-a.txt && cd .. && rm root.txt", workdir: workspaceRoot },
+            ["subdir/nested-a.txt", "root.txt"],
         );
 
         assertCapturedPaths(
@@ -353,6 +432,21 @@ async function main(): Promise<void> {
 
         assertCapturedPaths(
             workspaceRoot,
+            "Normalizes relative path variants in bash rm",
+            "bash",
+            {
+                command: "rm ./a.txt subdir/../b.txt",
+                workdir: workspaceRoot,
+            },
+            {
+                command: "rm ./a.txt subdir/../b.txt",
+                workdir: workspaceRoot,
+            },
+            ["a.txt", "b.txt"],
+        );
+
+        assertCapturedPaths(
+            workspaceRoot,
             "Skips absolute directory paths in bash rm",
             "bash",
             {
@@ -377,6 +471,33 @@ async function main(): Promise<void> {
 
         assertCapturedPaths(
             workspaceRoot,
+            "Deduplicates repeated bash rm targets",
+            "bash",
+            { command: "rm a.txt a.txt ./a.txt", workdir: workspaceRoot },
+            { command: "rm a.txt a.txt ./a.txt", workdir: workspaceRoot },
+            ["a.txt"],
+        );
+
+        assertCapturedPaths(
+            workspaceRoot,
+            "Reads bash command from output cmd field",
+            "bash",
+            { workdir: workspaceRoot },
+            { cmd: "rm c.txt", workdir: workspaceRoot },
+            ["c.txt"],
+        );
+
+        assertCapturedPaths(
+            workspaceRoot,
+            "Skips bash when command string is missing",
+            "bash",
+            { workdir: workspaceRoot },
+            { workdir: workspaceRoot },
+            [],
+        );
+
+        assertCapturedPaths(
+            workspaceRoot,
             "Skips outside-workspace apply_patch paths without failing",
             "apply_patch",
             { patch: `*** Begin Patch
@@ -388,7 +509,16 @@ async function main(): Promise<void> {
             [],
         );
 
-        console.log("Apply patch session diff tests passed: 17");
+        assertCapturedPaths(
+            workspaceRoot,
+            "Ignores unsupported tools entirely",
+            "read",
+            { filepath: `${workspaceRoot}/a.txt` },
+            { filepath: `${workspaceRoot}/a.txt` },
+            [],
+        );
+
+        console.log("Apply patch session diff tests passed: 27");
     } finally {
         await fs.rm(workspaceRoot, { recursive: true, force: true });
     }
