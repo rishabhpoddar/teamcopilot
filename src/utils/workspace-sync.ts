@@ -3,6 +3,7 @@ import path from "path";
 import ignore, { Ignore } from "ignore";
 import { execFile } from "child_process";
 import { promisify } from "util";
+import crypto from "crypto";
 import { assertEnv } from "./assert";
 import { getPackageRoot, getPrismaSchemaPath, getWorkspaceTemplateDirectory } from "./runtime-paths";
 
@@ -17,6 +18,7 @@ const WORKSPACE_DB_FILENAME = "data.db";
 const HONEYTOKEN_UUID = "1f9f0b72-5f9f-4c9b-aef1-2fb2e0f6d8c4";
 const HONEYTOKEN_FILE_NAME = `honeytoken-${HONEYTOKEN_UUID}.txt`;
 const WORKSPACE_AZURE_PROVIDER_VERSION = "3.0.48";
+const WORKSPACE_INSTALL_STATE_RELATIVE_PATH = path.join(".opencode", "install-state.json");
 
 export function getWorkspaceDirFromEnv(): string {
     let workspaceDir = assertEnv("WORKSPACE_DIR");
@@ -62,6 +64,10 @@ function shouldSkipManagedDirectoryContent(relativePath: string): boolean {
     }
 
     if (relativePath === ".opencode/xdg-data" || relativePath.startsWith(".opencode/xdg-data/")) {
+        return true;
+    }
+
+    if (relativePath === normalizeRelativePath(WORKSPACE_INSTALL_STATE_RELATIVE_PATH)) {
         return true;
     }
 
@@ -250,11 +256,32 @@ async function initializeWorkspaceNodeDependencies(workspaceDir: string): Promis
         ...existingPackageJson,
         dependencies,
     };
+    const installStatePath = path.join(workspaceDir, WORKSPACE_INSTALL_STATE_RELATIVE_PATH);
+    const desiredInstallState = {
+        dependencies,
+    };
+    const desiredInstallStateHash = crypto
+        .createHash("sha256")
+        .update(JSON.stringify(desiredInstallState))
+        .digest("hex");
+    const existingInstallState = fs.existsSync(installStatePath)
+        ? JSON.parse(fs.readFileSync(installStatePath, "utf-8")) as { hash?: string }
+        : null;
+    const hasMatchingInstallState = existingInstallState?.hash === desiredInstallStateHash;
+    const nodeModulesPath = path.join(workspaceDir, "node_modules");
+    const packageJsonMatches = JSON.stringify(existingPackageJson) === JSON.stringify(workspacePackageJson);
+
+    if (hasMatchingInstallState && packageJsonMatches && fs.existsSync(nodeModulesPath)) {
+        return;
+    }
+
     fs.writeFileSync(workspacePackageJsonPath, JSON.stringify(workspacePackageJson, null, 2), "utf-8");
     await execFileAsync("npm", ["install"], {
         cwd: workspaceDir,
         env: process.env,
     });
+    fs.mkdirSync(path.dirname(installStatePath), { recursive: true });
+    fs.writeFileSync(installStatePath, `${JSON.stringify({ hash: desiredInstallStateHash }, null, 2)}\n`, "utf-8");
 }
 
 export async function initializeWorkspaceDirectory(): Promise<void> {
