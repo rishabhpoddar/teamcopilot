@@ -10,7 +10,12 @@ type HookResult = {
 
 const DUMMY_WORKSPACE_ROOT = "/tmp/teamcopilot-apply-patch-test-workspace";
 
-function runApplyPatchCase(workspaceRoot: string, patch: string): HookResult {
+function runToolCase(
+    workspaceRoot: string,
+    tool: string,
+    inputArgs: Record<string, unknown>,
+    outputArgs: Record<string, unknown>,
+): HookResult {
     const pluginFile = path.resolve(
         process.cwd(),
         "src/workspace_files/.opencode/plugins/apply-patch-session-diff.ts",
@@ -20,7 +25,9 @@ function runApplyPatchCase(workspaceRoot: string, patch: string): HookResult {
     const script = `
 const pluginPath = process.env.APPLY_PATCH_PLUGIN_PATH;
 const workspaceRoot = process.env.APPLY_PATCH_WORKSPACE_ROOT;
-const patch = process.env.APPLY_PATCH_PATCH_TEXT ?? "";
+const tool = process.env.APPLY_PATCH_TOOL_NAME ?? "";
+const inputArgs = JSON.parse(process.env.APPLY_PATCH_INPUT_ARGS_JSON ?? "{}");
+const outputArgs = JSON.parse(process.env.APPLY_PATCH_OUTPUT_ARGS_JSON ?? "{}");
 const mod = await import(pluginPath);
 const capturedPaths = [];
 const authorizationHeaders = [];
@@ -58,13 +65,13 @@ const hooks = await mod.ApplyPatchSessionDiffPlugin({
 });
 await hooks["tool.execute.before"](
   {
-    tool: "apply_patch",
+    tool,
     sessionID: "child-session",
     callID: "call-1",
-    args: { patch },
+    args: inputArgs,
   },
   {
-    args: { patch },
+    args: outputArgs,
   },
 );
 console.log(JSON.stringify({ capturedPaths, authorizationHeaders }));
@@ -80,7 +87,9 @@ console.log(JSON.stringify({ capturedPaths, authorizationHeaders }));
                 TEAMCOPILOT_PORT: "5124",
                 APPLY_PATCH_PLUGIN_PATH: pluginUrl,
                 APPLY_PATCH_WORKSPACE_ROOT: workspaceRoot,
-                APPLY_PATCH_PATCH_TEXT: patch,
+                APPLY_PATCH_TOOL_NAME: tool,
+                APPLY_PATCH_INPUT_ARGS_JSON: JSON.stringify(inputArgs),
+                APPLY_PATCH_OUTPUT_ARGS_JSON: JSON.stringify(outputArgs),
             },
         },
     );
@@ -101,8 +110,14 @@ console.log(JSON.stringify({ capturedPaths, authorizationHeaders }));
     return JSON.parse(jsonLine) as HookResult;
 }
 
-function assertCapturedPaths(label: string, patch: string, expectedPaths: string[]): void {
-    const result = runApplyPatchCase(DUMMY_WORKSPACE_ROOT, patch);
+function assertCapturedPaths(
+    label: string,
+    tool: string,
+    inputArgs: Record<string, unknown>,
+    outputArgs: Record<string, unknown>,
+    expectedPaths: string[],
+): void {
+    const result = runToolCase(DUMMY_WORKSPACE_ROOT, tool, inputArgs, outputArgs);
 
     assert.deepEqual(result.capturedPaths, expectedPaths, label);
     assert.deepEqual(
@@ -115,58 +130,90 @@ function assertCapturedPaths(label: string, patch: string, expectedPaths: string
 async function main(): Promise<void> {
     assertCapturedPaths(
         "Captures a single added file from a patch",
-        `*** Begin Patch
+        "apply_patch",
+        { patch: `*** Begin Patch
   *** Add File: ${DUMMY_WORKSPACE_ROOT}/a.txt
 +
-  *** End Patch`,
+  *** End Patch` },
+        { patch: `*** Begin Patch
+  *** Add File: ${DUMMY_WORKSPACE_ROOT}/a.txt
++
+  *** End Patch` },
         ["a.txt"],
     );
 
     assertCapturedPaths(
         "Captures multiple added files from a single patch",
-        `*** Begin Patch
+        "apply_patch",
+        { patch: `*** Begin Patch
   *** Add File: ${DUMMY_WORKSPACE_ROOT}/b.txt
 +
   *** Add File: ${DUMMY_WORKSPACE_ROOT}/c.txt
 +
   *** Add File: ${DUMMY_WORKSPACE_ROOT}/d.txt
 +
-  *** End Patch`,
+  *** End Patch` },
+        { patch: `*** Begin Patch
+  *** Add File: ${DUMMY_WORKSPACE_ROOT}/b.txt
++
+  *** Add File: ${DUMMY_WORKSPACE_ROOT}/c.txt
++
+  *** Add File: ${DUMMY_WORKSPACE_ROOT}/d.txt
++
+  *** End Patch` },
         ["b.txt", "c.txt", "d.txt"],
     );
 
     assertCapturedPaths(
         "Captures a single deleted file from a patch",
-        `*** Begin Patch
+        "apply_patch",
+        { patch: `*** Begin Patch
   *** Delete File: ${DUMMY_WORKSPACE_ROOT}/a.txt
-  *** End Patch`,
+  *** End Patch` },
+        { patch: `*** Begin Patch
+  *** Delete File: ${DUMMY_WORKSPACE_ROOT}/a.txt
+  *** End Patch` },
         ["a.txt"],
     );
 
     assertCapturedPaths(
         "Captures multiple deleted files from a single patch",
-        `*** Begin Patch
+        "apply_patch",
+        { patch: `*** Begin Patch
   *** Delete File: ${DUMMY_WORKSPACE_ROOT}/b.txt
   *** Delete File: ${DUMMY_WORKSPACE_ROOT}/c.txt
   *** Delete File: ${DUMMY_WORKSPACE_ROOT}/d.txt
-  *** End Patch`,
+  *** End Patch` },
+        { patch: `*** Begin Patch
+  *** Delete File: ${DUMMY_WORKSPACE_ROOT}/b.txt
+  *** Delete File: ${DUMMY_WORKSPACE_ROOT}/c.txt
+  *** Delete File: ${DUMMY_WORKSPACE_ROOT}/d.txt
+  *** End Patch` },
         ["b.txt", "c.txt", "d.txt"],
     );
 
     assertCapturedPaths(
         "Captures a single updated file from a patch",
-        `*** Begin Patch
+        "apply_patch",
+        { patch: `*** Begin Patch
   *** Update File: ${DUMMY_WORKSPACE_ROOT}/a.txt
   @@
 - 
 + hello
-  *** End Patch`,
+  *** End Patch` },
+        { patch: `*** Begin Patch
+  *** Update File: ${DUMMY_WORKSPACE_ROOT}/a.txt
+  @@
+- 
++ hello
+  *** End Patch` },
         ["a.txt"],
     );
 
     assertCapturedPaths(
         "Captures multiple updated files from a single patch",
-        `*** Begin Patch
+        "apply_patch",
+        { patch: `*** Begin Patch
   *** Update File: ${DUMMY_WORKSPACE_ROOT}/a.txt
   @@
 - 
@@ -179,11 +226,41 @@ async function main(): Promise<void> {
   @@
 - 
 + hello
-  *** End Patch`,
+  *** End Patch` },
+        { patch: `*** Begin Patch
+  *** Update File: ${DUMMY_WORKSPACE_ROOT}/a.txt
+  @@
+- 
++ hello
+  *** Update File: ${DUMMY_WORKSPACE_ROOT}/b.txt
+  @@
+- 
++ hello
+  *** Update File: ${DUMMY_WORKSPACE_ROOT}/c.txt
+  @@
+- 
++ hello
+  *** End Patch` },
         ["a.txt", "b.txt", "c.txt"],
     );
 
-    console.log("Apply patch session diff tests passed: 6");
+    assertCapturedPaths(
+        "Captures a single file written via write tool",
+        "write",
+        { filepath: `${DUMMY_WORKSPACE_ROOT}/written.txt`, content: "hello" },
+        { filepath: `${DUMMY_WORKSPACE_ROOT}/written.txt`, content: "hello" },
+        ["written.txt"],
+    );
+
+    assertCapturedPaths(
+        "Captures multiple files deleted via bash rm",
+        "bash",
+        { command: "rm a.txt b.txt c.txt", workdir: DUMMY_WORKSPACE_ROOT },
+        { command: "rm a.txt b.txt c.txt", workdir: DUMMY_WORKSPACE_ROOT },
+        ["a.txt", "b.txt", "c.txt"],
+    );
+
+    console.log("Apply patch session diff tests passed: 8");
 }
 
 main().catch((err) => {

@@ -17,6 +17,8 @@ interface SessionLookupResponse {
   }
 }
 
+type ToolArgs = Record<string, unknown> | undefined
+
 function findPatchPayload(value: unknown): string | null {
   if (typeof value === "string") {
     const normalized = value.replace(/\r\n/g, "\n")
@@ -62,6 +64,73 @@ function extractTrackedPathsFromPatch(patchText: string): string[] {
   return Array.from(new Set(paths.filter((candidate) => candidate.length > 0)))
 }
 
+function findNestedStringByKeys(value: unknown, keys: Set<string>): string | null {
+  if (!value || typeof value !== "object") {
+    return null
+  }
+
+  for (const [key, nestedValue] of Object.entries(value as Record<string, unknown>)) {
+    if (keys.has(key) && typeof nestedValue === "string" && nestedValue.trim().length > 0) {
+      return nestedValue
+    }
+
+    const nestedMatch = findNestedStringByKeys(nestedValue, keys)
+    if (nestedMatch) {
+      return nestedMatch
+    }
+  }
+
+  return null
+}
+
+function tokenizeCommand(command: string): string[] {
+  const tokens = command.match(/"[^"]*"|'[^']*'|&&|\|\||[;|]|[^\s]+/g) ?? []
+  return tokens.map((token) => {
+    if (
+      (token.startsWith("\"") && token.endsWith("\"")) ||
+      (token.startsWith("'") && token.endsWith("'"))
+    ) {
+      return token.slice(1, -1)
+    }
+
+    return token
+  })
+}
+
+function extractTrackedPathsFromRmCommand(command: string): string[] {
+  const tokens = tokenizeCommand(command.trim())
+  if (tokens.length === 0) {
+    return []
+  }
+
+  const rmTokenIndex = tokens.findIndex((token) => path.basename(token) === "rm")
+  if (rmTokenIndex === -1) {
+    return []
+  }
+
+  const paths: string[] = []
+  for (let index = rmTokenIndex + 1; index < tokens.length; index += 1) {
+    const token = tokens[index]
+    if (token === "&&" || token === "||" || token === ";" || token === "|") {
+      break
+    }
+    if (token.startsWith("-")) {
+      continue
+    }
+    paths.push(token)
+  }
+
+  return Array.from(new Set(paths.filter((candidate) => candidate.trim().length > 0)))
+}
+
+function resolveExecutionDirectory(rawCwd: unknown, fallbackDirectory: string): string {
+  if (typeof rawCwd !== "string" || rawCwd.trim() === "") {
+    return fallbackDirectory
+  }
+
+  return path.isAbsolute(rawCwd) ? rawCwd : path.resolve(fallbackDirectory, rawCwd)
+}
+
 function normalizeRelativePath(rawPath: string, workspaceDir: string): string {
   const trimmed = rawPath.trim()
   if (!trimmed) {
@@ -102,6 +171,53 @@ async function readErrorMessageFromResponse(
   } catch {
     return fallbackMessage
   }
+}
+
+function collectTrackedPathsForTool(
+  tool: string,
+  inputArgs: ToolArgs,
+  outputArgs: ToolArgs,
+  workspaceDir: string
+): string[] {
+  if (tool === "apply_patch") {
+    const patchPayload = findPatchPayload(outputArgs) ?? findPatchPayload(inputArgs)
+    if (!patchPayload) {
+      throw new Error("apply_patch hook could not find patch payload.")
+    }
+
+    return extractTrackedPathsFromPatch(patchPayload)
+  }
+
+  if (tool === "write") {
+    const filepath =
+      findNestedStringByKeys(outputArgs, new Set(["filepath", "filePath"])) ??
+      findNestedStringByKeys(inputArgs, new Set(["filepath", "filePath"]))
+    if (!filepath) {
+      throw new Error("write hook could not determine filepath.")
+    }
+
+    return [filepath]
+  }
+
+  if (tool === "bash") {
+    const command =
+      findNestedStringByKeys(outputArgs, new Set(["command", "cmd", "script", "arguments"])) ??
+      findNestedStringByKeys(inputArgs, new Set(["command", "cmd", "script", "arguments"]))
+    if (!command) {
+      return []
+    }
+
+    const rawCwd =
+      (outputArgs && (outputArgs.workdir ?? outputArgs.cwd)) ??
+      (inputArgs && (inputArgs.workdir ?? inputArgs.cwd))
+    const executionDirectory = resolveExecutionDirectory(rawCwd, workspaceDir)
+
+    return extractTrackedPathsFromRmCommand(command).map((candidatePath) =>
+      path.isAbsolute(candidatePath) ? candidatePath : path.resolve(executionDirectory, candidatePath)
+    )
+  }
+
+  return []
 }
 
 export const ApplyPatchSessionDiffPlugin: Plugin = async ({ client, directory }) => {
@@ -150,22 +266,17 @@ export const ApplyPatchSessionDiffPlugin: Plugin = async ({ client, directory })
 
   return {
     "tool.execute.before": async (input, output) => {
-      if (input.tool !== "apply_patch") {
+      if (!["apply_patch", "write", "bash"].includes(input.tool)) {
         return
       }
 
       const rawSessionID = typeof input.sessionID === "string" ? input.sessionID.trim() : ""
       if (!rawSessionID) {
-        throw new Error("apply_patch hook could not determine session ID.")
+        throw new Error(`${input.tool} hook could not determine session ID.`)
       }
 
       const rootSessionID = await resolveRootSessionID(rawSessionID)
-      const patchPayload = findPatchPayload(output.args) ?? findPatchPayload(input.args)
-      if (!patchPayload) {
-        throw new Error("apply_patch hook could not find patch payload.")
-      }
-
-      const paths = extractTrackedPathsFromPatch(patchPayload)
+      const paths = collectTrackedPathsForTool(input.tool, input.args, output.args, directory)
       for (const candidatePath of paths) {
         const relativePath = normalizeRelativePath(candidatePath, directory)
         await captureBaselineForPath(rootSessionID, relativePath)
