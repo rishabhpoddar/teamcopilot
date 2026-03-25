@@ -433,10 +433,12 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                 return validExpandedPaths;
             });
         } catch (err: unknown) {
-            const errorMessage = err instanceof AxiosError
-                ? err.response?.data?.message || err.response?.data || err.message
-                : 'Failed to load session diff';
-            setSessionDiffError(String(errorMessage));
+            if (showLoading) {
+                const errorMessage = err instanceof AxiosError
+                    ? err.response?.data?.message || err.response?.data || err.message
+                    : 'Failed to load session diff';
+                setSessionDiffError(String(errorMessage));
+            }
         } finally {
             if (showLoading) {
                 setSessionDiffLoading(false);

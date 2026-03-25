@@ -42,15 +42,21 @@ function findPatchPayload(value: unknown): string | null {
 
 function extractTrackedPathsFromPatch(patchText: string): string[] {
   const normalized = patchText.replace(/\r\n/g, "\n")
-  const sourceMatch = normalized.match(/^\*\*\* (?:Add|Update|Delete) File: (.+)$/m)
-  if (!sourceMatch) {
+  const fileHeaderMatches = normalized.matchAll(/^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm)
+  const paths = Array.from(fileHeaderMatches, (match) => match[1].trim()).filter(
+    (candidate) => candidate.length > 0
+  )
+
+  if (paths.length === 0) {
     throw new Error("Could not determine target path from apply_patch payload.")
   }
 
-  const paths = [sourceMatch[1].trim()]
-  const moveToMatch = normalized.match(/^\*\*\* Move to: (.+)$/m)
-  if (moveToMatch) {
-    paths.push(moveToMatch[1].trim())
+  const moveToMatches = normalized.matchAll(/^\*\*\* Move to: (.+)$/gm)
+  for (const match of moveToMatches) {
+    const targetPath = match[1].trim()
+    if (targetPath.length > 0) {
+      paths.push(targetPath)
+    }
   }
 
   return Array.from(new Set(paths.filter((candidate) => candidate.length > 0)))
