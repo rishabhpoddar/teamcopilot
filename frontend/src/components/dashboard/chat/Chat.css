@@ -173,6 +173,8 @@
 
 .chat-column-diff {
     background: #141414;
+    min-height: 0;
+    overflow: hidden;
 }
 
 .chat-messages {
@@ -1006,6 +1008,7 @@
     background: #171717;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
 }
 
 .chat-session-diff-header {
@@ -1054,9 +1057,11 @@
     flex-direction: column;
     gap: 0.75rem;
     padding: 0.75rem;
+    align-items: stretch;
 }
 
 .chat-session-diff-file-card {
+    flex: 0 0 auto;
     border: 1px solid #2a2a2a;
     border-radius: 8px;
     overflow: hidden;
