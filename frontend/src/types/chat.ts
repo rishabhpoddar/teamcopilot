@@ -5,14 +5,10 @@ export interface ChatSession {
     id: string;
     opencode_session_id: string;
     title: string | null;
-    last_seen_assistant_message_id: string | null;
-    latest_completed_assistant_message_id: string | null;
     created_at: number;
     updated_at: number;
-    is_running: boolean;
-    is_waiting_for_input: boolean;
-    pending_input_key: string | null;
-    has_unread: boolean;
+    state: "idle" | "processing" | "waiting_input" | "unread_output";
+    state_key: string | null;
 }
 
 // Message types from opencode SDK

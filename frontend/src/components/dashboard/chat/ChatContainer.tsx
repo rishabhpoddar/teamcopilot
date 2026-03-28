@@ -62,13 +62,21 @@ function isDocumentVisibleAndFocused(): boolean {
 }
 
 function getSessionAttentionKey(session: ChatSession): string | null {
-    if (session.pending_input_key) {
-        return `waiting:${session.pending_input_key}`;
-    }
-    if (session.has_unread && session.latest_completed_assistant_message_id) {
-        return `assistant:${session.latest_completed_assistant_message_id}`;
+    if (session.state === 'waiting_input' || session.state === 'unread_output') {
+        return session.state_key;
     }
     return null;
+}
+
+function isAttentionState(state: ChatSession['state']): boolean {
+    return state === 'waiting_input' || state === 'unread_output';
+}
+
+function getNotificationBodyForState(state: ChatSession['state']): string {
+    if (state === 'waiting_input') {
+        return 'The assistant needs your input in this chat.';
+    }
+    return 'The assistant finished processing this chat.';
 }
 
 type AttentionDeliveryState = {
@@ -166,7 +174,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
     const [draftMessagesBySessionId, setDraftMessagesBySessionId] = useState<Record<string, string>>({});
     const [pendingPermissions, setPendingPermissions] = useState<PermissionRequest[]>([]);
     const [respondingPermissionIds, setRespondingPermissionIds] = useState<Record<string, boolean>>({});
-    const [seenWaitingInputKeysBySessionId, setSeenWaitingInputKeysBySessionId] = useState<Record<string, string>>({});
+    const [attentionStateBySessionId, setAttentionStateBySessionId] = useState<Record<string, AttentionDeliveryState>>({});
 
     const abortControllerRef = useRef<AbortController | null>(null);
     const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
@@ -176,7 +184,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
     const handledComposeKeyRef = useRef<string | null>(null);
     const previousSessionsRef = useRef<Record<string, ChatSession>>({});
     const hasLoadedSessionsRef = useRef(false);
-    const attentionDeliveryRef = useRef<Record<string, AttentionDeliveryState>>({});
+    const attentionStateRef = useRef<Record<string, AttentionDeliveryState>>({});
     const activeSessionIdRef = useRef<string | null>(null);
     const readingSessionIdsRef = useRef<Set<string>>(new Set());
 
@@ -191,10 +199,10 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
         if (token) {
             return;
         }
-        setSeenWaitingInputKeysBySessionId({});
+        setAttentionStateBySessionId({});
         previousSessionsRef.current = {};
         hasLoadedSessionsRef.current = false;
-        attentionDeliveryRef.current = {};
+        attentionStateRef.current = {};
         readingSessionIdsRef.current = new Set();
     }, [token]);
 
@@ -437,6 +445,30 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
         connectSSE();
     }, [token, stopSSE, handleSSEEvent]);
 
+    const updateAttentionState = useCallback((sessionId: string, nextState: AttentionDeliveryState | null) => {
+        if (nextState === null) {
+            delete attentionStateRef.current[sessionId];
+            setAttentionStateBySessionId((prev) => {
+                if (!(sessionId in prev)) {
+                    return prev;
+                }
+                const next = { ...prev };
+                delete next[sessionId];
+                return next;
+            });
+            return;
+        }
+
+        attentionStateRef.current = {
+            ...attentionStateRef.current,
+            [sessionId]: nextState
+        };
+        setAttentionStateBySessionId((prev) => ({
+            ...prev,
+            [sessionId]: nextState
+        }));
+    }, []);
+
     const markSessionAsRead = useCallback(async (sessionId: string) => {
         if (!token || sessionId === PENDING_SESSION_ID || readingSessionIdsRef.current.has(sessionId)) {
             return;
@@ -451,18 +483,16 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
             );
             const updatedSession = response.data?.session as {
                 id: string;
-                last_seen_assistant_message_id: string | null;
-                latest_completed_assistant_message_id: string | null;
-                has_unread: boolean;
+                state: ChatSession['state'];
+                state_key: string | null;
             } | undefined;
 
             setSessions((prev) => prev.map((session) => (
                 session.id === sessionId
                     ? {
                         ...session,
-                        last_seen_assistant_message_id: updatedSession?.last_seen_assistant_message_id ?? session.last_seen_assistant_message_id,
-                        latest_completed_assistant_message_id: updatedSession?.latest_completed_assistant_message_id ?? session.latest_completed_assistant_message_id,
-                        has_unread: false
+                        state: updatedSession?.state ?? 'idle',
+                        state_key: updatedSession?.state_key ?? null
                     }
                     : session
             )));
@@ -473,12 +503,12 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                     ...previousSessionsRef.current,
                     [sessionId]: {
                         ...previousSession,
-                        last_seen_assistant_message_id: updatedSession?.last_seen_assistant_message_id ?? previousSession.last_seen_assistant_message_id,
-                        latest_completed_assistant_message_id: updatedSession?.latest_completed_assistant_message_id ?? previousSession.latest_completed_assistant_message_id,
-                        has_unread: false
+                        state: updatedSession?.state ?? 'idle',
+                        state_key: updatedSession?.state_key ?? null
                     }
                 };
             }
+            updateAttentionState(sessionId, null);
         } catch (err: unknown) {
             const errorMessage = err instanceof AxiosError
                 ? err.response?.data?.message || err.response?.data || err.message
@@ -487,7 +517,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
         } finally {
             readingSessionIdsRef.current.delete(sessionId);
         }
-    }, [token]);
+    }, [token, updateAttentionState]);
 
     const loadSessions = useCallback(async () => {
         if (!token) return;
@@ -514,45 +544,44 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                     const previousAttentionKey = getSessionAttentionKey(previousSession);
                     const nextAttentionKey = getSessionAttentionKey(nextSession);
                     if (nextAttentionKey === null) {
-                        delete attentionDeliveryRef.current[nextSession.id];
+                        updateAttentionState(nextSession.id, null);
                         continue;
                     }
-                    if (previousAttentionKey === nextAttentionKey) {
+                    if (previousAttentionKey === nextAttentionKey && previousSession.state === nextSession.state) {
                         continue;
                     }
 
-                    const previousDelivery = attentionDeliveryRef.current[nextSession.id];
+                    const previousDelivery = attentionStateRef.current[nextSession.id];
                     const shouldSuppressAsDuplicate = previousAttentionKey !== null
                         && previousDelivery?.key === previousAttentionKey
                         && previousDelivery.delivery === 'notified';
 
                     const isSeenNow = nextSession.id === activeSessionIdRef.current && isDocumentVisibleAndFocused();
                     if (isSeenNow) {
-                        if (nextSession.has_unread) {
+                        if (nextSession.state === 'unread_output') {
                             void markSessionAsRead(nextSession.id);
+                        } else if (isAttentionState(nextSession.state)) {
+                            updateAttentionState(nextSession.id, {
+                                key: nextAttentionKey,
+                                delivery: 'seen'
+                            });
                         }
-                        attentionDeliveryRef.current[nextSession.id] = {
-                            key: nextAttentionKey,
-                            delivery: 'seen'
-                        };
                         continue;
                     }
 
                     if (shouldSuppressAsDuplicate) {
-                        attentionDeliveryRef.current[nextSession.id] = {
+                        updateAttentionState(nextSession.id, {
                             key: nextAttentionKey,
                             delivery: 'notified'
-                        };
+                        });
                         continue;
                     }
 
-                    attentionDeliveryRef.current[nextSession.id] = {
+                    updateAttentionState(nextSession.id, {
                         key: nextAttentionKey,
                         delivery: 'notified'
-                    };
-                    const notificationBody = nextSession.pending_input_key
-                        ? 'The assistant needs your input in this chat.'
-                        : 'The assistant finished processing this chat.';
+                    });
+                    const notificationBody = getNotificationBodyForState(nextSession.state);
 
                     if ('Notification' in window) {
                         if (Notification.permission === 'granted') {
@@ -578,16 +607,6 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                 acc[session.id] = session;
                 return acc;
             }, {});
-            setSeenWaitingInputKeysBySessionId((prev) => {
-                const next: Record<string, string> = {};
-                for (const session of nextSessions) {
-                    const seenKey = prev[session.id];
-                    if (session.pending_input_key !== null && seenKey === session.pending_input_key) {
-                        next[session.id] = seenKey;
-                    }
-                }
-                return next;
-            });
             hasLoadedSessionsRef.current = true;
             setSessions(nextSessions);
             if (activeSessionIdRef.current && activeSessionIdRef.current !== PENDING_SESSION_ID) {
@@ -607,7 +626,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                 setLoading(false);
             }
         }
-    }, [markSessionAsRead, token]);
+    }, [markSessionAsRead, token, updateAttentionState]);
 
     const loadMessages = useCallback(async (sessionId: string) => {
         if (!token) return;
@@ -731,7 +750,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
     }, [loadSessions, token]);
 
     useEffect(() => {
-        if (!activeSession || activeSession.id === PENDING_SESSION_ID || !activeSession.has_unread) {
+        if (!activeSession || activeSession.id === PENDING_SESSION_ID || activeSession.state !== 'unread_output') {
             return;
         }
         if (!isDocumentVisibleAndFocused()) {
@@ -744,24 +763,17 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
         if (!activeSession || activeSession.id === PENDING_SESSION_ID) {
             return;
         }
-        if (!activeSession.is_waiting_for_input || activeSession.pending_input_key === null) {
+        if (activeSession.state !== 'waiting_input' || activeSession.state_key === null) {
             return;
         }
         if (!isDocumentVisibleAndFocused()) {
             return;
         }
-        const pendingInputKey = activeSession.pending_input_key;
-
-        setSeenWaitingInputKeysBySessionId((prev) => {
-            if (prev[activeSession.id] === pendingInputKey) {
-                return prev;
-            }
-            return {
-                ...prev,
-                [activeSession.id]: pendingInputKey
-            };
+        updateAttentionState(activeSession.id, {
+            key: activeSession.state_key,
+            delivery: 'seen'
         });
-    }, [activeSession]);
+    }, [activeSession, updateAttentionState]);
 
     useEffect(() => {
         const markActiveSessionAsReadIfVisible = () => {
@@ -771,7 +783,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
             }
 
             const currentActiveSession = previousSessionsRef.current[currentActiveSessionId];
-            if (!currentActiveSession?.has_unread) {
+            if (currentActiveSession?.state !== 'unread_output') {
                 return;
             }
 
@@ -1190,7 +1202,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
             <SessionSidebar
                 sessions={sessions}
                 activeSessionId={activeSessionId}
-                seenWaitingInputKeysBySessionId={seenWaitingInputKeysBySessionId}
+                attentionStateBySessionId={attentionStateBySessionId}
                 onSelectSession={switchSession}
                 onNewSession={createSession}
                 loading={loading}

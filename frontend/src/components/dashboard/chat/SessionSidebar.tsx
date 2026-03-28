@@ -1,9 +1,14 @@
 import type { ChatSession } from '../../../types/chat';
 
+type AttentionDeliveryState = {
+    key: string;
+    delivery: 'notified' | 'seen';
+};
+
 interface SessionSidebarProps {
     sessions: ChatSession[];
     activeSessionId: string | null;
-    seenWaitingInputKeysBySessionId: Record<string, string>;
+    attentionStateBySessionId: Record<string, AttentionDeliveryState>;
     onSelectSession: (sessionId: string) => void;
     onNewSession: () => void;
     // onDeleteSession: (sessionId: string) => void;
@@ -13,7 +18,7 @@ interface SessionSidebarProps {
 export default function SessionSidebar({
     sessions,
     activeSessionId,
-    seenWaitingInputKeysBySessionId,
+    attentionStateBySessionId,
     onSelectSession,
     onNewSession,
     // onDeleteSession,
@@ -57,10 +62,13 @@ export default function SessionSidebar({
                 ) : (
                     sessions.map(session => {
                         const displayTitle = session.title || 'New Chat';
-                        const hasUnseenWaitingInput = session.is_waiting_for_input
-                            && session.pending_input_key !== null
-                            && seenWaitingInputKeysBySessionId[session.id] !== session.pending_input_key;
-                        const showUnreadIndicator = session.has_unread || hasUnseenWaitingInput;
+                        const attentionState = attentionStateBySessionId[session.id];
+                        const showUnreadIndicator = session.state === 'unread_output'
+                            || (
+                                session.state === 'waiting_input'
+                                && session.state_key !== null
+                                && !(attentionState?.key === session.state_key && attentionState.delivery === 'seen')
+                            );
                         return (
                         <div
                             key={session.id}
@@ -69,7 +77,7 @@ export default function SessionSidebar({
                         >
                             <div className="session-title" data-full-title={displayTitle}>
                                 <span className="session-status-icons" aria-hidden="true">
-                                    {session.is_running && <span className="session-running-indicator" />}
+                                    {session.state === 'processing' && <span className="session-running-indicator" />}
                                     {showUnreadIndicator && <span className="session-unread-indicator" />}
                                 </span>
                                 <span className="session-title-text">{displayTitle}</span>

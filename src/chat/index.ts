@@ -430,6 +430,43 @@ function buildPendingInputKey(
     return null;
 }
 
+function getSessionState(args: {
+    rawSessionStatus: SessionStatusType;
+    pendingInputKey: string | null;
+    latestCompletedAssistantMessageId: string | null;
+    lastSeenAssistantMessageId: string | null;
+    opencodeSessionId: string;
+}): { state: "idle" | "processing" | "waiting_input" | "unread_output"; state_key: string | null } {
+    if (args.pendingInputKey !== null) {
+        return {
+            state: "waiting_input",
+            state_key: args.pendingInputKey
+        };
+    }
+
+    if (args.rawSessionStatus !== "idle") {
+        return {
+            state: "processing",
+            state_key: args.opencodeSessionId
+        };
+    }
+
+    if (
+        args.latestCompletedAssistantMessageId !== null
+        && args.latestCompletedAssistantMessageId !== args.lastSeenAssistantMessageId
+    ) {
+        return {
+            state: "unread_output",
+            state_key: args.latestCompletedAssistantMessageId
+        };
+    }
+
+    return {
+        state: "idle",
+        state_key: null
+    };
+}
+
 // GET /api/chat/sessions - List user's sessions
 router.get('/sessions', apiHandler(async (req, res) => {
     const sessions = await prisma.chat_sessions.findMany({
@@ -501,26 +538,26 @@ router.get('/sessions', apiHandler(async (req, res) => {
             client,
             session.opencode_session_id
         );
-        const hasUnread = latestCompletedAssistantMessageId !== null
-            && latestCompletedAssistantMessageId !== session.last_seen_assistant_message_id;
         const pendingQuestionId = pendingQuestionIdsBySessionId.get(session.opencode_session_id) ?? null;
         const pendingPermissionIds = pendingPermissionIdsBySessionId.get(session.opencode_session_id) ?? [];
-        const isWaitingForUserInput = pendingQuestionId !== null || pendingPermissionIds.length > 0;
         const rawSessionStatus = getSessionStatusTypeForSession(sessionStatusMap, session.opencode_session_id);
         const pendingInputKey = buildPendingInputKey(pendingQuestionId, pendingPermissionIds);
+        const sessionState = getSessionState({
+            rawSessionStatus,
+            pendingInputKey,
+            latestCompletedAssistantMessageId,
+            lastSeenAssistantMessageId: session.last_seen_assistant_message_id,
+            opencodeSessionId: session.opencode_session_id
+        });
 
         return {
             id: session.id,
             opencode_session_id: session.opencode_session_id,
             title: session.title,
-            last_seen_assistant_message_id: session.last_seen_assistant_message_id,
-            latest_completed_assistant_message_id: latestCompletedAssistantMessageId,
             created_at: session.created_at,
             updated_at: session.updated_at,
-            is_running: rawSessionStatus !== 'idle' && !isWaitingForUserInput,
-            is_waiting_for_input: isWaitingForUserInput,
-            pending_input_key: pendingInputKey,
-            has_unread: hasUnread
+            state: sessionState.state,
+            state_key: sessionState.state_key
         };
     }));
 
@@ -599,14 +636,10 @@ router.post('/sessions', apiHandler(async (req, res) => {
             id: session.id,
             opencode_session_id: session.opencode_session_id,
             title: session.title,
-            last_seen_assistant_message_id: session.last_seen_assistant_message_id,
-            latest_completed_assistant_message_id: null,
             created_at: session.created_at,
             updated_at: session.updated_at,
-            is_running: false,
-            is_waiting_for_input: false,
-            pending_input_key: null,
-            has_unread: false
+            state: "idle",
+            state_key: null
         }
     });
 }, true));
@@ -1103,9 +1136,8 @@ router.post('/sessions/:id/read', apiHandler(async (req, res) => {
     res.json({
         session: {
             id: updatedSession.id,
-            last_seen_assistant_message_id: updatedSession.last_seen_assistant_message_id,
-            latest_completed_assistant_message_id: lastSeenAssistantMessageId,
-            has_unread: false
+            state: "idle",
+            state_key: null
         }
     });
 }, true));
