@@ -10,6 +10,8 @@ export interface ChatSession {
     created_at: number;
     updated_at: number;
     is_running: boolean;
+    is_waiting_for_input: boolean;
+    pending_input_key: string | null;
     has_unread: boolean;
 }
 

@@ -8,6 +8,7 @@ import { apiHandler } from "../utils/index";
 import {
     getOpencodeClient,
     getPendingQuestionForSession,
+    listPendingQuestions,
     listPendingPermissionsForSession,
     listPendingPermissions,
     getWorkspaceDir,
@@ -416,6 +417,19 @@ async function loadLatestCompletedAssistantMessageIdForSession(
     return getLatestCompletedAssistantMessageId(result.data);
 }
 
+function buildPendingInputKey(
+    pendingQuestionId: string | null,
+    pendingPermissionIds: string[]
+): string | null {
+    if (pendingQuestionId) {
+        return `question:${pendingQuestionId}`;
+    }
+    if (pendingPermissionIds.length > 0) {
+        return `permission:${pendingPermissionIds.slice().sort().join(",")}`;
+    }
+    return null;
+}
+
 // GET /api/chat/sessions - List user's sessions
 router.get('/sessions', apiHandler(async (req, res) => {
     const sessions = await prisma.chat_sessions.findMany({
@@ -453,6 +467,34 @@ router.get('/sessions', apiHandler(async (req, res) => {
     const statusResult = await client.session.status();
     assertCondition(!statusResult.error, getErrorMessage(statusResult.error));
     const sessionStatusMap = statusResult.data as SessionStatusMap;
+    const pendingQuestions = await listPendingQuestions();
+    const pendingQuestionIdsBySessionId = new Map(
+        pendingQuestions.map((question) => [question.sessionID, question.id])
+    );
+    const pendingPermissions = await listPendingPermissions();
+    const pendingPermissionIdsBySessionId = new Map<string, string[]>();
+    for (const permission of pendingPermissions) {
+        const existing = pendingPermissionIdsBySessionId.get(permission.sessionID) ?? [];
+        existing.push(permission.id);
+        pendingPermissionIdsBySessionId.set(permission.sessionID, existing);
+    }
+    const customPendingPermissions = await prisma.tool_execution_permissions.findMany({
+        where: {
+            opencode_session_id: {
+                in: validSessions.map((session) => session.opencode_session_id)
+            },
+            status: 'pending'
+        },
+        select: {
+            id: true,
+            opencode_session_id: true
+        }
+    });
+    for (const permission of customPendingPermissions) {
+        const existing = pendingPermissionIdsBySessionId.get(permission.opencode_session_id) ?? [];
+        existing.push(permission.id);
+        pendingPermissionIdsBySessionId.set(permission.opencode_session_id, existing);
+    }
 
     const enrichedSessions = await Promise.all(validSessions.map(async (session) => {
         const latestCompletedAssistantMessageId = await loadLatestCompletedAssistantMessageIdForSession(
@@ -461,6 +503,11 @@ router.get('/sessions', apiHandler(async (req, res) => {
         );
         const hasUnread = latestCompletedAssistantMessageId !== null
             && latestCompletedAssistantMessageId !== session.last_seen_assistant_message_id;
+        const pendingQuestionId = pendingQuestionIdsBySessionId.get(session.opencode_session_id) ?? null;
+        const pendingPermissionIds = pendingPermissionIdsBySessionId.get(session.opencode_session_id) ?? [];
+        const isWaitingForUserInput = pendingQuestionId !== null || pendingPermissionIds.length > 0;
+        const rawSessionStatus = getSessionStatusTypeForSession(sessionStatusMap, session.opencode_session_id);
+        const pendingInputKey = buildPendingInputKey(pendingQuestionId, pendingPermissionIds);
 
         return {
             id: session.id,
@@ -470,7 +517,9 @@ router.get('/sessions', apiHandler(async (req, res) => {
             latest_completed_assistant_message_id: latestCompletedAssistantMessageId,
             created_at: session.created_at,
             updated_at: session.updated_at,
-            is_running: getSessionStatusTypeForSession(sessionStatusMap, session.opencode_session_id) !== 'idle',
+            is_running: rawSessionStatus !== 'idle' && !isWaitingForUserInput,
+            is_waiting_for_input: isWaitingForUserInput,
+            pending_input_key: pendingInputKey,
             has_unread: hasUnread
         };
     }));
@@ -555,6 +604,8 @@ router.post('/sessions', apiHandler(async (req, res) => {
             created_at: session.created_at,
             updated_at: session.updated_at,
             is_running: false,
+            is_waiting_for_input: false,
+            pending_input_key: null,
             has_unread: false
         }
     });
