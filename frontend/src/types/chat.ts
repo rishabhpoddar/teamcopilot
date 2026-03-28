@@ -7,7 +7,7 @@ export interface ChatSession {
     title: string | null;
     created_at: number;
     updated_at: number;
-    state: "idle" | "processing" | "waiting_input" | "unread_output";
+    state: "idle" | "processing" | "attention";
     state_key: string | null;
 }
 

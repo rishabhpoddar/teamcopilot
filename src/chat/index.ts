@@ -360,11 +360,11 @@ function generateTitleFromUserMessage(content: string): string {
     return candidate;
 }
 
-function getLatestCompletedAssistantMessageId(messages: unknown): string | null {
+function getLatestAssistantMessageId(messages: unknown): string | null {
     assertCondition(Array.isArray(messages), "Session messages response is not an array");
 
     let latestMessageId: string | null = null;
-    let latestCompletedAt = -1;
+    let latestAssistantTimestamp = -1;
 
     for (const message of messages) {
         if (!message || typeof message !== "object") {
@@ -380,6 +380,7 @@ function getLatestCompletedAssistantMessageId(messages: unknown): string | null 
             id?: unknown;
             role?: unknown;
             time?: {
+                created?: unknown;
                 completed?: unknown;
             };
         };
@@ -388,13 +389,19 @@ function getLatestCompletedAssistantMessageId(messages: unknown): string | null 
             continue;
         }
 
+        const createdAt = candidate.time?.created;
         const completedAt = candidate.time?.completed;
-        if (typeof completedAt !== "number") {
+        const assistantTimestamp = typeof completedAt === "number"
+            ? completedAt
+            : typeof createdAt === "number"
+                ? createdAt
+                : null;
+        if (assistantTimestamp === null) {
             continue;
         }
 
-        if (completedAt > latestCompletedAt) {
-            latestCompletedAt = completedAt;
+        if (assistantTimestamp > latestAssistantTimestamp) {
+            latestAssistantTimestamp = assistantTimestamp;
             latestMessageId = candidate.id;
         }
     }
@@ -402,7 +409,7 @@ function getLatestCompletedAssistantMessageId(messages: unknown): string | null 
     return latestMessageId;
 }
 
-async function loadLatestCompletedAssistantMessageIdForSession(
+async function loadLatestAssistantMessageIdForSession(
     client: Awaited<ReturnType<typeof getOpencodeClient>>,
     opencodeSessionId: string
 ): Promise<string | null> {
@@ -414,7 +421,7 @@ async function loadLatestCompletedAssistantMessageIdForSession(
         throw new Error(getErrorMessage(result.error) || "Failed to get messages from opencode");
     }
 
-    return getLatestCompletedAssistantMessageId(result.data);
+    return getLatestAssistantMessageId(result.data);
 }
 
 function buildPendingInputKey(
@@ -433,14 +440,24 @@ function buildPendingInputKey(
 function getSessionState(args: {
     rawSessionStatus: SessionStatusType;
     pendingInputKey: string | null;
-    latestCompletedAssistantMessageId: string | null;
+    latestAssistantMessageId: string | null;
     lastSeenAssistantMessageId: string | null;
     opencodeSessionId: string;
-}): { state: "idle" | "processing" | "waiting_input" | "unread_output"; state_key: string | null } {
+}): { state: "idle" | "processing" | "attention"; state_key: string | null } {
     if (args.pendingInputKey !== null) {
+        if (
+            args.latestAssistantMessageId !== null
+            && args.latestAssistantMessageId === args.lastSeenAssistantMessageId
+        ) {
+            return {
+                state: "idle",
+                state_key: null
+            };
+        }
+
         return {
-            state: "waiting_input",
-            state_key: args.pendingInputKey
+            state: "attention",
+            state_key: args.latestAssistantMessageId ?? args.pendingInputKey
         };
     }
 
@@ -452,12 +469,12 @@ function getSessionState(args: {
     }
 
     if (
-        args.latestCompletedAssistantMessageId !== null
-        && args.latestCompletedAssistantMessageId !== args.lastSeenAssistantMessageId
+        args.latestAssistantMessageId !== null
+        && args.latestAssistantMessageId !== args.lastSeenAssistantMessageId
     ) {
         return {
-            state: "unread_output",
-            state_key: args.latestCompletedAssistantMessageId
+            state: "attention",
+            state_key: args.latestAssistantMessageId
         };
     }
 
@@ -534,7 +551,7 @@ router.get('/sessions', apiHandler(async (req, res) => {
     }
 
     const enrichedSessions = await Promise.all(validSessions.map(async (session) => {
-        const latestCompletedAssistantMessageId = await loadLatestCompletedAssistantMessageIdForSession(
+        const latestAssistantMessageId = await loadLatestAssistantMessageIdForSession(
             client,
             session.opencode_session_id
         );
@@ -545,7 +562,7 @@ router.get('/sessions', apiHandler(async (req, res) => {
         const sessionState = getSessionState({
             rawSessionStatus,
             pendingInputKey,
-            latestCompletedAssistantMessageId,
+            latestAssistantMessageId,
             lastSeenAssistantMessageId: session.last_seen_assistant_message_id,
             opencodeSessionId: session.opencode_session_id
         });
@@ -1121,7 +1138,7 @@ router.post('/sessions/:id/read', apiHandler(async (req, res) => {
     }
 
     const client = await getOpencodeClient();
-    const lastSeenAssistantMessageId = await loadLatestCompletedAssistantMessageIdForSession(
+    const lastSeenAssistantMessageId = await loadLatestAssistantMessageIdForSession(
         client,
         session.opencode_session_id
     );

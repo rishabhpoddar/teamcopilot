@@ -62,19 +62,15 @@ function isDocumentVisibleAndFocused(): boolean {
 }
 
 function getSessionAttentionKey(session: ChatSession): string | null {
-    if (session.state === 'waiting_input' || session.state === 'unread_output') {
+    if (session.state === 'attention') {
         return session.state_key;
     }
     return null;
 }
 
-function isAttentionState(state: ChatSession['state']): boolean {
-    return state === 'waiting_input' || state === 'unread_output';
-}
-
-function getNotificationBodyForState(state: ChatSession['state']): string {
-    if (state === 'waiting_input') {
-        return 'The assistant needs your input in this chat.';
+function getNotificationBodyForSession(session: ChatSession): string {
+    if (session.state === 'attention') {
+        return 'This chat needs your attention.';
     }
     return 'The assistant finished processing this chat.';
 }
@@ -558,9 +554,8 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
 
                     const isSeenNow = nextSession.id === activeSessionIdRef.current && isDocumentVisibleAndFocused();
                     if (isSeenNow) {
-                        if (nextSession.state === 'unread_output') {
+                        if (nextSession.state === 'attention') {
                             void markSessionAsRead(nextSession.id);
-                        } else if (isAttentionState(nextSession.state)) {
                             updateAttentionState(nextSession.id, {
                                 key: nextAttentionKey,
                                 delivery: 'seen'
@@ -581,7 +576,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                         key: nextAttentionKey,
                         delivery: 'notified'
                     });
-                    const notificationBody = getNotificationBodyForState(nextSession.state);
+                    const notificationBody = getNotificationBodyForSession(nextSession);
 
                     if ('Notification' in window) {
                         if (Notification.permission === 'granted') {
@@ -750,30 +745,21 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
     }, [loadSessions, token]);
 
     useEffect(() => {
-        if (!activeSession || activeSession.id === PENDING_SESSION_ID || activeSession.state !== 'unread_output') {
+        if (!activeSession || activeSession.id === PENDING_SESSION_ID || activeSession.state !== 'attention') {
             return;
         }
         if (!isDocumentVisibleAndFocused()) {
+            return;
+        }
+        if (activeSession.state_key === null) {
             return;
         }
         void markSessionAsRead(activeSession.id);
-    }, [activeSession, markSessionAsRead]);
-
-    useEffect(() => {
-        if (!activeSession || activeSession.id === PENDING_SESSION_ID) {
-            return;
-        }
-        if (activeSession.state !== 'waiting_input' || activeSession.state_key === null) {
-            return;
-        }
-        if (!isDocumentVisibleAndFocused()) {
-            return;
-        }
         updateAttentionState(activeSession.id, {
             key: activeSession.state_key,
             delivery: 'seen'
         });
-    }, [activeSession, updateAttentionState]);
+    }, [activeSession, markSessionAsRead, updateAttentionState]);
 
     useEffect(() => {
         const markActiveSessionAsReadIfVisible = () => {
@@ -783,7 +769,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
             }
 
             const currentActiveSession = previousSessionsRef.current[currentActiveSessionId];
-            if (currentActiveSession?.state !== 'unread_output') {
+            if (currentActiveSession?.state !== 'attention') {
                 return;
             }
 
@@ -791,7 +777,15 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                 return;
             }
 
+            if (currentActiveSession.state_key === null) {
+                return;
+            }
+
             void markSessionAsRead(currentActiveSessionId);
+            updateAttentionState(currentActiveSessionId, {
+                key: currentActiveSession.state_key,
+                delivery: 'seen'
+            });
         };
 
         window.addEventListener('focus', markActiveSessionAsReadIfVisible);
@@ -801,7 +795,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
             window.removeEventListener('focus', markActiveSessionAsReadIfVisible);
             document.removeEventListener('visibilitychange', markActiveSessionAsReadIfVisible);
         };
-    }, [markSessionAsRead]);
+    }, [markSessionAsRead, updateAttentionState]);
 
     // Load messages when active session changes
     useEffect(() => {

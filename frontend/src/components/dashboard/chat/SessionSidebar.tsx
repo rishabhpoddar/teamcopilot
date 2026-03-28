@@ -63,12 +63,9 @@ export default function SessionSidebar({
                     sessions.map(session => {
                         const displayTitle = session.title || 'New Chat';
                         const attentionState = attentionStateBySessionId[session.id];
-                        const showUnreadIndicator = session.state === 'unread_output'
-                            || (
-                                session.state === 'waiting_input'
-                                && session.state_key !== null
-                                && !(attentionState?.key === session.state_key && attentionState.delivery === 'seen')
-                            );
+                        const showUnreadIndicator = session.state === 'attention'
+                            && session.state_key !== null
+                            && !(attentionState?.key === session.state_key && attentionState.delivery === 'seen');
                         return (
                         <div
                             key={session.id}
