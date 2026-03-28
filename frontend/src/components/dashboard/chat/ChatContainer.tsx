@@ -61,9 +61,9 @@ function isDocumentVisibleAndFocused(): boolean {
     return document.visibilityState === 'visible' && document.hasFocus();
 }
 
-function getSessionAttentionKey(session: ChatSession): string | null {
+function getSessionAttentionMessageId(session: ChatSession): string | null {
     if (session.state === 'attention') {
-        return session.state_key;
+        return session.latest_message_id;
     }
     return null;
 }
@@ -76,7 +76,7 @@ function getNotificationBodyForSession(session: ChatSession): string {
 }
 
 type AttentionDeliveryState = {
-    key: string;
+    messageId: string;
     delivery: 'notified' | 'seen';
 };
 
@@ -480,7 +480,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
             const updatedSession = response.data?.session as {
                 id: string;
                 state: ChatSession['state'];
-                state_key: string | null;
+                latest_message_id: string | null;
             } | undefined;
 
             setSessions((prev) => prev.map((session) => (
@@ -488,7 +488,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                     ? {
                         ...session,
                         state: updatedSession?.state ?? 'idle',
-                        state_key: updatedSession?.state_key ?? null
+                        latest_message_id: updatedSession?.latest_message_id ?? null
                     }
                     : session
             )));
@@ -500,7 +500,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                     [sessionId]: {
                         ...previousSession,
                         state: updatedSession?.state ?? 'idle',
-                        state_key: updatedSession?.state_key ?? null
+                        latest_message_id: updatedSession?.latest_message_id ?? null
                     }
                 };
             }
@@ -537,19 +537,19 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                         continue;
                     }
 
-                    const previousAttentionKey = getSessionAttentionKey(previousSession);
-                    const nextAttentionKey = getSessionAttentionKey(nextSession);
-                    if (nextAttentionKey === null) {
+                    const previousAttentionMessageId = getSessionAttentionMessageId(previousSession);
+                    const nextAttentionMessageId = getSessionAttentionMessageId(nextSession);
+                    if (nextAttentionMessageId === null) {
                         updateAttentionState(nextSession.id, null);
                         continue;
                     }
-                    if (previousAttentionKey === nextAttentionKey && previousSession.state === nextSession.state) {
+                    if (previousAttentionMessageId === nextAttentionMessageId && previousSession.state === nextSession.state) {
                         continue;
                     }
 
                     const previousDelivery = attentionStateRef.current[nextSession.id];
-                    const shouldSuppressAsDuplicate = previousAttentionKey !== null
-                        && previousDelivery?.key === previousAttentionKey
+                    const shouldSuppressAsDuplicate = previousAttentionMessageId !== null
+                        && previousDelivery?.messageId === previousAttentionMessageId
                         && previousDelivery.delivery === 'notified';
 
                     const isSeenNow = nextSession.id === activeSessionIdRef.current && isDocumentVisibleAndFocused();
@@ -557,7 +557,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                         if (nextSession.state === 'attention') {
                             void markSessionAsRead(nextSession.id);
                             updateAttentionState(nextSession.id, {
-                                key: nextAttentionKey,
+                                messageId: nextAttentionMessageId,
                                 delivery: 'seen'
                             });
                         }
@@ -566,14 +566,14 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
 
                     if (shouldSuppressAsDuplicate) {
                         updateAttentionState(nextSession.id, {
-                            key: nextAttentionKey,
+                            messageId: nextAttentionMessageId,
                             delivery: 'notified'
                         });
                         continue;
                     }
 
                     updateAttentionState(nextSession.id, {
-                        key: nextAttentionKey,
+                        messageId: nextAttentionMessageId,
                         delivery: 'notified'
                     });
                     const notificationBody = getNotificationBodyForSession(nextSession);
@@ -751,12 +751,12 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
         if (!isDocumentVisibleAndFocused()) {
             return;
         }
-        if (activeSession.state_key === null) {
+        if (activeSession.latest_message_id === null) {
             return;
         }
         void markSessionAsRead(activeSession.id);
         updateAttentionState(activeSession.id, {
-            key: activeSession.state_key,
+            messageId: activeSession.latest_message_id,
             delivery: 'seen'
         });
     }, [activeSession, markSessionAsRead, updateAttentionState]);
@@ -777,13 +777,13 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                 return;
             }
 
-            if (currentActiveSession.state_key === null) {
+            if (currentActiveSession.latest_message_id === null) {
                 return;
             }
 
             void markSessionAsRead(currentActiveSessionId);
             updateAttentionState(currentActiveSessionId, {
-                key: currentActiveSession.state_key,
+                messageId: currentActiveSession.latest_message_id,
                 delivery: 'seen'
             });
         };

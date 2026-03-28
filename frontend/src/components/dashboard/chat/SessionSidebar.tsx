@@ -1,7 +1,7 @@
 import type { ChatSession } from '../../../types/chat';
 
 type AttentionDeliveryState = {
-    key: string;
+    messageId: string;
     delivery: 'notified' | 'seen';
 };
 
@@ -64,8 +64,8 @@ export default function SessionSidebar({
                         const displayTitle = session.title || 'New Chat';
                         const attentionState = attentionStateBySessionId[session.id];
                         const showUnreadIndicator = session.state === 'attention'
-                            && session.state_key !== null
-                            && !(attentionState?.key === session.state_key && attentionState.delivery === 'seen');
+                            && session.latest_message_id !== null
+                            && !(attentionState?.messageId === session.latest_message_id && attentionState.delivery === 'seen');
                         return (
                         <div
                             key={session.id}

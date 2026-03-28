@@ -8,7 +8,7 @@ export interface ChatSession {
     created_at: number;
     updated_at: number;
     state: "idle" | "processing" | "attention";
-    state_key: string | null;
+    latest_message_id: string | null;
 }
 
 // Message types from opencode SDK

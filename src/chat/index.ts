@@ -442,8 +442,7 @@ function getSessionState(args: {
     pendingInputKey: string | null;
     latestAssistantMessageId: string | null;
     lastSeenAssistantMessageId: string | null;
-    opencodeSessionId: string;
-}): { state: "idle" | "processing" | "attention"; state_key: string | null } {
+}): { state: "idle" | "processing" | "attention"; latest_message_id: string | null } {
     if (args.pendingInputKey !== null) {
         if (
             args.latestAssistantMessageId !== null
@@ -451,20 +450,20 @@ function getSessionState(args: {
         ) {
             return {
                 state: "idle",
-                state_key: null
+                latest_message_id: null
             };
         }
 
         return {
             state: "attention",
-            state_key: args.latestAssistantMessageId ?? args.pendingInputKey
+            latest_message_id: args.latestAssistantMessageId
         };
     }
 
     if (args.rawSessionStatus !== "idle") {
         return {
             state: "processing",
-            state_key: args.opencodeSessionId
+            latest_message_id: args.latestAssistantMessageId
         };
     }
 
@@ -474,13 +473,13 @@ function getSessionState(args: {
     ) {
         return {
             state: "attention",
-            state_key: args.latestAssistantMessageId
+            latest_message_id: args.latestAssistantMessageId
         };
     }
 
     return {
         state: "idle",
-        state_key: null
+        latest_message_id: null
     };
 }
 
@@ -563,8 +562,7 @@ router.get('/sessions', apiHandler(async (req, res) => {
             rawSessionStatus,
             pendingInputKey,
             latestAssistantMessageId,
-            lastSeenAssistantMessageId: session.last_seen_assistant_message_id,
-            opencodeSessionId: session.opencode_session_id
+            lastSeenAssistantMessageId: session.last_seen_assistant_message_id
         });
 
         return {
@@ -574,7 +572,7 @@ router.get('/sessions', apiHandler(async (req, res) => {
             created_at: session.created_at,
             updated_at: session.updated_at,
             state: sessionState.state,
-            state_key: sessionState.state_key
+            latest_message_id: sessionState.latest_message_id
         };
     }));
 
@@ -656,7 +654,7 @@ router.post('/sessions', apiHandler(async (req, res) => {
             created_at: session.created_at,
             updated_at: session.updated_at,
             state: "idle",
-            state_key: null
+            latest_message_id: null
         }
     });
 }, true));
@@ -1154,7 +1152,7 @@ router.post('/sessions/:id/read', apiHandler(async (req, res) => {
         session: {
             id: updatedSession.id,
             state: "idle",
-            state_key: null
+            latest_message_id: null
         }
     });
 }, true));
