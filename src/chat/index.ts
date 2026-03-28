@@ -424,30 +424,19 @@ async function loadLatestAssistantMessageIdForSession(
     return getLatestAssistantMessageId(result.data);
 }
 
-function buildPendingInputKey(
-    pendingQuestionId: string | null,
-    pendingPermissionIds: string[]
-): string | null {
-    if (pendingQuestionId) {
-        return `question:${pendingQuestionId}`;
-    }
-    if (pendingPermissionIds.length > 0) {
-        return `permission:${pendingPermissionIds.slice().sort().join(",")}`;
-    }
-    return null;
-}
-
 function getSessionState(args: {
     rawSessionStatus: SessionStatusType;
-    pendingInputKey: string | null;
+    hasPendingInput: boolean;
     latestAssistantMessageId: string | null;
     lastSeenAssistantMessageId: string | null;
 }): { state: "idle" | "processing" | "attention"; latest_message_id: string | null } {
-    if (args.pendingInputKey !== null) {
-        if (
-            args.latestAssistantMessageId !== null
-            && args.latestAssistantMessageId === args.lastSeenAssistantMessageId
-        ) {
+    if (args.hasPendingInput) {
+        assertCondition(
+            args.latestAssistantMessageId !== null,
+            "Pending-input session is missing a latest assistant message ID"
+        );
+
+        if (args.latestAssistantMessageId === args.lastSeenAssistantMessageId) {
             return {
                 state: "idle",
                 latest_message_id: null
@@ -557,10 +546,9 @@ router.get('/sessions', apiHandler(async (req, res) => {
         const pendingQuestionId = pendingQuestionIdsBySessionId.get(session.opencode_session_id) ?? null;
         const pendingPermissionIds = pendingPermissionIdsBySessionId.get(session.opencode_session_id) ?? [];
         const rawSessionStatus = getSessionStatusTypeForSession(sessionStatusMap, session.opencode_session_id);
-        const pendingInputKey = buildPendingInputKey(pendingQuestionId, pendingPermissionIds);
         const sessionState = getSessionState({
             rawSessionStatus,
-            pendingInputKey,
+            hasPendingInput: pendingQuestionId !== null || pendingPermissionIds.length > 0,
             latestAssistantMessageId,
             lastSeenAssistantMessageId: session.last_seen_assistant_message_id
         });

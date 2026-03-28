@@ -61,11 +61,14 @@ function isDocumentVisibleAndFocused(): boolean {
     return document.visibilityState === 'visible' && document.hasFocus();
 }
 
-function getSessionAttentionMessageId(session: ChatSession): string | null {
-    if (session.state === 'attention') {
-        return session.latest_message_id;
+function requireAttentionMessageId(session: ChatSession): string {
+    if (session.state !== 'attention') {
+        throw new Error(`Session '${session.id}' is not in attention state`);
     }
-    return null;
+    if (session.latest_message_id === null) {
+        throw new Error(`Attention session '${session.id}' is missing latest_message_id`);
+    }
+    return session.latest_message_id;
 }
 
 function getNotificationBodyForSession(session: ChatSession): string {
@@ -537,12 +540,14 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                         continue;
                     }
 
-                    const previousAttentionMessageId = getSessionAttentionMessageId(previousSession);
-                    const nextAttentionMessageId = getSessionAttentionMessageId(nextSession);
-                    if (nextAttentionMessageId === null) {
+                    const previousAttentionMessageId = previousSession.state === 'attention'
+                        ? requireAttentionMessageId(previousSession)
+                        : null;
+                    if (nextSession.state !== 'attention') {
                         updateAttentionState(nextSession.id, null);
                         continue;
                     }
+                    const nextAttentionMessageId = requireAttentionMessageId(nextSession);
                     if (previousAttentionMessageId === nextAttentionMessageId && previousSession.state === nextSession.state) {
                         continue;
                     }
@@ -751,12 +756,9 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
         if (!isDocumentVisibleAndFocused()) {
             return;
         }
-        if (activeSession.latest_message_id === null) {
-            return;
-        }
         void markSessionAsRead(activeSession.id);
         updateAttentionState(activeSession.id, {
-            messageId: activeSession.latest_message_id,
+            messageId: requireAttentionMessageId(activeSession),
             delivery: 'seen'
         });
     }, [activeSession, markSessionAsRead, updateAttentionState]);
@@ -777,13 +779,9 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                 return;
             }
 
-            if (currentActiveSession.latest_message_id === null) {
-                return;
-            }
-
             void markSessionAsRead(currentActiveSessionId);
             updateAttentionState(currentActiveSessionId, {
-                messageId: currentActiveSession.latest_message_id,
+                messageId: requireAttentionMessageId(currentActiveSession),
                 delivery: 'seen'
             });
         };

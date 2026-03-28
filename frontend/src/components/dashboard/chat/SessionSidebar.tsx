@@ -42,6 +42,18 @@ export default function SessionSidebar({
         return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
     };
 
+    const getAttentionMessageId = (session: ChatSession) => {
+        if (session.state !== 'attention') {
+            return null;
+        }
+
+        if (session.latest_message_id === null) {
+            throw new Error(`Attention session '${session.id}' is missing latest_message_id`);
+        }
+
+        return session.latest_message_id;
+    };
+
     return (
         <div className="chat-sidebar">
             <div className="chat-sidebar-header">
@@ -63,9 +75,9 @@ export default function SessionSidebar({
                     sessions.map(session => {
                         const displayTitle = session.title || 'New Chat';
                         const attentionState = attentionStateBySessionId[session.id];
-                        const showUnreadIndicator = session.state === 'attention'
-                            && session.latest_message_id !== null
-                            && !(attentionState?.messageId === session.latest_message_id && attentionState.delivery === 'seen');
+                        const attentionMessageId = getAttentionMessageId(session);
+                        const showUnreadIndicator = attentionMessageId !== null
+                            && !(attentionState?.messageId === attentionMessageId && attentionState.delivery === 'seen');
                         return (
                         <div
                             key={session.id}
