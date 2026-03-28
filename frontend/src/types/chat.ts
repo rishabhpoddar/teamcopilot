@@ -1,15 +1,22 @@
 import type { WorkflowApprovalDiffResponse } from "../../../src/types/shared/workflow";
 
-// Session type for our local database
-export interface ChatSession {
+type ChatSessionBase = {
     id: string;
     opencode_session_id: string;
     title: string | null;
     created_at: number;
     updated_at: number;
-    state: "idle" | "processing" | "attention";
-    latest_message_id: string | null;
-}
+};
+
+export type ChatSession =
+    | (ChatSessionBase & {
+        state: "attention";
+        latest_message_id: string;
+    })
+    | (ChatSessionBase & {
+        state: "idle" | "processing";
+        latest_message_id: string | null;
+    });
 
 // Message types from opencode SDK
 interface UserMessage {

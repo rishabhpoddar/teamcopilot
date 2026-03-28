@@ -46,11 +46,6 @@ export default function SessionSidebar({
         if (session.state !== 'attention') {
             return null;
         }
-
-        if (session.latest_message_id === null) {
-            throw new Error(`Attention session '${session.id}' is missing latest_message_id`);
-        }
-
         return session.latest_message_id;
     };
 

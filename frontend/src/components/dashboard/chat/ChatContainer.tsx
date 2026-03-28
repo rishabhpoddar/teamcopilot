@@ -65,9 +65,6 @@ function requireAttentionMessageId(session: ChatSession): string {
     if (session.state !== 'attention') {
         throw new Error(`Session '${session.id}' is not in attention state`);
     }
-    if (session.latest_message_id === null) {
-        throw new Error(`Attention session '${session.id}' is missing latest_message_id`);
-    }
     return session.latest_message_id;
 }
 
@@ -82,6 +79,8 @@ type AttentionDeliveryState = {
     messageId: string;
     delivery: 'notified' | 'seen';
 };
+
+type NonAttentionChatSession = Extract<ChatSession, { state: 'idle' | 'processing' }>;
 
 function playNotificationSound() {
     const AudioContextConstructor = window.AudioContext || (window as typeof window & {
@@ -482,7 +481,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
             );
             const updatedSession = response.data?.session as {
                 id: string;
-                state: ChatSession['state'];
+                state: NonAttentionChatSession['state'];
                 latest_message_id: string | null;
             } | undefined;
 
@@ -492,7 +491,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                         ...session,
                         state: updatedSession?.state ?? 'idle',
                         latest_message_id: updatedSession?.latest_message_id ?? null
-                    }
+                    } as NonAttentionChatSession
                     : session
             )));
 
@@ -504,7 +503,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                         ...previousSession,
                         state: updatedSession?.state ?? 'idle',
                         latest_message_id: updatedSession?.latest_message_id ?? null
-                    }
+                    } as NonAttentionChatSession
                 };
             }
             updateAttentionState(sessionId, null);
