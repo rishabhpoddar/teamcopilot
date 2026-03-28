@@ -57,10 +57,85 @@ function getSessionErrorMessage(error: unknown): string {
     return 'The assistant failed to respond';
 }
 
+function isDocumentVisibleAndFocused(): boolean {
+    return document.visibilityState === 'visible' && document.hasFocus();
+}
+
+function playNotificationSound() {
+    const AudioContextConstructor = window.AudioContext || (window as typeof window & {
+        webkitAudioContext?: typeof AudioContext;
+    }).webkitAudioContext;
+
+    if (!AudioContextConstructor) {
+        return;
+    }
+
+    const audioContext = new AudioContextConstructor();
+    const masterGain = audioContext.createGain();
+    const compressor = audioContext.createDynamicsCompressor();
+    const startTime = audioContext.currentTime + 0.01;
+
+    masterGain.gain.setValueAtTime(0.0001, startTime);
+    masterGain.gain.exponentialRampToValueAtTime(0.8, startTime + 0.012);
+    masterGain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.95);
+
+    compressor.threshold.setValueAtTime(-8, startTime);
+    compressor.knee.setValueAtTime(12, startTime);
+    compressor.ratio.setValueAtTime(2, startTime);
+    compressor.attack.setValueAtTime(0.0005, startTime);
+    compressor.release.setValueAtTime(0.08, startTime);
+
+    masterGain.connect(compressor);
+    compressor.connect(audioContext.destination);
+
+    const notes = [
+        { frequency: 783.99, offset: 0, duration: 0.24, gain: 0.42, type: 'triangle' as const },
+        { frequency: 1046.5, offset: 0.11, duration: 0.28, gain: 0.38, type: 'triangle' as const },
+        { frequency: 1318.51, offset: 0.22, duration: 0.46, gain: 0.34, type: 'triangle' as const }
+    ];
+
+    const oscillators: OscillatorNode[] = [];
+
+    for (const note of notes) {
+        const oscillator = audioContext.createOscillator();
+        const overtoneOscillator = audioContext.createOscillator();
+        const noteGain = audioContext.createGain();
+        const noteStart = startTime + note.offset;
+        const noteEnd = noteStart + note.duration;
+
+        oscillator.type = note.type;
+        oscillator.frequency.setValueAtTime(note.frequency, noteStart);
+        oscillator.frequency.exponentialRampToValueAtTime(note.frequency * 1.015, noteEnd);
+
+        overtoneOscillator.type = 'sine';
+        overtoneOscillator.frequency.setValueAtTime(note.frequency * 2, noteStart);
+        overtoneOscillator.frequency.exponentialRampToValueAtTime(note.frequency * 2.02, noteEnd);
+
+        noteGain.gain.setValueAtTime(0.0001, noteStart);
+        noteGain.gain.exponentialRampToValueAtTime(note.gain, noteStart + 0.01);
+        noteGain.gain.exponentialRampToValueAtTime(0.0001, noteEnd);
+
+        oscillator.connect(noteGain);
+        overtoneOscillator.connect(noteGain);
+        noteGain.connect(masterGain);
+        oscillator.start(noteStart);
+        overtoneOscillator.start(noteStart);
+        oscillator.stop(noteEnd + 0.02);
+        overtoneOscillator.stop(noteEnd + 0.02);
+        oscillators.push(oscillator);
+    }
+
+    const lastOscillator = oscillators[oscillators.length - 1];
+    lastOscillator?.addEventListener('ended', () => {
+        void audioContext.close();
+    });
+}
+
 export default function ChatContainer({ initialDraftMessage, forceNewChat, onDraftHandled }: ChatContainerProps) {
     const PENDING_SESSION_ID = 'pending';
     const PERMISSION_POLL_INTERVAL_MS = 1000;
     const SESSION_DIFF_POLL_INTERVAL_MS = 1000;
+    const SESSION_LIST_POLL_INTERVAL_MS = 2000;
     const auth = useAuth();
     const [sessions, setSessions] = useState<ChatSession[]>([]);
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -83,8 +158,28 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
     const lastEscapePressRef = useRef<number>(0);
     // const currentSessionInfoRef = useRef<{ id: string; isEmpty: boolean } | null>(null);
     const handledComposeKeyRef = useRef<string | null>(null);
+    const previousSessionsRef = useRef<Record<string, ChatSession>>({});
+    const hasLoadedSessionsRef = useRef(false);
+    const notifiedCompletionKeysRef = useRef<Set<string>>(new Set());
+    const activeSessionIdRef = useRef<string | null>(null);
+    const readingSessionIdsRef = useRef<Set<string>>(new Set());
 
     const token = auth.loading ? null : auth.token;
+    const activeSession = sessions.find((session) => session.id === activeSessionId) ?? null;
+
+    useEffect(() => {
+        activeSessionIdRef.current = activeSessionId;
+    }, [activeSessionId]);
+
+    useEffect(() => {
+        if (token) {
+            return;
+        }
+        previousSessionsRef.current = {};
+        hasLoadedSessionsRef.current = false;
+        notifiedCompletionKeysRef.current = new Set();
+        readingSessionIdsRef.current = new Set();
+    }, [token]);
 
     const showSessionError = useCallback((message: string) => {
         const now = Date.now();
@@ -325,15 +420,126 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
         connectSSE();
     }, [token, stopSSE, handleSSEEvent]);
 
+    const markSessionAsRead = useCallback(async (sessionId: string) => {
+        if (!token || sessionId === PENDING_SESSION_ID || readingSessionIdsRef.current.has(sessionId)) {
+            return;
+        }
+
+        try {
+            readingSessionIdsRef.current.add(sessionId);
+            const response = await axiosInstance.post(
+                `/api/chat/sessions/${sessionId}/read`,
+                {},
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+            const updatedSession = response.data?.session as {
+                id: string;
+                last_seen_assistant_message_id: string | null;
+                latest_completed_assistant_message_id: string | null;
+                has_unread: boolean;
+            } | undefined;
+
+            setSessions((prev) => prev.map((session) => (
+                session.id === sessionId
+                    ? {
+                        ...session,
+                        last_seen_assistant_message_id: updatedSession?.last_seen_assistant_message_id ?? session.last_seen_assistant_message_id,
+                        latest_completed_assistant_message_id: updatedSession?.latest_completed_assistant_message_id ?? session.latest_completed_assistant_message_id,
+                        has_unread: false
+                    }
+                    : session
+            )));
+
+            const previousSession = previousSessionsRef.current[sessionId];
+            if (previousSession) {
+                previousSessionsRef.current = {
+                    ...previousSessionsRef.current,
+                    [sessionId]: {
+                        ...previousSession,
+                        last_seen_assistant_message_id: updatedSession?.last_seen_assistant_message_id ?? previousSession.last_seen_assistant_message_id,
+                        latest_completed_assistant_message_id: updatedSession?.latest_completed_assistant_message_id ?? previousSession.latest_completed_assistant_message_id,
+                        has_unread: false
+                    }
+                };
+            }
+        } catch (err: unknown) {
+            const errorMessage = err instanceof AxiosError
+                ? err.response?.data?.message || err.response?.data || err.message
+                : 'Failed to mark session as read';
+            toast.error(errorMessage);
+        } finally {
+            readingSessionIdsRef.current.delete(sessionId);
+        }
+    }, [token]);
+
     const loadSessions = useCallback(async () => {
         if (!token) return;
 
+        const isInitialLoad = !hasLoadedSessionsRef.current;
+
         try {
-            setLoading(true);
+            if (isInitialLoad) {
+                setLoading(true);
+            }
             const response = await axiosInstance.get('/api/chat/sessions', {
                 headers: { Authorization: `Bearer ${token}` }
             });
-            setSessions(response.data.sessions);
+            const nextSessions = Array.isArray(response.data?.sessions) ? response.data.sessions as ChatSession[] : [];
+            const previousSessions = previousSessionsRef.current;
+
+            if (hasLoadedSessionsRef.current) {
+                for (const nextSession of nextSessions) {
+                    const previousSession = previousSessions[nextSession.id];
+                    if (!previousSession || !previousSession.is_running || nextSession.is_running || !nextSession.has_unread) {
+                        continue;
+                    }
+
+                    const completionKey = `${nextSession.id}:${nextSession.latest_completed_assistant_message_id ?? 'none'}`;
+                    if (notifiedCompletionKeysRef.current.has(completionKey)) {
+                        continue;
+                    }
+
+                    const isSeenNow = nextSession.id === activeSessionIdRef.current && isDocumentVisibleAndFocused();
+                    if (isSeenNow) {
+                        void markSessionAsRead(nextSession.id);
+                        notifiedCompletionKeysRef.current.add(completionKey);
+                        continue;
+                    }
+
+                    notifiedCompletionKeysRef.current.add(completionKey);
+
+                    if ('Notification' in window) {
+                        if (Notification.permission === 'granted') {
+                            new Notification(nextSession.title || 'New Chat', {
+                                body: 'The assistant finished processing this chat.'
+                            });
+                        } else if (Notification.permission === 'default') {
+                            void Notification.requestPermission().then((permission) => {
+                                if (permission === 'granted') {
+                                    new Notification(nextSession.title || 'New Chat', {
+                                        body: 'The assistant finished processing this chat.'
+                                    });
+                                }
+                            });
+                        }
+                    }
+
+                    playNotificationSound();
+                }
+            }
+
+            previousSessionsRef.current = nextSessions.reduce<Record<string, ChatSession>>((acc, session) => {
+                acc[session.id] = session;
+                return acc;
+            }, {});
+            hasLoadedSessionsRef.current = true;
+            setSessions(nextSessions);
+            if (activeSessionIdRef.current && activeSessionIdRef.current !== PENDING_SESSION_ID) {
+                const stillExists = nextSessions.some((session) => session.id === activeSessionIdRef.current);
+                if (!stillExists) {
+                    setActiveSessionId(null);
+                }
+            }
             setError(null);
         } catch (err: unknown) {
             const errorMessage = err instanceof AxiosError
@@ -341,9 +547,11 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                 : 'Failed to load sessions';
             setError(errorMessage);
         } finally {
-            setLoading(false);
+            if (isInitialLoad) {
+                setLoading(false);
+            }
         }
-    }, [token]);
+    }, [markSessionAsRead, token]);
 
     const loadMessages = useCallback(async (sessionId: string) => {
         if (!token) return;
@@ -451,6 +659,58 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
         if (!token) return;
         loadSessions();
     }, [token, loadSessions]);
+
+    useEffect(() => {
+        if (!token) {
+            return;
+        }
+
+        const intervalId = window.setInterval(() => {
+            void loadSessions();
+        }, SESSION_LIST_POLL_INTERVAL_MS);
+
+        return () => {
+            window.clearInterval(intervalId);
+        };
+    }, [loadSessions, token]);
+
+    useEffect(() => {
+        if (!activeSession || activeSession.id === PENDING_SESSION_ID || !activeSession.has_unread) {
+            return;
+        }
+        if (!isDocumentVisibleAndFocused()) {
+            return;
+        }
+        void markSessionAsRead(activeSession.id);
+    }, [activeSession, markSessionAsRead]);
+
+    useEffect(() => {
+        const markActiveSessionAsReadIfVisible = () => {
+            const currentActiveSessionId = activeSessionIdRef.current;
+            if (!currentActiveSessionId || currentActiveSessionId === PENDING_SESSION_ID) {
+                return;
+            }
+
+            const currentActiveSession = previousSessionsRef.current[currentActiveSessionId];
+            if (!currentActiveSession?.has_unread) {
+                return;
+            }
+
+            if (!isDocumentVisibleAndFocused()) {
+                return;
+            }
+
+            void markSessionAsRead(currentActiveSessionId);
+        };
+
+        window.addEventListener('focus', markActiveSessionAsReadIfVisible);
+        document.addEventListener('visibilitychange', markActiveSessionAsReadIfVisible);
+
+        return () => {
+            window.removeEventListener('focus', markActiveSessionAsReadIfVisible);
+            document.removeEventListener('visibilitychange', markActiveSessionAsReadIfVisible);
+        };
+    }, [markSessionAsRead]);
 
     // Load messages when active session changes
     useEffect(() => {

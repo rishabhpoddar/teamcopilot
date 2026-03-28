@@ -5,8 +5,12 @@ export interface ChatSession {
     id: string;
     opencode_session_id: string;
     title: string | null;
+    last_seen_assistant_message_id: string | null;
+    latest_completed_assistant_message_id: string | null;
     created_at: number;
     updated_at: number;
+    is_running: boolean;
+    has_unread: boolean;
 }
 
 // Message types from opencode SDK

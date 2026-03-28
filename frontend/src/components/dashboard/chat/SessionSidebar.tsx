@@ -58,10 +58,14 @@ export default function SessionSidebar({
                         return (
                         <div
                             key={session.id}
-                            className={`session-item ${session.id === activeSessionId ? 'active' : ''}`}
+                            className={`session-item ${session.id === activeSessionId ? 'active' : ''} ${session.has_unread ? 'has-unread' : ''}`}
                             onClick={() => onSelectSession(session.id)}
                         >
                             <div className="session-title" data-full-title={displayTitle}>
+                                <span className="session-status-icons" aria-hidden="true">
+                                    {session.is_running && <span className="session-running-indicator" />}
+                                    {session.has_unread && <span className="session-unread-indicator" />}
+                                </span>
                                 <span className="session-title-text">{displayTitle}</span>
                                 <span className="session-updated-at">
                                     {formatDate(Number(session.updated_at))}

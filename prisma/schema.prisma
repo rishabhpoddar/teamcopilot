@@ -58,6 +58,7 @@ model chat_sessions {
   user_id             String
   opencode_session_id String @unique
   title               String
+  last_seen_assistant_message_id String?
   created_at          BigInt
   updated_at          BigInt
   trackedFiles        chat_session_tracked_files[]

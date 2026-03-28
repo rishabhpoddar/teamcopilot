@@ -359,6 +359,63 @@ function generateTitleFromUserMessage(content: string): string {
     return candidate;
 }
 
+function getLatestCompletedAssistantMessageId(messages: unknown): string | null {
+    assertCondition(Array.isArray(messages), "Session messages response is not an array");
+
+    let latestMessageId: string | null = null;
+    let latestCompletedAt = -1;
+
+    for (const message of messages) {
+        if (!message || typeof message !== "object") {
+            continue;
+        }
+
+        const info = (message as { info?: unknown }).info;
+        if (!info || typeof info !== "object") {
+            continue;
+        }
+
+        const candidate = info as {
+            id?: unknown;
+            role?: unknown;
+            time?: {
+                completed?: unknown;
+            };
+        };
+
+        if (candidate.role !== "assistant" || typeof candidate.id !== "string") {
+            continue;
+        }
+
+        const completedAt = candidate.time?.completed;
+        if (typeof completedAt !== "number") {
+            continue;
+        }
+
+        if (completedAt > latestCompletedAt) {
+            latestCompletedAt = completedAt;
+            latestMessageId = candidate.id;
+        }
+    }
+
+    return latestMessageId;
+}
+
+async function loadLatestCompletedAssistantMessageIdForSession(
+    client: Awaited<ReturnType<typeof getOpencodeClient>>,
+    opencodeSessionId: string
+): Promise<string | null> {
+    const result = await client.session.messages({
+        path: { id: opencodeSessionId }
+    });
+
+    if (result.error) {
+        throw new Error(getErrorMessage(result.error) || "Failed to get messages from opencode");
+    }
+
+    return getLatestCompletedAssistantMessageId(result.data);
+}
+
 // GET /api/chat/sessions - List user's sessions
 router.get('/sessions', apiHandler(async (req, res) => {
     const sessions = await prisma.chat_sessions.findMany({
@@ -393,7 +450,32 @@ router.get('/sessions', apiHandler(async (req, res) => {
     }
 
     const validSessions = sessions.filter((session) => opencodeSessionIds.has(session.opencode_session_id));
-    res.json({ sessions: validSessions });
+    const statusResult = await client.session.status();
+    assertCondition(!statusResult.error, getErrorMessage(statusResult.error));
+    const sessionStatusMap = statusResult.data as SessionStatusMap;
+
+    const enrichedSessions = await Promise.all(validSessions.map(async (session) => {
+        const latestCompletedAssistantMessageId = await loadLatestCompletedAssistantMessageIdForSession(
+            client,
+            session.opencode_session_id
+        );
+        const hasUnread = latestCompletedAssistantMessageId !== null
+            && latestCompletedAssistantMessageId !== session.last_seen_assistant_message_id;
+
+        return {
+            id: session.id,
+            opencode_session_id: session.opencode_session_id,
+            title: session.title,
+            last_seen_assistant_message_id: session.last_seen_assistant_message_id,
+            latest_completed_assistant_message_id: latestCompletedAssistantMessageId,
+            created_at: session.created_at,
+            updated_at: session.updated_at,
+            is_running: getSessionStatusTypeForSession(sessionStatusMap, session.opencode_session_id) !== 'idle',
+            has_unread: hasUnread
+        };
+    }));
+
+    res.json({ sessions: enrichedSessions });
 }, true));
 
 // GET /api/chat/file-suggestions - Search workspace files/folders for @mentions
@@ -468,8 +550,12 @@ router.post('/sessions', apiHandler(async (req, res) => {
             id: session.id,
             opencode_session_id: session.opencode_session_id,
             title: session.title,
+            last_seen_assistant_message_id: session.last_seen_assistant_message_id,
+            latest_completed_assistant_message_id: null,
             created_at: session.created_at,
-            updated_at: session.updated_at
+            updated_at: session.updated_at,
+            is_running: false,
+            has_unread: false
         }
     });
 }, true));
@@ -930,6 +1016,47 @@ router.post('/sessions/:id/tool-answer', apiHandler(async (req, res) => {
     });
 
     res.json({ success: true });
+}, true));
+
+// POST /api/chat/sessions/:id/read - Mark the latest assistant output as seen
+router.post('/sessions/:id/read', apiHandler(async (req, res) => {
+    const id = req.params.id as string;
+
+    const session = await prisma.chat_sessions.findFirst({
+        where: {
+            id,
+            user_id: req.userId!
+        }
+    });
+
+    if (!session) {
+        throw {
+            status: 404,
+            message: 'Session not found'
+        };
+    }
+
+    const client = await getOpencodeClient();
+    const lastSeenAssistantMessageId = await loadLatestCompletedAssistantMessageIdForSession(
+        client,
+        session.opencode_session_id
+    );
+
+    const updatedSession = await prisma.chat_sessions.update({
+        where: { id },
+        data: {
+            last_seen_assistant_message_id: lastSeenAssistantMessageId
+        }
+    });
+
+    res.json({
+        session: {
+            id: updatedSession.id,
+            last_seen_assistant_message_id: updatedSession.last_seen_assistant_message_id,
+            latest_completed_assistant_message_id: lastSeenAssistantMessageId,
+            has_unread: false
+        }
+    });
 }, true));
 
 // POST /api/chat/sessions/:id/permission-response - Reply to a pending permission request
