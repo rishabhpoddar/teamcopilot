@@ -1129,20 +1129,14 @@ router.post('/sessions/:id/read', apiHandler(async (req, res) => {
         session.opencode_session_id
     );
 
-    const updatedSession = await prisma.chat_sessions.update({
+    await prisma.chat_sessions.update({
         where: { id },
         data: {
             last_seen_assistant_message_id: lastSeenAssistantMessageId
         }
     });
 
-    res.json({
-        session: {
-            id: updatedSession.id,
-            state: "idle",
-            latest_message_id: null
-        }
-    });
+    res.json({ success: true });
 }, true));
 
 // POST /api/chat/sessions/:id/permission-response - Reply to a pending permission request

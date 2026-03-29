@@ -80,8 +80,6 @@ type AttentionDeliveryState = {
     delivery: 'notified' | 'seen';
 };
 
-type NonAttentionChatSession = Extract<ChatSession, { state: 'idle' | 'processing' }>;
-
 function playNotificationSound() {
     const AudioContextConstructor = window.AudioContext || (window as typeof window & {
         webkitAudioContext?: typeof AudioContext;
@@ -474,38 +472,11 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
 
         try {
             readingSessionIdsRef.current.add(sessionId);
-            const response = await axiosInstance.post(
+            await axiosInstance.post(
                 `/api/chat/sessions/${sessionId}/read`,
                 {},
                 { headers: { Authorization: `Bearer ${token}` } }
             );
-            const updatedSession = response.data?.session as {
-                id: string;
-                state: NonAttentionChatSession['state'];
-                latest_message_id: string | null;
-            } | undefined;
-
-            setSessions((prev) => prev.map((session) => (
-                session.id === sessionId
-                    ? {
-                        ...session,
-                        state: updatedSession?.state ?? 'idle',
-                        latest_message_id: updatedSession?.latest_message_id ?? null
-                    } as NonAttentionChatSession
-                    : session
-            )));
-
-            const previousSession = previousSessionsRef.current[sessionId];
-            if (previousSession) {
-                previousSessionsRef.current = {
-                    ...previousSessionsRef.current,
-                    [sessionId]: {
-                        ...previousSession,
-                        state: updatedSession?.state ?? 'idle',
-                        latest_message_id: updatedSession?.latest_message_id ?? null
-                    } as NonAttentionChatSession
-                };
-            }
             updateAttentionState(sessionId, null);
         } catch (err: unknown) {
             const errorMessage = err instanceof AxiosError
