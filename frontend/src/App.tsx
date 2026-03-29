@@ -117,12 +117,15 @@ function AppShell() {
     <div className="app-shell">
       <header className="app-header">
         <div className="app-header-top">
-          <div className="app-brand-block">
-            <div className="app-brand">
-              <img src="/logo.svg" alt="TeamCopilot logo" className="app-brand-logo" />
-              <div className="app-brand-text">TeamCopilot</div>
-            </div>
-            <div className="app-workspace">
+            <div className="app-brand-block">
+                <div className="app-brand">
+                  <img src="/logo.svg" alt="TeamCopilot logo" className="app-brand-logo" />
+                  <div className="app-brand-copy">
+                    <div className="app-brand-text">TeamCopilot</div>
+                    <div className="app-version">v{__APP_VERSION__}</div>
+                  </div>
+                </div>
+                <div className="app-workspace">
               <span className="app-workspace-label">Workspace</span>
               <span className="app-workspace-value">
                 {workspaceError ?? workspaceDir ?? 'Loading...'}
