@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { AxiosError } from 'axios';
 import { toast } from 'react-toastify';
@@ -101,7 +101,9 @@ export default function OpencodeAuthSetup() {
         }
         return status.methods.filter((method) => isVisibleAuthMethod(method, status.provider_id));
     }, [status]);
-    const authHeaders = token ? { Authorization: `Bearer ${token}` } : undefined;
+    const authHeaders = useMemo(() => (
+        token ? { Authorization: `Bearer ${token}` } : undefined
+    ), [token]);
 
     function getAxiosErrorMessage(err: unknown, fallback: string): string {
         const errorMessage = err instanceof AxiosError ? err.response?.data?.message || err.response?.data || err.message : fallback;
@@ -129,7 +131,7 @@ export default function OpencodeAuthSetup() {
         setOauthCode('');
     }
 
-    async function loadStatus() {
+    const loadStatus = useCallback(async () => {
         if (!token) {
             return;
         }
@@ -157,11 +159,11 @@ export default function OpencodeAuthSetup() {
         } finally {
             setIsLoading(false);
         }
-    }
+    }, [authHeaders, token]);
 
     useEffect(() => {
         void loadStatus();
-    }, [token]);
+    }, [loadStatus]);
 
     useEffect(() => {
         return () => {

@@ -570,7 +570,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                 setLoading(false);
             }
         }
-    }, [activeSessionId, attentionStateBySessionId, loading, markSessionAsRead, token, updateAttentionState]);
+    }, [activeSessionId, attentionStateBySessionId, loading, markAttentionSessionAsSeen, token, updateAttentionState]);
 
     const markActiveAttentionAsSeenIfVisible = useCallback(() => {
         if (!activeSession || activeSession.id === PENDING_SESSION_ID) {

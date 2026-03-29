@@ -20,34 +20,37 @@ type OpencodeAuthStatus = {
 }
 
 function useOpencodeCredentialStatus(token: string | null) {
-  const [loading, setLoading] = useState(true)
+  const [resolvedToken, setResolvedToken] = useState<string | null>(null)
   const [hasCredentials, setHasCredentials] = useState(false)
 
   useEffect(() => {
     if (!token) {
-      setLoading(false)
-      setHasCredentials(false)
       return
     }
 
-    setLoading(true)
     axiosInstance.get<OpencodeAuthStatus>('/api/opencode-auth/status', {
       headers: { Authorization: `Bearer ${token}` }
     })
       .then((response) => {
         setHasCredentials(response.data.has_credentials)
+        setResolvedToken(token)
       })
       .catch((err: unknown) => {
         const errorMessage = err instanceof AxiosError ? err.response?.data?.message || err.response?.data || err.message : 'Failed to check opencode auth status'
         console.error(errorMessage)
         setHasCredentials(false)
-      })
-      .finally(() => {
-        setLoading(false)
+        setResolvedToken(token)
       })
   }, [token])
 
-  return { loading, hasCredentials }
+  if (!token) {
+    return { loading: false, hasCredentials: false }
+  }
+
+  return {
+    loading: resolvedToken !== token,
+    hasCredentials
+  }
 }
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
