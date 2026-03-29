@@ -994,17 +994,10 @@ router.get('/sessions/:id/pending-permission', apiHandler(async (req, res) => {
             callID: string;
         };
     }> = [];
-    const client = await getOpencodeClient();
-    const latestAssistantMessageId = await loadLatestAssistantMessageIdForSession(
-        client,
-        session.opencode_session_id
-    );
-
     // Include opencode native pending permissions
     const opencodePendingPermissions = (await listPendingPermissions())
         .filter((permission) =>
             permission.sessionID === session.opencode_session_id
-            && permission.tool?.messageID === latestAssistantMessageId
         )
         .map((permission) => {
             assertCondition(
@@ -1022,18 +1015,15 @@ router.get('/sessions/:id/pending-permission', apiHandler(async (req, res) => {
     permissions.push(...opencodePendingPermissions);
 
     // Include custom tool execution pending permissions
-    const customPendingPermissions = latestAssistantMessageId === null
-        ? []
-        : await prisma.tool_execution_permissions.findMany({
-            where: {
-                opencode_session_id: session.opencode_session_id,
-                status: 'pending',
-                message_id: latestAssistantMessageId
-            },
-            orderBy: {
-                created_at: 'asc'
-            }
-        });
+    const customPendingPermissions = await prisma.tool_execution_permissions.findMany({
+        where: {
+            opencode_session_id: session.opencode_session_id,
+            status: 'pending'
+        },
+        orderBy: {
+            created_at: 'asc'
+        }
+    });
 
     for (const customPendingPermission of customPendingPermissions) {
         permissions.push({
