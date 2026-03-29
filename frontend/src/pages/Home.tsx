@@ -19,14 +19,14 @@ const tabTitles: Record<Tab, string> = {
 export default function Home() {
     const auth = useAuth();
     const [searchParams, setSearchParams] = useSearchParams();
-
-    if (auth.loading) return null;
     const tabParam = searchParams.get('tab');
     const activeTab: Tab = validTabs.includes(tabParam as Tab) ? (tabParam as Tab) : 'ai';
     const composeDraft = searchParams.get('draft');
     const composeNewChat = searchParams.get('newChat') === '1';
 
     usePageTitle(tabTitles[activeTab]);
+
+    if (auth.loading) return null;
 
     const setActiveTab = (tab: Tab) => {
         setSearchParams({ tab });

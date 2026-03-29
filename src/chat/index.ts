@@ -8,6 +8,7 @@ import { apiHandler } from "../utils/index";
 import {
     getOpencodeClient,
     getPendingQuestionForSession,
+    listPendingQuestions,
     listPendingPermissionsForSession,
     listPendingPermissions,
     getWorkspaceDir,
@@ -56,6 +57,16 @@ interface ChatFilePartInput {
 }
 
 type ChatMessagePartInput = ChatTextPartInput | ChatFilePartInput;
+type SessionMessageSummary = {
+    info: {
+        id: string;
+        role: string;
+        time: {
+            created: number;
+            completed?: number;
+        };
+    };
+};
 
 function parseMessageParts(rawParts: unknown): ChatMessagePartInput[] {
     if (!Array.isArray(rawParts)) {
@@ -359,6 +370,92 @@ function generateTitleFromUserMessage(content: string): string {
     return candidate;
 }
 
+function getLatestAssistantMessageId(messages: unknown): string | null {
+    assertCondition(Array.isArray(messages), "Session messages response is not an array");
+
+    const sessionMessages = messages as SessionMessageSummary[];
+    let latestMessageId: string | null = null;
+    let latestAssistantTimestamp = -1;
+
+    for (const message of sessionMessages) {
+        if (message.info.role !== "assistant") {
+            continue;
+        }
+
+        const assistantTimestamp = message.info.time.completed ?? message.info.time.created;
+
+        if (assistantTimestamp > latestAssistantTimestamp) {
+            latestAssistantTimestamp = assistantTimestamp;
+            latestMessageId = message.info.id;
+        }
+    }
+
+    return latestMessageId;
+}
+
+async function loadLatestAssistantMessageIdForSession(
+    client: Awaited<ReturnType<typeof getOpencodeClient>>,
+    opencodeSessionId: string
+): Promise<string | null> {
+    const result = await client.session.messages({
+        path: { id: opencodeSessionId }
+    });
+
+    if (result.error) {
+        throw new Error(getErrorMessage(result.error) || "Failed to get messages from opencode");
+    }
+
+    return getLatestAssistantMessageId(result.data);
+}
+
+function getSessionState(args: {
+    rawSessionStatus: SessionStatusType;
+    hasPendingInput: boolean;
+    latestAssistantMessageId: string | null;
+    lastSeenAssistantMessageId: string | null;
+}): { state: "idle" | "processing" | "attention"; latest_message_id: string | null } {
+    if (args.hasPendingInput) {
+        assertCondition(
+            args.latestAssistantMessageId !== null,
+            "Pending-input session is missing a latest assistant message ID"
+        );
+
+        if (args.latestAssistantMessageId === args.lastSeenAssistantMessageId) {
+            return {
+                state: "idle",
+                latest_message_id: args.latestAssistantMessageId
+            };
+        }
+
+        return {
+            state: "attention",
+            latest_message_id: args.latestAssistantMessageId
+        };
+    }
+
+    if (args.rawSessionStatus !== "idle") {
+        return {
+            state: "processing",
+            latest_message_id: args.latestAssistantMessageId
+        };
+    }
+
+    if (
+        args.latestAssistantMessageId !== null
+        && args.latestAssistantMessageId !== args.lastSeenAssistantMessageId
+    ) {
+        return {
+            state: "attention",
+            latest_message_id: args.latestAssistantMessageId
+        };
+    }
+
+    return {
+        state: "idle",
+        latest_message_id: args.latestAssistantMessageId
+    };
+}
+
 // GET /api/chat/sessions - List user's sessions
 router.get('/sessions', apiHandler(async (req, res) => {
     const sessions = await prisma.chat_sessions.findMany({
@@ -393,7 +490,64 @@ router.get('/sessions', apiHandler(async (req, res) => {
     }
 
     const validSessions = sessions.filter((session) => opencodeSessionIds.has(session.opencode_session_id));
-    res.json({ sessions: validSessions });
+    const statusResult = await client.session.status();
+    assertCondition(!statusResult.error, getErrorMessage(statusResult.error));
+    const sessionStatusMap = statusResult.data as SessionStatusMap;
+    const pendingQuestions = await listPendingQuestions();
+    const pendingPermissions = await listPendingPermissions();
+    const customPendingPermissions = await prisma.tool_execution_permissions.findMany({
+        where: {
+            opencode_session_id: {
+                in: validSessions.map((session) => session.opencode_session_id)
+            },
+            status: 'pending'
+        },
+        select: {
+            id: true,
+            message_id: true,
+            opencode_session_id: true
+        }
+    });
+
+    const enrichedSessions = await Promise.all(validSessions.map(async (session) => {
+        const latestAssistantMessageId = await loadLatestAssistantMessageIdForSession(
+            client,
+            session.opencode_session_id
+        );
+        const hasPendingInput = latestAssistantMessageId !== null && (
+            pendingQuestions.some((question) =>
+                question.sessionID === session.opencode_session_id
+                && question.messageID === latestAssistantMessageId
+            )
+            || pendingPermissions.some((permission) =>
+                permission.sessionID === session.opencode_session_id
+                && permission.tool?.messageID === latestAssistantMessageId
+            )
+            || customPendingPermissions.some((permission) =>
+                permission.opencode_session_id === session.opencode_session_id
+                && permission.message_id === latestAssistantMessageId
+            )
+        );
+        const rawSessionStatus = getSessionStatusTypeForSession(sessionStatusMap, session.opencode_session_id);
+        const sessionState = getSessionState({
+            rawSessionStatus,
+            hasPendingInput,
+            latestAssistantMessageId,
+            lastSeenAssistantMessageId: session.last_seen_assistant_message_id
+        });
+
+        return {
+            id: session.id,
+            opencode_session_id: session.opencode_session_id,
+            title: session.title,
+            created_at: session.created_at,
+            updated_at: session.updated_at,
+            state: sessionState.state,
+            latest_message_id: sessionState.latest_message_id
+        };
+    }));
+
+    res.json({ sessions: enrichedSessions });
 }, true));
 
 // GET /api/chat/file-suggestions - Search workspace files/folders for @mentions
@@ -469,7 +623,9 @@ router.post('/sessions', apiHandler(async (req, res) => {
             opencode_session_id: session.opencode_session_id,
             title: session.title,
             created_at: session.created_at,
-            updated_at: session.updated_at
+            updated_at: session.updated_at,
+            state: "idle",
+            latest_message_id: null
         }
     });
 }, true));
@@ -838,10 +994,11 @@ router.get('/sessions/:id/pending-permission', apiHandler(async (req, res) => {
             callID: string;
         };
     }> = [];
-
     // Include opencode native pending permissions
     const opencodePendingPermissions = (await listPendingPermissions())
-        .filter((permission) => permission.sessionID === session.opencode_session_id)
+        .filter((permission) =>
+            permission.sessionID === session.opencode_session_id
+        )
         .map((permission) => {
             assertCondition(
                 typeof permission.tool?.messageID === 'string' && typeof permission.tool?.callID === 'string',
@@ -927,6 +1084,40 @@ router.post('/sessions/:id/tool-answer', apiHandler(async (req, res) => {
     await prisma.chat_sessions.update({
         where: { id },
         data: { updated_at: Date.now() }
+    });
+
+    res.json({ success: true });
+}, true));
+
+// POST /api/chat/sessions/:id/read - Mark the latest assistant output as seen
+router.post('/sessions/:id/read', apiHandler(async (req, res) => {
+    const id = req.params.id as string;
+
+    const session = await prisma.chat_sessions.findFirst({
+        where: {
+            id,
+            user_id: req.userId!
+        }
+    });
+
+    if (!session) {
+        throw {
+            status: 404,
+            message: 'Session not found'
+        };
+    }
+
+    const client = await getOpencodeClient();
+    const lastSeenAssistantMessageId = await loadLatestAssistantMessageIdForSession(
+        client,
+        session.opencode_session_id
+    );
+
+    await prisma.chat_sessions.update({
+        where: { id },
+        data: {
+            last_seen_assistant_message_id: lastSeenAssistantMessageId
+        }
     });
 
     res.json({ success: true });

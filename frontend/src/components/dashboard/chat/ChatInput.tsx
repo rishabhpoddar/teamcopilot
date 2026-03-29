@@ -263,7 +263,7 @@ export default function ChatInput({
         return () => {
             window.clearTimeout(timeout);
         };
-    }, [input, fetchFileSuggestions]);
+    }, [fetchFileSuggestions, input, suggestionsVisible]);
 
     useEffect(() => {
         if (!suggestionsVisible) {

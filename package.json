@@ -1,6 +1,6 @@
 {
   "name": "teamcopilot",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "A shared AI Agent for Teams",
   "homepage": "https://teamcopilot.ai",
   "repository": {
@@ -28,7 +28,7 @@
     "check:unused": "npm run check:unused:functions && npm run check:unused:exports",
     "build": "npm run clean && npm run check:unused && cd frontend && npm run build && cd .. && prisma generate --schema prisma/schema.prisma && tsc && node scripts/copy-runtime-assets.mjs",
     "start": "node dist/index.js",
-    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev": "(rm -rf dist || true) && concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:backend": "ts-node-dev src/index.ts",
     "dev:frontend": "cd frontend && npm run dev",
     "create-user": "ts-node src/create-user.ts",

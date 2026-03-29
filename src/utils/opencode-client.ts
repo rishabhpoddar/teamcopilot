@@ -40,6 +40,7 @@ function getOpencodeBaseUrl(): string {
 interface PendingQuestion {
     id: string;
     sessionID: string;
+    messageID: string;
     questions: Array<unknown>;
 }
 
@@ -64,7 +65,7 @@ export function getWorkspaceDir(): string {
     return workspaceDir;
 }
 
-export async function getPendingQuestionForSession(opencodeSessionId: string): Promise<PendingQuestion | null> {
+export async function listPendingQuestions(): Promise<PendingQuestion[]> {
     const workspaceDir = getWorkspaceDir();
     const response = await fetch(
         `${getOpencodeBaseUrl()}/question?directory=${encodeURIComponent(workspaceDir)}`
@@ -77,7 +78,11 @@ export async function getPendingQuestionForSession(opencodeSessionId: string): P
 
     const questions = await response.json() as PendingQuestion[];
     assertCondition(Array.isArray(questions), "Pending question response is not an array");
+    return questions;
+}
 
+export async function getPendingQuestionForSession(opencodeSessionId: string): Promise<PendingQuestion | null> {
+    const questions = await listPendingQuestions();
     const match = questions.find((question) => question.sessionID === opencodeSessionId);
     return match ?? null;
 }

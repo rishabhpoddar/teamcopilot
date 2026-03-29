@@ -1,8 +1,14 @@
 import type { ChatSession } from '../../../types/chat';
 
+type AttentionDeliveryState = {
+    messageId: string;
+    delivery: 'notified' | 'seen';
+};
+
 interface SessionSidebarProps {
     sessions: ChatSession[];
     activeSessionId: string | null;
+    attentionStateBySessionId: Record<string, AttentionDeliveryState>;
     onSelectSession: (sessionId: string) => void;
     onNewSession: () => void;
     // onDeleteSession: (sessionId: string) => void;
@@ -12,6 +18,7 @@ interface SessionSidebarProps {
 export default function SessionSidebar({
     sessions,
     activeSessionId,
+    attentionStateBySessionId,
     onSelectSession,
     onNewSession,
     // onDeleteSession,
@@ -55,13 +62,21 @@ export default function SessionSidebar({
                 ) : (
                     sessions.map(session => {
                         const displayTitle = session.title || 'New Chat';
+                        const attentionState = attentionStateBySessionId[session.id];
+                        const attentionMessageId = session.state === 'attention' ? session.latest_message_id : null;
+                        const showUnreadIndicator = attentionMessageId !== null
+                            && !(attentionState?.messageId === attentionMessageId && attentionState.delivery === 'seen');
                         return (
                         <div
                             key={session.id}
-                            className={`session-item ${session.id === activeSessionId ? 'active' : ''}`}
+                            className={`session-item ${session.id === activeSessionId ? 'active' : ''} ${showUnreadIndicator ? 'has-unread' : ''}`}
                             onClick={() => onSelectSession(session.id)}
                         >
                             <div className="session-title" data-full-title={displayTitle}>
+                                <span className="session-status-icons" aria-hidden="true">
+                                    {session.state === 'processing' && <span className="session-running-indicator" />}
+                                    {showUnreadIndicator && <span className="session-unread-indicator" />}
+                                </span>
                                 <span className="session-title-text">{displayTitle}</span>
                                 <span className="session-updated-at">
                                     {formatDate(Number(session.updated_at))}

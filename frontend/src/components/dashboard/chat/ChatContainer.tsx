@@ -57,10 +57,90 @@ function getSessionErrorMessage(error: unknown): string {
     return 'The assistant failed to respond';
 }
 
+function isDocumentVisibleAndFocused(): boolean {
+    return document.visibilityState === 'visible' && document.hasFocus();
+}
+
+type AttentionDeliveryState = {
+    messageId: string;
+    delivery: 'notified' | 'seen';
+};
+
+function playNotificationSound() {
+    const AudioContextConstructor = window.AudioContext || (window as typeof window & {
+        webkitAudioContext?: typeof AudioContext;
+    }).webkitAudioContext;
+
+    if (!AudioContextConstructor) {
+        return;
+    }
+
+    const audioContext = new AudioContextConstructor();
+    const masterGain = audioContext.createGain();
+    const compressor = audioContext.createDynamicsCompressor();
+    const startTime = audioContext.currentTime + 0.01;
+
+    masterGain.gain.setValueAtTime(0.0001, startTime);
+    masterGain.gain.exponentialRampToValueAtTime(0.8, startTime + 0.012);
+    masterGain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.95);
+
+    compressor.threshold.setValueAtTime(-8, startTime);
+    compressor.knee.setValueAtTime(12, startTime);
+    compressor.ratio.setValueAtTime(2, startTime);
+    compressor.attack.setValueAtTime(0.0005, startTime);
+    compressor.release.setValueAtTime(0.08, startTime);
+
+    masterGain.connect(compressor);
+    compressor.connect(audioContext.destination);
+
+    const notes = [
+        { frequency: 783.99, offset: 0, duration: 0.24, gain: 0.42, type: 'triangle' as const },
+        { frequency: 1046.5, offset: 0.11, duration: 0.28, gain: 0.38, type: 'triangle' as const },
+        { frequency: 1318.51, offset: 0.22, duration: 0.46, gain: 0.34, type: 'triangle' as const }
+    ];
+
+    const oscillators: OscillatorNode[] = [];
+
+    for (const note of notes) {
+        const oscillator = audioContext.createOscillator();
+        const overtoneOscillator = audioContext.createOscillator();
+        const noteGain = audioContext.createGain();
+        const noteStart = startTime + note.offset;
+        const noteEnd = noteStart + note.duration;
+
+        oscillator.type = note.type;
+        oscillator.frequency.setValueAtTime(note.frequency, noteStart);
+        oscillator.frequency.exponentialRampToValueAtTime(note.frequency * 1.015, noteEnd);
+
+        overtoneOscillator.type = 'sine';
+        overtoneOscillator.frequency.setValueAtTime(note.frequency * 2, noteStart);
+        overtoneOscillator.frequency.exponentialRampToValueAtTime(note.frequency * 2.02, noteEnd);
+
+        noteGain.gain.setValueAtTime(0.0001, noteStart);
+        noteGain.gain.exponentialRampToValueAtTime(note.gain, noteStart + 0.01);
+        noteGain.gain.exponentialRampToValueAtTime(0.0001, noteEnd);
+
+        oscillator.connect(noteGain);
+        overtoneOscillator.connect(noteGain);
+        noteGain.connect(masterGain);
+        oscillator.start(noteStart);
+        overtoneOscillator.start(noteStart);
+        oscillator.stop(noteEnd + 0.02);
+        overtoneOscillator.stop(noteEnd + 0.02);
+        oscillators.push(oscillator);
+    }
+
+    const lastOscillator = oscillators[oscillators.length - 1];
+    lastOscillator?.addEventListener('ended', () => {
+        void audioContext.close();
+    });
+}
+
 export default function ChatContainer({ initialDraftMessage, forceNewChat, onDraftHandled }: ChatContainerProps) {
     const PENDING_SESSION_ID = 'pending';
     const PERMISSION_POLL_INTERVAL_MS = 1000;
     const SESSION_DIFF_POLL_INTERVAL_MS = 1000;
+    const SESSION_LIST_POLL_INTERVAL_MS = 2000;
     const auth = useAuth();
     const [sessions, setSessions] = useState<ChatSession[]>([]);
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -76,6 +156,9 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
     const [draftMessagesBySessionId, setDraftMessagesBySessionId] = useState<Record<string, string>>({});
     const [pendingPermissions, setPendingPermissions] = useState<PermissionRequest[]>([]);
     const [respondingPermissionIds, setRespondingPermissionIds] = useState<Record<string, boolean>>({});
+    const [attentionStateBySessionId, setAttentionStateBySessionId] = useState<Record<string, AttentionDeliveryState>>(
+        {}
+    );
 
     const abortControllerRef = useRef<AbortController | null>(null);
     const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
@@ -83,8 +166,21 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
     const lastEscapePressRef = useRef<number>(0);
     // const currentSessionInfoRef = useRef<{ id: string; isEmpty: boolean } | null>(null);
     const handledComposeKeyRef = useRef<string | null>(null);
+    const previousSessionsRef = useRef<Record<string, ChatSession>>({});
+    const readingSessionIdsRef = useRef<Set<string>>(new Set());
 
     const token = auth.loading ? null : auth.token;
+    const activeSession = sessions.find((session) => session.id === activeSessionId) ?? null;
+
+    useEffect(() => {
+        if (token) {
+            return;
+        }
+        setLoading(true);
+        setAttentionStateBySessionId({});
+        previousSessionsRef.current = {};
+        readingSessionIdsRef.current = new Set();
+    }, [token]);
 
     const showSessionError = useCallback((message: string) => {
         const now = Date.now();
@@ -325,15 +421,144 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
         connectSSE();
     }, [token, stopSSE, handleSSEEvent]);
 
+    const updateAttentionState = useCallback((sessionId: string, nextState: AttentionDeliveryState | null) => {
+        setAttentionStateBySessionId((prev) => {
+            if (nextState === null) {
+                if (!(sessionId in prev)) {
+                    return prev;
+                }
+                const next = { ...prev };
+                delete next[sessionId];
+                return next;
+            }
+
+            return {
+                ...prev,
+                [sessionId]: nextState
+            };
+        });
+    }, []);
+
+    const markSessionAsRead = useCallback(async (sessionId: string) => {
+        if (!token || sessionId === PENDING_SESSION_ID || readingSessionIdsRef.current.has(sessionId)) {
+            return;
+        }
+
+        try {
+            readingSessionIdsRef.current.add(sessionId);
+            await axiosInstance.post(
+                `/api/chat/sessions/${sessionId}/read`,
+                {},
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+            updateAttentionState(sessionId, null);
+        } catch (err: unknown) {
+            const errorMessage = err instanceof AxiosError
+                ? err.response?.data?.message || err.response?.data || err.message
+                : 'Failed to mark session as read';
+            toast.error(errorMessage);
+        } finally {
+            readingSessionIdsRef.current.delete(sessionId);
+        }
+    }, [token, updateAttentionState]);
+
+    const markAttentionSessionAsSeen = useCallback((session: Extract<ChatSession, { state: 'attention' }>) => {
+        void markSessionAsRead(session.id);
+        updateAttentionState(session.id, {
+            messageId: session.latest_message_id,
+            delivery: 'seen'
+        });
+    }, [markSessionAsRead, updateAttentionState]);
+
     const loadSessions = useCallback(async () => {
         if (!token) return;
 
+        const isInitialLoad = loading;
+
         try {
-            setLoading(true);
+            if (isInitialLoad) {
+                setLoading(true);
+            }
             const response = await axiosInstance.get('/api/chat/sessions', {
                 headers: { Authorization: `Bearer ${token}` }
             });
-            setSessions(response.data.sessions);
+            const nextSessions = Array.isArray(response.data?.sessions) ? response.data.sessions as ChatSession[] : [];
+            const previousSessions = previousSessionsRef.current;
+
+            if (!isInitialLoad) {
+                for (const nextSession of nextSessions) {
+                    const previousSession = previousSessions[nextSession.id];
+                    if (!previousSession) {
+                        continue;
+                    }
+
+                    const previousAttentionMessageId = previousSession.state === 'attention'
+                        ? previousSession.latest_message_id
+                        : null;
+                    if (nextSession.state !== 'attention') {
+                        updateAttentionState(nextSession.id, null);
+                        continue;
+                    }
+                    const nextAttentionMessageId = nextSession.latest_message_id;
+                    if (previousAttentionMessageId === nextAttentionMessageId && previousSession.state === nextSession.state) {
+                        continue;
+                    }
+
+                    const previousDelivery = attentionStateBySessionId[nextSession.id];
+                    const shouldSuppressAsDuplicate = previousAttentionMessageId !== null
+                        && previousDelivery?.messageId === previousAttentionMessageId
+                        && previousDelivery.delivery === 'notified';
+
+                    const isSeenNow = nextSession.id === activeSessionId && isDocumentVisibleAndFocused();
+                    if (isSeenNow) {
+                        markAttentionSessionAsSeen(nextSession);
+                        continue;
+                    }
+
+                    if (shouldSuppressAsDuplicate) {
+                        updateAttentionState(nextSession.id, {
+                            messageId: nextAttentionMessageId,
+                            delivery: 'notified'
+                        });
+                        continue;
+                    }
+
+                    updateAttentionState(nextSession.id, {
+                        messageId: nextAttentionMessageId,
+                        delivery: 'notified'
+                    });
+
+                    if ('Notification' in window) {
+                        if (Notification.permission === 'granted') {
+                            new Notification(nextSession.title || 'New Chat', {
+                                body: 'This chat needs your attention.'
+                            });
+                        } else if (Notification.permission === 'default') {
+                            void Notification.requestPermission().then((permission) => {
+                                if (permission === 'granted') {
+                                    new Notification(nextSession.title || 'New Chat', {
+                                        body: 'This chat needs your attention.'
+                                    });
+                                }
+                            });
+                        }
+                    }
+
+                    playNotificationSound();
+                }
+            }
+
+            previousSessionsRef.current = nextSessions.reduce<Record<string, ChatSession>>((acc, session) => {
+                acc[session.id] = session;
+                return acc;
+            }, {});
+            setSessions(nextSessions);
+            if (activeSessionId && activeSessionId !== PENDING_SESSION_ID) {
+                const stillExists = nextSessions.some((session) => session.id === activeSessionId);
+                if (!stillExists) {
+                    setActiveSessionId(null);
+                }
+            }
             setError(null);
         } catch (err: unknown) {
             const errorMessage = err instanceof AxiosError
@@ -341,9 +566,27 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                 : 'Failed to load sessions';
             setError(errorMessage);
         } finally {
-            setLoading(false);
+            if (isInitialLoad) {
+                setLoading(false);
+            }
         }
-    }, [token]);
+    }, [activeSessionId, attentionStateBySessionId, loading, markAttentionSessionAsSeen, token, updateAttentionState]);
+
+    const markActiveAttentionAsSeenIfVisible = useCallback(() => {
+        if (!activeSession || activeSession.id === PENDING_SESSION_ID) {
+            return;
+        }
+
+        if (activeSession.state !== 'attention') {
+            return;
+        }
+
+        if (!isDocumentVisibleAndFocused()) {
+            return;
+        }
+
+        markAttentionSessionAsSeen(activeSession);
+    }, [activeSession, markAttentionSessionAsSeen]);
 
     const loadMessages = useCallback(async (sessionId: string) => {
         if (!token) return;
@@ -451,6 +694,34 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
         if (!token) return;
         loadSessions();
     }, [token, loadSessions]);
+
+    useEffect(() => {
+        if (!token) {
+            return;
+        }
+
+        const intervalId = window.setInterval(() => {
+            void loadSessions();
+        }, SESSION_LIST_POLL_INTERVAL_MS);
+
+        return () => {
+            window.clearInterval(intervalId);
+        };
+    }, [loadSessions, token]);
+
+    useEffect(() => {
+        markActiveAttentionAsSeenIfVisible();
+    }, [markActiveAttentionAsSeenIfVisible]);
+
+    useEffect(() => {
+        window.addEventListener('focus', markActiveAttentionAsSeenIfVisible);
+        document.addEventListener('visibilitychange', markActiveAttentionAsSeenIfVisible);
+
+        return () => {
+            window.removeEventListener('focus', markActiveAttentionAsSeenIfVisible);
+            document.removeEventListener('visibilitychange', markActiveAttentionAsSeenIfVisible);
+        };
+    }, [markActiveAttentionAsSeenIfVisible]);
 
     // Load messages when active session changes
     useEffect(() => {
@@ -851,6 +1122,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
             <SessionSidebar
                 sessions={sessions}
                 activeSessionId={activeSessionId}
+                attentionStateBySessionId={attentionStateBySessionId}
                 onSelectSession={switchSession}
                 onNewSession={createSession}
                 loading={loading}
