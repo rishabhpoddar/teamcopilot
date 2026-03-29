@@ -57,6 +57,16 @@ interface ChatFilePartInput {
 }
 
 type ChatMessagePartInput = ChatTextPartInput | ChatFilePartInput;
+type SessionMessageSummary = {
+    info: {
+        id: string;
+        role: string;
+        time: {
+            created: number;
+            completed?: number;
+        };
+    };
+};
 
 function parseMessageParts(rawParts: unknown): ChatMessagePartInput[] {
     if (!Array.isArray(rawParts)) {
@@ -363,46 +373,20 @@ function generateTitleFromUserMessage(content: string): string {
 function getLatestAssistantMessageId(messages: unknown): string | null {
     assertCondition(Array.isArray(messages), "Session messages response is not an array");
 
+    const sessionMessages = messages as SessionMessageSummary[];
     let latestMessageId: string | null = null;
     let latestAssistantTimestamp = -1;
 
-    for (const message of messages) {
-        if (!message || typeof message !== "object") {
+    for (const message of sessionMessages) {
+        if (message.info.role !== "assistant") {
             continue;
         }
 
-        const info = (message as { info?: unknown }).info;
-        if (!info || typeof info !== "object") {
-            continue;
-        }
-
-        const candidate = info as {
-            id?: unknown;
-            role?: unknown;
-            time?: {
-                created?: unknown;
-                completed?: unknown;
-            };
-        };
-
-        if (candidate.role !== "assistant" || typeof candidate.id !== "string") {
-            continue;
-        }
-
-        const createdAt = candidate.time?.created;
-        const completedAt = candidate.time?.completed;
-        const assistantTimestamp = typeof completedAt === "number"
-            ? completedAt
-            : typeof createdAt === "number"
-                ? createdAt
-                : null;
-        if (assistantTimestamp === null) {
-            continue;
-        }
+        const assistantTimestamp = message.info.time.completed ?? message.info.time.created;
 
         if (assistantTimestamp > latestAssistantTimestamp) {
             latestAssistantTimestamp = assistantTimestamp;
-            latestMessageId = candidate.id;
+            latestMessageId = message.info.id;
         }
     }
 
@@ -439,7 +423,7 @@ function getSessionState(args: {
         if (args.latestAssistantMessageId === args.lastSeenAssistantMessageId) {
             return {
                 state: "idle",
-                latest_message_id: null
+                latest_message_id: args.latestAssistantMessageId
             };
         }
 
@@ -468,7 +452,7 @@ function getSessionState(args: {
 
     return {
         state: "idle",
-        latest_message_id: null
+        latest_message_id: args.latestAssistantMessageId
     };
 }
 
@@ -510,9 +494,12 @@ router.get('/sessions', apiHandler(async (req, res) => {
     assertCondition(!statusResult.error, getErrorMessage(statusResult.error));
     const sessionStatusMap = statusResult.data as SessionStatusMap;
     const pendingQuestions = await listPendingQuestions();
-    const pendingQuestionIdsBySessionId = new Map(
-        pendingQuestions.map((question) => [question.sessionID, question.id])
-    );
+    const pendingQuestionIdsBySessionId = new Map<string, string[]>();
+    for (const question of pendingQuestions) {
+        const existing = pendingQuestionIdsBySessionId.get(question.sessionID) ?? [];
+        existing.push(question.id);
+        pendingQuestionIdsBySessionId.set(question.sessionID, existing);
+    }
     const pendingPermissions = await listPendingPermissions();
     const pendingPermissionIdsBySessionId = new Map<string, string[]>();
     for (const permission of pendingPermissions) {
@@ -543,12 +530,12 @@ router.get('/sessions', apiHandler(async (req, res) => {
             client,
             session.opencode_session_id
         );
-        const pendingQuestionId = pendingQuestionIdsBySessionId.get(session.opencode_session_id) ?? null;
+        const pendingQuestionIds = pendingQuestionIdsBySessionId.get(session.opencode_session_id) ?? [];
         const pendingPermissionIds = pendingPermissionIdsBySessionId.get(session.opencode_session_id) ?? [];
         const rawSessionStatus = getSessionStatusTypeForSession(sessionStatusMap, session.opencode_session_id);
         const sessionState = getSessionState({
             rawSessionStatus,
-            hasPendingInput: pendingQuestionId !== null || pendingPermissionIds.length > 0,
+            hasPendingInput: pendingQuestionIds.length > 0 || pendingPermissionIds.length > 0,
             latestAssistantMessageId,
             lastSeenAssistantMessageId: session.last_seen_assistant_message_id
         });
