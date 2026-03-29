@@ -40,6 +40,7 @@ function getOpencodeBaseUrl(): string {
 interface PendingQuestion {
     id: string;
     sessionID: string;
+    messageID: string;
     questions: Array<unknown>;
 }
 
