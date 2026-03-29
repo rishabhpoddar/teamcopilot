@@ -170,7 +170,9 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
     const [draftMessagesBySessionId, setDraftMessagesBySessionId] = useState<Record<string, string>>({});
     const [pendingPermissions, setPendingPermissions] = useState<PermissionRequest[]>([]);
     const [respondingPermissionIds, setRespondingPermissionIds] = useState<Record<string, boolean>>({});
-    const [attentionStateBySessionId, setAttentionStateBySessionId] = useState<Record<string, AttentionDeliveryState>>({});
+    const [attentionStateBySessionId, setAttentionStateBySessionId] = useState<Record<string, AttentionDeliveryState>>(
+        {}
+    );
 
     const abortControllerRef = useRef<AbortController | null>(null);
     const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
@@ -179,26 +181,18 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
     // const currentSessionInfoRef = useRef<{ id: string; isEmpty: boolean } | null>(null);
     const handledComposeKeyRef = useRef<string | null>(null);
     const previousSessionsRef = useRef<Record<string, ChatSession>>({});
-    const hasLoadedSessionsRef = useRef(false);
-    const attentionStateRef = useRef<Record<string, AttentionDeliveryState>>({});
-    const activeSessionIdRef = useRef<string | null>(null);
     const readingSessionIdsRef = useRef<Set<string>>(new Set());
 
     const token = auth.loading ? null : auth.token;
     const activeSession = sessions.find((session) => session.id === activeSessionId) ?? null;
 
     useEffect(() => {
-        activeSessionIdRef.current = activeSessionId;
-    }, [activeSessionId]);
-
-    useEffect(() => {
         if (token) {
             return;
         }
+        setLoading(true);
         setAttentionStateBySessionId({});
         previousSessionsRef.current = {};
-        hasLoadedSessionsRef.current = false;
-        attentionStateRef.current = {};
         readingSessionIdsRef.current = new Set();
     }, [token]);
 
@@ -442,27 +436,21 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
     }, [token, stopSSE, handleSSEEvent]);
 
     const updateAttentionState = useCallback((sessionId: string, nextState: AttentionDeliveryState | null) => {
-        if (nextState === null) {
-            delete attentionStateRef.current[sessionId];
-            setAttentionStateBySessionId((prev) => {
+        setAttentionStateBySessionId((prev) => {
+            if (nextState === null) {
                 if (!(sessionId in prev)) {
                     return prev;
                 }
                 const next = { ...prev };
                 delete next[sessionId];
                 return next;
-            });
-            return;
-        }
+            }
 
-        attentionStateRef.current = {
-            ...attentionStateRef.current,
-            [sessionId]: nextState
-        };
-        setAttentionStateBySessionId((prev) => ({
-            ...prev,
-            [sessionId]: nextState
-        }));
+            return {
+                ...prev,
+                [sessionId]: nextState
+            };
+        });
     }, []);
 
     const markSessionAsRead = useCallback(async (sessionId: string) => {
@@ -491,7 +479,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
     const loadSessions = useCallback(async () => {
         if (!token) return;
 
-        const isInitialLoad = !hasLoadedSessionsRef.current;
+        const isInitialLoad = loading;
 
         try {
             if (isInitialLoad) {
@@ -503,7 +491,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
             const nextSessions = Array.isArray(response.data?.sessions) ? response.data.sessions as ChatSession[] : [];
             const previousSessions = previousSessionsRef.current;
 
-            if (hasLoadedSessionsRef.current) {
+            if (!isInitialLoad) {
                 for (const nextSession of nextSessions) {
                     const previousSession = previousSessions[nextSession.id];
                     if (!previousSession) {
@@ -522,20 +510,18 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                         continue;
                     }
 
-                    const previousDelivery = attentionStateRef.current[nextSession.id];
+                    const previousDelivery = attentionStateBySessionId[nextSession.id];
                     const shouldSuppressAsDuplicate = previousAttentionMessageId !== null
                         && previousDelivery?.messageId === previousAttentionMessageId
                         && previousDelivery.delivery === 'notified';
 
-                    const isSeenNow = nextSession.id === activeSessionIdRef.current && isDocumentVisibleAndFocused();
+                    const isSeenNow = nextSession.id === activeSessionId && isDocumentVisibleAndFocused();
                     if (isSeenNow) {
-                        if (nextSession.state === 'attention') {
-                            void markSessionAsRead(nextSession.id);
-                            updateAttentionState(nextSession.id, {
-                                messageId: nextAttentionMessageId,
-                                delivery: 'seen'
-                            });
-                        }
+                        void markSessionAsRead(nextSession.id);
+                        updateAttentionState(nextSession.id, {
+                            messageId: nextAttentionMessageId,
+                            delivery: 'seen'
+                        });
                         continue;
                     }
 
@@ -577,10 +563,9 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                 acc[session.id] = session;
                 return acc;
             }, {});
-            hasLoadedSessionsRef.current = true;
             setSessions(nextSessions);
-            if (activeSessionIdRef.current && activeSessionIdRef.current !== PENDING_SESSION_ID) {
-                const stillExists = nextSessions.some((session) => session.id === activeSessionIdRef.current);
+            if (activeSessionId && activeSessionId !== PENDING_SESSION_ID) {
+                const stillExists = nextSessions.some((session) => session.id === activeSessionId);
                 if (!stillExists) {
                     setActiveSessionId(null);
                 }
@@ -596,7 +581,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                 setLoading(false);
             }
         }
-    }, [markSessionAsRead, token, updateAttentionState]);
+    }, [activeSessionId, attentionStateBySessionId, loading, markSessionAsRead, token, updateAttentionState]);
 
     const loadMessages = useCallback(async (sessionId: string) => {
         if (!token) return;
@@ -735,13 +720,11 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
 
     useEffect(() => {
         const markActiveSessionAsReadIfVisible = () => {
-            const currentActiveSessionId = activeSessionIdRef.current;
-            if (!currentActiveSessionId || currentActiveSessionId === PENDING_SESSION_ID) {
+            if (!activeSession || activeSession.id === PENDING_SESSION_ID) {
                 return;
             }
 
-            const currentActiveSession = previousSessionsRef.current[currentActiveSessionId];
-            if (currentActiveSession?.state !== 'attention') {
+            if (activeSession.state !== 'attention') {
                 return;
             }
 
@@ -749,9 +732,9 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                 return;
             }
 
-            void markSessionAsRead(currentActiveSessionId);
-            updateAttentionState(currentActiveSessionId, {
-                messageId: requireAttentionMessageId(currentActiveSession),
+            void markSessionAsRead(activeSession.id);
+            updateAttentionState(activeSession.id, {
+                messageId: requireAttentionMessageId(activeSession),
                 delivery: 'seen'
             });
         };
@@ -763,7 +746,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
             window.removeEventListener('focus', markActiveSessionAsReadIfVisible);
             document.removeEventListener('visibilitychange', markActiveSessionAsReadIfVisible);
         };
-    }, [markSessionAsRead, updateAttentionState]);
+    }, [activeSession, markSessionAsRead, updateAttentionState]);
 
     // Load messages when active session changes
     useEffect(() => {
