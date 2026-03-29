@@ -42,13 +42,6 @@ export default function SessionSidebar({
         return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
     };
 
-    const getAttentionMessageId = (session: ChatSession) => {
-        if (session.state !== 'attention') {
-            return null;
-        }
-        return session.latest_message_id;
-    };
-
     return (
         <div className="chat-sidebar">
             <div className="chat-sidebar-header">
@@ -70,7 +63,7 @@ export default function SessionSidebar({
                     sessions.map(session => {
                         const displayTitle = session.title || 'New Chat';
                         const attentionState = attentionStateBySessionId[session.id];
-                        const attentionMessageId = getAttentionMessageId(session);
+                        const attentionMessageId = session.state === 'attention' ? session.latest_message_id : null;
                         const showUnreadIndicator = attentionMessageId !== null
                             && !(attentionState?.messageId === attentionMessageId && attentionState.delivery === 'seen');
                         return (
