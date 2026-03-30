@@ -205,8 +205,7 @@ function normalizeAzureEndpoint(endpoint: string): string {
 
 function hasRequiredAzureEnvironment(): boolean {
     return isNonEmptyString(process.env.AZURE_API_KEY)
-        && isNonEmptyString(process.env.AZURE_OPENAI_ENDPOINT)
-        && isNonEmptyString(process.env.AZURE_OPENAI_API_VERSION);
+        && isNonEmptyString(process.env.AZURE_OPENAI_ENDPOINT);
 }
 
 async function hasAzureProviderConfiguration(providerId: string): Promise<boolean> {
@@ -255,7 +254,6 @@ export async function syncManagedProviderConfiguration(): Promise<void> {
     }
 
     const endpoint = normalizeAzureEndpoint(assertEnv("AZURE_OPENAI_ENDPOINT"));
-    const apiVersion = assertEnv("AZURE_OPENAI_API_VERSION").trim();
     const deployment = getConfiguredModelId().trim();
     const normalizedProviderId = normalizeProviderId(providerId);
     const configPath = getWorkspaceOpencodeConfigPath();
@@ -277,8 +275,10 @@ export async function syncManagedProviderConfiguration(): Promise<void> {
             options: {
                 ...((existingProviderConfig?.options ?? {}) as Record<string, unknown>),
                 baseURL: `${endpoint}/openai`,
-                apiVersion,
-                useDeploymentBasedUrls: true,
+                apiVersion: "v1",
+                // Azure Codex deployments require the v1 Responses API instead of the
+                // legacy deployment-based chat/completions endpoint.
+                useDeploymentBasedUrls: false,
             },
         },
     };

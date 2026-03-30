@@ -67,11 +67,6 @@ function getManagedEnvExamples(model: string): ManagedEnvExample[] {
             help: 'Base endpoint for the Azure OpenAI resource.',
         },
         {
-            key: 'AZURE_OPENAI_API_VERSION',
-            value: '2025-01-01-preview',
-            help: 'Azure API version used for chat completions.',
-        },
-        {
             key: 'OPENCODE_MODEL',
             value: `azure-openai/${deployment}`,
             help: 'Provider id plus the Azure deployment name.',
@@ -389,7 +384,7 @@ export default function OpencodeAuthSetup() {
                                     <div className="opencode-auth-managed-example-block">
                                         <div className="opencode-auth-managed-example-header">
                                             <h4>Required Values</h4>
-                                            <p>Use your Azure deployment name in <code>OPENCODE_MODEL</code>.</p>
+                                            <p>Use your Azure deployment name in <code>OPENCODE_MODEL</code></p>
                                         </div>
                                         <div className="opencode-auth-managed-example-list">
                                             {managedEnvExamples.map((example) => (
