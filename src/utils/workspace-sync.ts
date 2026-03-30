@@ -19,6 +19,8 @@ const HONEYTOKEN_UUID = "1f9f0b72-5f9f-4c9b-aef1-2fb2e0f6d8c4";
 const HONEYTOKEN_FILE_NAME = `honeytoken-${HONEYTOKEN_UUID}.txt`;
 const WORKSPACE_AZURE_PROVIDER_VERSION = "3.0.48";
 const WORKSPACE_INSTALL_STATE_RELATIVE_PATH = path.join(".opencode", "install-state.json");
+const WORKSPACE_OPENCODE_DIRECTORY = ".opencode";
+const WORKSPACE_OPENCODE_PACKAGE_JSON = path.join(WORKSPACE_OPENCODE_DIRECTORY, "package.json");
 
 export function getWorkspaceDirFromEnv(): string {
     let workspaceDir = assertEnv("WORKSPACE_DIR");
@@ -242,8 +244,12 @@ function syncTemplateDirectory(
 
 async function initializeWorkspaceNodeDependencies(workspaceDir: string): Promise<void> {
     const workspacePackageJsonPath = path.join(workspaceDir, "package.json");
+    const workspaceOpencodePackageJsonPath = path.join(workspaceDir, WORKSPACE_OPENCODE_PACKAGE_JSON);
     const existingPackageJson = fs.existsSync(workspacePackageJsonPath)
         ? JSON.parse(fs.readFileSync(workspacePackageJsonPath, "utf-8"))
+        : {};
+    const existingOpencodePackageJson = fs.existsSync(workspaceOpencodePackageJsonPath)
+        ? JSON.parse(fs.readFileSync(workspaceOpencodePackageJsonPath, "utf-8"))
         : {};
     const dependencies = {
         ...(existingPackageJson.dependencies ?? {}),
@@ -257,29 +263,46 @@ async function initializeWorkspaceNodeDependencies(workspaceDir: string): Promis
         dependencies,
     };
     const installStatePath = path.join(workspaceDir, WORKSPACE_INSTALL_STATE_RELATIVE_PATH);
-    const desiredInstallState = {
-        dependencies,
-    };
     const desiredInstallStateHash = crypto
         .createHash("sha256")
-        .update(JSON.stringify(desiredInstallState))
+        .update(JSON.stringify({
+            workspaceDependencies: dependencies,
+            opencodePluginDependencies: existingOpencodePackageJson.dependencies ?? {},
+            opencodePluginDevDependencies: existingOpencodePackageJson.devDependencies ?? {},
+        }))
         .digest("hex");
     const existingInstallState = fs.existsSync(installStatePath)
         ? JSON.parse(fs.readFileSync(installStatePath, "utf-8")) as { hash?: string }
         : null;
     const hasMatchingInstallState = existingInstallState?.hash === desiredInstallStateHash;
-    const nodeModulesPath = path.join(workspaceDir, "node_modules");
+    const workspaceNodeModulesPath = path.join(workspaceDir, "node_modules");
+    const opencodeNodeModulesPath = path.join(workspaceDir, WORKSPACE_OPENCODE_DIRECTORY, "node_modules");
     const packageJsonMatches = JSON.stringify(existingPackageJson) === JSON.stringify(workspacePackageJson);
 
-    if (hasMatchingInstallState && packageJsonMatches && fs.existsSync(nodeModulesPath)) {
+    if (
+        hasMatchingInstallState
+        && packageJsonMatches
+        && fs.existsSync(workspaceNodeModulesPath)
+        && fs.existsSync(opencodeNodeModulesPath)
+    ) {
         return;
     }
 
-    fs.writeFileSync(workspacePackageJsonPath, JSON.stringify(workspacePackageJson, null, 2), "utf-8");
-    await execFileAsync("npm", ["install"], {
-        cwd: workspaceDir,
-        env: process.env,
-    });
+    if (!packageJsonMatches || !fs.existsSync(workspaceNodeModulesPath)) {
+        fs.writeFileSync(workspacePackageJsonPath, JSON.stringify(workspacePackageJson, null, 2), "utf-8");
+        await execFileAsync("npm", ["install"], {
+            cwd: workspaceDir,
+            env: process.env,
+        });
+    }
+
+    if (!hasMatchingInstallState || !fs.existsSync(opencodeNodeModulesPath)) {
+        await execFileAsync("npm", ["install"], {
+            cwd: path.join(workspaceDir, WORKSPACE_OPENCODE_DIRECTORY),
+            env: process.env,
+        });
+    }
+
     fs.mkdirSync(path.dirname(installStatePath), { recursive: true });
     fs.writeFileSync(installStatePath, `${JSON.stringify({ hash: desiredInstallStateHash }, null, 2)}\n`, "utf-8");
 }
