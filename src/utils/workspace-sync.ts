@@ -247,7 +247,7 @@ async function initializeWorkspaceNodeDependencies(workspaceDir: string): Promis
         : {};
     const dependencies = {
         ...(existingPackageJson.dependencies ?? {}),
-        "opencode-ai": "1.1.65",
+        "opencode-ai": "1.3.7",
     };
     if (assertEnv("OPENCODE_MODEL").startsWith("azure-openai/")) {
         dependencies["@ai-sdk/azure"] = WORKSPACE_AZURE_PROVIDER_VERSION;

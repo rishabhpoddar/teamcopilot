@@ -43,14 +43,6 @@ export async function abortOpencodeSession(opencodeSessionId: string): Promise<v
     });
 
     const client = await getOpencodeClient();
-    await client.session.command({
-        path: { id: opencodeSessionId },
-        body: {
-            command: "session.interrupt",
-            arguments: ""
-        }
-    });
-
     const abortResult = await client.session.abort({
         path: { id: opencodeSessionId }
     });
