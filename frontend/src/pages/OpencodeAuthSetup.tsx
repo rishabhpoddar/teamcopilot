@@ -67,11 +67,6 @@ function getManagedEnvExamples(model: string): ManagedEnvExample[] {
             help: 'Base endpoint for the Azure OpenAI resource.',
         },
         {
-            key: 'AZURE_OPENAI_API_VERSION',
-            value: 'v1',
-            help: 'Azure API version used for the Responses API.',
-        },
-        {
             key: 'OPENCODE_MODEL',
             value: `azure-openai/${deployment}`,
             help: 'Provider id plus the Azure deployment name.',
