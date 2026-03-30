@@ -389,7 +389,7 @@ export default function OpencodeAuthSetup() {
                                     <div className="opencode-auth-managed-example-block">
                                         <div className="opencode-auth-managed-example-header">
                                             <h4>Required Values</h4>
-                                            <p>Use your Azure deployment name in <code>OPENCODE_MODEL</code> and set <code>AZURE_OPENAI_API_VERSION</code> to <code>v1</code>.</p>
+                                            <p>Use your Azure deployment name in <code>OPENCODE_MODEL</code></p>
                                         </div>
                                         <div className="opencode-auth-managed-example-list">
                                             {managedEnvExamples.map((example) => (
