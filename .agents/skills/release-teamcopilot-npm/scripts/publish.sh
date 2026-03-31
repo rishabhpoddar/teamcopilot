@@ -3,12 +3,14 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
 cd "$ROOT_DIR"
+ENV_FILE="$ROOT_DIR/.env"
 
 MODE="dry-run"
 PUBLISH_TAG=""
 ACCESS_FLAG=""
-OTP_CODE=""
 SKIP_CHECKS=0
+TOKEN_ENV_NAME=""
+NPM_CONFIG_FILE=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -28,10 +30,6 @@ while [[ $# -gt 0 ]]; do
       ACCESS_FLAG="$2"
       shift 2
       ;;
-    --otp)
-      OTP_CODE="$2"
-      shift 2
-      ;;
     --skip-checks)
       SKIP_CHECKS=1
       shift
@@ -46,13 +44,33 @@ done
 PACKAGE_NAME="$(node -p "require('./package.json').name")"
 PACKAGE_VERSION="$(node -p "require('./package.json').version")"
 PACKAGE_LOCK_VERSION="$(node -p "require('./package-lock.json').version")"
-NPM_USER="$(npm whoami)"
+
+if [[ -f "$ENV_FILE" ]]; then
+  eval "$(
+    node -e '
+      const fs = require("fs");
+      const dotenv = require("dotenv");
+      const envPath = process.argv[1];
+      const parsed = dotenv.parse(fs.readFileSync(envPath));
+      for (const [key, value] of Object.entries(parsed)) {
+        if (key === "NPM_TOKEN" || key === "NODE_AUTH_TOKEN") {
+          process.stdout.write(`export ${key}=${JSON.stringify(value)}\n`);
+        }
+      }
+    ' "$ENV_FILE"
+  )"
+fi
+
+NPM_TOKEN_VALUE="${NPM_TOKEN:-${NODE_AUTH_TOKEN:-}}"
 PACK_OUTPUT=""
 PACK_FILENAME=""
 
 cleanup() {
   if [[ -n "$PACK_FILENAME" && -f "$PACK_FILENAME" ]]; then
     rm -f "$PACK_FILENAME"
+  fi
+  if [[ -n "$NPM_CONFIG_FILE" && -f "$NPM_CONFIG_FILE" ]]; then
+    rm -f "$NPM_CONFIG_FILE"
   fi
 }
 
@@ -64,12 +82,32 @@ if [[ "$PACKAGE_VERSION" != "$PACKAGE_LOCK_VERSION" ]]; then
   exit 1
 fi
 
+if [[ -z "$NPM_TOKEN_VALUE" ]]; then
+  echo "Missing npm access token. Set NPM_TOKEN or NODE_AUTH_TOKEN in ${ENV_FILE} or the shell environment before running this script." >&2
+  exit 1
+fi
+
+if [[ -n "${NPM_TOKEN:-}" ]]; then
+  TOKEN_ENV_NAME="NPM_TOKEN"
+else
+  TOKEN_ENV_NAME="NODE_AUTH_TOKEN"
+fi
+
+NPM_CONFIG_FILE="$(mktemp)"
+cat > "$NPM_CONFIG_FILE" <<EOF
+//registry.npmjs.org/:_authToken=${NPM_TOKEN_VALUE}
+registry=https://registry.npmjs.org/
+always-auth=true
+EOF
+export NPM_CONFIG_USERCONFIG="$NPM_CONFIG_FILE"
+
+NPM_USER="$(npm whoami)"
 if [[ "$NPM_USER" != "trythisapp" ]]; then
   echo "Expected npm user trythisapp, got ${NPM_USER}" >&2
   exit 1
 fi
 
-echo "Authenticated to npm as ${NPM_USER}"
+echo "Authenticated to npm as ${NPM_USER} using ${TOKEN_ENV_NAME}"
 if [[ "$SKIP_CHECKS" -eq 0 ]]; then
   npm run test
   npm run build
@@ -91,9 +129,6 @@ if [[ -n "$PUBLISH_TAG" ]]; then
 fi
 if [[ -n "$ACCESS_FLAG" ]]; then
   PUBLISH_ARGS+=("--access" "$ACCESS_FLAG")
-fi
-if [[ -n "$OTP_CODE" ]]; then
-  PUBLISH_ARGS+=("--otp" "$OTP_CODE")
 fi
 
 echo "Publishing ${PACKAGE_NAME}@${PACKAGE_VERSION} to npm"
