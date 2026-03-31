@@ -60,6 +60,21 @@ const stringCases: StringCase[] = [
         expected: "token=***DEF",
     },
     {
+        name: "git clone quoted url password redaction",
+        input: "git clone \"https://teamcopilot:ZTzPjcuzhfWLJW1mq@repo.com/ai/some_repo/kubernetes-release.git\"",
+        expected: "git clone \"https://teamcopilot:***1mq@repo.com/ai/some_repo/kubernetes-release.git\"",
+    },
+    {
+        name: "normal https url is not redacted",
+        input: "git clone \"https://repo.com/ai/some_repo/kubernetes-release.git\"",
+        expected: "git clone \"https://repo.com/ai/some_repo/kubernetes-release.git\"",
+    },
+    {
+        name: "https url with username only is not redacted",
+        input: "git clone \"https://teamcopilot@repo.com/ai/some_repo/kubernetes-release.git\"",
+        expected: "git clone \"https://teamcopilot@repo.com/ai/some_repo/kubernetes-release.git\"",
+    },
+    {
         name: "non-sensitive heading should not redact",
         input: "## Auth token\nThis section describes authentication basics.\n",
         expected: "## Auth token\nThis section describes authentication basics.\n",

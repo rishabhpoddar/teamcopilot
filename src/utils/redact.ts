@@ -16,6 +16,13 @@ function isLikelySensitiveKey(key: string): boolean {
 export function sanitizeStringContent(input: string): string {
     let text = input;
 
+    // Redact credentials embedded in URLs such as:
+    // https://user:password@host/path
+    text = text.replace(
+        /\b(https?:\/\/)([^\/\s"'@:]+):([^\/\s"'@]+)@/gi,
+        (_full: string, scheme: string, username: string, password: string) => `${scheme}${username}:${maskValue(password)}@`
+    );
+
     // Redact Authorization header bearer tokens before generic key/value masking so
     // "Authorization: Bearer <token>" doesn't get partially masked as "***rer".
     text = text.replace(
