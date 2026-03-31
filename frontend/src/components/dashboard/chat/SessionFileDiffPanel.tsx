@@ -7,6 +7,8 @@ interface SessionFileDiffPanelProps {
     expandedPaths: string[];
     onSelectPath: (path: string) => void;
     onRefresh: () => void;
+    isOpen: boolean;
+    onToggle: () => void;
 }
 
 export default function SessionFileDiffPanel({
@@ -15,29 +17,48 @@ export default function SessionFileDiffPanel({
     error,
     expandedPaths,
     onSelectPath,
-    onRefresh
+    onRefresh,
+    isOpen,
+    onToggle
 }: SessionFileDiffPanelProps) {
     return (
-        <section className="chat-session-diff-panel">
+        <aside className={`chat-diff-sidebar ${isOpen ? 'open' : 'collapsed'}`} id="chat-session-diff">
             <div className="chat-session-diff-header">
-                <div>
-                    <div className="chat-session-diff-title">Session File Diff</div>
-                    <div className="chat-session-diff-summary">
-                        {diff
-                            ? `${diff.summary.added} added · ${diff.summary.modified} modified · ${diff.summary.deleted} deleted`
-                            : 'Track files changed via apply_patch in this session'}
-                    </div>
+                <div className="chat-session-diff-header-main">
+                    <button
+                        type="button"
+                        className="chat-session-diff-toggle"
+                        onClick={onToggle}
+                        aria-label={isOpen ? 'Collapse session diff sidebar' : 'Expand session diff sidebar'}
+                        aria-expanded={isOpen}
+                    >
+                        {isOpen ? '→' : '←'}
+                    </button>
+                    {isOpen ? (
+                        <div>
+                            <div className="chat-session-diff-title">Session File Diff</div>
+                            <div className="chat-session-diff-summary">
+                                {diff
+                                    ? `${diff.summary.added} added · ${diff.summary.modified} modified · ${diff.summary.deleted} deleted`
+                                    : 'Track files changed via apply_patch in this session'}
+                            </div>
+                        </div>
+                    ) : null}
                 </div>
-                <button
-                    type="button"
-                    className="chat-session-diff-refresh"
-                    onClick={onRefresh}
-                    disabled={loading}
-                >
-                    {'Refresh'}
-                </button>
+                {isOpen ? (
+                    <button
+                        type="button"
+                        className="chat-session-diff-refresh"
+                        onClick={onRefresh}
+                        disabled={loading}
+                    >
+                        Refresh
+                    </button>
+                ) : null}
             </div>
 
+            {!isOpen ? null : (
+                <>
             <div className="chat-session-diff-warning">
                 This diff is best-effort only. It may miss some file changes or show an incomplete view.
             </div>
@@ -108,6 +129,8 @@ export default function SessionFileDiffPanel({
                     })}
                 </div>
             )}
-        </section>
+                </>
+            )}
+        </aside>
     );
 }

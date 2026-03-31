@@ -151,6 +151,12 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
         }
         return window.innerWidth > MOBILE_BREAKPOINT_PX;
     });
+    const [isDiffSidebarOpen, setIsDiffSidebarOpen] = useState(() => {
+        if (typeof window === 'undefined') {
+            return true;
+        }
+        return window.innerWidth > MOBILE_BREAKPOINT_PX;
+    });
     const [messages, setMessages] = useState<Message[]>([]);
     const [parts, setParts] = useState<Part[]>([]);
     const [loading, setLoading] = useState(true);
@@ -183,6 +189,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
         const handleResize = () => {
             if (window.innerWidth > MOBILE_BREAKPOINT_PX) {
                 setIsSidebarOpen(true);
+                setIsDiffSidebarOpen(true);
             }
         };
 
@@ -1161,6 +1168,17 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                     >
                         Sessions
                     </button>
+                    {hasVisibleSessionDiff ? (
+                        <button
+                            type="button"
+                            className="chat-main-toolbar-toggle"
+                            onClick={() => setIsDiffSidebarOpen((prev) => !prev)}
+                            aria-expanded={isDiffSidebarOpen}
+                            aria-controls="chat-session-diff"
+                        >
+                            Diff
+                        </button>
+                    ) : null}
                     <div className="chat-main-toolbar-meta">
                         <strong>{activeSession?.title || (activeSessionId ? 'New Chat' : 'AI Assistant')}</strong>
                         <span>
@@ -1171,7 +1189,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                     </div>
                 </div>
                 {activeSessionId ? (
-                    <div className={`chat-workspace ${hasVisibleSessionDiff ? 'with-diff' : 'without-diff'}`}>
+                    <div className="chat-workspace without-diff">
                         <div className="chat-column chat-column-main">
                             <MessageList
                                 messages={messages}
@@ -1201,22 +1219,6 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                                 draftMessage={activeDraftMessage}
                             />
                         </div>
-                        {hasVisibleSessionDiff && (
-                            <div className="chat-column chat-column-diff">
-                                <SessionFileDiffPanel
-                                    diff={sessionDiff}
-                                    loading={sessionDiffLoading}
-                                    error={sessionDiffError}
-                                    expandedPaths={expandedDiffPaths}
-                                    onSelectPath={toggleExpandedDiffPath}
-                                    onRefresh={() => {
-                                        if (activeSessionId && activeSessionId !== PENDING_SESSION_ID) {
-                                            void loadSessionDiff(activeSessionId);
-                                        }
-                                    }}
-                                />
-                            </div>
-                        )}
                     </div>
                 ) : (
                     <div className="chat-empty">
@@ -1228,6 +1230,22 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                     </div>
                 )}
             </div>
+            {hasVisibleSessionDiff ? (
+                <SessionFileDiffPanel
+                    diff={sessionDiff}
+                    loading={sessionDiffLoading}
+                    error={sessionDiffError}
+                    expandedPaths={expandedDiffPaths}
+                    onSelectPath={toggleExpandedDiffPath}
+                    onRefresh={() => {
+                        if (activeSessionId && activeSessionId !== PENDING_SESSION_ID) {
+                            void loadSessionDiff(activeSessionId);
+                        }
+                    }}
+                    isOpen={isDiffSidebarOpen}
+                    onToggle={() => setIsDiffSidebarOpen((prev) => !prev)}
+                />
+            ) : null}
         </div>
     );
 }
