@@ -11,7 +11,7 @@ This skill assumes `package.json` already contains the intended release version.
 
 The release must stop if the version in `package.json` and `package-lock.json` do not match.
 
-This skill authenticates with an npm access token from the repo-root `.env`. Set `NPM_TOKEN` in `.env` before running it. `NODE_AUTH_TOKEN` is accepted as a fallback for CI-style environments or shell-based overrides.
+This skill authenticates with an npm access token from the repo-root `.env`. Set `NPM_TOKEN` in `.env` before running it. `NODE_AUTH_TOKEN` is accepted as a fallback for CI-style environments or shell-based overrides. Do not add `NPM_TOKEN` to `.env.example`, because TeamCopilot CLI treats `.env.example` entries as required runtime configuration.
 
 ## Workflow
 
@@ -57,6 +57,7 @@ This skill authenticates with an npm access token from the repo-root `.env`. Set
 - Stop if neither `NPM_TOKEN` nor `NODE_AUTH_TOKEN` is set in `.env` or the shell environment.
 - Prefer `--dry-run` before `--publish`.
 - Prefer `NPM_TOKEN` in the repo-root `.env` for local runs. Use `NODE_AUTH_TOKEN` only when the environment already standardizes on it.
+- Do not add `NPM_TOKEN` to `.env.example`.
 - Do not publish if tests fail.
 - Do not publish if build fails.
 - If the user wants a prerelease tag like `beta`, pass `--tag beta`.
