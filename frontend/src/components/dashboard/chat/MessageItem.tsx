@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { Message, Part, PermissionRequest } from '../../../types/chat';
 import { isUserMessage, isAssistantMessage } from '../../../types/chat';
 import MessagePart from './MessagePart';
@@ -11,7 +12,7 @@ interface MessageItemProps {
     respondingPermissionIds: Record<string, boolean>;
 }
 
-export default function MessageItem({
+function MessageItem({
     message,
     parts,
     onAnswer,
@@ -40,18 +41,16 @@ export default function MessageItem({
                 </span>
             </div>
             <div className="message-content">
-                {parts
-                    .filter(part => part.messageID === message.id)
-                    .map(part => (
-                        <MessagePart
-                            key={part.id}
-                            part={part}
-                            onAnswer={onAnswer}
-                            pendingPermissions={pendingPermissions}
-                            onPermissionRespond={onPermissionRespond}
-                            respondingPermissionIds={respondingPermissionIds}
-                        />
-                    ))}
+                {parts.map(part => (
+                    <MessagePart
+                        key={part.id}
+                        part={part}
+                        onAnswer={onAnswer}
+                        pendingPermissions={pendingPermissions}
+                        onPermissionRespond={onPermissionRespond}
+                        respondingPermissionIds={respondingPermissionIds}
+                    />
+                ))}
             </div>
             {isAssistant && message.error && (
                 <div className="message-error">
@@ -61,3 +60,5 @@ export default function MessageItem({
         </div>
     );
 }
+
+export default memo(MessageItem);

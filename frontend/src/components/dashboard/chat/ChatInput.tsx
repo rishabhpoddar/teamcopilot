@@ -12,6 +12,7 @@ interface ChatInputProps {
     onAbort: () => void;
     disabled: boolean;
     isStreaming: boolean;
+    draftSessionKey: string;
     draftMessage: string;
 }
 
@@ -22,6 +23,7 @@ export default function ChatInput({
     onAbort,
     disabled,
     isStreaming,
+    draftSessionKey,
     draftMessage
 }: ChatInputProps) {
     const [input, setInput] = useState('');
@@ -62,7 +64,7 @@ export default function ChatInput({
 
     useEffect(() => {
         setInput(draftMessage);
-    }, [draftMessage]);
+    }, [draftMessage, draftSessionKey]);
 
     useEffect(() => {
         if (!disabled && !isStreaming && textareaRef.current) {

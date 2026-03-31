@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Message, Part, PermissionRequest } from '../../../types/chat';
 import MessageItem from './MessageItem';
 
@@ -13,7 +13,7 @@ interface MessageListProps {
     respondingPermissionIds: Record<string, boolean>;
 }
 
-export default function MessageList({
+function MessageList({
     messages,
     parts,
     isStreaming,
@@ -27,6 +27,18 @@ export default function MessageList({
     const messagesContainerRef = useRef<HTMLDivElement>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
+    const partsByMessageId = useMemo(() => {
+        const grouped = new Map<string, Part[]>();
+        for (const part of parts) {
+            const existing = grouped.get(part.messageID);
+            if (existing) {
+                existing.push(part);
+            } else {
+                grouped.set(part.messageID, [part]);
+            }
+        }
+        return grouped;
+    }, [parts]);
 
     const isAtBottom = useCallback(() => {
         const container = messagesContainerRef.current;
@@ -63,7 +75,7 @@ export default function MessageList({
                 <MessageItem
                     key={message.id}
                     message={message}
-                    parts={parts}
+                    parts={partsByMessageId.get(message.id) ?? []}
                     onAnswer={onAnswer}
                     pendingPermissions={pendingPermissions}
                     onPermissionRespond={onPermissionRespond}
@@ -81,3 +93,5 @@ export default function MessageList({
         </div>
     );
 }
+
+export default memo(MessageList);
