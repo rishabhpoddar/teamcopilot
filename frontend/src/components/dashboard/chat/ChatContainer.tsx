@@ -198,6 +198,19 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
         }));
     }, []);
 
+    const resetSessionViewState = useCallback(() => {
+        setMessages([]);
+        setParts([]);
+        setPendingPermissions([]);
+        setRespondingPermissionIds({});
+        setSessionDiff(null);
+        setSessionDiffError(null);
+        setSessionDiffLoading(false);
+        setExpandedDiffPaths([]);
+        setIsStreaming(false);
+        completedAssistantMessageIdsRef.current = new Set();
+    }, []);
+
     const token = auth.loading ? null : auth.token;
     const activeSession = sessions.find((session) => session.id === activeSessionId) ?? null;
 
@@ -766,29 +779,19 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
 
     // Load messages when active session changes
     useEffect(() => {
-        // Reset streaming state when switching sessions
-        setIsStreaming(false);
-        completedAssistantMessageIdsRef.current = new Set();
-
         if (activeSessionId && activeSessionId !== PENDING_SESSION_ID) {
             loadMessages(activeSessionId);
             loadPendingPermissions(activeSessionId);
             void loadSessionDiff(activeSessionId);
             startSSE(activeSessionId);
         } else {
-            setMessages([]);
-            setParts([]);
-            setPendingPermissions([]);
-            setRespondingPermissionIds({});
-            setSessionDiff(null);
-            setSessionDiffError(null);
-            setExpandedDiffPaths([]);
+            resetSessionViewState();
         }
 
         return () => {
             stopSSE();
         };
-    }, [activeSessionId, loadMessages, loadPendingPermissions, loadSessionDiff, startSSE, stopSSE]);
+    }, [activeSessionId, loadMessages, loadPendingPermissions, loadSessionDiff, resetSessionViewState, startSSE, stopSSE]);
 
     /*
     const deleteSessionSilently = useCallback(async (sessionId: string) => {
@@ -810,11 +813,14 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
         // if (prev && prev.isEmpty && prev.id !== newSessionId) {
         //     deleteSessionSilently(prev.id);
         // }
+        if (newSessionId !== activeSessionId) {
+            resetSessionViewState();
+        }
         setActiveSessionId(newSessionId);
         if (typeof window !== 'undefined' && window.innerWidth <= MOBILE_BREAKPOINT_PX) {
             setIsSidebarOpen(false);
         }
-    }, []);
+    }, [activeSessionId, resetSessionViewState]);
 
     const createSession = useCallback(() => {
         // If already in pending new chat mode, do nothing
