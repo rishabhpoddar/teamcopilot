@@ -69,6 +69,47 @@ const stringCases: StringCase[] = [
         input: "token=abc123 password=def456 project=teamcopilot",
         expected: "token=***123 password=***456 project=teamcopilot",
     },
+    {
+        name: "python dict private token assignment in heredoc",
+        input: [
+            "python3 - <<'PY'",
+            "import requests",
+            "base='https://repo.example.test/api/v4'; h={'PRIVATE-TOKEN':'fakeSecretToken12345'}",
+            "project=226",
+            "for pid in [21592,21591,21590,21589,21588]:",
+            "    p=requests.get(f'{base}/projects/{project}/pipelines/{pid}',headers=h,timeout=20)",
+            "PY",
+        ].join("\n"),
+        expected: [
+            "python3 - <<'PY'",
+            "import requests",
+            "base='https://repo.example.test/api/v4'; h={'PRIVATE-TOKEN':'***345'}",
+            "project=226",
+            "for pid in [21592,21591,21590,21589,21588]:",
+            "    p=requests.get(f'{base}/projects/{project}/pipelines/{pid}',headers=h,timeout=20)",
+            "PY",
+        ].join("\n"),
+    },
+    {
+        name: "quoted non-sensitive object key is not redacted",
+        input: "config = {'project': 'teamcopilot', 'region': 'us-east-1'}",
+        expected: "config = {'project': 'teamcopilot', 'region': 'us-east-1'}",
+    },
+    {
+        name: "quoted object key with token in value text is not redacted when key is safe",
+        input: "payload = {'label': 'token refresh docs', 'description': 'auth token overview'}",
+        expected: "payload = {'label': 'token refresh docs', 'description': 'auth token overview'}",
+    },
+    {
+        name: "quoted object key with short literal token word is not redacted",
+        input: "payload = {'note': 'token', 'summary': 'secret sauce recipe'}",
+        expected: "payload = {'note': 'token', 'summary': 'secret sauce recipe'}",
+    },
+    {
+        name: "quoted object key with safe identifier and bearer word only is not redacted",
+        input: "headers = {'type': 'Bearer', 'scheme': 'authorization'}",
+        expected: "headers = {'type': 'Bearer', 'scheme': 'authorization'}",
+    },
 ];
 
 const objectCases: ObjectCase[] = [
@@ -182,7 +223,7 @@ function runObjectCases(): void {
 function main(): void {
     runStringCases();
     runObjectCases();
-    console.log(`Redaction tests passed: ${stringCases.length + objectCases.length}`);
+    console.log(`PASSED: redaction coverage (${stringCases.length + objectCases.length} cases)`);
 }
 
 main();

@@ -30,21 +30,25 @@ function main(): void {
     }
 
     let hasFailures = false;
-    for (const testFile of testFiles) {
+    for (const [index, testFile] of testFiles.entries()) {
         const relativePath = path.relative(process.cwd(), testFile);
-        console.log(`Running ${relativePath}`);
+        console.log(`[${index + 1}/${testFiles.length}] Running ${relativePath}`);
         const result = spawnSync(process.execPath, ["-r", "ts-node/register", testFile], {
             stdio: "inherit",
         });
         if (result.status !== 0) {
             hasFailures = true;
+            console.error(`FAILED: ${relativePath}`);
             break;
         }
+        console.log(`PASSED: ${relativePath}`);
     }
 
     if (hasFailures) {
         process.exit(1);
     }
+
+    console.log(`All test files passed: ${testFiles.length}`);
 }
 
 main();

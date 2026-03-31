@@ -61,6 +61,41 @@ export function sanitizeStringContent(input: string): string {
         }
     );
 
+    // Redact sensitive object/dict entries such as:
+    // {'PRIVATE-TOKEN': 'value'}
+    // {"apiKey": "value"}
+    text = text.replace(
+        /(^|[^A-Za-z0-9_])((['"])([A-Za-z_][A-Za-z0-9_-]*)\3[ \t]*:[ \t]*)(?:"([^"\n]*)"|'([^'\n]*)'|([^\s"'#;,)\]}]+))/gm,
+        (
+            full: string,
+            lead: string,
+            assignmentPrefix: string,
+            _quote: string,
+            key: string,
+            doubleQuoted: string | undefined,
+            singleQuoted: string | undefined,
+            bare: string | undefined
+        ) => {
+            if (!isLikelySensitiveKey(key)) {
+                return full;
+            }
+
+            const rawValue = doubleQuoted ?? singleQuoted ?? bare ?? "";
+            if (!rawValue) {
+                return full;
+            }
+
+            const masked = maskValue(rawValue);
+            if (doubleQuoted !== undefined) {
+                return `${lead}${assignmentPrefix}"${masked}"`;
+            }
+            if (singleQuoted !== undefined) {
+                return `${lead}${assignmentPrefix}'${masked}'`;
+            }
+            return `${lead}${assignmentPrefix}${masked}`;
+        }
+    );
+
     // Redact sensitive env-style assignments anywhere in text, including multiple
     // assignments per line and text prefixes.
     text = text.replace(
