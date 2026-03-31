@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { toast } from 'react-toastify';
-import { AxiosError } from 'axios';
+import { AxiosError, CanceledError } from 'axios';
 import { axiosInstance, assertMessagesPayload, assertSessionStatus } from '../../../utils';
 import { useAuth } from '../../../lib/auth';
 import type {
@@ -182,6 +182,9 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
     const handledComposeKeyRef = useRef<string | null>(null);
     const previousSessionsRef = useRef<Record<string, ChatSession>>({});
     const readingSessionIdsRef = useRef<Set<string>>(new Set());
+    const messagesAbortControllerRef = useRef<AbortController | null>(null);
+    const pendingPermissionsAbortControllerRef = useRef<AbortController | null>(null);
+    const sessionDiffAbortControllerRef = useRef<AbortController | null>(null);
 
     const updateDraftForSession = useCallback((sessionId: string, content: string) => {
         draftMessagesBySessionIdRef.current[sessionId] = content;
@@ -198,7 +201,17 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
         }));
     }, []);
 
+    const abortSessionDataRequests = useCallback(() => {
+        messagesAbortControllerRef.current?.abort();
+        messagesAbortControllerRef.current = null;
+        pendingPermissionsAbortControllerRef.current?.abort();
+        pendingPermissionsAbortControllerRef.current = null;
+        sessionDiffAbortControllerRef.current?.abort();
+        sessionDiffAbortControllerRef.current = null;
+    }, []);
+
     const resetSessionViewState = useCallback(() => {
+        abortSessionDataRequests();
         setMessages([]);
         setParts([]);
         setPendingPermissions([]);
@@ -209,7 +222,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
         setExpandedDiffPaths([]);
         setIsStreaming(false);
         completedAssistantMessageIdsRef.current = new Set();
-    }, []);
+    }, [abortSessionDataRequests]);
 
     const token = auth.loading ? null : auth.token;
     const activeSession = sessions.find((session) => session.id === activeSessionId) ?? null;
@@ -610,6 +623,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
             if (activeSessionId && activeSessionId !== PENDING_SESSION_ID) {
                 const stillExists = nextSessions.some((session) => session.id === activeSessionId);
                 if (!stillExists) {
+                    resetSessionViewState();
                     setActiveSessionId(null);
                 }
             }
@@ -624,7 +638,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                 setLoading(false);
             }
         }
-    }, [activeSessionId, attentionStateBySessionId, loading, markAttentionSessionAsSeen, token, updateAttentionState]);
+    }, [activeSessionId, attentionStateBySessionId, loading, markAttentionSessionAsSeen, resetSessionViewState, token, updateAttentionState]);
 
     const markActiveAttentionAsSeenIfVisible = useCallback(() => {
         if (!activeSession || activeSession.id === PENDING_SESSION_ID) {
@@ -645,10 +659,17 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
     const loadMessages = useCallback(async (sessionId: string) => {
         if (!token) return;
 
+        messagesAbortControllerRef.current?.abort();
+        const controller = new AbortController();
+        messagesAbortControllerRef.current = controller;
         try {
             const response = await axiosInstance.get(`/api/chat/sessions/${sessionId}/messages`, {
-                headers: { Authorization: `Bearer ${token}` }
+                headers: { Authorization: `Bearer ${token}` },
+                signal: controller.signal
             });
+            if (messagesAbortControllerRef.current !== controller || controller.signal.aborted) {
+                return;
+            }
 
             const data = assertMessagesPayload(response.data.messages);
             const sessionStatus = assertSessionStatus(response.data.session_status);
@@ -681,20 +702,34 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                 setIsStreaming(hasActiveAssistantMessage || hasRunningTool);
             }
         } catch (err: unknown) {
+            if (err instanceof CanceledError) {
+                return;
+            }
             const errorMessage = err instanceof AxiosError
                 ? err.response?.data?.message || err.response?.data || err.message
                 : 'Failed to load messages';
             toast.error(errorMessage);
+        } finally {
+            if (messagesAbortControllerRef.current === controller) {
+                messagesAbortControllerRef.current = null;
+            }
         }
     }, [token]);
 
     const loadPendingPermissions = useCallback(async (sessionId: string) => {
         if (!token) return;
 
+        pendingPermissionsAbortControllerRef.current?.abort();
+        const controller = new AbortController();
+        pendingPermissionsAbortControllerRef.current = controller;
         try {
             const response = await axiosInstance.get(`/api/chat/sessions/${sessionId}/pending-permission`, {
-                headers: { Authorization: `Bearer ${token}` }
+                headers: { Authorization: `Bearer ${token}` },
+                signal: controller.signal
             });
+            if (pendingPermissionsAbortControllerRef.current !== controller || controller.signal.aborted) {
+                return;
+            }
             const permissionsPayload = response.data?.permissions;
             if (!Array.isArray(permissionsPayload)) {
                 throw new Error('Missing permissions array in pending-permission response');
@@ -702,10 +737,17 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
             const normalizedPermissions = permissionsPayload as PermissionRequest[];
             setPendingPermissions(normalizedPermissions.map(assertPermissionHasToolCall));
         } catch (err: unknown) {
+            if (err instanceof CanceledError) {
+                return;
+            }
             const errorMessage = err instanceof AxiosError
                 ? err.response?.data?.message || err.response?.data || err.message
                 : 'Failed to load permission state';
             setError(`${errorMessage}. Please reload the page.`);
+        } finally {
+            if (pendingPermissionsAbortControllerRef.current === controller) {
+                pendingPermissionsAbortControllerRef.current = null;
+            }
         }
     }, [token, assertPermissionHasToolCall]);
 
@@ -715,14 +757,21 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
         }
 
         const showLoading = options?.showLoading !== false;
+        sessionDiffAbortControllerRef.current?.abort();
+        const controller = new AbortController();
+        sessionDiffAbortControllerRef.current = controller;
         try {
             if (showLoading) {
                 setSessionDiffLoading(true);
             }
             setSessionDiffError(null);
             const response = await axiosInstance.get(`/api/chat/sessions/${sessionId}/file-diff`, {
-                headers: { Authorization: `Bearer ${token}` }
+                headers: { Authorization: `Bearer ${token}` },
+                signal: controller.signal
             });
+            if (sessionDiffAbortControllerRef.current !== controller || controller.signal.aborted) {
+                return;
+            }
             const nextDiff = response.data as ChatSessionDiffResponse;
             setSessionDiff(nextDiff);
             setExpandedDiffPaths((prev) => {
@@ -730,6 +779,9 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                 return validExpandedPaths;
             });
         } catch (err: unknown) {
+            if (err instanceof CanceledError) {
+                return;
+            }
             if (showLoading) {
                 const errorMessage = err instanceof AxiosError
                     ? err.response?.data?.message || err.response?.data || err.message
@@ -737,8 +789,11 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                 setSessionDiffError(String(errorMessage));
             }
         } finally {
-            if (showLoading) {
-                setSessionDiffLoading(false);
+            if (sessionDiffAbortControllerRef.current === controller) {
+                sessionDiffAbortControllerRef.current = null;
+                if (showLoading) {
+                    setSessionDiffLoading(false);
+                }
             }
         }
     }, [token]);
