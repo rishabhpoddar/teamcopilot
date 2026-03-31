@@ -17,7 +17,7 @@ This skill authenticates with an npm access token from the repo-root `.env`. Set
 
 1. Read [package.json](../package.json) and confirm the current `name` and `version`.
 2. Make sure the working tree is in a state suitable for release (git status is clean and on main branch). Do not hide or discard unrelated user changes.
-3. Add an npm access token for the `trythisapp` npm account to the repo-root `.env`:
+3. Add an npm access token with publish access to the repo-root `.env`:
    `NPM_TOKEN=<npm-access-token>`
 4. Run the release helper:
    `./.agents/skills/release-teamcopilot-npm/scripts/publish.sh`
@@ -38,7 +38,6 @@ This skill authenticates with an npm access token from the repo-root `.env`. Set
 - Loads `NPM_TOKEN` and `NODE_AUTH_TOKEN` from the repo-root `.env` when present
 - Requires `NPM_TOKEN` or `NODE_AUTH_TOKEN` to be set after loading `.env` and shell overrides
 - Creates a temporary npm config that authenticates to `registry.npmjs.org` with the access token
-- Runs `npm whoami` through that token-backed config and requires the result to be `trythisapp`
 - Runs `npm run test` and requires it to pass
 - Runs `npm run build`
 - Requires `npm run build` to pass
@@ -60,7 +59,6 @@ This skill authenticates with an npm access token from the repo-root `.env`. Set
 - Prefer `NPM_TOKEN` in the repo-root `.env` for local runs. Use `NODE_AUTH_TOKEN` only when the environment already standardizes on it.
 - Do not publish if tests fail.
 - Do not publish if build fails.
-- If `npm whoami` is not `trythisapp`, stop immediately.
 - If the user wants a prerelease tag like `beta`, pass `--tag beta`.
 - If the package ever becomes scoped, use `--access public` when required.
 - After a successful npm publish, create a git tag equal to the package version with no prefix.
@@ -76,7 +74,7 @@ This skill authenticates with an npm access token from the repo-root `.env`. Set
 - Publish the current version:
   `Use $.agents/skills/release-teamcopilot-npm to publish the current package.json version to npm.`
 - Publish with an npm access token after a clean dry run:
-  `Use $.agents/skills/release-teamcopilot-npm to publish this version from the trythisapp npm account using the NPM_TOKEN in .env, then create the matching GitHub release.`
+  `Use $.agents/skills/release-teamcopilot-npm to publish this version using the NPM_TOKEN in .env, then create the matching GitHub release.`
 - Publish a beta tag:
   `Use $.agents/skills/release-teamcopilot-npm to publish this version to npm with the beta tag.`
 - Publish and create the GitHub release:

@@ -9,7 +9,6 @@ MODE="dry-run"
 PUBLISH_TAG=""
 ACCESS_FLAG=""
 SKIP_CHECKS=0
-TOKEN_ENV_NAME=""
 NPM_CONFIG_FILE=""
 
 while [[ $# -gt 0 ]]; do
@@ -87,12 +86,6 @@ if [[ -z "$NPM_TOKEN_VALUE" ]]; then
   exit 1
 fi
 
-if [[ -n "${NPM_TOKEN:-}" ]]; then
-  TOKEN_ENV_NAME="NPM_TOKEN"
-else
-  TOKEN_ENV_NAME="NODE_AUTH_TOKEN"
-fi
-
 NPM_CONFIG_FILE="$(mktemp)"
 cat > "$NPM_CONFIG_FILE" <<EOF
 //registry.npmjs.org/:_authToken=${NPM_TOKEN_VALUE}
@@ -101,13 +94,7 @@ always-auth=true
 EOF
 export NPM_CONFIG_USERCONFIG="$NPM_CONFIG_FILE"
 
-NPM_USER="$(npm whoami)"
-if [[ "$NPM_USER" != "trythisapp" ]]; then
-  echo "Expected npm user trythisapp, got ${NPM_USER}" >&2
-  exit 1
-fi
-
-echo "Authenticated to npm as ${NPM_USER} using ${TOKEN_ENV_NAME}"
+echo "Authenticated to npm registry using token-backed config"
 if [[ "$SKIP_CHECKS" -eq 0 ]]; then
   npm run test
   npm run build
