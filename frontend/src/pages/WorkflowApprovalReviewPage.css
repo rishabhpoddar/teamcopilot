@@ -327,3 +327,19 @@
     align-items: flex-start;
   }
 }
+
+@media (max-width: 520px) {
+  .approval-review-btn {
+    width: 100%;
+  }
+
+  .approval-review-summary-card,
+  .approval-review-file-message {
+    padding-left: 0.8rem;
+    padding-right: 0.8rem;
+  }
+
+  .approval-review-file-header {
+    padding: 0.65rem 0.7rem;
+  }
+}

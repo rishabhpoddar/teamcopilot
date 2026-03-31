@@ -1,6 +1,8 @@
 /* Run History Table */
 .run-history-table-container {
   overflow-x: auto;
+  border: 1px solid #333;
+  border-radius: 10px;
 }
 
 .run-history-table {
@@ -68,6 +70,10 @@
 
 /* Light Mode Overrides */
 @media (prefers-color-scheme: light) {
+  .run-history-table-container {
+    border-color: #ddd;
+  }
+
   .run-history-table th,
   .run-history-table td {
     border-bottom-color: #ddd;
@@ -75,5 +81,16 @@
 
   .run-history-table tbody tr:hover {
     background: #f5f5f5;
+  }
+}
+
+@media (max-width: 640px) {
+  .run-history-table {
+    min-width: 640px;
+  }
+
+  .run-history-table th,
+  .run-history-table td {
+    padding: 0.7rem 0.8rem;
   }
 }

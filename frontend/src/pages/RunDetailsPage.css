@@ -48,6 +48,7 @@
   justify-content: space-between;
   align-items: center;
   gap: 1rem;
+  flex-wrap: wrap;
 }
 
 .run-details-title-actions {
@@ -154,5 +155,30 @@
   .run-details-card pre {
     background: #f7f7f7;
     border-color: #e4e4e4;
+  }
+}
+
+@media (max-width: 700px) {
+  .run-details-header {
+    grid-template-columns: 1fr;
+  }
+
+  .run-details-back-btn,
+  .run-details-stop-btn {
+    width: 100%;
+  }
+
+  .run-details-title-actions {
+    width: 100%;
+  }
+}
+
+@media (max-width: 520px) {
+  .run-details-card {
+    padding: 0.9rem;
+  }
+
+  .run-details-grid {
+    grid-template-columns: 1fr;
   }
 }

@@ -35,25 +35,15 @@ export default function ChatInput({
     const suggestionItemRefs = useRef<Array<HTMLDivElement | null>>([]);
     const searchRequestIdRef = useRef(0);
     const lastMentionQueryRef = useRef<string | null>(null);
-    const MAX_VISIBLE_LINES = 4;
+    const MAX_VISIBLE_LINES = 3;
 
-    useEffect(() => {
-        setInput(draftMessage);
-    }, [draftMessage]);
-
-    useEffect(() => {
-        if (!disabled && !isStreaming && textareaRef.current) {
-            textareaRef.current.focus();
-        }
-    }, [disabled, isStreaming]);
-
-    useEffect(() => {
-        const textarea = textareaRef.current;
+    const resizeTextarea = (target?: HTMLTextAreaElement | null) => {
+        const textarea = target ?? textareaRef.current;
         if (!textarea) {
             return;
         }
 
-        textarea.style.height = '0px';
+        textarea.style.height = 'auto';
 
         const computed = window.getComputedStyle(textarea);
         const fontSize = Number.parseFloat(computed.fontSize) || 16;
@@ -68,7 +58,40 @@ export default function ChatInput({
 
         textarea.style.height = `${nextHeight}px`;
         textarea.style.overflowY = textarea.scrollHeight > maxHeight ? 'auto' : 'hidden';
+    };
+
+    useEffect(() => {
+        setInput(draftMessage);
+    }, [draftMessage]);
+
+    useEffect(() => {
+        if (!disabled && !isStreaming && textareaRef.current) {
+            textareaRef.current.focus();
+        }
+    }, [disabled, isStreaming]);
+
+    useEffect(() => {
+        resizeTextarea();
     }, [input]);
+
+    useEffect(() => {
+        const textarea = textareaRef.current;
+        if (!textarea) {
+            return;
+        }
+
+        const handleResize = () => {
+            requestAnimationFrame(() => {
+                resizeTextarea();
+            });
+        };
+
+        window.addEventListener('resize', handleResize);
+
+        return () => {
+            window.removeEventListener('resize', handleResize);
+        };
+    }, []);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -315,6 +338,7 @@ export default function ChatInput({
                     value={input}
                     onChange={(e) => {
                         const nextValue = e.target.value;
+                        resizeTextarea(e.target);
                         setInput(nextValue);
                         const mentionTokens = extractMentionTokenSet(nextValue);
                         setSelectedFilePaths((prev) => prev.filter((filePath) => mentionTokens.has(filePath)));

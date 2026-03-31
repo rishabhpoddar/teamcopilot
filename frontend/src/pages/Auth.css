@@ -102,3 +102,23 @@
     border-color: #ccc;
   }
 }
+
+@media (max-width: 520px) {
+  .auth-container {
+    max-width: 100%;
+  }
+
+  .auth-brand {
+    justify-content: flex-start;
+  }
+
+  .password-input-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .auth-form .password-toggle-button,
+  .auth-submit-button {
+    width: 100%;
+  }
+}

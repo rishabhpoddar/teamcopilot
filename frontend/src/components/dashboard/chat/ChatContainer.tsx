@@ -141,9 +141,22 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
     const PERMISSION_POLL_INTERVAL_MS = 1000;
     const SESSION_DIFF_POLL_INTERVAL_MS = 1000;
     const SESSION_LIST_POLL_INTERVAL_MS = 2000;
+    const MOBILE_BREAKPOINT_PX = 820;
     const auth = useAuth();
     const [sessions, setSessions] = useState<ChatSession[]>([]);
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+    const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
+        if (typeof window === 'undefined') {
+            return true;
+        }
+        return window.innerWidth > MOBILE_BREAKPOINT_PX;
+    });
+    const [isDiffSidebarOpen, setIsDiffSidebarOpen] = useState(() => {
+        if (typeof window === 'undefined') {
+            return true;
+        }
+        return window.innerWidth > MOBILE_BREAKPOINT_PX;
+    });
     const [messages, setMessages] = useState<Message[]>([]);
     const [parts, setParts] = useState<Part[]>([]);
     const [loading, setLoading] = useState(true);
@@ -171,6 +184,18 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
 
     const token = auth.loading ? null : auth.token;
     const activeSession = sessions.find((session) => session.id === activeSessionId) ?? null;
+
+    useEffect(() => {
+        const handleResize = () => {
+            if (window.innerWidth > MOBILE_BREAKPOINT_PX) {
+                setIsSidebarOpen(true);
+                setIsDiffSidebarOpen(true);
+            }
+        };
+
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
 
     useEffect(() => {
         if (token) {
@@ -770,6 +795,9 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
         //     deleteSessionSilently(prev.id);
         // }
         setActiveSessionId(newSessionId);
+        if (typeof window !== 'undefined' && window.innerWidth <= MOBILE_BREAKPOINT_PX) {
+            setIsSidebarOpen(false);
+        }
     }, []);
 
     const createSession = useCallback(() => {
@@ -1125,11 +1153,43 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                 attentionStateBySessionId={attentionStateBySessionId}
                 onSelectSession={switchSession}
                 onNewSession={createSession}
+                isOpen={isSidebarOpen}
+                onToggle={() => setIsSidebarOpen((prev) => !prev)}
                 loading={loading}
             />
             <div className="chat-main">
+                <div className="chat-main-toolbar">
+                    <button
+                        type="button"
+                        className="chat-main-toolbar-toggle"
+                        onClick={() => setIsSidebarOpen((prev) => !prev)}
+                        aria-expanded={isSidebarOpen}
+                        aria-controls="chat-session-list"
+                    >
+                        Sessions
+                    </button>
+                    {hasVisibleSessionDiff ? (
+                        <button
+                            type="button"
+                            className="chat-main-toolbar-toggle"
+                            onClick={() => setIsDiffSidebarOpen((prev) => !prev)}
+                            aria-expanded={isDiffSidebarOpen}
+                            aria-controls="chat-session-diff"
+                        >
+                            Diff
+                        </button>
+                    ) : null}
+                    <div className="chat-main-toolbar-meta">
+                        <strong>{activeSession?.title || (activeSessionId ? 'New Chat' : 'AI Assistant')}</strong>
+                        <span>
+                            {activeSessionId
+                                ? 'Fixed viewport with scrollable conversation'
+                                : 'Select a session or start a new chat'}
+                        </span>
+                    </div>
+                </div>
                 {activeSessionId ? (
-                    <div className={`chat-workspace ${hasVisibleSessionDiff ? 'with-diff' : 'without-diff'}`}>
+                    <div className="chat-workspace without-diff">
                         <div className="chat-column chat-column-main">
                             <MessageList
                                 messages={messages}
@@ -1159,22 +1219,6 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                                 draftMessage={activeDraftMessage}
                             />
                         </div>
-                        {hasVisibleSessionDiff && (
-                            <div className="chat-column chat-column-diff">
-                                <SessionFileDiffPanel
-                                    diff={sessionDiff}
-                                    loading={sessionDiffLoading}
-                                    error={sessionDiffError}
-                                    expandedPaths={expandedDiffPaths}
-                                    onSelectPath={toggleExpandedDiffPath}
-                                    onRefresh={() => {
-                                        if (activeSessionId && activeSessionId !== PENDING_SESSION_ID) {
-                                            void loadSessionDiff(activeSessionId);
-                                        }
-                                    }}
-                                />
-                            </div>
-                        )}
                     </div>
                 ) : (
                     <div className="chat-empty">
@@ -1186,6 +1230,22 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                     </div>
                 )}
             </div>
+            {hasVisibleSessionDiff ? (
+                <SessionFileDiffPanel
+                    diff={sessionDiff}
+                    loading={sessionDiffLoading}
+                    error={sessionDiffError}
+                    expandedPaths={expandedDiffPaths}
+                    onSelectPath={toggleExpandedDiffPath}
+                    onRefresh={() => {
+                        if (activeSessionId && activeSessionId !== PENDING_SESSION_ID) {
+                            void loadSessionDiff(activeSessionId);
+                        }
+                    }}
+                    isOpen={isDiffSidebarOpen}
+                    onToggle={() => setIsDiffSidebarOpen((prev) => !prev)}
+                />
+            ) : null}
         </div>
     );
 }

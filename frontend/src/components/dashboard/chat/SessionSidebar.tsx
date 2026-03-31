@@ -11,6 +11,8 @@ interface SessionSidebarProps {
     attentionStateBySessionId: Record<string, AttentionDeliveryState>;
     onSelectSession: (sessionId: string) => void;
     onNewSession: () => void;
+    isOpen: boolean;
+    onToggle: () => void;
     // onDeleteSession: (sessionId: string) => void;
     loading: boolean;
 }
@@ -21,6 +23,8 @@ export default function SessionSidebar({
     attentionStateBySessionId,
     onSelectSession,
     onNewSession,
+    isOpen,
+    onToggle,
     // onDeleteSession,
     loading
 }: SessionSidebarProps) {
@@ -43,18 +47,31 @@ export default function SessionSidebar({
     };
 
     return (
-        <div className="chat-sidebar">
+        <aside className={`chat-sidebar ${isOpen ? 'open' : 'collapsed'}`}>
             <div className="chat-sidebar-header">
-                <h3>Sessions</h3>
-                <button
-                    className="new-session-btn"
-                    onClick={onNewSession}
-                    disabled={loading}
-                >
-                    + New
-                </button>
+                <div className="chat-sidebar-header-title">
+                    <button
+                        type="button"
+                        className="chat-sidebar-toggle"
+                        onClick={onToggle}
+                        aria-label={isOpen ? 'Collapse sessions sidebar' : 'Expand sessions sidebar'}
+                        aria-expanded={isOpen}
+                    >
+                        {isOpen ? '←' : '→'}
+                    </button>
+                    {isOpen ? <h3>Sessions</h3> : null}
+                </div>
+                {isOpen ? (
+                    <button
+                        className="new-session-btn"
+                        onClick={onNewSession}
+                        disabled={loading}
+                    >
+                        + New
+                    </button>
+                ) : null}
             </div>
-            <div className="session-list">
+            <div className="session-list" id="chat-session-list">
                 {sessions.length === 0 ? (
                     <div className="no-sessions">
                         {loading ? 'Loading...' : 'No sessions yet'}
@@ -71,6 +88,14 @@ export default function SessionSidebar({
                             key={session.id}
                             className={`session-item ${session.id === activeSessionId ? 'active' : ''} ${showUnreadIndicator ? 'has-unread' : ''}`}
                             onClick={() => onSelectSession(session.id)}
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(event) => {
+                                if (event.key === 'Enter' || event.key === ' ') {
+                                    event.preventDefault();
+                                    onSelectSession(session.id);
+                                }
+                            }}
                         >
                             <div className="session-title" data-full-title={displayTitle}>
                                 <span className="session-status-icons" aria-hidden="true">
@@ -95,6 +120,6 @@ export default function SessionSidebar({
                     })
                 )}
             </div>
-        </div>
+        </aside>
     );
 }

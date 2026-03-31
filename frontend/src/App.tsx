@@ -100,6 +100,7 @@ function AppShell() {
   const auth = useAuth()
   const [workspaceDir, setWorkspaceDir] = useState<string | null>(null)
   const [workspaceError, setWorkspaceError] = useState<string | null>(null)
+  const [isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false)
 
   useEffect(() => {
     axiosInstance.get<{ workspace_dir: string }>('/api/workspace')
@@ -113,19 +114,46 @@ function AppShell() {
       })
   }, [])
 
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth > 720) {
+        setIsHeaderMenuOpen(false)
+      }
+    }
+
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
   return (
     <div className="app-shell">
       <header className="app-header">
         <div className="app-header-top">
-            <div className="app-brand-block">
-                <div className="app-brand">
-                  <img src="/logo.svg" alt="TeamCopilot logo" className="app-brand-logo" />
-                  <div className="app-brand-copy">
-                    <div className="app-brand-text">TeamCopilot</div>
-                    <div className="app-version">v{__APP_VERSION__}</div>
-                  </div>
+          <div className="app-brand-block">
+            <div className="app-brand-row">
+              <div className="app-brand">
+                <img src="/logo.svg" alt="TeamCopilot logo" className="app-brand-logo" />
+                <div className="app-brand-copy">
+                  <div className="app-brand-text">TeamCopilot</div>
+                  <div className="app-version">v{__APP_VERSION__}</div>
                 </div>
-                <div className="app-workspace">
+              </div>
+              {!auth.loading && auth.user && (
+                <button
+                  type="button"
+                  className="app-header-menu-toggle"
+                  aria-label={isHeaderMenuOpen ? 'Close header menu' : 'Open header menu'}
+                  aria-expanded={isHeaderMenuOpen}
+                  aria-controls="app-header-mobile-menu"
+                  onClick={() => setIsHeaderMenuOpen((prev) => !prev)}
+                >
+                  <span />
+                  <span />
+                  <span />
+                </button>
+              )}
+            </div>
+            <div className="app-workspace">
               <span className="app-workspace-label">Workspace</span>
               <span className="app-workspace-value">
                 {workspaceError ?? workspaceDir ?? 'Loading...'}
@@ -144,6 +172,29 @@ function AppShell() {
             )}
           </div>
         </div>
+        {!auth.loading && auth.user && (
+          <div
+            id="app-header-mobile-menu"
+            className={`app-header-mobile-menu ${isHeaderMenuOpen ? 'open' : ''}`}
+          >
+            <div className="app-header-mobile-section">
+              <span className="app-header-mobile-label">Version</span>
+              <span className="app-header-mobile-value">v{__APP_VERSION__}</span>
+            </div>
+            <div className="app-header-mobile-section">
+              <span className="app-header-mobile-label">Workspace</span>
+              <span className="app-header-mobile-value app-header-mobile-mono">
+                {workspaceError ?? workspaceDir ?? 'Loading...'}
+              </span>
+            </div>
+            <div className="app-header-mobile-section">
+              <span className="app-header-mobile-label">Signed In As</span>
+              <span className="app-header-mobile-value">{auth.user.name}</span>
+              <span className="app-header-mobile-subvalue">{auth.user.email}</span>
+            </div>
+            <button className="app-signout app-signout-mobile" onClick={auth.logout}>Sign Out</button>
+          </div>
+        )}
       </header>
       <Routes>
         <Route path="/login" element={<GuestRoute><Login /></GuestRoute>} />
