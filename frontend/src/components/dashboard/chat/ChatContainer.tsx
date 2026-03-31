@@ -166,7 +166,8 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
     const [sessionDiffLoading, setSessionDiffLoading] = useState(false);
     const [sessionDiffError, setSessionDiffError] = useState<string | null>(null);
     const [expandedDiffPaths, setExpandedDiffPaths] = useState<string[]>([]);
-    const [draftMessagesBySessionId, setDraftMessagesBySessionId] = useState<Record<string, string>>({});
+    const draftMessagesBySessionIdRef = useRef<Record<string, string>>({});
+    const [draftRevisionBySessionId, setDraftRevisionBySessionId] = useState<Record<string, number>>({});
     const [pendingPermissions, setPendingPermissions] = useState<PermissionRequest[]>([]);
     const [respondingPermissionIds, setRespondingPermissionIds] = useState<Record<string, boolean>>({});
     const [attentionStateBySessionId, setAttentionStateBySessionId] = useState<Record<string, AttentionDeliveryState>>(
@@ -181,6 +182,21 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
     const handledComposeKeyRef = useRef<string | null>(null);
     const previousSessionsRef = useRef<Record<string, ChatSession>>({});
     const readingSessionIdsRef = useRef<Set<string>>(new Set());
+
+    const updateDraftForSession = useCallback((sessionId: string, content: string) => {
+        draftMessagesBySessionIdRef.current[sessionId] = content;
+    }, []);
+
+    const clearDraftForSession = useCallback((sessionId: string) => {
+        delete draftMessagesBySessionIdRef.current[sessionId];
+    }, []);
+
+    const refreshDraftForSession = useCallback((sessionId: string) => {
+        setDraftRevisionBySessionId((prev) => ({
+            ...prev,
+            [sessionId]: (prev[sessionId] ?? 0) + 1
+        }));
+    }, []);
 
     const token = auth.loading ? null : auth.token;
     const activeSession = sessions.find((session) => session.id === activeSessionId) ?? null;
@@ -825,13 +841,11 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
             createSession();
         }
         if (initialDraftMessage && targetSessionId) {
-            setDraftMessagesBySessionId(prev => ({
-                ...prev,
-                [targetSessionId]: initialDraftMessage
-            }));
+            updateDraftForSession(targetSessionId, initialDraftMessage);
+            refreshDraftForSession(targetSessionId);
         }
         onDraftHandled();
-    }, [forceNewChat, initialDraftMessage, activeSessionId, onDraftHandled, createSession]);
+    }, [forceNewChat, initialDraftMessage, activeSessionId, onDraftHandled, createSession, refreshDraftForSession, updateDraftForSession]);
 
     /*
     const deleteSession = async (sessionId: string) => {
@@ -892,7 +906,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
         }
     }, [token]);
 
-    const sendMessage = async ({ content, filePaths }: ChatInputSendPayload) => {
+    const sendMessage = useCallback(async ({ content, filePaths }: ChatInputSendPayload) => {
         if (!token || !activeSessionId) return;
 
         const isPending = activeSessionId === PENDING_SESSION_ID;
@@ -940,11 +954,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                 const newSession = createResponse.data.session;
                 setSessions(prev => [newSession, ...prev]);
                 setActiveSessionId(newSession.id);
-                setDraftMessagesBySessionId(prev => {
-                    const next = { ...prev };
-                    delete next[PENDING_SESSION_ID];
-                    return next;
-                });
+                clearDraftForSession(PENDING_SESSION_ID);
                 sessionId = newSession.id;
                 // Start SSE for the new session
                 startSSE(newSession.id);
@@ -988,9 +998,9 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                 setActiveSessionId(PENDING_SESSION_ID);
             }
         }
-    };
+    }, [activeSessionId, clearDraftForSession, startSSE, token]);
 
-    const sendToolAnswer = async (content: string) => {
+    const sendToolAnswer = useCallback(async (content: string) => {
         if (!token || !activeSessionId || activeSessionId === PENDING_SESSION_ID) return;
 
         try {
@@ -1008,7 +1018,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
             toast.error(errorMessage);
             setIsStreaming(false);
         }
-    };
+    }, [token, activeSessionId]);
 
     const abortResponse = useCallback(async () => {
         if (!token || !activeSessionId || activeSessionId === PENDING_SESSION_ID) return;
@@ -1028,7 +1038,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
         }
     }, [token, activeSessionId]);
 
-    const sendPermissionResponse = async (permissionId: string, response: "once" | "always" | "reject") => {
+    const sendPermissionResponse = useCallback(async (permissionId: string, response: "once" | "always" | "reject") => {
         if (!token || !activeSessionId || activeSessionId === PENDING_SESSION_ID) return;
 
         try {
@@ -1056,7 +1066,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                 return next;
             });
         }
-    };
+    }, [token, activeSessionId, loadPendingPermissions, loadMessages]);
 
     useEffect(() => {
         if (!activeSessionId || activeSessionId === PENDING_SESSION_ID || !isStreaming) {
@@ -1100,7 +1110,9 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
         };
     }, [activeSessionId, loadSessionDiff]);
 
-    const activeDraftMessage = activeSessionId ? (draftMessagesBySessionId[activeSessionId] ?? '') : '';
+    const activeDraftMessage = activeSessionId ? (draftMessagesBySessionIdRef.current[activeSessionId] ?? '') : '';
+    const activeDraftRevision = activeSessionId ? (draftRevisionBySessionId[activeSessionId] ?? 0) : 0;
+    const activeDraftSessionKey = activeSessionId ? `${activeSessionId}:${activeDraftRevision}` : 'no-session';
     const hasVisibleSessionDiff = Boolean(sessionDiff && sessionDiff.files.length > 0);
     const toggleExpandedDiffPath = useCallback((path: string) => {
         setExpandedDiffPaths((prev) => (
@@ -1204,14 +1216,12 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                             <ChatInput
                                 onSend={sendMessage}
                                 fetchFileSuggestions={searchMentionFiles}
+                                draftSessionKey={activeDraftSessionKey}
                                 onDraftChange={(content: string) => {
                                     if (!activeSessionId) {
                                         return;
                                     }
-                                    setDraftMessagesBySessionId(prev => ({
-                                        ...prev,
-                                        [activeSessionId]: content
-                                    }));
+                                    updateDraftForSession(activeSessionId, content);
                                 }}
                                 onAbort={abortResponse}
                                 disabled={!activeSessionId}
