@@ -3,7 +3,7 @@
   max-width: 1200px;
   min-width: 0;
   margin: 0 auto;
-  padding: 1rem;
+  padding: clamp(0.75rem, 2vw, 1rem);
   min-height: 100vh;
   display: flex;
   box-sizing: border-box;
@@ -119,9 +119,25 @@
 }
 
 @media (max-width: 720px) {
+  #root {
+    padding: 0.75rem;
+  }
+
+  .app-header {
+    margin-bottom: 1rem;
+  }
+
   .app-header-top {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .app-brand {
+    align-items: flex-start;
+  }
+
+  .app-brand-text {
+    font-size: 1.45rem;
   }
 
   .app-header-meta,
@@ -130,8 +146,32 @@
     align-items: flex-start;
   }
 
+  .app-header-meta {
+    width: 100%;
+    gap: 0.75rem;
+  }
+
   .app-workspace {
     flex-direction: column;
     gap: 0.2rem;
+  }
+
+  .app-signout {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  #root {
+    padding: 0.625rem;
+  }
+
+  .app-brand-logo {
+    width: 36px;
+    height: 36px;
+  }
+
+  .app-brand-text {
+    font-size: 1.25rem;
   }
 }

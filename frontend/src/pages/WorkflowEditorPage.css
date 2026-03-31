@@ -20,6 +20,7 @@
     display: flex;
     align-items: center;
     gap: 12px;
+    min-width: 0;
 }
 
 .workflow-editor-header-left h1 {
@@ -37,6 +38,8 @@
     display: flex;
     align-items: center;
     gap: 10px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
 }
 
 .workflow-editor-header button,
@@ -521,5 +524,77 @@
 
     .workflow-editor-header-right {
         justify-content: space-between;
+    }
+
+    .wf-editor-toolbar {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .wf-editor-meta-right {
+        justify-content: flex-start;
+    }
+}
+
+@media (max-width: 640px) {
+    .workflow-editor-header,
+    .workflow-editor-sidebar,
+    .workflow-editor-main {
+        border-radius: 10px;
+    }
+
+    .workflow-editor-header,
+    .wf-sidebar-header,
+    .wf-workflow-meta-card,
+    .wf-editor-toolbar,
+    .wf-dotenv-warning {
+        padding-left: 0.9rem;
+        padding-right: 0.9rem;
+    }
+
+    .workflow-editor-header-left {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .workflow-editor-header-right,
+    .wf-sidebar-actions {
+        width: 100%;
+        justify-content: stretch;
+    }
+
+    .workflow-editor-header-right button,
+    .wf-sidebar-actions button {
+        flex: 1 1 0;
+    }
+
+    .wf-workflow-meta-grid {
+        grid-template-columns: 1fr;
+        gap: 4px;
+    }
+
+    .wf-tree-row {
+        min-height: 36px;
+    }
+
+    .wf-tree-actions {
+        display: inline-flex;
+    }
+}
+
+@media (max-width: 480px) {
+    .workflow-editor-page {
+        gap: 10px;
+    }
+
+    .workflow-editor-header {
+        padding: 0.85rem;
+    }
+
+    .workflow-editor-header button,
+    .wf-sidebar-actions button,
+    .wf-tree-actions button {
+        padding: 0.45rem 0.7rem;
     }
 }

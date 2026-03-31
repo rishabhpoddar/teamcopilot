@@ -32,6 +32,7 @@
   justify-content: space-between;
   gap: 1rem;
   align-items: flex-start;
+  min-width: 0;
 }
 
 .opencode-auth-header h1 {
@@ -270,8 +271,30 @@
     flex-direction: column;
   }
 
+  .opencode-auth-badge {
+    white-space: normal;
+  }
+
   .opencode-auth-managed-example-row {
     padding: 0.9rem;
+  }
+}
+
+@media (max-width: 520px) {
+  .opencode-auth-panel,
+  .opencode-auth-card {
+    padding-left: 0.9rem;
+    padding-right: 0.9rem;
+  }
+
+  .opencode-auth-card button,
+  .opencode-auth-primary,
+  .opencode-auth-secondary {
+    width: 100%;
+  }
+
+  .opencode-auth-method-grid {
+    grid-template-columns: 1fr;
   }
 }
 

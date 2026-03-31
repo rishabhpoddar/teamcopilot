@@ -223,6 +223,7 @@
 
 @media (max-width: 700px) {
   .workflow-filters {
+    padding: 0.8rem;
     align-items: stretch;
   }
 
@@ -243,6 +244,20 @@
 
   .workflow-filter-search-wrap input {
     min-width: 0;
+  }
+
+  .skills-create-btn {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .skills-create-form,
+  .skills-create-modal-actions {
+    align-items: stretch;
+  }
+
+  .skills-create-modal-actions button {
+    flex: 1 1 0;
   }
 }
 
@@ -867,5 +882,28 @@
 @media (max-width: 700px) {
   .workflows-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 520px) {
+  .workflow-card {
+    padding: 1rem;
+  }
+
+  .workflow-card-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .workflow-card-actions > * {
+    flex: 1 1 100%;
+  }
+
+  .skills-create-modal {
+    width: min(100%, 520px);
+  }
+
+  .permissions-editor-actions {
+    flex-direction: column;
   }
 }

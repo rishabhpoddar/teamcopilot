@@ -26,3 +26,13 @@
     border-color: #e5e7eb;
   }
 }
+
+@media (max-width: 520px) {
+  .opencode-auth-complete-card {
+    padding: 1rem;
+  }
+
+  .opencode-auth-complete-card button {
+    width: 100%;
+  }
+}
