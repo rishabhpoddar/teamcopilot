@@ -353,6 +353,8 @@
     margin-bottom: 1rem;
     padding: 0.75rem 1rem;
     border-radius: 8px;
+    content-visibility: auto;
+    contain-intrinsic-size: 220px;
 }
 
 .message-item.user {

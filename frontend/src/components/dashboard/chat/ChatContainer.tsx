@@ -1204,6 +1204,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                     <div className="chat-workspace without-diff">
                         <div className="chat-column chat-column-main">
                             <MessageList
+                                sessionKey={activeSessionId}
                                 messages={messages}
                                 parts={parts}
                                 isStreaming={isStreaming}
