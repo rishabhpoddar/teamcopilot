@@ -101,6 +101,7 @@ export const ListAvailableWorkflowsPlugin: Plugin = async ({ client }) => {
 
           const availableWorkflows = (payload.workflows ?? [])
             .map((workflow) => ({
+              path: `workflows/${workflow.slug}`,
               slug: workflow.slug,
               name: workflow.name,
               intent_summary: workflow.intent_summary,

@@ -17,6 +17,7 @@ function getApiBaseUrl(): string {
 
 interface WorkflowMatch {
   path: string
+  slug: string
   similarity: number
   summary: string
 }
@@ -184,6 +185,7 @@ export const FindSimilarWorkflowPlugin: Plugin = async ({ client }) => {
             const similarity = cosineSimilarity(queryEmbedding, workflowEmbedding)
 
             matches.push({
+              slug: workflow.slug,
               path: `workflows/${workflow.slug}`,
               similarity: Math.round(similarity * 100) / 100,
               summary,

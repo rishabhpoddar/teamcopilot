@@ -25,6 +25,7 @@ interface SkillFileContentResponse {
 }
 
 interface SkillMatch {
+  path: string
   slug: string
   name: string
   description: string
@@ -217,6 +218,7 @@ export const FindSkillPlugin: Plugin = async ({ client, directory }) => {
             const similarity = cosineSimilarity(queryEmbedding, skillEmbedding)
 
             matches.push({
+              path: `.agents/skills/${skill.slug}`,
               slug: skill.slug,
               name: skill.name,
               description: skill.description,

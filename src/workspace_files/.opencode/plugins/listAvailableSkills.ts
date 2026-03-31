@@ -102,6 +102,7 @@ export const ListAvailableSkillsPlugin: Plugin = async ({ client }) => {
           const availableSkills = (payload.skills ?? [])
             .filter((skill) => skill.is_approved)
             .map((skill) => ({
+              path: `.agents/skills/${skill.slug}`,
               slug: skill.slug,
               name: skill.name,
               description: skill.description,
