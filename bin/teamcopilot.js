@@ -12,6 +12,13 @@ const cliPackageJsonPath = path.join(packageRoot, "package.json");
 const envExamplePath = path.join(packageRoot, ".env.example");
 const envFilePath = path.join(currentDirectory, ".env");
 const localPackageJsonPath = path.join(currentDirectory, "package.json");
+const REQUIRED_RUNTIME_ENV_KEYS = Object.freeze([
+    "WORKSPACE_DIR",
+    "TEAMCOPILOT_HOST",
+    "TEAMCOPILOT_PORT",
+    "OPENCODE_PORT",
+    "OPENCODE_MODEL",
+]);
 
 const commandToScript = {
     start: "index.js",
@@ -218,14 +225,13 @@ function upsertEnvFile(values) {
     fs.writeFileSync(envFilePath, serialized, "utf-8");
 }
 
-function loadAndValidateLocalEnv() {
-    if (!fs.existsSync(envFilePath)) {
-        throw new Error(`No .env file found in ${currentDirectory}. Run \`npx teamcopilot init\` first.`);
+function loadAndValidateLocalEnv(targetEnvFilePath = envFilePath, workingDirectory = currentDirectory) {
+    if (!fs.existsSync(targetEnvFilePath)) {
+        throw new Error(`No .env file found in ${workingDirectory}. Run \`npx teamcopilot init\` first.`);
     }
 
-    const parsedEnv = dotenv.parse(fs.readFileSync(envFilePath, "utf-8"));
-    const requiredKeys = Object.keys(loadEnvExample());
-    const missingKeys = requiredKeys.filter((key) => {
+    const parsedEnv = dotenv.parse(fs.readFileSync(targetEnvFilePath, "utf-8"));
+    const missingKeys = REQUIRED_RUNTIME_ENV_KEYS.filter((key) => {
         const value = parsedEnv[key];
         return typeof value !== "string" || value.trim().length === 0;
     });
@@ -310,7 +316,14 @@ async function main() {
     runCompiledCommand(command, argv, envValues);
 }
 
-main().catch((error) => {
-    console.error(error.message);
-    process.exit(1);
-});
+if (require.main === module) {
+    main().catch((error) => {
+        console.error(error.message);
+        process.exit(1);
+    });
+}
+
+module.exports = {
+    REQUIRED_RUNTIME_ENV_KEYS,
+    loadAndValidateLocalEnv,
+};
