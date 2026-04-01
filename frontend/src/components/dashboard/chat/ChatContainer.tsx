@@ -249,33 +249,6 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
         readingSessionIdsRef.current = new Set();
     }, [token]);
 
-    const showSessionError = useCallback((message: string) => {
-        const now = Date.now();
-        const messageId = `session-error-${now}`;
-        setMessages(prev => [
-            ...prev,
-            {
-                id: messageId,
-                sessionID: activeSessionId ?? 'unknown',
-                role: 'assistant',
-                time: {
-                    created: now,
-                    completed: now
-                },
-                parentID: '',
-                modelID: 'unknown',
-                providerID: 'unknown',
-                error: {
-                    name: 'SessionError',
-                    data: {
-                        message
-                    }
-                }
-            }
-        ]);
-        toast.error(message);
-    }, [activeSessionId]);
-
     const assertPermissionHasToolCall = useCallback((permission: PermissionRequest): PermissionRequest => {
         const tool = permission.tool as { messageID?: unknown; callID?: unknown };
         if (!tool || typeof tool.messageID !== 'string' || typeof tool.callID !== 'string') {
@@ -377,7 +350,9 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
 
             case 'session.error': {
                 const message = getSessionErrorMessage(event.properties.error);
-                showSessionError(message);
+                if (message !== 'User aborted') {
+                    toast.error(message);
+                }
                 setIsStreaming(false);
                 break;
             }
@@ -423,7 +398,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                 break;
             }
         }
-    }, [assertPermissionHasToolCall, showSessionError]);
+    }, [assertPermissionHasToolCall]);
 
     const startSSE = useCallback((sessionId: string) => {
         if (!token) return;
