@@ -1,6 +1,8 @@
 .ai-mode-header-actions {
   display: flex;
   justify-content: flex-end;
+  gap: 0.75rem;
+  flex-wrap: wrap;
   margin-bottom: 0.75rem;
 }
 
@@ -12,6 +14,23 @@
 
 .ai-mode-secondary-btn:hover {
   border-color: #888;
+}
+
+@media (max-width: 640px) {
+  .ai-mode-header-actions {
+    justify-content: flex-start;
+    gap: 0.5rem;
+    flex-wrap: nowrap;
+  }
+
+  .ai-mode-secondary-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 0.45rem 0.7rem;
+    font-size: 0.82rem;
+    white-space: normal;
+    line-height: 1.25;
+  }
 }
 
 /* AI Mode Chat Interface */

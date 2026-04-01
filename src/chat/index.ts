@@ -169,6 +169,17 @@ async function readWorkspaceUserInstructions(): Promise<string | null> {
     }
 }
 
+async function writeWorkspaceUserInstructions(content: string): Promise<void> {
+    const workspaceDir = getWorkspaceDir();
+    const userInstructionsPath = path.join(workspaceDir, USER_INSTRUCTIONS_FILENAME);
+    try {
+        await fs.writeFile(userInstructionsPath, content, "utf-8");
+    } catch (err) {
+        const nodeError = err as NodeJS.ErrnoException;
+        throw new Error(`Failed to write ${USER_INSTRUCTIONS_FILENAME}: ${nodeError.message}`);
+    }
+}
+
 function stripTextBeforeActualUserMarker(text: string): string {
     const markerIndex = text.indexOf(ACTUAL_USER_MESSAGE_MARKER);
     if (markerIndex === -1) {
@@ -591,6 +602,37 @@ router.get('/file-suggestions', apiHandler(async (req, res) => {
     }
 
     res.json({ files: (result.data || []).slice(0, limit) });
+}, true));
+
+router.get('/user-instructions', apiHandler(async (req, res) => {
+    if (req.role !== "Engineer") {
+        throw {
+            status: 403,
+            message: "Only engineers can modify global AI instructions"
+        };
+    }
+
+    const content = await readWorkspaceUserInstructions();
+    res.json({ content: content ?? "" });
+}, true));
+
+router.put('/user-instructions', apiHandler(async (req, res) => {
+    if (req.role !== "Engineer") {
+        throw {
+            status: 403,
+            message: "Only engineers can modify global AI instructions"
+        };
+    }
+
+    if (typeof req.body?.content !== "string") {
+        throw {
+            status: 400,
+            message: "content is required and must be a string"
+        };
+    }
+
+    await writeWorkspaceUserInstructions(req.body.content);
+    res.json({ content: req.body.content });
 }, true));
 
 // POST /api/chat/sessions - Create new session
