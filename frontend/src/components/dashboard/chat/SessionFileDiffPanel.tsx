@@ -1,4 +1,5 @@
 import type { ChatSessionDiffResponse } from '../../../types/chat';
+import { summarizeDiffFiles } from '../../../utils/diffSummary';
 
 interface SessionFileDiffPanelProps {
     diff: ChatSessionDiffResponse | null;
@@ -21,6 +22,8 @@ export default function SessionFileDiffPanel({
     isOpen,
     onToggle
 }: SessionFileDiffPanelProps) {
+    const visibleSummary = diff ? summarizeDiffFiles(diff.files) : null;
+
     return (
         <aside className={`chat-diff-sidebar ${isOpen ? 'open' : 'collapsed'}`} id="chat-session-diff">
             <div className="chat-session-diff-header">
@@ -38,8 +41,8 @@ export default function SessionFileDiffPanel({
                         <div>
                             <div className="chat-session-diff-title">Session File Diff</div>
                             <div className="chat-session-diff-summary">
-                                {diff
-                                    ? `${diff.summary.added} added · ${diff.summary.modified} modified · ${diff.summary.deleted} deleted`
+                                {visibleSummary
+                                    ? `${visibleSummary.added} added · ${visibleSummary.modified} modified · ${visibleSummary.deleted} deleted`
                                     : 'Track files changed via apply_patch in this session'}
                             </div>
                         </div>

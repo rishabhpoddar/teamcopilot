@@ -51,13 +51,19 @@ export function looksBinary(buffer: Buffer): boolean {
     return false;
 }
 
-function shouldIgnoreRelativePath(relativePath: string): boolean {
+export function shouldIgnoreRelativePath(
+    relativePath: string,
+    options?: { allowTopLevelAgentsDirectory?: boolean }
+): boolean {
     if (!relativePath) {
         return false;
     }
     const segments = relativePath.split("/").filter(Boolean);
-    for (const segment of segments) {
-        if (segment.startsWith(".")) {
+    const allowTopLevelAgentsDirectory = options?.allowTopLevelAgentsDirectory === true;
+    for (let index = 0; index < segments.length; index += 1) {
+        const segment = segments[index];
+        const isTopLevelAgentsDirectory = allowTopLevelAgentsDirectory && index === 0 && segment === ".agents";
+        if (segment.startsWith(".") && !isTopLevelAgentsDirectory) {
             return true;
         }
         if (segment === "__pycache__") {
@@ -700,10 +706,6 @@ export function buildApprovalDiffResponse(previous: WorkflowSnapshot | null, cur
         has_previous_snapshot: previous !== null,
         summary,
         files,
-        ignored_rules: [
-            'Any hidden file or directory (path segment starting with ".")',
-            'Any "__pycache__" directory',
-            'Any "data" directory'
-        ],
+        ignored_rules: [],
     };
 }

@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import type { WorkflowApprovalDiffResponse, WorkflowSnapshot, WorkflowSnapshotFile } from "../types/workflow";
-import { buildApprovalDiffResponse, looksBinary, sha256 } from "./approval-snapshot-common";
+import { buildApprovalDiffResponse, looksBinary, sha256, shouldIgnoreRelativePath } from "./approval-snapshot-common";
 import { getWorkspaceDirFromEnv } from "./workspace-sync";
 
 type BaselineContentKind = "text" | "binary" | "missing";
@@ -114,9 +114,14 @@ function buildSnapshotFromFiles(files: WorkflowSnapshotFile[]): WorkflowSnapshot
 }
 
 export function buildChatSessionFileDiffResponse(baselines: SessionTrackedFileBaseline[]): WorkflowApprovalDiffResponse {
-    if (baselines.length === 0) {
+    const visibleBaselines = baselines.filter(
+        (baseline) => !shouldIgnoreRelativePath(baseline.relative_path, { allowTopLevelAgentsDirectory: true })
+    );
+    const hasPreviousSnapshot = baselines.length > 0;
+
+    if (visibleBaselines.length === 0) {
         return {
-            has_previous_snapshot: false,
+            has_previous_snapshot: hasPreviousSnapshot,
             summary: {
                 added: 0,
                 modified: 0,
@@ -132,7 +137,7 @@ export function buildChatSessionFileDiffResponse(baselines: SessionTrackedFileBa
     const previousFiles: WorkflowSnapshotFile[] = [];
     const currentFiles: WorkflowSnapshotFile[] = [];
 
-    for (const baseline of baselines) {
+    for (const baseline of visibleBaselines) {
         const previous = toSnapshotFile(baseline.relative_path, baseline);
         if (previous) {
             previousFiles.push(previous);
