@@ -9,3 +9,4 @@ prisma/generated/
 *.db-wal
 marketing_docs
 .DS_Store
+.playwright-mcp

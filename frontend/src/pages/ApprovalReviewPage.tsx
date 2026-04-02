@@ -4,6 +4,7 @@ import { useParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import type { WorkflowApprovalDiffResponse } from '../types/workflow';
 import { useAuth } from '../lib/auth';
+import { summarizeDiffFiles } from '../utils/diffSummary';
 import { axiosInstance } from '../utils';
 import './WorkflowApprovalReviewPage.css';
 
@@ -95,6 +96,7 @@ export default function ApprovalReviewPage({ entity = 'workflow' }: { entity?: A
     };
 
     const hasVisibleChanges = diff !== null && diff.files.length > 0;
+    const visibleSummary = diff ? summarizeDiffFiles(diff.files) : null;
 
     return (
         <div className="approval-review-page">
@@ -151,20 +153,15 @@ export default function ApprovalReviewPage({ entity = 'workflow' }: { entity?: A
                 <>
                     <section className="approval-review-summary-card">
                         <div className="approval-review-summary-pills">
-                            <span className="approval-review-pill added">+{diff.summary.added} added</span>
-                            <span className="approval-review-pill modified">~{diff.summary.modified} modified</span>
-                            <span className="approval-review-pill deleted">-{diff.summary.deleted} deleted</span>
+                            <span className="approval-review-pill added">+{visibleSummary?.added ?? 0} added</span>
+                            <span className="approval-review-pill modified">~{visibleSummary?.modified ?? 0} modified</span>
+                            <span className="approval-review-pill deleted">-{visibleSummary?.deleted ?? 0} deleted</span>
                         </div>
                         <p className="approval-review-note">
                             {diff.has_previous_snapshot
                                 ? 'Comparing current code to the previously approved snapshot.'
                                 : 'No previous approved snapshot. All included files are shown as new.'}
                         </p>
-                        {diff.ignored_rules.length > 0 && (
-                            <p className="approval-review-note">
-                                Ignored paths: {diff.ignored_rules.join('; ')}
-                            </p>
-                        )}
                     </section>
 
                     <section className="approval-review-files">
