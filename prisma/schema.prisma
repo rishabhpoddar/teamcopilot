@@ -23,6 +23,9 @@ model users {
   resourcePermissionUsers    resource_permission_users[]
   createdResourceMetadata    resource_metadata[]             @relation("ResourceCreatedBy")
   approvedResourceMetadata   resource_metadata[]             @relation("ResourceApprovedBy")
+  userSecrets                user_secrets[]
+  createdGlobalSecrets       global_secrets[]               @relation("GlobalSecretCreatedBy")
+  updatedGlobalSecrets       global_secrets[]               @relation("GlobalSecretUpdatedBy")
 }
 
 model workflow_runs {
@@ -51,6 +54,34 @@ model workflow_aborted_sessions {
 model key_value {
   key   String @id
   value String
+}
+
+model user_secrets {
+  id         String @id @default(uuid())
+  user_id    String
+  key        String
+  value      String
+  created_at BigInt
+  updated_at BigInt
+  user       users  @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, key])
+  @@index([user_id])
+}
+
+model global_secrets {
+  id                 String @id @default(uuid())
+  key                String @unique
+  value              String
+  created_by_user_id String
+  updated_by_user_id String
+  created_at         BigInt
+  updated_at         BigInt
+  createdByUser      users  @relation("GlobalSecretCreatedBy", fields: [created_by_user_id], references: [id], onDelete: Cascade)
+  updatedByUser      users  @relation("GlobalSecretUpdatedBy", fields: [updated_by_user_id], references: [id], onDelete: Cascade)
+
+  @@index([created_by_user_id])
+  @@index([updated_by_user_id])
 }
 
 model chat_sessions {

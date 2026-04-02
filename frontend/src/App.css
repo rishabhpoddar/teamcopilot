@@ -114,6 +114,14 @@
   padding: 0.45em 0.95em;
 }
 
+.app-header-link-btn {
+  white-space: nowrap;
+  padding: 0.45em 0.95em;
+  border: 1px solid currentColor;
+  background: transparent;
+  border-radius: 8px;
+}
+
 .app-header-menu-toggle,
 .app-header-mobile-menu {
   display: none;
@@ -184,6 +192,10 @@
 }
 
 .app-signout-mobile {
+  width: 100%;
+}
+
+.app-header-link-btn-mobile {
   width: 100%;
 }
 

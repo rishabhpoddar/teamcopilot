@@ -25,6 +25,7 @@ interface WorkflowInput {
 interface WorkflowManifest {
   intent_summary: string
   inputs?: Record<string, WorkflowInput>
+  required_secrets?: string[]
   triggers?: {
     manual?: boolean
   }
@@ -324,6 +325,7 @@ export const CreateWorkflowPlugin: Plugin = async ({ client }) => {
           const workflowJson: WorkflowManifest = {
             intent_summary,
             inputs: inputs as Record<string, WorkflowInput>,
+            required_secrets: [],
             triggers: { manual: true },
             runtime: { timeout_seconds },
           }

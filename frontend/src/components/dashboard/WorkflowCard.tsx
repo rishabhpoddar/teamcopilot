@@ -28,7 +28,9 @@ export default function WorkflowCard(props: WorkflowCardProps) {
             can_edit={props.can_edit}
             permission_mode={props.permission_mode}
             is_locked_due_to_missing_users={props.is_locked_due_to_missing_users}
-            can_run={props.is_approved && props.can_edit}
+            required_secrets={props.required_secrets}
+            missing_required_secrets={props.missing_required_secrets}
+            can_run={props.is_approved && props.can_edit && props.missing_required_secrets.length === 0}
             userRole={props.userRole}
             currentUserId={props.currentUserId}
             token={props.token}

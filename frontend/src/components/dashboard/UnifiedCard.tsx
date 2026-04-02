@@ -21,6 +21,8 @@ interface UnifiedCardProps {
     can_edit: boolean;
     permission_mode: PermissionMode;
     is_locked_due_to_missing_users: boolean;
+    required_secrets: string[];
+    missing_required_secrets: string[];
     can_run: boolean;
     userRole: 'User' | 'Engineer';
     currentUserId: string | null;
@@ -48,6 +50,8 @@ export default function UnifiedCard({
     can_edit,
     permission_mode,
     is_locked_due_to_missing_users,
+    required_secrets,
+    missing_required_secrets,
     can_run,
     userRole,
     currentUserId,
@@ -199,6 +203,19 @@ export default function UnifiedCard({
             <p className="workflow-card-meta">
                 Created by: {created_by_user_name ?? created_by_user_email ?? 'Unknown User'}
             </p>
+
+            {required_secrets.length > 0 && (
+                <div className="workflow-secret-section">
+                    <p className="workflow-secret-summary">
+                        Requires secrets: {required_secrets.join(', ')}
+                    </p>
+                    {missing_required_secrets.length > 0 && (
+                        <p className="workflow-secret-warning">
+                            Missing for your account: {missing_required_secrets.join(', ')}. Add them in Profile Secrets.
+                        </p>
+                    )}
+                </div>
+            )}
 
             {!is_approved && (
                 <div className="workflow-approval-section">

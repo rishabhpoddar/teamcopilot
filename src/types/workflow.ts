@@ -15,6 +15,7 @@ export interface WorkflowInput {
 export interface WorkflowManifest {
     intent_summary: string
     inputs: Record<string, WorkflowInput>
+    required_secrets?: string[]
     triggers: {
         manual?: boolean
     }
@@ -43,6 +44,8 @@ export interface WorkflowSummary {
     can_edit: boolean;
     permission_mode: PermissionMode;
     is_locked_due_to_missing_users: boolean;
+    required_secrets: string[];
+    missing_required_secrets: string[];
 }
 
 /** Alias for frontend compatibility */

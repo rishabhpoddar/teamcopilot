@@ -9,6 +9,7 @@ import prisma from "../prisma/client";
 import { assertCondition } from "./assert";
 import { ensureWorkflowRunPermissionsForMetadata } from "./workflow-permissions";
 import { getWorkspaceDirFromEnv } from "./workspace-sync";
+import { normalizeSecretKeyList } from "./secrets";
 
 /** Get the absolute path to the workspace directory */
 function getWorkspacePath(): string {
@@ -73,7 +74,9 @@ function readWorkflowManifest(slug: string): WorkflowManifest {
     }
 
     const content = fs.readFileSync(manifestPath, "utf-8");
-    return JSON.parse(content) as WorkflowManifest;
+    const manifest = JSON.parse(content) as WorkflowManifest;
+    manifest.required_secrets = normalizeSecretKeyList(manifest.required_secrets);
+    return manifest;
 }
 
 export async function readWorkflowManifestAndEnsurePermissions(slug: string): Promise<{

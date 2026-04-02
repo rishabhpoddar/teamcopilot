@@ -64,7 +64,7 @@ Before implementing custom instructions or creating new workflow logic, you MUST
 **Required skill tools:**
 - `listAvailableSkills` — list only skills you are allowed to use (editable + approved).
 - `findSkill` — semantically search skills by description/body.
-- `getSkillContent` — read `SKILL.md` for a specific skill (only works when user has access and skill is approved).
+- `getSkillContent` — read `SKILL.md` for a specific skill. Returns the original unresolved skill content plus a separate `secretMap` of resolved secret values for the current user. It fails if the skill is unapproved, inaccessible, or missing required secrets.
 - `createSkill` — create a new skill when no suitable skill exists. This tool requires explicit user permission during execution.
 
 **Rule:**
@@ -111,8 +111,8 @@ workflows/<slug>/
 ├── README.md              ← REQUIRED: documentation + usage instructions
 ├── run.py                 ← REQUIRED: entrypoint script
 ├── requirements.txt       ← REQUIRED: Python dependencies
-├── .env                   ← REQUIRED: runtime secrets
-├── .env.example           ← RECOMMENDED: documented template
+├── .env                   ← OPTIONAL: local-only overrides for development
+├── .env.example           ← OPTIONAL: documented local-only template
 ├── .venv/                 ← REQUIRED: per-workflow virtualenv
 ├── requirements.lock.txt  ← REQUIRED: records installed versions for reference
 └── data/                  ← OPTIONAL: non-secret config/state files
@@ -142,6 +142,7 @@ This manifest defines what the workflow does and how it runs. The UI and executi
       "description": "Number of days to look back for failed payments"
     }
   },
+  "required_secrets": ["STRIPE_API_KEY"],
   "triggers": {
     "manual": true // will always be true.
   },
@@ -155,7 +156,7 @@ This manifest defines what the workflow does and how it runs. The UI and executi
 
 Document:
 - What the workflow does
-- Required credentials/secrets
+- Required secret keys declared in `required_secrets`
 - Input parameters and their meaning
 - Expected outputs
 - Example usage
@@ -384,15 +385,20 @@ These rules exist to prevent data loss, secret leakage, and unsafe behavior. Vio
 - Never attempt to bypass workflow approval requirements.
 - Never attempt to bypass custom-skill approval requirements.
 - Never use `getSkillContent` output from unapproved skills to drive execution decisions.
+- If `getSkillContent` or workflow execution fails because required secrets are missing, tell the user exactly which keys must be added in TeamCopilot Profile Secrets.
 
 ### Secrets & sensitive data handling
 
 - You are allowed to use secrets/tokens explicitly provided by the user during execution.
 - UI redaction may mask secrets in the user-visible output, but you must still treat all secrets as sensitive.
 - Never print, log, or exfiltrate secrets or credentials.
-- Do not copy `.env` contents into chat output. But you can read them and use them as part of your execution flow.
-- Do not proactively ask users to paste secrets in chat; prefer asking them to set secrets in the workflow's `.env` and document placeholders in `.env.example`.
-- Only store workflow runtime secrets in `.env`, never in `README.md`, `workflow.json`, `requirements.txt`, `requirements.lock.txt`, `data/`, or `SKILL.md`.
+- Do not copy secret values into chat output.
+- Do not proactively ask users to paste secrets in chat; prefer asking them to add them in TeamCopilot Profile Secrets.
+- User secrets override global secrets when both define the same key.
+- Workflows must declare runtime secret keys in `workflow.json` under `required_secrets`. The platform injects resolved values into the workflow process environment using the same key names.
+- Skills must declare required secret keys in `SKILL.md` frontmatter under `required_secrets`.
+- Skill bodies may contain placeholders like `{{SECRET:OPENAI_API_KEY}}`. `getSkillContent` returns the original unresolved `content` and a separate `secretMap` with resolved plaintext values for the current user.
+- Do not store secret values in `README.md`, `workflow.json`, `requirements.txt`, `requirements.lock.txt`, `data/`, or `SKILL.md`.
 
 ### Filesystem safety boundaries
 
@@ -466,8 +472,9 @@ When a user asks for behavior that may already be captured as reusable instructi
 
 1. Use `findSkill` with a natural-language query for the needed capability.
 2. For promising matches, use `getSkillContent` to inspect `SKILL.md`.
-3. If a skill fits, follow that skill's instructions.
-4. If no approved + accessible skill fits, ask whether to create one and then use `createSkill`.
+3. If `getSkillContent` fails because secrets are missing, tell the user which Profile Secret keys they need to add.
+4. If a skill fits, follow that skill's instructions and use its returned `secretMap` when applying any `{{SECRET:KEY}}` placeholders.
+5. If no approved + accessible skill fits, ask whether to create one and then use `createSkill`.
 
 ## Example: Creating a New Skill
 

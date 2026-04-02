@@ -7,6 +7,7 @@ import { ensureResourcePermissions } from "./permission-common";
 interface SkillManifest {
     name: string;
     description: string;
+    required_secrets: string[];
 }
 
 interface SkillMetadata {
@@ -138,6 +139,55 @@ function extractFrontmatterValue(frontmatter: string, key: string): string | nul
     return null;
 }
 
+function stripYamlStringQuotes(value: string): string {
+    return value.replace(/^["']|["']$/g, "");
+}
+
+function extractFrontmatterStringArray(frontmatter: string, key: string): string[] {
+    const lines = frontmatter.split("\n");
+
+    for (let index = 0; index < lines.length; index += 1) {
+        const line = lines[index] ?? "";
+        const match = line.match(new RegExp(`^${key}\\s*:\\s*(.*)$`));
+        if (!match) {
+            continue;
+        }
+
+        const rawValue = match[1]?.trim() ?? "";
+        if (rawValue.startsWith("[")) {
+            try {
+                const parsed = JSON.parse(rawValue.replace(/'/g, "\"")) as unknown;
+                if (Array.isArray(parsed) && parsed.every((item) => typeof item === "string")) {
+                    return parsed.map((item) => item.trim()).filter(Boolean);
+                }
+            } catch {
+                return [];
+            }
+            return [];
+        }
+
+        if (rawValue.length > 0) {
+            return [stripYamlStringQuotes(rawValue)].filter(Boolean);
+        }
+
+        const items: string[] = [];
+        for (let itemIndex = index + 1; itemIndex < lines.length; itemIndex += 1) {
+            const itemLine = lines[itemIndex] ?? "";
+            if (itemLine.trim().length === 0) {
+                continue;
+            }
+            const itemMatch = itemLine.match(/^\s*-\s*(.+)\s*$/);
+            if (!itemMatch) {
+                break;
+            }
+            items.push(stripYamlStringQuotes(itemMatch[1]?.trim() ?? ""));
+        }
+        return items.filter(Boolean);
+    }
+
+    return [];
+}
+
 function readSkillManifest(slug: string): SkillManifest {
     const skillManifestPath = getSkillManifestPath(slug);
     if (!fs.existsSync(skillManifestPath)) {
@@ -153,10 +203,12 @@ function readSkillManifest(slug: string): SkillManifest {
 
     const name = extractFrontmatterValue(frontmatter, "name") ?? slug;
     const description = extractFrontmatterValue(frontmatter, "description") ?? "";
+    const requiredSecrets = extractFrontmatterStringArray(frontmatter, "required_secrets");
 
     return {
         name,
         description,
+        required_secrets: requiredSecrets,
     };
 }
 
@@ -208,7 +260,7 @@ export async function createSkill(input: CreateSkillInput): Promise<void> {
 
     fs.mkdirSync(skillPath, { recursive: false });
     const skillMdPath = getSkillManifestPath(slug);
-    const body = `---\nname: ${toSkillFrontmatterValue(name)}\ndescription: ${toSkillFrontmatterValue("")}\n---\n\n# ${name}\n\nDescribe what this skill does.\n\n## Instructions\n\nAdd detailed, actionable instructions for the agent here.\n`;
+    const body = `---\nname: ${toSkillFrontmatterValue(name)}\ndescription: ${toSkillFrontmatterValue("")}\nrequired_secrets: []\n---\n\n# ${name}\n\nDescribe what this skill does.\n\n## Instructions\n\nAdd detailed, actionable instructions for the agent here.\n`;
     fs.writeFileSync(skillMdPath, body, "utf-8");
 
     const now = BigInt(Date.now());

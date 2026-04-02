@@ -15,6 +15,7 @@ import workflowsRouter from "./workflows";
 import chatRouter from "./chat";
 import skillsRouter from "./skills";
 import usersRouter from "./users";
+import secretsRouter from "./secrets";
 import { startCronJobs } from "./cronjob";
 import { startOpencodeServer, stopOpencodeServer } from "./opencode-server";
 import path from 'path';
@@ -113,6 +114,7 @@ apiRouter.use('/workflows', workflowsRouter);
 apiRouter.use('/chat', chatRouter);
 apiRouter.use('/skills', skillsRouter);
 apiRouter.use('/users', usersRouter);
+apiRouter.use('/secrets', secretsRouter);
 apiRouter.use('/opencode-auth', opencodeAuthRouter);
 
 app.use('/api', apiRouter);

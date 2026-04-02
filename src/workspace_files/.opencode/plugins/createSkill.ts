@@ -196,7 +196,7 @@ function buildSkillMarkdown(
   markdownContent: string
 ): string {
   const body = stripLeadingFrontmatter(markdownContent)
-  return `---\nname: ${JSON.stringify(slug)}\ndescription: ${JSON.stringify(description)}\n---\n\n${body}\n`
+  return `---\nname: ${JSON.stringify(slug)}\ndescription: ${JSON.stringify(description)}\nrequired_secrets: []\n---\n\n${body}\n`
 }
 
 export const CreateSkillPlugin: Plugin = async ({ client }) => {
