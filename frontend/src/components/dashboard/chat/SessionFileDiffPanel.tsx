@@ -67,12 +67,14 @@ export default function SessionFileDiffPanel({
             </div>
 
             {error && <div className="chat-session-diff-state error">{error}</div>}
-            {!error && loading && null}
+            {!error && !diff && loading && (
+                <div className="chat-session-diff-state">Loading session diff...</div>
+            )}
             {!error && !loading && diff && diff.files.length === 0 && (
                 <div className="chat-session-diff-state">No files changed via this AI session yet.</div>
             )}
 
-            {!error && !loading && diff && diff.files.length > 0 && (
+            {!error && diff && diff.files.length > 0 && (
                 <div className="chat-session-diff-body vertical">
                     {diff.files.map((file) => {
                         const isExpanded = expandedPaths.includes(file.path);

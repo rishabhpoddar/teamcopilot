@@ -732,7 +732,10 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
         }
 
         const showLoading = options?.showLoading !== false;
-        sessionDiffAbortControllerRef.current?.abort();
+        if (sessionDiffAbortControllerRef.current) {
+            sessionDiffAbortControllerRef.current.abort();
+            setSessionDiffLoading(false);
+        }
         const controller = new AbortController();
         sessionDiffAbortControllerRef.current = controller;
         try {
