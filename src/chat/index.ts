@@ -5,6 +5,8 @@ import { pathToFileURL } from "url";
 import type { FilePartInput, TextPartInput } from "@opencode-ai/sdk";
 import prisma from "../prisma/client";
 import { apiHandler } from "../utils/index";
+import { getResourceAccessSummary } from "../utils/resource-access";
+import { listSkillSlugs, readSkillManifestAndEnsurePermissions } from "../utils/skill";
 import {
     getOpencodeClient,
     getPendingQuestionForSession,
@@ -167,6 +169,45 @@ async function readWorkspaceUserInstructions(): Promise<string | null> {
         }
         throw new Error(`Failed to read ${USER_INSTRUCTIONS_FILENAME}: ${nodeError.message}`);
     }
+}
+
+async function buildAvailableSkillsPrompt(userId: string): Promise<string | null> {
+    const slugs = listSkillSlugs();
+    if (slugs.length === 0) {
+        return null;
+    }
+
+    const availableSkills = (await Promise.all(
+        slugs.map(async (slug) => {
+            const accessSummary = await getResourceAccessSummary("skill", slug, userId);
+            if (!accessSummary.can_view || !accessSummary.is_approved) {
+                return null;
+            }
+
+            const { manifest } = await readSkillManifestAndEnsurePermissions(slug);
+            return {
+                path: `.agents/skills/${slug}`,
+                slug,
+                name: manifest.name,
+                description: manifest.description,
+            };
+        })
+    )).filter((skill): skill is {
+        path: string;
+        slug: string;
+        name: string;
+        description: string;
+    } => skill !== null);
+
+    if (availableSkills.length === 0) {
+        return null;
+    }
+
+    const skillLines = availableSkills.map((skill, index) =>
+        `${index + 1}. ${skill.name} (${skill.slug})\n   path: ${skill.path}\n   description: ${skill.description || "(no description provided)"}`
+    );
+
+    return `# Available custom skills\n\nThese custom skills are available to you for this session (this is also the result of calling listAvailableSkills at this point in time). Use getSkillContent tool for a specific skill when you need to inspect its SKILL.md before using it.\n\n${skillLines.join("\n\n")}`;
 }
 
 async function writeWorkspaceUserInstructions(content: string): Promise<void> {
@@ -960,8 +1001,17 @@ router.post('/sessions/:id/messages', apiHandler(async (req, res) => {
 
     if ((existingMessagesResult.data || []).length === 0) {
         const userInstructions = await readWorkspaceUserInstructions();
-        if (userInstructions) {
-            const wrappedUserInstructions = `# Custom user instructions (in case of conflicts, the instructions here take precedence over the contents of the AGENTS.md file)\n\n${userInstructions}\n\n${ACTUAL_USER_MESSAGE_MARKER}\n\n`;
+        const availableSkillsPrompt = await buildAvailableSkillsPrompt(req.userId!);
+        if (userInstructions || availableSkillsPrompt) {
+            const preambleSections: string[] = [];
+            if (userInstructions) {
+                preambleSections.push(`# Custom user instructions (in case of conflicts, the instructions here take precedence over the contents of the AGENTS.md file)\n\n${userInstructions}`);
+            }
+            if (availableSkillsPrompt) {
+                preambleSections.push(availableSkillsPrompt);
+            }
+
+            const wrappedUserInstructions = `${preambleSections.join("\n\n")}\n\n${ACTUAL_USER_MESSAGE_MARKER}\n\n`;
             finalPromptParts = [
                 {
                     type: "text",
