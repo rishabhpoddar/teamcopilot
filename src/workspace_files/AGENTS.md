@@ -23,6 +23,11 @@ For every user request, follow this exact sequence:
    - Create a new skill using `createSkill` when the need is reusable instruction logic.
    - Create a new workflow using `createWorkflow` when executable automation is needed.
 
+The "Available custom skills" section included in the first chat message is your default inventory for that session. Reuse that context instead of re-calling `listAvailableSkills` immediately. Use `findSkill` or `listAvailableSkills` only when:
+- the first-message inventory is missing, stale, or insufficient for the current request
+- you need semantic search across skills rather than a simple inventory check
+- the user has created/edited skills during the session and you need refreshed results
+
 Do NOT skip this sequence.
 
 ---
@@ -69,7 +74,8 @@ Before implementing custom instructions or creating new workflow logic, you MUST
 - `createSkill` — create a new skill when no suitable skill exists. This tool requires explicit user permission during execution.
 
 **Rule:**
-- Always try `findSkill` before creating a new skill.
+- Use the first-message "Available custom skills" inventory as your initial source of truth for existing skills.
+- Use `findSkill` before creating a new skill when the first-message inventory does not already make the right choice obvious.
 - If a relevant skill exists, use it and follow its `SKILL.md` instructions.
 - If no relevant skill exists, use `createSkill`.
 
@@ -247,6 +253,7 @@ data/
 ### Custom Skills: Usage Flow
 
 1. **Search skills first** — You MUST use `findSkill` to look for an existing skill that can satisfy the request before creating new skill logic.
+   - If the first chat message already includes an "Available custom skills" section that clearly contains the right skill, you may use that inventory directly and skip an immediate `findSkill` call.
 2. **Inspect matching skills** — Use `getSkillContent` to read candidate `SKILL.md` files and decide whether one applies.
 3. **Create only when needed** — Use `createSkill` only if no existing approved + accessible skill is a good fit.
 4. **Use listing when needed** — Use `listAvailableSkills` when you need a quick inventory of usable skills.
@@ -335,7 +342,7 @@ days_back = args.days_back
 ## Shared Best Practices
 
 1. **Never run workflow entrypoints directly from shell** — Always use the `runWorkflow` tool for workflow execution
-2. **Always check for existing skills first** — you MUST try `findSkill` and check whether a custom skill can fulfill the request before creating new workflow logic.
+2. **Always check for existing skills first** — use the first-message skill inventory when it is sufficient, and otherwise use `findSkill` to check whether a custom skill can fulfill the request before creating new workflow logic.
 3. **Always check for existing workflows** before creating new ones — you MUST use the `findSimilarWorkflow` tool to do this. Use `listAvailableWorkflows` if you need a full inventory first. Only create new ones if no existing workflow can fit the request. If needed, modify the existing workflow to fit the request WITHOUT losing older functionality.
    - If you find a similar workflow, **study it and follow its business logic and conventions**.
 4. **Ask the user for help** when unsure.
@@ -508,6 +515,7 @@ When you need a quick inventory before semantic search or selection:
 When a user asks for behavior that may already be captured as reusable instructions:
 
 1. Use `findSkill` with a natural-language query for the needed capability.
+   - If the first chat message already lists an obviously matching skill, you may use that inventory directly and skip this search.
 2. For promising matches, use `getSkillContent` to inspect `SKILL.md`.
 3. If `getSkillContent` fails because secrets are missing, tell the user which Profile Secret keys they need to add.
 4. If a skill fits, follow that skill's instructions and use its returned `secretMap` when applying any `{{SECRET:KEY}}` placeholders.
@@ -517,7 +525,7 @@ When a user asks for behavior that may already be captured as reusable instructi
 
 When asked to create a reusable skill:
 
-1. Use `findSkill` first to avoid duplicates.
+1. Use the first-message skill inventory first to avoid duplicates. If it is not sufficient, use `findSkill`.
 2. Optionally use `listAvailableSkills` if you need a full inventory before selecting a candidate.
 3. If no good match exists, use `createSkill` with:
    - `slug`
