@@ -242,7 +242,7 @@ router.get("/:slug/runtime-content", apiHandler(async (req, res) => {
     if (secretResolution.missingKeys.length > 0) {
         throw {
             status: 400,
-            message: `Missing required secrets for skill "${slug}": ${secretResolution.missingKeys.join(", ")}. Add these keys in your profile secrets before using this skill.`
+            message: `I can't use skill "${slug}" because these required secrets are missing: ${secretResolution.missingKeys.join(", ")}. Ask the user to add these keys in TeamCopilot Profile Secrets before using this skill.`
         };
     }
 

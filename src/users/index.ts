@@ -1,7 +1,7 @@
 import express from "express";
 import prisma from "../prisma/client";
 import { apiHandler } from "../utils/index";
-import { assertSecretKey, toSecretListItem } from "../utils/secrets";
+import { assertSecretKey, listResolvedSecretsForUser, toSecretListItem } from "../utils/secrets";
 
 const router = express.Router({ mergeParams: true });
 
@@ -29,6 +29,20 @@ router.get("/me/secrets", apiHandler(async (req, res) => {
 
     res.json({
         secrets: rows.map((row) => toSecretListItem(row, shouldMaskValues))
+    });
+}, true));
+
+router.get("/me/resolved-secrets", apiHandler(async (req, res) => {
+    const resolvedSecretMap = await listResolvedSecretsForUser(req.userId!);
+    const shouldMaskValues = req.opencode_session_id === undefined;
+
+    res.json({
+        secrets: Object.entries(resolvedSecretMap).map(([key, value]) => toSecretListItem({
+            key,
+            value,
+            created_at: BigInt(0),
+            updated_at: BigInt(0),
+        }, shouldMaskValues))
     });
 }, true));
 

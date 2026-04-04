@@ -65,6 +65,7 @@ Before implementing custom instructions or creating new workflow logic, you MUST
 - `listAvailableSkills` — list only skills you are allowed to use (editable + approved).
 - `findSkill` — semantically search skills by description/body.
 - `getSkillContent` — read `SKILL.md` for a specific skill. Returns the original unresolved skill content plus a separate `secretMap` of resolved secret values for the current user. It fails if the skill is unapproved, inaccessible, or missing required secrets.
+- `getUserSecrets` — get the full resolved secret map currently available to the user. Use this when you need to reuse an existing secret key during skill/workflow creation or when you need the full merged key/value map at execution time.
 - `createSkill` — create a new skill when no suitable skill exists. This tool requires explicit user permission during execution.
 
 **Rule:**
@@ -395,9 +396,45 @@ These rules exist to prevent data loss, secret leakage, and unsafe behavior. Vio
 - Do not copy secret values into chat output.
 - Do not proactively ask users to paste secrets in chat; prefer asking them to add them in TeamCopilot Profile Secrets.
 - User secrets override global secrets when both define the same key.
-- Workflows must declare runtime secret keys in `workflow.json` under `required_secrets`. The platform injects resolved values into the workflow process environment using the same key names.
-- Skills must declare required secret keys in `SKILL.md` frontmatter under `required_secrets`.
-- Skill bodies may contain placeholders like `{{SECRET:OPENAI_API_KEY}}`. `getSkillContent` returns the original unresolved `content` and a separate `secretMap` with resolved plaintext values for the current user.
+- TeamCopilot resolves secrets in this order: current user's secret first, then global secret, otherwise missing.
+- Workflows must declare runtime secret keys in `workflow.json` under `required_secrets`. Format:
+```json
+{
+  "required_secrets": ["OPENAI_API_KEY", "STRIPE_API_KEY"]
+}
+```
+- Workflow code should read those values from environment variables with the exact same names, for example `os.environ["OPENAI_API_KEY"]`.
+- If workflow code uses a secret but `workflow.json` does not declare it in `required_secrets`, TeamCopilot rejects the workflow during save or execution.
+- Skills must declare required secret keys in `SKILL.md` frontmatter under `required_secrets`. Format:
+```md
+---
+name: "example-skill"
+description: "Example"
+required_secrets:
+  - OPENAI_API_KEY
+  - STRIPE_API_KEY
+---
+```
+- Skill bodies may contain placeholders like `{{SECRET:OPENAI_API_KEY}}`.
+- If a skill body references `{{SECRET:KEY}}` but `KEY` is missing from `required_secrets`, TeamCopilot rejects that skill during save or `getSkillContent`.
+- `getSkillContent` returns the original unresolved `content` from disk plus a separate `secretMap` of resolved plaintext values for the current user. Example shape:
+```json
+{
+  "skill": {
+    "slug": "example-skill",
+    "path": "SKILL.md",
+    "content": "Use {{SECRET:OPENAI_API_KEY}} for authentication.",
+    "secretMap": {
+      "OPENAI_API_KEY": "..."
+    }
+  }
+}
+```
+- When executing a skill, keep the placeholder text in `content` as the source-of-truth for what is on disk, and use `secretMap` for the actual resolved values during execution.
+- When creating or editing a workflow/skill, reuse an existing secret key if one already fits.
+- If you introduce a new secret key while creating or editing a workflow/skill, add it to `required_secrets` and explicitly tell the user they must add that key in TeamCopilot Profile Secrets before the workflow/skill can run.
+- If `getSkillContent` fails because secrets are missing, tell the user exactly which keys they need to add in TeamCopilot Profile Secrets.
+- If workflow execution fails because secrets are missing, tell the user exactly which keys they need to add in TeamCopilot Profile Secrets.
 - Do not store secret values in `README.md`, `workflow.json`, `requirements.txt`, `requirements.lock.txt`, `data/`, or `SKILL.md`.
 
 ### Filesystem safety boundaries
