@@ -118,8 +118,6 @@ workflows/<slug>/
 ├── README.md              ← REQUIRED: documentation + usage instructions
 ├── run.py                 ← REQUIRED: entrypoint script
 ├── requirements.txt       ← REQUIRED: Python dependencies
-├── .env                   ← OPTIONAL: local-only overrides for development
-├── .env.example           ← OPTIONAL: documented local-only template
 ├── .venv/                 ← REQUIRED: per-workflow virtualenv
 ├── requirements.lock.txt  ← REQUIRED: records installed versions for reference
 └── data/                  ← OPTIONAL: non-secret config/state files
@@ -274,8 +272,6 @@ data/
 4. **Implement the workflow** — After the tool creates the skeleton and `.venv`:
    - Edit `run.py` — Implement the logic with argparse for inputs
    - Edit `requirements.txt` — Add Python dependencies (no version specifiers)
-   - Edit `.env` — Add runtime secrets
-   - Edit `.env.example` — Document required secrets as a template
    - Edit `README.md` — Document the workflow
    - Create `.venv/` — Create a per-workflow virtualenv
    - Update `requirements.lock.txt` — Run `pip freeze > requirements.lock.txt` after installing deps
@@ -306,11 +302,9 @@ If you simply need to find an existing workflow to run (and are not creating a n
 
 ### Workflows: Credential Handling
 
-- Store secrets in `.env`
-- Always provide `.env.example` with placeholder values
-- Document which secrets are required in `README.md`
+- Declare workflow secret requirements in `workflow.json` under `required_secrets`
+- Document which secret keys are required in `README.md`
 - If the user provides secrets/tokens during execution, you MAY use them to complete the requested task.
-- Prefer storing workflow runtime secrets in that workflow's `.env` when appropriate.
 - Never echo secrets/tokens in tool output summaries or chat responses.
 
 ### Workflows: Output and Artifacts
@@ -411,6 +405,7 @@ These rules exist to prevent data loss, secret leakage, and unsafe behavior. Vio
 }
 ```
 - Workflow code should read those values from environment variables with the exact same names, for example `os.environ["OPENAI_API_KEY"]`.
+- Do not put workflow secrets in `.env` or `.env.example`. For agent-authored workflows, all secrets you add to the required_secrets list will be injected into the workflow's runtime environment automatically (when you call the runWorkflow tool).
 - If workflow code uses a secret but `workflow.json` does not declare it in `required_secrets`, TeamCopilot rejects the workflow during save or execution.
 - Skills must declare required secret keys in `SKILL.md` frontmatter under `required_secrets`. Format:
 ```md
@@ -476,8 +471,6 @@ When asked to "Create a workflow that checks Stripe for failed payments":
 3. Implement the workflow files:
    - Edit `run.py` — Implement Stripe API logic with argparse for inputs
    - Edit `requirements.txt` — Add `stripe` dependency (no version specifier)
-   - Edit `.env` — Add `STRIPE_API_KEY` (never commit)
-   - Edit `.env.example` — Template with `STRIPE_API_KEY=sk_test_...`
    - Create `.venv/` immediately after `createWorkflow` — run `cd workflows/failed-stripe-payments && python -m venv .venv` (or `python3 -m venv .venv`)
    - Update `requirements.lock.txt` — Run `pip freeze > requirements.lock.txt` after installing
    - Edit `README.md` — Document usage and required secrets
