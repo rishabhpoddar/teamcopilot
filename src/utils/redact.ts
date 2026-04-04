@@ -14,12 +14,12 @@ function isLikelySensitiveKey(key: string): boolean {
     return SENSITIVE_KEY_PATTERN.test(key);
 }
 
-function isSecretPlaceholderValue(value: string): boolean {
-    return value.trim().match(/^\{\{SECRET:[A-Z][A-Z0-9_]*\}\}$/) !== null;
-}
-
 function isProtectedSecretPlaceholderToken(value: string): boolean {
     return /__TCPLH_\d+__/.test(value.trim());
+}
+
+function isSecretPlaceholderValue(value: string): boolean {
+    return value.trim().match(/^\{\{SECRET:[A-Z][A-Z0-9_]*\}\}$/) !== null;
 }
 
 function protectSecretPlaceholders(input: string): {
@@ -85,7 +85,7 @@ export function sanitizeStringContent(input: string): string {
             if (!rawValue) {
                 return full;
             }
-            if (isSecretPlaceholderValue(rawValue) || isProtectedSecretPlaceholderToken(rawValue)) {
+            if (isProtectedSecretPlaceholderToken(rawValue)) {
                 return full;
             }
 
@@ -123,7 +123,7 @@ export function sanitizeStringContent(input: string): string {
             if (!rawValue) {
                 return full;
             }
-            if (isSecretPlaceholderValue(rawValue) || isProtectedSecretPlaceholderToken(rawValue)) {
+            if (isProtectedSecretPlaceholderToken(rawValue)) {
                 return full;
             }
 
@@ -159,7 +159,7 @@ export function sanitizeStringContent(input: string): string {
             if (!rawValue) {
                 return full;
             }
-            if (isSecretPlaceholderValue(rawValue) || isProtectedSecretPlaceholderToken(rawValue)) {
+            if (isProtectedSecretPlaceholderToken(rawValue)) {
                 return full;
             }
 
@@ -206,8 +206,8 @@ function sanitizeObjectRecord(input: Record<string, unknown>): Record<string, un
         if (
             typeof value === "string"
             && isLikelySensitiveKey(key)
-            && !isSecretPlaceholderValue(value)
             && !isProtectedSecretPlaceholderToken(value)
+            && !isSecretPlaceholderValue(value)
         ) {
             output[key] = maskValue(value);
             continue;
