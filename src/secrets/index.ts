@@ -16,9 +16,10 @@ router.get("/global", apiHandler(async (req, res) => {
     const rows = await prisma.global_secrets.findMany({
         orderBy: { key: "asc" }
     });
+    const shouldMaskValues = req.opencode_session_id === undefined;
 
     res.json({
-        secrets: rows.map(toSecretListItem)
+        secrets: rows.map((row) => toSecretListItem(row, shouldMaskValues))
     });
 }, true));
 
@@ -58,7 +59,7 @@ router.put("/global/:key", apiHandler(async (req, res) => {
     });
 
     res.json({
-        secret: toSecretListItem(row)
+        secret: toSecretListItem(row, req.opencode_session_id === undefined)
     });
 }, true));
 

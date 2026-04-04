@@ -25,9 +25,10 @@ router.get("/me/secrets", apiHandler(async (req, res) => {
         },
         orderBy: { key: "asc" }
     });
+    const shouldMaskValues = req.opencode_session_id === undefined;
 
     res.json({
-        secrets: rows.map(toSecretListItem)
+        secrets: rows.map((row) => toSecretListItem(row, shouldMaskValues))
     });
 }, true));
 
@@ -63,7 +64,7 @@ router.put("/me/secrets/:key", apiHandler(async (req, res) => {
     });
 
     res.json({
-        secret: toSecretListItem(row)
+        secret: toSecretListItem(row, req.opencode_session_id === undefined)
     });
 }, true));
 

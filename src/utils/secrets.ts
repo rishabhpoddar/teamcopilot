@@ -9,7 +9,7 @@ type SecretResolutionResult = {
 
 type SecretListItem = {
     key: string;
-    masked_value: string;
+    value: string;
     updated_at: bigint;
     created_at: bigint;
 };
@@ -59,10 +59,10 @@ export function toSecretListItem(row: {
     value: string;
     updated_at: bigint;
     created_at: bigint;
-}): SecretListItem {
+}, maskValueForClient: boolean): SecretListItem {
     return {
         key: row.key,
-        masked_value: maskSecretValue(row.value),
+        value: maskValueForClient ? maskSecretValue(row.value) : row.value,
         updated_at: row.updated_at,
         created_at: row.created_at,
     };

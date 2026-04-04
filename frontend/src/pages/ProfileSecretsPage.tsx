@@ -9,7 +9,7 @@ import './ProfileSecretsPage.css';
 
 type SecretItem = {
     key: string;
-    masked_value: string;
+    value: string;
     created_at: number;
     updated_at: number;
 };
@@ -184,7 +184,7 @@ export default function ProfileSecretsPage() {
                                             <div>
                                                 <div className="profile-secrets-item-key">{secret.key}</div>
                                                 <div className="profile-secrets-item-meta">
-                                                    {secret.masked_value} · Updated {new Date(secret.updated_at).toLocaleString()}
+                                                    {secret.value} · Updated {new Date(secret.updated_at).toLocaleString()}
                                                 </div>
                                             </div>
                                             <button
@@ -235,7 +235,7 @@ export default function ProfileSecretsPage() {
                                                 <div>
                                                     <div className="profile-secrets-item-key">{secret.key}</div>
                                                     <div className="profile-secrets-item-meta">
-                                                        {secret.masked_value} · Updated {new Date(secret.updated_at).toLocaleString()}
+                                                        {secret.value} · Updated {new Date(secret.updated_at).toLocaleString()}
                                                     </div>
                                                 </div>
                                                 <button
