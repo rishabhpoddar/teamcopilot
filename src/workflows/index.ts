@@ -45,6 +45,8 @@ import { isWorkflowSessionInterrupted, markWorkflowSessionAborted } from "../uti
 import { abortOpencodeSession } from "../utils/session-abort";
 import { registerResourceFileRoutes } from "../utils/resource-file-routes";
 import { getResourceAccessSummary } from "../utils/resource-access";
+import { resolveSecretsForUser } from "../utils/secrets";
+import { validateWorkflowFilesAtPath } from "../utils/secret-contract-validation";
 
 const router = express.Router({ mergeParams: true });
 
@@ -188,7 +190,9 @@ router.get('/', apiHandler(async (req, res) => {
             can_view: accessSummary.can_view,
             can_edit: accessSummary.can_edit,
             permission_mode: accessSummary.permission_mode,
-            is_locked_due_to_missing_users: accessSummary.is_locked_due_to_missing_users
+            is_locked_due_to_missing_users: accessSummary.is_locked_due_to_missing_users,
+            required_secrets: manifest.required_secrets ?? [],
+            missing_required_secrets: (await resolveSecretsForUser(req.userId!, manifest.required_secrets ?? [])).missingKeys,
         });
     }
 
@@ -602,6 +606,7 @@ router.post('/:slug/creator', apiHandler(async (req, res) => {
     const updatedMetadata = existingCreator
         ? metadata
         : await setWorkflowCreator(slug, req.userId!);
+    validateWorkflowFilesAtPath(path.join(getWorkspaceDirFromEnv(), "workflows", slug));
     await initializeWorkflowRunPermissionsForCreator(slug, req.userId!);
 
     res.json({
@@ -685,6 +690,7 @@ router.get('/:slug', apiHandler(async (req, res) => {
     const { manifest, metadata } = await readWorkflowManifestAndEnsurePermissions(slug);
     const permission = await getWorkflowRunPermissionWithUsers(slug);
     const accessSummary = await getResourceAccessSummary("workflow", slug, req.userId!);
+    const secretResolution = await resolveSecretsForUser(req.userId!, manifest.required_secrets ?? []);
 
     const createdByUserId = metadata.created_by_user_id ?? null;
     const approvedByUserId = metadata.approved_by_user_id ?? null;
@@ -718,6 +724,8 @@ router.get('/:slug', apiHandler(async (req, res) => {
             can_edit: accessSummary.can_edit,
             permission_mode: accessSummary.permission_mode,
             is_locked_due_to_missing_users: accessSummary.is_locked_due_to_missing_users,
+            required_secrets: manifest.required_secrets ?? [],
+            missing_required_secrets: secretResolution.missingKeys,
             permissions,
             allowed_users_resolved: permission.allowedUsers.map((row) => ({
                 user_id: row.user.id,

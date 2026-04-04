@@ -125,6 +125,21 @@ const stringCases: StringCase[] = [
         input: "headers = {'type': 'Bearer', 'scheme': 'authorization'}",
         expected: "headers = {'type': 'Bearer', 'scheme': 'authorization'}",
     },
+    {
+        name: "placeholder env assignment is not redacted",
+        input: "OPENAI_API_KEY={{SECRET:OPENAI_API_KEY}}\n",
+        expected: "OPENAI_API_KEY={{SECRET:OPENAI_API_KEY}}\n",
+    },
+    {
+        name: "placeholder markdown key value is not redacted",
+        input: "- **api_key**: {{SECRET:OPENAI_API_KEY}}\n",
+        expected: "- **api_key**: {{SECRET:OPENAI_API_KEY}}\n",
+    },
+    {
+        name: "placeholder object entry is not redacted",
+        input: "payload = {'token': '{{SECRET:GITHUB_TOKEN}}'}",
+        expected: "payload = {'token': '{{SECRET:GITHUB_TOKEN}}'}",
+    },
 ];
 
 const objectCases: ObjectCase[] = [
@@ -208,6 +223,23 @@ const objectCases: ObjectCase[] = [
                     region: "us-east-1",
                 },
                 tags: ["one", "two"],
+            },
+        },
+    },
+    {
+        name: "sanitizeForClient preserves placeholder values on sensitive keys",
+        input: {
+            api_key: "{{SECRET:OPENAI_API_KEY}}",
+            nested: {
+                token: "{{SECRET:GITHUB_TOKEN}}",
+                password: "Password123!",
+            },
+        },
+        expected: {
+            api_key: "{{SECRET:OPENAI_API_KEY}}",
+            nested: {
+                token: "{{SECRET:GITHUB_TOKEN}}",
+                password: "***23!",
             },
         },
     },

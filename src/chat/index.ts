@@ -7,6 +7,7 @@ import prisma from "../prisma/client";
 import { apiHandler } from "../utils/index";
 import { getResourceAccessSummary } from "../utils/resource-access";
 import { listSkillSlugs, readSkillManifestAndEnsurePermissions } from "../utils/skill";
+import { listResolvedSecretsForUser } from "../utils/secrets";
 import {
     getOpencodeClient,
     getPendingQuestionForSession,
@@ -208,6 +209,24 @@ async function buildAvailableSkillsPrompt(userId: string): Promise<string | null
     );
 
     return `# Available custom skills\n\nThese custom skills are available to you for this session (this is also the result of calling listAvailableSkills at this point in time). Use getSkillContent tool for a specific skill when you need to inspect its SKILL.md before using it.\n\n${skillLines.join("\n\n")}`;
+}
+
+async function buildAvailableSecretsPrompt(userId: string): Promise<string | null> {
+    const secretMap = await listResolvedSecretsForUser(userId);
+    const entries = Object.entries(secretMap);
+    if (entries.length === 0) {
+        return null;
+    }
+
+    const secretLines = entries.map(([key, value]) => `${key}=${value}`);
+    return [
+        "# Available secrets for this user",
+        "",
+        "These secrets are resolved for the current user for this session. You may use them during skill execution, and you should reuse these exact keys when creating or editing skills and workflows whenever they fit the need.",
+        "If you create a skill or workflow that needs a new secret key not listed here, you may introduce that new key, but you must tell the user to add it in their Profile Secrets before the skill or workflow can be used.",
+        "",
+        ...secretLines,
+    ].join("\n");
 }
 
 async function writeWorkspaceUserInstructions(content: string): Promise<void> {
@@ -1002,13 +1021,17 @@ router.post('/sessions/:id/messages', apiHandler(async (req, res) => {
     if ((existingMessagesResult.data || []).length === 0) {
         const userInstructions = await readWorkspaceUserInstructions();
         const availableSkillsPrompt = await buildAvailableSkillsPrompt(req.userId!);
-        if (userInstructions || availableSkillsPrompt) {
+        const availableSecretsPrompt = await buildAvailableSecretsPrompt(req.userId!);
+        if (userInstructions || availableSkillsPrompt || availableSecretsPrompt) {
             const preambleSections: string[] = [];
             if (userInstructions) {
                 preambleSections.push(`# Custom user instructions (in case of conflicts, the instructions here take precedence over the contents of the AGENTS.md file)\n\n${userInstructions}`);
             }
             if (availableSkillsPrompt) {
                 preambleSections.push(availableSkillsPrompt);
+            }
+            if (availableSecretsPrompt) {
+                preambleSections.push(availableSecretsPrompt);
             }
 
             const wrappedUserInstructions = `${preambleSections.join("\n\n")}\n\n${ACTUAL_USER_MESSAGE_MARKER}\n\n`;

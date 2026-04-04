@@ -8,9 +8,6 @@ function getApiBaseUrl(): string {
   return `http://localhost:${port}`
 }
 
-
-const SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
-
 interface SessionLookupResponse {
   error?: unknown
   data?: {
@@ -41,7 +38,7 @@ async function readErrorMessageFromResponse(
   }
 }
 
-export const GetSkillContentPlugin: Plugin = async ({ client }) => {
+export const GetUserSecretsPlugin: Plugin = async ({ client }) => {
   async function resolveRootSessionID(sessionID: string): Promise<string> {
     let currentSessionID = sessionID
 
@@ -66,59 +63,47 @@ export const GetSkillContentPlugin: Plugin = async ({ client }) => {
 
   return {
     tool: {
-      getSkillContent: tool({
+      getUserSecrets: tool({
         description:
-          "Get the contents of a skill by slug. Uses backend auth and permission checks; returns the original SKILL.md content plus a separate secretMap when the current user has access and all required secrets are configured.",
-        args: {
-          slug: tool.schema
-            .string()
-            .describe("Skill slug (lowercase letters/numbers with hyphens)"),
-        },
-        async execute(args, context) {
+          "Get all resolved secrets available to the current user. Returns the merged key/value map after applying TeamCopilot's precedence rules: user secret first, then global secret.",
+        args: {},
+        async execute(_args, context) {
           const { sessionID } = context
-          const slug = args.slug.trim()
           const authSessionID = await resolveRootSessionID(sessionID)
 
-          if (!SLUG_REGEX.test(slug)) {
-            throw new Error(
-              `Invalid slug format: "${slug}". Slug must be lowercase alphanumeric with hyphens (e.g., "my-skill-name").`
-            )
-          }
-
-          const response = await fetch(
-            `${getApiBaseUrl()}/api/skills/${encodeURIComponent(slug)}/runtime-content`,
-            {
-              headers: {
-                Authorization: `Bearer ${authSessionID}`,
-              },
-            }
-          )
+          const response = await fetch(`${getApiBaseUrl()}/api/users/me/resolved-secrets`, {
+            headers: {
+              Authorization: `Bearer ${authSessionID}`,
+            },
+          })
 
           if (!response.ok) {
             const errorMessage = await readErrorMessageFromResponse(
               response,
-              `Failed to get runtime skill content for ${slug} (HTTP ${response.status})`
+              `Failed to get resolved secrets (HTTP ${response.status})`
             )
             throw new Error(errorMessage)
           }
 
           const payload = (await response.json()) as {
-            skill?: {
-              slug?: string
-              path?: string
-              content?: string
-              secretMap?: Record<string, string>
+            secrets?: Array<{
+              key?: string
+              value?: string
+            }>
+          }
+
+          const secretMap: Record<string, string> = {}
+          for (const secret of payload.secrets ?? []) {
+            if (typeof secret.key !== "string" || typeof secret.value !== "string") {
+              continue
             }
+            secretMap[secret.key] = secret.value
           }
 
           return JSON.stringify(
             {
-              skill: {
-                slug: payload.skill?.slug ?? slug,
-                path: payload.skill?.path ?? "SKILL.md",
-                content: payload.skill?.content ?? "",
-                secretMap: payload.skill?.secretMap ?? {},
-              },
+              secretMap,
+              total: Object.keys(secretMap).length,
             },
             null,
             2
@@ -129,4 +114,4 @@ export const GetSkillContentPlugin: Plugin = async ({ client }) => {
   }
 }
 
-export default GetSkillContentPlugin
+export default GetUserSecretsPlugin

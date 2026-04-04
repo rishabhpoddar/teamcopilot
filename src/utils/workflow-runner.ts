@@ -5,6 +5,8 @@ import * as fsp from "fs/promises";
 import * as path from "path";
 import prisma from "../prisma/client";
 import { isWorkflowSessionInterrupted } from "./workflow-interruption";
+import { normalizeSecretKeyList, resolveSecretsForUser } from "./secrets";
+import { validateWorkflowSecretContract } from "./secret-contract-validation";
 
 const MAX_OUTPUT_CHARS = 300_000;
 const SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -207,7 +209,8 @@ function runWithTimeout(
     args: string[],
     timeoutSeconds: number,
     outputFilePath: string,
-    shouldAbort: () => Promise<boolean>
+    shouldAbort: () => Promise<boolean>,
+    resolvedSecretMap: Record<string, string>
 ): Promise<RunWithTimeoutResult> {
     return new Promise((resolve) => {
         const venvPython = getVenvPythonPath(workflowPath);
@@ -240,6 +243,7 @@ function runWithTimeout(
             cwd: workflowPath,
             env: {
                 ...process.env,
+                ...resolvedSecretMap,
                 PYTHONUNBUFFERED: "1",
                 VIRTUAL_ENV: path.join(workflowPath, ".venv"),
                 PATH: [venvBinDir, process.env.PATH ?? ""].filter(Boolean).join(path.delimiter),
@@ -356,7 +360,8 @@ export async function startWorkflowRunViaBackend(options: {
     }
 
     await assertDirectory(workflowPath);
-    await assertPathExists(path.join(workflowPath, "run.py"));
+    const runPyPath = path.join(workflowPath, "run.py");
+    await assertPathExists(runPyPath);
     await assertVenvExists(workflowPath);
     await assertPathExists(getVenvPythonPath(workflowPath));
 
@@ -364,14 +369,28 @@ export async function startWorkflowRunViaBackend(options: {
         await requestWorkflowPermission(options.sessionId, options.messageId, options.callId);
     }
 
-    const workflowJson = JSON.parse(await fsp.readFile(path.join(workflowPath, "workflow.json"), "utf-8")) as {
+    const workflowJsonContent = await fsp.readFile(path.join(workflowPath, "workflow.json"), "utf-8");
+    const runPyContent = await fsp.readFile(runPyPath, "utf-8");
+    validateWorkflowSecretContract({
+        workflowJsonContent,
+        runPyContent,
+    });
+
+    const workflowJson = JSON.parse(workflowJsonContent) as {
         inputs?: Record<string, any>;
+        required_secrets?: string[];
         runtime?: { timeout_seconds?: number };
     };
     const inputSchema = workflowJson.inputs || {};
+    const requiredSecrets = normalizeSecretKeyList(workflowJson.required_secrets);
     const validation = validateInputs(options.inputs, inputSchema);
     if (!validation.valid) {
         throw new Error(`Input validation failed: ${JSON.stringify(validation.errors)}`);
+    }
+
+    const secretResolution = await resolveSecretsForUser(options.authUserId, requiredSecrets);
+    if (secretResolution.missingKeys.length > 0) {
+        throw new Error(`Missing required secrets: ${secretResolution.missingKeys.join(", ")}. Add these keys in your profile secrets before running this workflow.`);
     }
 
     const timeoutSeconds = parseTimeoutSeconds(workflowJson.runtime?.timeout_seconds);
@@ -407,7 +426,8 @@ export async function startWorkflowRunViaBackend(options: {
             outputFilePath,
             async () => {
                 return await isWorkflowSessionInterrupted(options.sessionId, options.workspaceDir);
-            }
+            },
+            secretResolution.secretMap
         );
         const finalStatus = runResult.status === "success" ? "success" : "failed";
 

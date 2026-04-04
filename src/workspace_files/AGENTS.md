@@ -23,6 +23,11 @@ For every user request, follow this exact sequence:
    - Create a new skill using `createSkill` when the need is reusable instruction logic.
    - Create a new workflow using `createWorkflow` when executable automation is needed.
 
+The "Available custom skills" section included in the first chat message is your default inventory for that session. Reuse that context instead of re-calling `listAvailableSkills` immediately. Use `findSkill` or `listAvailableSkills` only when:
+- the first-message inventory is missing, stale, or insufficient for the current request
+- you need semantic search across skills rather than a simple inventory check
+- the user has created/edited skills during the session and you need refreshed results
+
 Do NOT skip this sequence.
 
 ---
@@ -64,11 +69,13 @@ Before implementing custom instructions or creating new workflow logic, you MUST
 **Required skill tools:**
 - `listAvailableSkills` — list only skills you are allowed to use (editable + approved).
 - `findSkill` — semantically search skills by description/body.
-- `getSkillContent` — read `SKILL.md` for a specific skill (only works when user has access and skill is approved).
+- `getSkillContent` — read `SKILL.md` for a specific skill. Returns the original unresolved skill content plus a separate `secretMap` of resolved secret values for the current user. It fails if the skill is unapproved, inaccessible, or missing required secrets.
+- `getUserSecrets` — get the full resolved secret map currently available to the user. Use this when you need to reuse an existing secret key during skill/workflow creation or when you need the full merged key/value map at execution time.
 - `createSkill` — create a new skill when no suitable skill exists. This tool requires explicit user permission during execution.
 
 **Rule:**
-- Always try `findSkill` before creating a new skill.
+- Use the first-message "Available custom skills" inventory as your initial source of truth for existing skills.
+- Use `findSkill` before creating a new skill when the first-message inventory does not already make the right choice obvious.
 - If a relevant skill exists, use it and follow its `SKILL.md` instructions.
 - If no relevant skill exists, use `createSkill`.
 
@@ -111,8 +118,6 @@ workflows/<slug>/
 ├── README.md              ← REQUIRED: documentation + usage instructions
 ├── run.py                 ← REQUIRED: entrypoint script
 ├── requirements.txt       ← REQUIRED: Python dependencies
-├── .env                   ← REQUIRED: runtime secrets
-├── .env.example           ← RECOMMENDED: documented template
 ├── .venv/                 ← REQUIRED: per-workflow virtualenv
 ├── requirements.lock.txt  ← REQUIRED: records installed versions for reference
 └── data/                  ← OPTIONAL: non-secret config/state files
@@ -142,6 +147,7 @@ This manifest defines what the workflow does and how it runs. The UI and executi
       "description": "Number of days to look back for failed payments"
     }
   },
+  "required_secrets": ["STRIPE_API_KEY"],
   "triggers": {
     "manual": true // will always be true.
   },
@@ -155,7 +161,7 @@ This manifest defines what the workflow does and how it runs. The UI and executi
 
 Document:
 - What the workflow does
-- Required credentials/secrets
+- Required secret keys declared in `required_secrets`
 - Input parameters and their meaning
 - Expected outputs
 - Example usage
@@ -245,6 +251,7 @@ data/
 ### Custom Skills: Usage Flow
 
 1. **Search skills first** — You MUST use `findSkill` to look for an existing skill that can satisfy the request before creating new skill logic.
+   - If the first chat message already includes an "Available custom skills" section that clearly contains the right skill, you may use that inventory directly and skip an immediate `findSkill` call.
 2. **Inspect matching skills** — Use `getSkillContent` to read candidate `SKILL.md` files and decide whether one applies.
 3. **Create only when needed** — Use `createSkill` only if no existing approved + accessible skill is a good fit.
 4. **Use listing when needed** — Use `listAvailableSkills` when you need a quick inventory of usable skills.
@@ -265,8 +272,6 @@ data/
 4. **Implement the workflow** — After the tool creates the skeleton and `.venv`:
    - Edit `run.py` — Implement the logic with argparse for inputs
    - Edit `requirements.txt` — Add Python dependencies (no version specifiers)
-   - Edit `.env` — Add runtime secrets
-   - Edit `.env.example` — Document required secrets as a template
    - Edit `README.md` — Document the workflow
    - Create `.venv/` — Create a per-workflow virtualenv
    - Update `requirements.lock.txt` — Run `pip freeze > requirements.lock.txt` after installing deps
@@ -297,11 +302,9 @@ If you simply need to find an existing workflow to run (and are not creating a n
 
 ### Workflows: Credential Handling
 
-- Store secrets in `.env`
-- Always provide `.env.example` with placeholder values
-- Document which secrets are required in `README.md`
+- Declare workflow secret requirements in `workflow.json` under `required_secrets`
+- Document which secret keys are required in `README.md`
 - If the user provides secrets/tokens during execution, you MAY use them to complete the requested task.
-- Prefer storing workflow runtime secrets in that workflow's `.env` when appropriate.
 - Never echo secrets/tokens in tool output summaries or chat responses.
 
 ### Workflows: Output and Artifacts
@@ -333,7 +336,7 @@ days_back = args.days_back
 ## Shared Best Practices
 
 1. **Never run workflow entrypoints directly from shell** — Always use the `runWorkflow` tool for workflow execution
-2. **Always check for existing skills first** — you MUST try `findSkill` and check whether a custom skill can fulfill the request before creating new workflow logic.
+2. **Always check for existing skills first** — use the first-message skill inventory when it is sufficient, and otherwise use `findSkill` to check whether a custom skill can fulfill the request before creating new workflow logic.
 3. **Always check for existing workflows** before creating new ones — you MUST use the `findSimilarWorkflow` tool to do this. Use `listAvailableWorkflows` if you need a full inventory first. Only create new ones if no existing workflow can fit the request. If needed, modify the existing workflow to fit the request WITHOUT losing older functionality.
    - If you find a similar workflow, **study it and follow its business logic and conventions**.
 4. **Ask the user for help** when unsure.
@@ -384,15 +387,57 @@ These rules exist to prevent data loss, secret leakage, and unsafe behavior. Vio
 - Never attempt to bypass workflow approval requirements.
 - Never attempt to bypass custom-skill approval requirements.
 - Never use `getSkillContent` output from unapproved skills to drive execution decisions.
+- If `getSkillContent` or workflow execution fails because required secrets are missing, tell the user exactly which keys must be added in TeamCopilot Profile Secrets.
 
 ### Secrets & sensitive data handling
 
 - You are allowed to use secrets/tokens explicitly provided by the user during execution.
 - UI redaction may mask secrets in the user-visible output, but you must still treat all secrets as sensitive.
 - Never print, log, or exfiltrate secrets or credentials.
-- Do not copy `.env` contents into chat output. But you can read them and use them as part of your execution flow.
-- Do not proactively ask users to paste secrets in chat; prefer asking them to set secrets in the workflow's `.env` and document placeholders in `.env.example`.
-- Only store workflow runtime secrets in `.env`, never in `README.md`, `workflow.json`, `requirements.txt`, `requirements.lock.txt`, `data/`, or `SKILL.md`.
+- Do not copy secret values into chat output.
+- Do not proactively ask users to paste secrets in chat; prefer asking them to add them in TeamCopilot Profile Secrets.
+- User secrets override global secrets when both define the same key.
+- TeamCopilot resolves secrets in this order: current user's secret first, then global secret, otherwise missing.
+- Workflows must declare runtime secret keys in `workflow.json` under `required_secrets`. Format:
+```json
+{
+  "required_secrets": ["OPENAI_API_KEY", "STRIPE_API_KEY"]
+}
+```
+- Workflow code should read those values from environment variables with the exact same names, for example `os.environ["OPENAI_API_KEY"]`.
+- Do not put workflow secrets in `.env` or `.env.example`. For agent-authored workflows, all secrets you add to the required_secrets list will be injected into the workflow's runtime environment automatically (when you call the runWorkflow tool).
+- If workflow code uses a secret but `workflow.json` does not declare it in `required_secrets`, TeamCopilot rejects the workflow during save or execution.
+- Skills must declare required secret keys in `SKILL.md` frontmatter under `required_secrets`. Format:
+```md
+---
+name: "example-skill"
+description: "Example"
+required_secrets:
+  - OPENAI_API_KEY
+  - STRIPE_API_KEY
+---
+```
+- Skill bodies may contain placeholders like `{{SECRET:OPENAI_API_KEY}}`.
+- If a skill body references `{{SECRET:KEY}}` but `KEY` is missing from `required_secrets`, TeamCopilot rejects that skill during save or `getSkillContent`.
+- `getSkillContent` returns the original unresolved `content` from disk plus a separate `secretMap` of resolved plaintext values for the current user. Example shape:
+```json
+{
+  "skill": {
+    "slug": "example-skill",
+    "path": "SKILL.md",
+    "content": "Use {{SECRET:OPENAI_API_KEY}} for authentication.",
+    "secretMap": {
+      "OPENAI_API_KEY": "..."
+    }
+  }
+}
+```
+- When executing a skill, keep the placeholder text in `content` as the source-of-truth for what is on disk, and use `secretMap` for the actual resolved values during execution.
+- When creating or editing a workflow/skill, reuse an existing secret key if one already fits.
+- If you introduce a new secret key while creating or editing a workflow/skill, add it to `required_secrets` and explicitly tell the user they must add that key in TeamCopilot Profile Secrets before the workflow/skill can run.
+- If `getSkillContent` fails because secrets are missing, tell the user exactly which keys they need to add in TeamCopilot Profile Secrets.
+- If workflow execution fails because secrets are missing, tell the user exactly which keys they need to add in TeamCopilot Profile Secrets.
+- Do not store secret values in `README.md`, `workflow.json`, `requirements.txt`, `requirements.lock.txt`, `data/`, or `SKILL.md`.
 
 ### Filesystem safety boundaries
 
@@ -426,8 +471,6 @@ When asked to "Create a workflow that checks Stripe for failed payments":
 3. Implement the workflow files:
    - Edit `run.py` — Implement Stripe API logic with argparse for inputs
    - Edit `requirements.txt` — Add `stripe` dependency (no version specifier)
-   - Edit `.env` — Add `STRIPE_API_KEY` (never commit)
-   - Edit `.env.example` — Template with `STRIPE_API_KEY=sk_test_...`
    - Create `.venv/` immediately after `createWorkflow` — run `cd workflows/failed-stripe-payments && python -m venv .venv` (or `python3 -m venv .venv`)
    - Update `requirements.lock.txt` — Run `pip freeze > requirements.lock.txt` after installing
    - Edit `README.md` — Document usage and required secrets
@@ -465,15 +508,17 @@ When you need a quick inventory before semantic search or selection:
 When a user asks for behavior that may already be captured as reusable instructions:
 
 1. Use `findSkill` with a natural-language query for the needed capability.
+   - If the first chat message already lists an obviously matching skill, you may use that inventory directly and skip this search.
 2. For promising matches, use `getSkillContent` to inspect `SKILL.md`.
-3. If a skill fits, follow that skill's instructions.
-4. If no approved + accessible skill fits, ask whether to create one and then use `createSkill`.
+3. If `getSkillContent` fails because secrets are missing, tell the user which Profile Secret keys they need to add.
+4. If a skill fits, follow that skill's instructions and use its returned `secretMap` when applying any `{{SECRET:KEY}}` placeholders.
+5. If no approved + accessible skill fits, ask whether to create one and then use `createSkill`.
 
 ## Example: Creating a New Skill
 
 When asked to create a reusable skill:
 
-1. Use `findSkill` first to avoid duplicates.
+1. Use the first-message skill inventory first to avoid duplicates. If it is not sufficient, use `findSkill`.
 2. Optionally use `listAvailableSkills` if you need a full inventory before selecting a candidate.
 3. If no good match exists, use `createSkill` with:
    - `slug`
