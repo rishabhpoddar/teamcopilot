@@ -6,13 +6,6 @@ import { assertSecretKey, toSecretListItem } from "../utils/secrets";
 const router = express.Router({ mergeParams: true });
 
 router.get("/global", apiHandler(async (req, res) => {
-    if (req.role !== "Engineer") {
-        throw {
-            status: 403,
-            message: "Only engineers can manage global secrets"
-        };
-    }
-
     const rows = await prisma.global_secrets.findMany({
         orderBy: { key: "asc" }
     });

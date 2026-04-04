@@ -52,11 +52,9 @@ export default function ProfileSecretsPage() {
             const userPromise = axiosInstance.get<{ secrets: SecretItem[] }>('/api/users/me/secrets', {
                 headers: authHeader
             });
-            const globalPromise = isEngineer
-                ? axiosInstance.get<{ secrets: SecretItem[] }>('/api/secrets/global', {
-                    headers: authHeader
-                })
-                : Promise.resolve({ data: { secrets: [] as SecretItem[] } });
+            const globalPromise = axiosInstance.get<{ secrets: SecretItem[] }>('/api/secrets/global', {
+                headers: authHeader
+            });
             const [userResponse, globalResponse] = await Promise.all([userPromise, globalPromise]);
             setUserSecrets(sortSecrets(userResponse.data.secrets || []));
             setGlobalSecrets(sortSecrets(globalResponse.data.secrets || []));
@@ -201,14 +199,17 @@ export default function ProfileSecretsPage() {
                             </div>
                         </section>
 
-                        {isEngineer && (
-                            <section className="profile-secrets-section">
-                                <div className="profile-secrets-section-header">
-                                    <div>
-                                        <h2>Global Secrets</h2>
-                                        <p>Shared fallback secrets managed by engineers. Personal secrets with the same key override these.</p>
-                                    </div>
+                        <section className="profile-secrets-section">
+                            <div className="profile-secrets-section-header">
+                                <div>
+                                    <h2>Global Secrets</h2>
+                                    <p>
+                                        Shared fallback secrets managed by engineers. Personal secrets with the same key override these.
+                                        {!isEngineer ? ' You can view these masked values, but only engineers can edit them.' : ''}
+                                    </p>
                                 </div>
+                            </div>
+                            {isEngineer && (
                                 <div className="profile-secrets-form">
                                     <input
                                         type="text"
@@ -226,18 +227,20 @@ export default function ProfileSecretsPage() {
                                         {savingTarget === 'global' ? 'Saving...' : 'Save Global Secret'}
                                     </button>
                                 </div>
-                                <div className="profile-secrets-list">
-                                    {globalSecrets.length === 0 ? (
-                                        <div className="profile-secrets-empty">No global secrets saved yet.</div>
-                                    ) : (
-                                        globalSecrets.map((secret) => (
-                                            <div key={secret.key} className="profile-secrets-item">
-                                                <div>
-                                                    <div className="profile-secrets-item-key">{secret.key}</div>
-                                                    <div className="profile-secrets-item-meta">
-                                                        {secret.value} · Updated {new Date(secret.updated_at).toLocaleString()}
-                                                    </div>
+                            )}
+                            <div className="profile-secrets-list">
+                                {globalSecrets.length === 0 ? (
+                                    <div className="profile-secrets-empty">No global secrets saved yet.</div>
+                                ) : (
+                                    globalSecrets.map((secret) => (
+                                        <div key={secret.key} className="profile-secrets-item">
+                                            <div>
+                                                <div className="profile-secrets-item-key">{secret.key}</div>
+                                                <div className="profile-secrets-item-meta">
+                                                    {secret.value} · Updated {new Date(secret.updated_at).toLocaleString()}
                                                 </div>
+                                            </div>
+                                            {isEngineer && (
                                                 <button
                                                     type="button"
                                                     className="danger"
@@ -246,12 +249,12 @@ export default function ProfileSecretsPage() {
                                                 >
                                                     {deletingKey === `global:${secret.key}` ? 'Deleting...' : 'Delete'}
                                                 </button>
-                                            </div>
-                                        ))
-                                    )}
-                                </div>
-                            </section>
-                        )}
+                                            )}
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </section>
                     </>
                 )}
             </div>
