@@ -3,6 +3,7 @@ import path from "path";
 import prisma from "../prisma/client";
 import { getWorkspaceDirFromEnv } from "./workspace-sync";
 import { ensureResourcePermissions } from "./permission-common";
+import { validateSkillSecretContract } from "./secret-contract-validation";
 
 interface SkillManifest {
     name: string;
@@ -261,6 +262,7 @@ export async function createSkill(input: CreateSkillInput): Promise<void> {
     fs.mkdirSync(skillPath, { recursive: false });
     const skillMdPath = getSkillManifestPath(slug);
     const body = `---\nname: ${toSkillFrontmatterValue(name)}\ndescription: ${toSkillFrontmatterValue("")}\nrequired_secrets: []\n---\n\n# ${name}\n\nDescribe what this skill does.\n\n## Instructions\n\nAdd detailed, actionable instructions for the agent here.\n`;
+    validateSkillSecretContract(body);
     fs.writeFileSync(skillMdPath, body, "utf-8");
 
     const now = BigInt(Date.now());

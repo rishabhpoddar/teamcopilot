@@ -17,6 +17,12 @@ interface ResourceFileManagerOptions {
     getResourcePath: (slug: string) => string;
     resourceLabel: string;
     editorLabel: string;
+    validateBeforeSave?: (params: {
+        slug: string;
+        resourcePath: string;
+        relativePath: string;
+        nextContent: string;
+    }) => void;
 }
 
 interface ResourceFileManager {
@@ -30,7 +36,7 @@ interface ResourceFileManager {
 }
 
 export function createResourceFileManager(options: ResourceFileManagerOptions): ResourceFileManager {
-    const { getResourcePath, resourceLabel, editorLabel } = options;
+    const { getResourcePath, resourceLabel, editorLabel, validateBeforeSave } = options;
     const rootLabel = `${resourceLabel} root`;
     const symlinkError = `${editorLabel} editor does not support symlinks`;
 
@@ -406,6 +412,14 @@ export function createResourceFileManager(options: ResourceFileManagerOptions): 
         const nextContent = wasServedRedacted
             ? mergeRedactedEditorContent(currentRawContent, request.content)
             : request.content;
+        if (validateBeforeSave) {
+            validateBeforeSave({
+                slug,
+                resourcePath: getResourcePath(slug),
+                relativePath,
+                nextContent,
+            });
+        }
 
         fs.writeFileSync(absolutePath, nextContent, "utf-8");
         const nextBytes = fs.readFileSync(absolutePath);

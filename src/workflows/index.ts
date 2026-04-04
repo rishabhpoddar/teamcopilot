@@ -46,6 +46,7 @@ import { abortOpencodeSession } from "../utils/session-abort";
 import { registerResourceFileRoutes } from "../utils/resource-file-routes";
 import { getResourceAccessSummary } from "../utils/resource-access";
 import { resolveSecretsForUser } from "../utils/secrets";
+import { validateWorkflowFilesAtPath } from "../utils/secret-contract-validation";
 
 const router = express.Router({ mergeParams: true });
 
@@ -605,6 +606,7 @@ router.post('/:slug/creator', apiHandler(async (req, res) => {
     const updatedMetadata = existingCreator
         ? metadata
         : await setWorkflowCreator(slug, req.userId!);
+    validateWorkflowFilesAtPath(path.join(getWorkspaceDirFromEnv(), "workflows", slug));
     await initializeWorkflowRunPermissionsForCreator(slug, req.userId!);
 
     res.json({
