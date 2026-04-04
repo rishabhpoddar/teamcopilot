@@ -140,7 +140,7 @@ function extractFrontmatterValue(frontmatter: string, key: string): string | nul
 }
 
 function stripYamlStringQuotes(value: string): string {
-    return value.replace(/^["']|["']$/g, "");
+    return value.replace(/^["']|["']$/g, "").trim();
 }
 
 function extractFrontmatterStringArray(frontmatter: string, key: string): string[] {
