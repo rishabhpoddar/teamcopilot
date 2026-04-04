@@ -77,38 +77,16 @@ export async function resolveSecretsForUser(userId: string, requiredKeys: string
         };
     }
 
-    const [userSecrets, globalSecrets] = await Promise.all([
-        prisma.user_secrets.findMany({
-            where: {
-                user_id: userId,
-                key: { in: keys },
-            },
-        }),
-        prisma.global_secrets.findMany({
-            where: {
-                key: { in: keys },
-            },
-        }),
-    ]);
-
-    const userSecretsByKey = new Map(userSecrets.map((row) => [row.key, row.value]));
-    const globalSecretsByKey = new Map(globalSecrets.map((row) => [row.key, row.value]));
+    const resolvedSecrets = await listResolvedSecretsForUser(userId);
     const secretMap: Record<string, string> = {};
     const missingKeys: string[] = [];
 
     for (const key of keys) {
-        const userValue = userSecretsByKey.get(key);
-        if (userValue !== undefined) {
-            secretMap[key] = userValue;
+        const value = resolvedSecrets[key];
+        if (value !== undefined) {
+            secretMap[key] = value;
             continue;
         }
-
-        const globalValue = globalSecretsByKey.get(key);
-        if (globalValue !== undefined) {
-            secretMap[key] = globalValue;
-            continue;
-        }
-
         missingKeys.push(key);
     }
 
@@ -116,4 +94,28 @@ export async function resolveSecretsForUser(userId: string, requiredKeys: string
         secretMap,
         missingKeys,
     };
+}
+
+export async function listResolvedSecretsForUser(userId: string): Promise<Record<string, string>> {
+    const [userSecrets, globalSecrets] = await Promise.all([
+        prisma.user_secrets.findMany({
+            where: { user_id: userId },
+            orderBy: { key: "asc" }
+        }),
+        prisma.global_secrets.findMany({
+            orderBy: { key: "asc" }
+        }),
+    ]);
+
+    const resolvedSecretMap: Record<string, string> = {};
+    for (const row of globalSecrets) {
+        resolvedSecretMap[row.key] = row.value;
+    }
+    for (const row of userSecrets) {
+        resolvedSecretMap[row.key] = row.value;
+    }
+
+    return Object.fromEntries(
+        Object.entries(resolvedSecretMap).sort(([left], [right]) => left.localeCompare(right))
+    );
 }
