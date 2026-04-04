@@ -159,12 +159,16 @@ export default function ProfileSecretsPage() {
                             <div className="profile-secrets-form">
                                 <input
                                     type="text"
+                                    name="user-secret-key"
+                                    autoComplete="off"
                                     placeholder="OPENAI_API_KEY"
                                     value={userKey}
                                     onChange={(event) => setUserKey(event.target.value.toUpperCase())}
                                 />
                                 <input
                                     type="password"
+                                    name="user-secret-value"
+                                    autoComplete="new-password"
                                     placeholder="Secret value"
                                     value={userValue}
                                     onChange={(event) => setUserValue(event.target.value)}
@@ -204,7 +208,7 @@ export default function ProfileSecretsPage() {
                                 <div>
                                     <h2>Global Secrets</h2>
                                     <p>
-                                        Shared fallback secrets managed by engineers. Personal secrets with the same key override these.
+                                        Shared fallback secrets managed by engineers. Usable by all users, but personal secrets with the same key override these.
                                         {!isEngineer ? ' You can view these masked values, but only engineers can edit them.' : ''}
                                     </p>
                                 </div>
@@ -213,12 +217,16 @@ export default function ProfileSecretsPage() {
                                 <div className="profile-secrets-form">
                                     <input
                                         type="text"
+                                        name="global-secret-key"
+                                        autoComplete="off"
                                         placeholder="SLACK_BOT_TOKEN"
                                         value={globalKey}
                                         onChange={(event) => setGlobalKey(event.target.value.toUpperCase())}
                                     />
                                     <input
                                         type="password"
+                                        name="global-secret-value"
+                                        autoComplete="new-password"
                                         placeholder="Global secret value"
                                         value={globalValue}
                                         onChange={(event) => setGlobalValue(event.target.value)}
