@@ -34,6 +34,7 @@ import {
 } from "../utils/skill-approval-snapshot";
 import { getResourceAccessSummary } from "../utils/resource-access";
 import { resolveSecretsForUser } from "../utils/secrets";
+import { validateSkillSecretContract } from "../utils/secret-contract-validation";
 
 const router = express.Router({ mergeParams: true });
 const uploadTmpDir = path.join(os.tmpdir(), "teamcopilot-skill-uploads");
@@ -235,6 +236,7 @@ router.get("/:slug/runtime-content", apiHandler(async (req, res) => {
             message: "SKILL.md must be a text file"
         };
     }
+    validateSkillSecretContract(skillContent.content ?? "");
 
     const secretResolution = await resolveSecretsForUser(req.userId!, manifest.required_secrets);
     if (secretResolution.missingKeys.length > 0) {

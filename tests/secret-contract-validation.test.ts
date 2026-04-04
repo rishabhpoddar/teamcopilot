@@ -141,6 +141,58 @@ function runSkillDeclarationTests(): void {
         "Use {{SECRET:OPENAI_API_KEY}} and {{SECRET:GITHUB_TOKEN}}.",
     ].join("\n"));
 
+    validateSkillSecretContract([
+        "---",
+        "name: demo-skill",
+        "required_secrets: []",
+        "---",
+        "",
+        "No secrets are used here.",
+    ].join("\n"));
+
+    validateSkillSecretContract([
+        "---",
+        "name: demo-skill",
+        "required_secrets:",
+        "  - OPENAI_API_KEY",
+        "  - GITHUB_TOKEN",
+        "---",
+        "",
+        "This skill does not currently use the declared placeholders yet.",
+    ].join("\n"));
+
+    validateSkillSecretContract([
+        "---",
+        "name: demo-skill",
+        "required_secrets:",
+        "  - openai_api_key",
+        "---",
+        "",
+        "Use {{SECRET:OPENAI_API_KEY}}.",
+    ].join("\n"));
+
+    validateSkillSecretContract([
+        "---",
+        "name: demo-skill",
+        "required_secrets:",
+        "  - OPENAI_API_KEY",
+        "---",
+        "",
+        "Use {{SECRET:OPENAI_API_KEY}} twice: {{SECRET:OPENAI_API_KEY}}.",
+    ].join("\n"));
+
+    validateSkillSecretContract([
+        "---",
+        "name: demo-skill",
+        "required_secrets:",
+        "  - OPENAI_API_KEY",
+        "---",
+        "",
+        "## Instructions",
+        "",
+        "Call the service with {{SECRET:OPENAI_API_KEY}}.",
+    ].join("\n"));
+
     assertThrowsMessage(
         () => validateSkillSecretContract([
             "---",
@@ -152,6 +204,31 @@ function runSkillDeclarationTests(): void {
             "Use {{SECRET:OPENAI_API_KEY}} and {{SECRET:GITHUB_TOKEN}}.",
         ].join("\n")),
         "SKILL.md uses secret placeholders not declared in required_secrets: GITHUB_TOKEN",
+    );
+
+    assertThrowsMessage(
+        () => validateSkillSecretContract([
+            "---",
+            "name: demo-skill",
+            "required_secrets: []",
+            "---",
+            "",
+            "Use {{SECRET:OPENAI_API_KEY}}.",
+        ].join("\n")),
+        "SKILL.md uses secret placeholders not declared in required_secrets: OPENAI_API_KEY",
+    );
+
+    assertThrowsMessage(
+        () => validateSkillSecretContract([
+            "---",
+            "name: demo-skill",
+            "required_secrets:",
+            "  - OPENAI_API_KEY",
+            "---",
+            "",
+            "Use {{SECRET:GITHUB_TOKEN}} and {{SECRET:SLACK_BOT_TOKEN}}.",
+        ].join("\n")),
+        "SKILL.md uses secret placeholders not declared in required_secrets: GITHUB_TOKEN, SLACK_BOT_TOKEN",
     );
 }
 

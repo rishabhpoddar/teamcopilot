@@ -6,6 +6,7 @@ import * as path from "path";
 import prisma from "../prisma/client";
 import { isWorkflowSessionInterrupted } from "./workflow-interruption";
 import { normalizeSecretKeyList, resolveSecretsForUser } from "./secrets";
+import { validateWorkflowSecretContract } from "./secret-contract-validation";
 
 const MAX_OUTPUT_CHARS = 300_000;
 const SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -359,7 +360,8 @@ export async function startWorkflowRunViaBackend(options: {
     }
 
     await assertDirectory(workflowPath);
-    await assertPathExists(path.join(workflowPath, "run.py"));
+    const runPyPath = path.join(workflowPath, "run.py");
+    await assertPathExists(runPyPath);
     await assertVenvExists(workflowPath);
     await assertPathExists(getVenvPythonPath(workflowPath));
 
@@ -367,7 +369,14 @@ export async function startWorkflowRunViaBackend(options: {
         await requestWorkflowPermission(options.sessionId, options.messageId, options.callId);
     }
 
-    const workflowJson = JSON.parse(await fsp.readFile(path.join(workflowPath, "workflow.json"), "utf-8")) as {
+    const workflowJsonContent = await fsp.readFile(path.join(workflowPath, "workflow.json"), "utf-8");
+    const runPyContent = await fsp.readFile(runPyPath, "utf-8");
+    validateWorkflowSecretContract({
+        workflowJsonContent,
+        runPyContent,
+    });
+
+    const workflowJson = JSON.parse(workflowJsonContent) as {
         inputs?: Record<string, any>;
         required_secrets?: string[];
         runtime?: { timeout_seconds?: number };
