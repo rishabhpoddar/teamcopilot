@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import jwt from "jsonwebtoken";
 import request from "supertest";
 
 async function main(): Promise<void> {
@@ -14,7 +13,7 @@ async function main(): Promise<void> {
 
     const prisma = require("../src/prisma/client").default as typeof import("../src/prisma/client").default;
     const { ensureWorkspaceDatabase } = require("../src/utils/workspace-sync") as typeof import("../src/utils/workspace-sync");
-    const { loadJwtSecret, getJwtSecret } = require("../src/utils/jwt-secret") as typeof import("../src/utils/jwt-secret");
+    const { loadJwtSecret } = require("../src/utils/jwt-secret") as typeof import("../src/utils/jwt-secret");
     const { createSkill } = require("../src/utils/skill") as typeof import("../src/utils/skill");
     const { createApp } = require("../src/index") as typeof import("../src/index");
 
@@ -40,13 +39,22 @@ async function main(): Promise<void> {
             createdByUserId: user.id,
         });
 
-        const token = jwt.sign({ sub: user.id, token_use: "access" }, getJwtSecret());
+        const authToken = "route-validation-opencode-session";
+        await prisma.chat_sessions.create({
+            data: {
+                user_id: user.id,
+                opencode_session_id: authToken,
+                title: "Route validation session",
+                created_at: now,
+                updated_at: now,
+            },
+        });
         const app = createApp();
 
         const readResponse = await request(app)
             .get(`/api/skills/${slug}/files/content`)
             .query({ path: "SKILL.md" })
-            .set("Authorization", `Bearer ${token}`)
+            .set("Authorization", `Bearer ${authToken}`)
             .expect(200);
 
         assert.equal(readResponse.body.kind, "text");
@@ -64,7 +72,7 @@ Use this skill with {{SECRET:GITHUB_TOKEN}}.
 
         const undeclaredPlaceholderResponse = await request(app)
             .put(`/api/skills/${slug}/files/content`)
-            .set("Authorization", `Bearer ${token}`)
+            .set("Authorization", `Bearer ${authToken}`)
             .send({
                 path: "SKILL.md",
                 content: undeclaredPlaceholderContent,
@@ -88,7 +96,7 @@ Use this skill safely.
 
         const malformedRequiredSecretsResponse = await request(app)
             .put(`/api/skills/${slug}/files/content`)
-            .set("Authorization", `Bearer ${token}`)
+            .set("Authorization", `Bearer ${authToken}`)
             .send({
                 path: "SKILL.md",
                 content: malformedRequiredSecretsContent,
@@ -114,7 +122,7 @@ Use this skill safely.
 
         const duplicateRequiredSecretsResponse = await request(app)
             .put(`/api/skills/${slug}/files/content`)
-            .set("Authorization", `Bearer ${token}`)
+            .set("Authorization", `Bearer ${authToken}`)
             .send({
                 path: "SKILL.md",
                 content: duplicateRequiredSecretsContent,
@@ -139,7 +147,7 @@ Use this skill with {{SECRET:GITHUB_TOKEN}}.
 
         const validSaveResponse = await request(app)
             .put(`/api/skills/${slug}/files/content`)
-            .set("Authorization", `Bearer ${token}`)
+            .set("Authorization", `Bearer ${authToken}`)
             .send({
                 path: "SKILL.md",
                 content: validContent,
