@@ -44,7 +44,11 @@ type PlaceholderResolutionResponse = {
   substituted_text?: string
 }
 
-export const SecretProxyPlugin: Plugin = async ({ client, directory }) => {
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value)
+}
+
+export const SecretProxyPlugin: Plugin = async ({ client }) => {
   async function resolveRootSessionID(sessionID: string): Promise<string> {
     let currentSessionID = sessionID
 
@@ -92,25 +96,73 @@ export const SecretProxyPlugin: Plugin = async ({ client, directory }) => {
     return typeof payload.substituted_text === "string" ? payload.substituted_text : command
   }
 
+  async function rewriteStringFieldsInPlace(
+    sessionID: string,
+    value: unknown,
+    cache: Map<string, string>,
+  ): Promise<void> {
+    if (typeof value === "string") {
+      return
+    }
+
+    if (Array.isArray(value)) {
+      for (let index = 0; index < value.length; index += 1) {
+        const item = value[index]
+        if (typeof item === "string") {
+          if (!item.includes("{{SECRET:")) {
+            continue
+          }
+          const cached = cache.get(item)
+          if (cached !== undefined) {
+            value[index] = cached
+            continue
+          }
+          const substituted = await substituteSecretPlaceholders(sessionID, item)
+          cache.set(item, substituted)
+          value[index] = substituted
+          continue
+        }
+        await rewriteStringFieldsInPlace(sessionID, item, cache)
+      }
+      return
+    }
+
+    if (!isPlainObject(value)) {
+      return
+    }
+
+    for (const [key, nestedValue] of Object.entries(value)) {
+      if (typeof nestedValue === "string") {
+        if (!nestedValue.includes("{{SECRET:")) {
+          continue
+        }
+        const cached = cache.get(nestedValue)
+        if (cached !== undefined) {
+          value[key] = cached
+          continue
+        }
+        const substituted = await substituteSecretPlaceholders(sessionID, nestedValue)
+        cache.set(nestedValue, substituted)
+        value[key] = substituted
+        continue
+      }
+      await rewriteStringFieldsInPlace(sessionID, nestedValue, cache)
+    }
+  }
+
   return {
     "command.execute.before": async (input) => {
-      if (typeof input.command !== "string" || input.command.trim() === "") {
-        return
-      }
-
       const sessionID = typeof input.sessionID === "string" ? input.sessionID.trim() : ""
       if (!sessionID) {
         return
       }
 
-      const fullCommand = [input.command, input.arguments].filter((value) => typeof value === "string" && value.trim() !== "").join(" ").trim()
-      if (!fullCommand.includes("{{SECRET:")) {
-        return
+      if (typeof input.command === "string" && input.command.includes("{{SECRET:")) {
+        input.command = await substituteSecretPlaceholders(sessionID, input.command)
       }
-
-      const substitutedCommand = await substituteSecretPlaceholders(sessionID, fullCommand)
-      input.command = substitutedCommand
-      input.arguments = ""
+      if (typeof input.arguments === "string" && input.arguments.includes("{{SECRET:")) {
+        input.arguments = await substituteSecretPlaceholders(sessionID, input.arguments)
+      }
     },
     "tool.execute.before": async (input, output) => {
       if (input.tool !== "bash") {
@@ -122,42 +174,9 @@ export const SecretProxyPlugin: Plugin = async ({ client, directory }) => {
         return
       }
 
-      const commandValue = typeof output.args?.command === "string" && output.args.command.trim() !== ""
-        ? output.args.command
-        : typeof output.args?.cmd === "string" && output.args.cmd.trim() !== ""
-          ? output.args.cmd
-          : typeof input.args?.command === "string" && input.args.command.trim() !== ""
-            ? input.args.command
-            : typeof input.args?.cmd === "string" && input.args.cmd.trim() !== ""
-              ? input.args.cmd
-              : ""
-
-      if (!commandValue || !commandValue.includes("{{SECRET:")) {
-        return
-      }
-
-      const substitutedCommand = await substituteSecretPlaceholders(sessionID, commandValue)
-      if (typeof output.args?.command === "string") {
-        output.args.command = substitutedCommand
-        return
-      }
-      if (typeof output.args?.cmd === "string") {
-        output.args.cmd = substitutedCommand
-        return
-      }
-      if (input.args && typeof input.args.command === "string") {
-        input.args.command = substitutedCommand
-        return
-      }
-      if (input.args && typeof input.args.cmd === "string") {
-        input.args.cmd = substitutedCommand
-        return
-      }
-      output.args = {
-        ...output.args,
-        command: substitutedCommand,
-        workdir: output.args?.workdir ?? output.args?.cwd ?? directory,
-      }
+      const cache = new Map<string, string>()
+      await rewriteStringFieldsInPlace(sessionID, output.args, cache)
+      await rewriteStringFieldsInPlace(sessionID, input.args, cache)
     },
   }
 }
