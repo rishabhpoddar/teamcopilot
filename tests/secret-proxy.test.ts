@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { extractSecretPlaceholderKeys, resolveSecretPlaceholdersForUser } from "../src/utils/secrets";
+import { listResolvedSecretsForUser, resolveSecretsForUser } from "../src/utils/secrets";
 import prisma from "../src/prisma/client";
 
 async function main(): Promise<void> {
@@ -17,18 +17,6 @@ async function main(): Promise<void> {
     });
 
     try {
-        assert.deepEqual(
-            extractSecretPlaceholderKeys("curl -H 'Authorization: Bearer {{SECRET:GITHUB_TOKEN}}' {{SECRET:api_url}}"),
-            ["GITHUB_TOKEN", "API_URL"],
-            "extracts and normalizes placeholder keys",
-        );
-
-        assert.deepEqual(
-            extractSecretPlaceholderKeys("echo {{SECRET:OPENAI_API_KEY}} {{SECRET:OPENAI_API_KEY}}"),
-            ["OPENAI_API_KEY"],
-            "deduplicates repeated placeholders",
-        );
-
         await prisma.global_secrets.create({
             data: {
                 id: `secret-proxy-global-${Date.now()}`,
@@ -52,15 +40,32 @@ async function main(): Promise<void> {
             }
         });
 
-        const resolved = await resolveSecretPlaceholdersForUser(
-            userId,
-            "echo {{SECRET:USER_ONLY_KEY}} {{SECRET:GLOBAL_ONLY_KEY}}",
+        const resolvedList = await listResolvedSecretsForUser(userId);
+        assert.deepEqual(
+            resolvedList,
+            {
+                GLOBAL_ONLY_KEY: "global-secret-value",
+                USER_ONLY_KEY: "user-secret-value",
+            },
+            "lists the merged user and global secret map",
         );
-        assert.deepEqual(resolved.referencedKeys, ["USER_ONLY_KEY", "GLOBAL_ONLY_KEY"], "tracks referenced keys");
-        assert.equal(
-            resolved.substitutedText,
-            "echo user-secret-value global-secret-value",
-            "substitutes placeholders with resolved values",
+
+        const resolvedSpecific = await resolveSecretsForUser(
+            userId,
+            ["user_only_key", "GLOBAL_ONLY_KEY"],
+        );
+        assert.deepEqual(
+            resolvedSpecific.secretMap,
+            {
+                USER_ONLY_KEY: "user-secret-value",
+                GLOBAL_ONLY_KEY: "global-secret-value",
+            },
+            "resolves requested secret keys after normalization",
+        );
+        assert.deepEqual(
+            resolvedSpecific.missingKeys,
+            [],
+            "does not report missing keys when all requested secrets exist",
         );
 
         await prisma.global_secrets.upsert({
@@ -81,28 +86,38 @@ async function main(): Promise<void> {
             }
         });
 
-        const userOverridesGlobal = await resolveSecretPlaceholdersForUser(
+        const userOverridesGlobal = await resolveSecretsForUser(
             userId,
-            "echo {{SECRET:USER_ONLY_KEY}}",
+            ["USER_ONLY_KEY"],
         );
-        assert.equal(
-            userOverridesGlobal.substitutedText,
-            "echo user-secret-value",
+        assert.deepEqual(
+            userOverridesGlobal.secretMap,
+            {
+                USER_ONLY_KEY: "user-secret-value",
+            },
             "user secret values override globals for the same key",
         );
 
-        await assert.rejects(
-            () => resolveSecretPlaceholdersForUser(
-                userId,
-                "echo {{SECRET:MISSING_KEY}} {{SECRET:GLOBAL_ONLY_KEY}}",
-            ),
-            /This command references missing secrets: MISSING_KEY\. Ask the user to add these keys in TeamCopilot Profile Secrets before retrying\./,
-            "throws with the exact missing placeholder keys when any are absent",
+        const missing = await resolveSecretsForUser(
+            userId,
+            ["MISSING_KEY", "GLOBAL_ONLY_KEY"],
+        );
+        assert.deepEqual(
+            missing.secretMap,
+            {
+                GLOBAL_ONLY_KEY: "global-secret-value",
+            },
+            "returns the subset of requested secret values that resolve",
+        );
+        assert.deepEqual(
+            missing.missingKeys,
+            ["MISSING_KEY"],
+            "reports missing requested secret keys",
         );
 
-        const noPlaceholders = await resolveSecretPlaceholdersForUser(userId, "echo hello");
-        assert.deepEqual(noPlaceholders.referencedKeys, [], "returns no referenced keys when none exist");
-        assert.equal(noPlaceholders.substitutedText, "echo hello", "leaves plain text untouched");
+        const noRequestedKeys = await resolveSecretsForUser(userId, []);
+        assert.deepEqual(noRequestedKeys.secretMap, {}, "returns an empty secret map when no keys are requested");
+        assert.deepEqual(noRequestedKeys.missingKeys, [], "returns no missing keys when no keys are requested");
 
         console.log("Secret proxy tests passed");
     } finally {

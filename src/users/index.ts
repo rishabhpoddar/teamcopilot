@@ -4,7 +4,7 @@ import { apiHandler } from "../utils/index";
 import {
     assertSecretKey,
     listResolvedSecretsForUser,
-    resolveSecretPlaceholdersForUser,
+    resolveSecretsForUser,
     toSecretListItem
 } from "../utils/secrets";
 
@@ -46,7 +46,7 @@ router.get("/me/resolved-secrets", apiHandler(async (req, res) => {
     });
 }, true));
 
-router.post("/me/resolve-secret-placeholders", apiHandler(async (req, res) => {
+router.post("/me/resolve-secrets", apiHandler(async (req, res) => {
     if (req.opencode_session_id === undefined) {
         throw {
             status: 403,
@@ -54,19 +54,28 @@ router.post("/me/resolve-secret-placeholders", apiHandler(async (req, res) => {
         };
     }
 
-    const text = typeof req.body?.text === "string" ? req.body.text : "";
-    if (text.length === 0) {
+    const rawKeys = Array.isArray(req.body?.keys) ? req.body.keys : [];
+    const requestedKeys = rawKeys
+        .filter((key: unknown): key is string => typeof key === "string")
+        .map((key: string) => assertSecretKey(key));
+
+    if (requestedKeys.length === 0) {
         throw {
             status: 400,
-            message: "text is required"
+            message: "keys is required"
         };
     }
 
-    const resolution = await resolveSecretPlaceholdersForUser(req.userId!, text);
+    const resolution = await resolveSecretsForUser(req.userId!, requestedKeys);
+    if (resolution.missingKeys.length > 0) {
+        throw {
+            status: 400,
+            message: `This command references missing secrets: ${resolution.missingKeys.join(", ")}. Ask the user to add these keys in TeamCopilot Profile Secrets before retrying.`
+        };
+    }
 
     res.json({
-        referenced_keys: resolution.referencedKeys,
-        substituted_text: resolution.substitutedText,
+        secret_map: resolution.secretMap,
     });
 }, true));
 

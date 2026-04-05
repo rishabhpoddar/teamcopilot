@@ -16,47 +16,14 @@ interface SessionLookupResponse {
   }
 }
 
-function readSessionLookupErrorMessage(error: unknown, fallbackMessage: string): string {
-  if (typeof error === "string" && error.trim().length > 0) {
-    return error
-  }
-  if (error && typeof error === "object" && "message" in error) {
-    const message = (error as { message?: unknown }).message
-    if (typeof message === "string" && message.trim().length > 0) {
-      return message
-    }
-  }
-  return fallbackMessage
+type SecretMapResolutionResponse = {
+  secret_map?: Record<string, string>
 }
 
-async function readErrorMessageFromResponse(
-  response: Response,
-  fallbackMessage: string
-): Promise<string> {
-  try {
-    const text = await response.text()
-    if (!text) return fallbackMessage
-    try {
-      const parsed: unknown = JSON.parse(text)
-      if (parsed && typeof parsed === "object" && "message" in parsed) {
-        const msg = (parsed as { message?: unknown }).message
-        if (typeof msg === "string" && msg.trim().length > 0) return msg
-      }
-    } catch {
-      // fall back to plain text
-    }
-    return text.trim().length > 0 ? text : fallbackMessage
-  } catch {
-    return fallbackMessage
-  }
-}
-
-type PlaceholderResolutionResponse = {
-  referenced_keys?: string[]
-  missing_keys?: string[]
-  substituted_text?: string
-}
-
+const SECRET_PLACEHOLDER_PATTERN = /\{\{SECRET:([A-Za-z_][A-Za-z0-9_]*)\}\}/g
+const SECRET_ENV_REFERENCE_PATTERN = /\$\{TC_SECRET_([A-Z][A-Z0-9_]*)\}/g
+const AGENT_VISIBLE_SECRET_ENV_REFERENCE_PATTERN = /\$TC_SECRET_[A-Z][A-Z0-9_]*|\$\{TC_SECRET_[A-Z][A-Z0-9_]*\}/
+const SECRET_ENV_PREFIX = "TC_SECRET_"
 const SHELL_CONTROL_TOKENS = new Set(["&&", "||", ";", "|"])
 const CURL_SAFE_VALUE_OPTIONS = new Set([
   "-H",
@@ -152,6 +119,41 @@ const CURL_ALLOWED_HEADER_NAMES = new Set([
   "x-airtable-api-key",
 ])
 
+function readSessionLookupErrorMessage(error: unknown, fallbackMessage: string): string {
+  if (typeof error === "string" && error.trim().length > 0) {
+    return error
+  }
+  if (error && typeof error === "object" && "message" in error) {
+    const message = (error as { message?: unknown }).message
+    if (typeof message === "string" && message.trim().length > 0) {
+      return message
+    }
+  }
+  return fallbackMessage
+}
+
+async function readErrorMessageFromResponse(
+  response: Response,
+  fallbackMessage: string
+): Promise<string> {
+  try {
+    const text = await response.text()
+    if (!text) return fallbackMessage
+    try {
+      const parsed: unknown = JSON.parse(text)
+      if (parsed && typeof parsed === "object" && "message" in parsed) {
+        const msg = (parsed as { message?: unknown }).message
+        if (typeof msg === "string" && msg.trim().length > 0) return msg
+      }
+    } catch {
+      // fall back to plain text
+    }
+    return text.trim().length > 0 ? text : fallbackMessage
+  } catch {
+    return fallbackMessage
+  }
+}
+
 function tokenizeCommand(command: string): string[] {
   return command.match(/"[^"]*"|'[^']*'|&&|\|\||[;|]|[^\s]+/g) ?? []
 }
@@ -176,6 +178,50 @@ function unwrapToken(rawToken: string): { quote: '"' | "'" | null; inner: string
 
 function wrapToken(quote: '"' | "'" | null, inner: string): string {
   return quote ? `${quote}${inner}${quote}` : inner
+}
+
+function escapeForDoubleQuotedShell(inner: string): string {
+  return inner.replace(/[\\`"]/g, "\\$&")
+}
+
+function wrapTokenForShellExpansion(
+  originalQuote: '"' | "'" | null,
+  inner: string,
+  substituted: boolean
+): string {
+  if (!substituted) {
+    return wrapToken(originalQuote, inner)
+  }
+  if (originalQuote === "'") {
+    return `"${escapeForDoubleQuotedShell(inner)}"`
+  }
+  return wrapToken(originalQuote, inner)
+}
+
+function normalizeSecretKey(rawKey: string): string {
+  return rawKey.trim().toUpperCase()
+}
+
+function toSecretEnvReference(key: string): string {
+  return `\${${SECRET_ENV_PREFIX}${key}}`
+}
+
+function replacePlaceholdersWithEnvRefs(value: string): { rewritten: string; referencedKeys: string[] } {
+  const referencedKeys: string[] = []
+  const seen = new Set<string>()
+  const rewritten = value.replace(SECRET_PLACEHOLDER_PATTERN, (_match, rawKey: string) => {
+    const key = normalizeSecretKey(rawKey)
+    if (!seen.has(key)) {
+      seen.add(key)
+      referencedKeys.push(key)
+    }
+    return toSecretEnvReference(key)
+  })
+
+  return {
+    rewritten,
+    referencedKeys,
+  }
 }
 
 function isCurlExecutableToken(rawToken: string): boolean {
@@ -218,7 +264,73 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value)
 }
 
+function collectReferencedEnvKeys(value: unknown, found: Set<string>): void {
+  if (typeof value === "string") {
+    let match: RegExpExecArray | null
+    SECRET_ENV_REFERENCE_PATTERN.lastIndex = 0
+    while ((match = SECRET_ENV_REFERENCE_PATTERN.exec(value)) !== null) {
+      found.add(match[1]!)
+    }
+    return
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectReferencedEnvKeys(item, found)
+    }
+    return
+  }
+
+  if (!isPlainObject(value)) {
+    return
+  }
+
+  for (const nestedValue of Object.values(value)) {
+    collectReferencedEnvKeys(nestedValue, found)
+  }
+}
+
+function assertNoAgentAuthoredSecretEnvReference(value: unknown): void {
+  if (typeof value === "string") {
+    if (AGENT_VISIBLE_SECRET_ENV_REFERENCE_PATTERN.test(value)) {
+      throw new Error(
+        "Direct TC_SECRET_* references are not allowed. Use {{SECRET:KEY}} placeholders instead."
+      )
+    }
+    return
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      assertNoAgentAuthoredSecretEnvReference(item)
+    }
+    return
+  }
+
+  if (!isPlainObject(value)) {
+    return
+  }
+
+  for (const nestedValue of Object.values(value)) {
+    assertNoAgentAuthoredSecretEnvReference(nestedValue)
+  }
+}
+
 export const SecretProxyPlugin: Plugin = async ({ client }) => {
+  const pendingEnvKeysBySession = new Map<string, Set<string>>()
+
+  function addPendingEnvKeys(sessionID: string, keys: string[]): void {
+    if (keys.length === 0) {
+      return
+    }
+
+    const existing = pendingEnvKeysBySession.get(sessionID) ?? new Set<string>()
+    for (const key of keys) {
+      existing.add(key)
+    }
+    pendingEnvKeysBySession.set(sessionID, existing)
+  }
+
   async function resolveRootSessionID(sessionID: string): Promise<string> {
     let currentSessionID = sessionID
 
@@ -246,35 +358,38 @@ export const SecretProxyPlugin: Plugin = async ({ client }) => {
     }
   }
 
-  async function substituteSecretPlaceholders(sessionID: string, command: string): Promise<string> {
+  async function resolveSecretMapForKeys(
+    sessionID: string,
+    keys: string[]
+  ): Promise<Record<string, string>> {
     const rootSessionID = await resolveRootSessionID(sessionID)
-    const response = await fetch(`${getApiBaseUrl()}/api/users/me/resolve-secret-placeholders`, {
+    const response = await fetch(`${getApiBaseUrl()}/api/users/me/resolve-secrets`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${rootSessionID}`,
       },
       body: JSON.stringify({
-        text: command,
+        keys,
       }),
     })
 
     if (!response.ok) {
       const errorMessage = await readErrorMessageFromResponse(
         response,
-        `Failed to resolve secret placeholders for bash command (HTTP ${response.status})`
+        `Failed to resolve secret values for bash command (HTTP ${response.status})`
       )
       throw new Error(errorMessage)
     }
 
-    const payload = (await response.json()) as PlaceholderResolutionResponse
-    return typeof payload.substituted_text === "string" ? payload.substituted_text : command
+    const payload = (await response.json()) as SecretMapResolutionResponse
+    return payload.secret_map ?? {}
   }
 
   async function rewriteStringFieldsInPlace(
     sessionID: string,
     value: unknown,
-    cache: Map<string, string>,
+    cache: Map<string, { rewritten: string; referencedKeys: string[] }>,
   ): Promise<void> {
     if (typeof value === "string") {
       return
@@ -284,7 +399,9 @@ export const SecretProxyPlugin: Plugin = async ({ client }) => {
       for (let index = 0; index < value.length; index += 1) {
         const item = value[index]
         if (typeof item === "string") {
-          value[index] = await maybeRewriteSupportedString(sessionID, item, cache)
+          const rewritten = await maybeRewriteSupportedString(item, cache)
+          value[index] = rewritten.rewritten
+          addPendingEnvKeys(sessionID, rewritten.referencedKeys)
           continue
         }
         await rewriteStringFieldsInPlace(sessionID, item, cache)
@@ -298,7 +415,9 @@ export const SecretProxyPlugin: Plugin = async ({ client }) => {
 
     for (const [key, nestedValue] of Object.entries(value)) {
       if (typeof nestedValue === "string") {
-        value[key] = await maybeRewriteSupportedString(sessionID, nestedValue, cache)
+        const rewritten = await maybeRewriteSupportedString(nestedValue, cache)
+        value[key] = rewritten.rewritten
+        addPendingEnvKeys(sessionID, rewritten.referencedKeys)
         continue
       }
       await rewriteStringFieldsInPlace(sessionID, nestedValue, cache)
@@ -306,12 +425,14 @@ export const SecretProxyPlugin: Plugin = async ({ client }) => {
   }
 
   async function maybeRewriteSupportedString(
-    sessionID: string,
     text: string,
-    cache: Map<string, string>,
-  ): Promise<string> {
+    cache: Map<string, { rewritten: string; referencedKeys: string[] }>,
+  ): Promise<{ rewritten: string; referencedKeys: string[] }> {
     if (!text.includes("{{SECRET:")) {
-      return text
+      return {
+        rewritten: text,
+        referencedKeys: [],
+      }
     }
 
     const cached = cache.get(text)
@@ -319,102 +440,97 @@ export const SecretProxyPlugin: Plugin = async ({ client }) => {
       return cached
     }
 
-    const substituted = await substitutePlaceholdersInCurlShellString(sessionID, text, cache)
-    cache.set(text, substituted)
-    return substituted
+    const rewritten = substitutePlaceholdersInCurlShellString(text)
+    cache.set(text, rewritten)
+    return rewritten
   }
 
-  async function substituteTokenInner(
-    sessionID: string,
-    inner: string,
-    cache: Map<string, string>,
-  ): Promise<string> {
-    if (!inner.includes("{{SECRET:")) {
-      return inner
-    }
-
-    const cached = cache.get(inner)
-    if (cached !== undefined) {
-      return cached
-    }
-
-    const substituted = await substituteSecretPlaceholders(sessionID, inner)
-    cache.set(inner, substituted)
-    return substituted
+  function rewriteTokenInner(inner: string): { rewrittenInner: string; referencedKeys: string[] } {
+    return replacePlaceholdersWithEnvRefs(inner)
   }
 
-  async function substituteRawToken(
-    sessionID: string,
-    rawToken: string,
-    cache: Map<string, string>,
-  ): Promise<string> {
+  function rewriteRawToken(rawToken: string): { rewritten: string; referencedKeys: string[] } {
     const { quote, inner } = unwrapToken(rawToken)
-    const substitutedInner = await substituteTokenInner(sessionID, inner, cache)
-    return wrapToken(quote, substitutedInner)
+    const { rewritten, referencedKeys } = rewriteTokenInner(inner)
+    return {
+      rewritten: wrapTokenForShellExpansion(quote, rewritten, referencedKeys.length > 0),
+      referencedKeys,
+    }
   }
 
-  async function substituteRawTokenValuePortion(
-    sessionID: string,
-    rawToken: string,
-    cache: Map<string, string>,
-  ): Promise<string> {
+  function rewriteRawTokenValuePortion(rawToken: string): { rewritten: string; referencedKeys: string[] } {
     const { quote, inner } = unwrapToken(rawToken)
     const eqIndex = inner.indexOf("=")
     if (eqIndex === -1) {
-      return rawToken
+      return {
+        rewritten: rawToken,
+        referencedKeys: [],
+      }
     }
 
     const prefix = inner.slice(0, eqIndex + 1)
     const value = inner.slice(eqIndex + 1)
-    const substitutedValue = await substituteTokenInner(sessionID, value, cache)
-    return wrapToken(quote, `${prefix}${substitutedValue}`)
+    const { rewritten, referencedKeys } = rewriteTokenInner(value)
+    return {
+      rewritten: wrapTokenForShellExpansion(quote, `${prefix}${rewritten}`, referencedKeys.length > 0),
+      referencedKeys,
+    }
   }
 
-  async function substituteHeaderTokenIfAllowed(
-    sessionID: string,
-    rawToken: string,
-    cache: Map<string, string>,
-  ): Promise<string> {
+  function rewriteHeaderTokenIfAllowed(rawToken: string): { rewritten: string; referencedKeys: string[] } {
     const { quote, inner } = unwrapToken(rawToken)
     if (!isAllowedCurlHeaderValue(inner)) {
-      return rawToken
+      return {
+        rewritten: rawToken,
+        referencedKeys: [],
+      }
     }
 
-    const substitutedInner = await substituteTokenInner(sessionID, inner, cache)
-    return wrapToken(quote, substitutedInner)
+    const { rewritten, referencedKeys } = rewriteTokenInner(inner)
+    return {
+      rewritten: wrapTokenForShellExpansion(quote, rewritten, referencedKeys.length > 0),
+      referencedKeys,
+    }
   }
 
-  async function substituteInlineHeaderValueIfAllowed(
-    sessionID: string,
-    rawToken: string,
-    cache: Map<string, string>,
-  ): Promise<string> {
+  function rewriteInlineHeaderValueIfAllowed(rawToken: string): { rewritten: string; referencedKeys: string[] } {
     const { quote, inner } = unwrapToken(rawToken)
     const eqIndex = inner.indexOf("=")
     if (eqIndex === -1) {
-      return rawToken
+      return {
+        rewritten: rawToken,
+        referencedKeys: [],
+      }
     }
 
     const prefix = inner.slice(0, eqIndex + 1)
     const value = inner.slice(eqIndex + 1)
     if (!isAllowedCurlHeaderValue(value)) {
-      return rawToken
+      return {
+        rewritten: rawToken,
+        referencedKeys: [],
+      }
     }
 
-    const substitutedValue = await substituteTokenInner(sessionID, value, cache)
-    return wrapToken(quote, `${prefix}${substitutedValue}`)
+    const { rewritten, referencedKeys } = rewriteTokenInner(value)
+    return {
+      rewritten: wrapTokenForShellExpansion(quote, `${prefix}${rewritten}`, referencedKeys.length > 0),
+      referencedKeys,
+    }
   }
 
-  async function substitutePlaceholdersInCurlShellString(
-    sessionID: string,
+  function substitutePlaceholdersInCurlShellString(
     text: string,
-    cache: Map<string, string>,
-  ): Promise<string> {
+  ): { rewritten: string; referencedKeys: string[] } {
     const rawTokens = tokenizeCommand(text)
     if (rawTokens.length === 0) {
-      return text
+      return {
+        rewritten: text,
+        referencedKeys: [],
+      }
     }
 
+    const referencedKeys = new Set<string>()
     let mutated = false
     let atCommandStart = true
 
@@ -449,18 +565,16 @@ export const SecretProxyPlugin: Plugin = async ({ client }) => {
         const { inner } = unwrapToken(segmentToken)
 
         if (expectedValueKind !== null) {
-          if (expectedValueKind === "safe" && inner.includes("{{SECRET:")) {
-            const substituted = await substituteRawToken(sessionID, segmentToken, cache)
-            if (substituted !== segmentToken) {
-              rawTokens[j] = substituted
-              mutated = true
-            }
-          }
-          if (expectedValueKind === "header" && inner.includes("{{SECRET:")) {
-            const substituted = await substituteHeaderTokenIfAllowed(sessionID, segmentToken, cache)
-            if (substituted !== segmentToken) {
-              rawTokens[j] = substituted
-              mutated = true
+          const rewritten = expectedValueKind === "safe"
+            ? rewriteRawToken(segmentToken)
+            : expectedValueKind === "header"
+              ? rewriteHeaderTokenIfAllowed(segmentToken)
+              : { rewritten: segmentToken, referencedKeys: [] }
+          if (rewritten.rewritten !== segmentToken) {
+            rawTokens[j] = rewritten.rewritten
+            mutated = true
+            for (const key of rewritten.referencedKeys) {
+              referencedKeys.add(key)
             }
           }
           expectedValueKind = null
@@ -480,12 +594,15 @@ export const SecretProxyPlugin: Plugin = async ({ client }) => {
           if (isSafeCurlOption(inner)) {
             const optionName = getLongOptionName(inner) ?? inner
             if (inner.includes("=")) {
-              const substituted = optionName === "--header"
-                ? await substituteInlineHeaderValueIfAllowed(sessionID, segmentToken, cache)
-                : await substituteRawTokenValuePortion(sessionID, segmentToken, cache)
-              if (substituted !== segmentToken) {
-                rawTokens[j] = substituted
+              const rewritten = optionName === "--header"
+                ? rewriteInlineHeaderValueIfAllowed(segmentToken)
+                : rewriteRawTokenValuePortion(segmentToken)
+              if (rewritten.rewritten !== segmentToken) {
+                rawTokens[j] = rewritten.rewritten
                 mutated = true
+                for (const key of rewritten.referencedKeys) {
+                  referencedKeys.add(key)
+                }
               }
             } else {
               expectedValueKind = optionName === "-H" || optionName === "--header" ? "header" : "safe"
@@ -494,17 +611,21 @@ export const SecretProxyPlugin: Plugin = async ({ client }) => {
           continue
         }
 
-        if (inner.includes("{{SECRET:")) {
-          const substituted = await substituteRawToken(sessionID, segmentToken, cache)
-          if (substituted !== segmentToken) {
-            rawTokens[j] = substituted
-            mutated = true
+        const rewritten = rewriteRawToken(segmentToken)
+        if (rewritten.rewritten !== segmentToken) {
+          rawTokens[j] = rewritten.rewritten
+          mutated = true
+          for (const key of rewritten.referencedKeys) {
+            referencedKeys.add(key)
           }
         }
       }
     }
 
-    return mutated ? rawTokens.join(" ") : text
+    return {
+      rewritten: mutated ? rawTokens.join(" ") : text,
+      referencedKeys: Array.from(referencedKeys).sort(),
+    }
   }
 
   return {
@@ -514,22 +635,28 @@ export const SecretProxyPlugin: Plugin = async ({ client }) => {
         return
       }
 
-      const commandCache = new Map<string, string>()
+      assertNoAgentAuthoredSecretEnvReference(input.command)
+      assertNoAgentAuthoredSecretEnvReference(input.arguments)
+
+      const commandCache = new Map<string, { rewritten: string; referencedKeys: string[] }>()
       if (typeof input.command === "string" && input.command.includes("{{SECRET:")) {
         if (isCurlExecutableToken(input.command) && typeof input.arguments === "string") {
           const fullCurlCommand = input.arguments.trim().length > 0
             ? `${input.command} ${input.arguments}`
             : input.command
-          const substituted = await substitutePlaceholdersInCurlShellString(sessionID, fullCurlCommand, commandCache)
+          const rewritten = substitutePlaceholdersInCurlShellString(fullCurlCommand)
+          addPendingEnvKeys(sessionID, rewritten.referencedKeys)
           const prefix = `${input.command} `
-          if (substituted.startsWith(prefix)) {
-            input.arguments = substituted.slice(prefix.length)
+          if (rewritten.rewritten.startsWith(prefix)) {
+            input.arguments = rewritten.rewritten.slice(prefix.length)
           } else {
-            input.command = substituted
+            input.command = rewritten.rewritten
             input.arguments = ""
           }
         } else {
-          input.command = await maybeRewriteSupportedString(sessionID, input.command, commandCache)
+          const rewritten = await maybeRewriteSupportedString(input.command, commandCache)
+          input.command = rewritten.rewritten
+          addPendingEnvKeys(sessionID, rewritten.referencedKeys)
         }
       }
       if (typeof input.arguments === "string" && input.arguments.includes("{{SECRET:")) {
@@ -537,13 +664,16 @@ export const SecretProxyPlugin: Plugin = async ({ client }) => {
           const fullCurlCommand = input.arguments.trim().length > 0
             ? `${input.command} ${input.arguments}`
             : input.command
-          const substituted = await substitutePlaceholdersInCurlShellString(sessionID, fullCurlCommand, commandCache)
+          const rewritten = substitutePlaceholdersInCurlShellString(fullCurlCommand)
+          addPendingEnvKeys(sessionID, rewritten.referencedKeys)
           const prefix = `${input.command} `
-          if (substituted.startsWith(prefix)) {
-            input.arguments = substituted.slice(prefix.length)
+          if (rewritten.rewritten.startsWith(prefix)) {
+            input.arguments = rewritten.rewritten.slice(prefix.length)
           }
         } else {
-          input.arguments = await maybeRewriteSupportedString(sessionID, input.arguments, commandCache)
+          const rewritten = await maybeRewriteSupportedString(input.arguments, commandCache)
+          input.arguments = rewritten.rewritten
+          addPendingEnvKeys(sessionID, rewritten.referencedKeys)
         }
       }
     },
@@ -557,9 +687,39 @@ export const SecretProxyPlugin: Plugin = async ({ client }) => {
         return
       }
 
-      const cache = new Map<string, string>()
+      assertNoAgentAuthoredSecretEnvReference(input.args)
+      assertNoAgentAuthoredSecretEnvReference(output.args)
+
+      const cache = new Map<string, { rewritten: string; referencedKeys: string[] }>()
       await rewriteStringFieldsInPlace(sessionID, output.args, cache)
       await rewriteStringFieldsInPlace(sessionID, input.args, cache)
+    },
+    "shell.env": async (input, output) => {
+      const sessionID = typeof input.sessionID === "string" ? input.sessionID.trim() : ""
+      if (!sessionID) {
+        return
+      }
+
+      const referencedKeys = new Set<string>()
+      collectReferencedEnvKeys(input, referencedKeys)
+      collectReferencedEnvKeys(output, referencedKeys)
+
+      const pendingKeys = pendingEnvKeysBySession.get(sessionID)
+      if (pendingKeys) {
+        for (const key of pendingKeys) {
+          referencedKeys.add(key)
+        }
+      }
+
+      if (referencedKeys.size === 0) {
+        return
+      }
+
+      const resolvedSecretMap = await resolveSecretMapForKeys(sessionID, Array.from(referencedKeys).sort())
+      for (const [key, value] of Object.entries(resolvedSecretMap)) {
+        output.env[`${SECRET_ENV_PREFIX}${key}`] = value
+      }
+      pendingEnvKeysBySession.delete(sessionID)
     },
   }
 }
