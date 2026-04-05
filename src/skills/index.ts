@@ -251,7 +251,6 @@ router.get("/:slug/runtime-content", apiHandler(async (req, res) => {
             slug,
             path: skillContent.path,
             content: skillContent.content ?? "",
-            required_secrets: manifest.required_secrets,
         }
     });
 }, true));

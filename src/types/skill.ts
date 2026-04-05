@@ -23,5 +23,4 @@ export interface SkillRuntimeContent {
     slug: string;
     path: string;
     content: string;
-    required_secrets: string[];
 }

@@ -422,14 +422,13 @@ required_secrets:
 - When using secrets in bash commands, use placeholder references like `{{SECRET:OPENAI_API_KEY}}`. TeamCopilot will substitute the real values at runtime in a trusted execution hook.
 - Do not try to manually replace `{{SECRET:KEY}}` with a raw value yourself.
 - If a skill body references `{{SECRET:KEY}}` but `KEY` is missing from `required_secrets`, TeamCopilot rejects that skill during save or `getSkillContent`.
-- `getSkillContent` returns the original unresolved `content` from disk plus required secret key metadata. Example shape:
+- `getSkillContent` returns the original unresolved `content` from disk. Example shape:
 ```json
 {
   "skill": {
     "slug": "example-skill",
     "path": "SKILL.md",
-    "content": "Use {{SECRET:OPENAI_API_KEY}} for authentication.",
-    "required_secrets": ["OPENAI_API_KEY"]
+    "content": "Use {{SECRET:OPENAI_API_KEY}} for authentication."
   }
 }
 ```

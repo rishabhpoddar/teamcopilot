@@ -107,7 +107,6 @@ export const GetSkillContentPlugin: Plugin = async ({ client }) => {
               slug?: string
               path?: string
               content?: string
-              required_secrets?: string[]
             }
           }
 
@@ -117,7 +116,6 @@ export const GetSkillContentPlugin: Plugin = async ({ client }) => {
                 slug: payload.skill?.slug ?? slug,
                 path: payload.skill?.path ?? "SKILL.md",
                 content: payload.skill?.content ?? "",
-                required_secrets: payload.skill?.required_secrets ?? [],
               },
             },
             null,
