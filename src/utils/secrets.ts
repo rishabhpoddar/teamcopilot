@@ -1,6 +1,7 @@
 import prisma from "../prisma/client";
 
 const SECRET_KEY_REGEX = /^[A-Z][A-Z0-9_]*$/;
+const SECRET_PLACEHOLDER_REGEX = /\{\{SECRET:([A-Za-z_][A-Za-z0-9_]*)\}\}/g;
 
 type SecretResolutionResult = {
     secretMap: Record<string, string>;
@@ -45,6 +46,28 @@ export function normalizeSecretKeyList(keys: string[] | undefined | null): strin
     }
     return normalized;
 }
+
+export function extractSecretPlaceholderKeys(text: string): string[] {
+    const seen = new Set<string>();
+    const keys: string[] = [];
+    let match: RegExpExecArray | null;
+    SECRET_PLACEHOLDER_REGEX.lastIndex = 0;
+    while ((match = SECRET_PLACEHOLDER_REGEX.exec(text)) !== null) {
+        const key = assertSecretKey(match[1] ?? "");
+        if (seen.has(key)) {
+            continue;
+        }
+        seen.add(key);
+        keys.push(key);
+    }
+    return keys;
+}
+
+export type SecretProxyResolutionResult = {
+    referencedKeys: string[];
+    missingKeys: string[];
+    substitutedText: string;
+};
 
 function maskSecretValue(value: string): string {
     if (value.length === 0) {
@@ -118,4 +141,40 @@ export async function listResolvedSecretsForUser(userId: string): Promise<Record
     return Object.fromEntries(
         Object.entries(resolvedSecretMap).sort(([left], [right]) => left.localeCompare(right))
     );
+}
+
+export async function resolveSecretPlaceholdersForUser(userId: string, text: string): Promise<SecretProxyResolutionResult> {
+    const referencedKeys = extractSecretPlaceholderKeys(text);
+    if (referencedKeys.length === 0) {
+        return {
+            referencedKeys: [],
+            missingKeys: [],
+            substitutedText: text,
+        };
+    }
+
+    const { secretMap, missingKeys } = await resolveSecretsForUser(userId, referencedKeys);
+
+    if (missingKeys.length > 0) {
+        return {
+            referencedKeys,
+            missingKeys,
+            substitutedText: text,
+        };
+    }
+
+    const substitutedText = text.replace(SECRET_PLACEHOLDER_REGEX, (_match, rawKey: string) => {
+        const key = assertSecretKey(rawKey);
+        const value = secretMap[key];
+        if (value === undefined) {
+            throw new Error(`Missing resolved value for secret key: ${key}`);
+        }
+        return value;
+    });
+
+    return {
+        referencedKeys,
+        missingKeys: [],
+        substitutedText,
+    };
 }
