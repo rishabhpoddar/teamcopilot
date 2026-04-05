@@ -176,92 +176,6 @@ async function requestCreationPermission(
   throw new Error("Permission request timed out")
 }
 
-function stripLeadingFrontmatter(markdown: string): string {
-  const trimmedStart = markdown.trimStart()
-  if (!trimmedStart.startsWith("---\n")) {
-    return markdown.trim()
-  }
-
-  const frontmatterEnd = trimmedStart.indexOf("\n---\n", 4)
-  if (frontmatterEnd < 0) {
-    return markdown.trim()
-  }
-
-  return trimmedStart.slice(frontmatterEnd + "\n---\n".length).trim()
-}
-
-function extractDeclaredRequiredSecrets(markdown: string): string[] {
-  const trimmedStart = markdown.trimStart()
-  if (!trimmedStart.startsWith("---\n")) {
-    return []
-  }
-
-  const frontmatterEnd = trimmedStart.indexOf("\n---\n", 4)
-  if (frontmatterEnd < 0) {
-    return []
-  }
-
-  const frontmatter = trimmedStart.slice(4, frontmatterEnd)
-  const lines = frontmatter.split("\n")
-
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index] ?? ""
-    const match = line.match(/^required_secrets\s*:\s*(.*)$/)
-    if (!match) {
-      continue
-    }
-
-    const rawValue = match[1]?.trim() ?? ""
-    if (rawValue.startsWith("[")) {
-      try {
-        const parsed = JSON.parse(rawValue.replace(/'/g, "\"")) as unknown
-        if (Array.isArray(parsed)) {
-          return parsed
-            .filter((item): item is string => typeof item === "string")
-            .map((item) => item.trim().toUpperCase())
-            .filter(Boolean)
-        }
-      } catch {
-        return []
-      }
-      return []
-    }
-
-    if (rawValue.length > 0) {
-      return [rawValue.trim().toUpperCase()]
-    }
-
-    const items: string[] = []
-    for (let itemIndex = index + 1; itemIndex < lines.length; itemIndex += 1) {
-      const itemLine = lines[itemIndex] ?? ""
-      if (itemLine.trim().length === 0) {
-        continue
-      }
-      const itemMatch = itemLine.match(/^\s*-\s*(.+)\s*$/)
-      if (!itemMatch) {
-        break
-      }
-      items.push(itemMatch[1]!.replace(/^["']|["']$/g, "").trim().toUpperCase())
-    }
-    return items.filter(Boolean)
-  }
-
-  return []
-}
-
-function buildSkillMarkdown(
-  slug: string,
-  description: string,
-  markdownContent: string
-): string {
-  const body = stripLeadingFrontmatter(markdownContent)
-  const requiredSecrets = extractDeclaredRequiredSecrets(markdownContent)
-  const requiredSecretsSection = requiredSecrets.length === 0
-    ? "required_secrets: []"
-    : `required_secrets:\n${requiredSecrets.map((key) => `  - ${key}`).join("\n")}`
-  return `---\nname: ${JSON.stringify(slug)}\ndescription: ${JSON.stringify(description)}\n${requiredSecretsSection}\n---\n\n${body}\n`
-}
-
 export const CreateSkillPlugin: Plugin = async ({ client }) => {
   async function resolveRootSessionID(sessionID: string): Promise<string> {
     let currentSessionID = sessionID
@@ -390,8 +304,6 @@ export const CreateSkillPlugin: Plugin = async ({ client }) => {
             throw new Error(`SKILL.md for ${slug} is not a text file.`)
           }
 
-          const nextContent = buildSkillMarkdown(slug, description, content)
-
           const saveResponse = await fetch(`${getApiBaseUrl()}/api/skills/${encodeURIComponent(slug)}/files/content`, {
             method: "PUT",
             headers: {
@@ -400,7 +312,7 @@ export const CreateSkillPlugin: Plugin = async ({ client }) => {
             },
             body: JSON.stringify({
               path: "SKILL.md",
-              content: nextContent,
+              content,
               base_etag: filePayload.etag,
             }),
           })

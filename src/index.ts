@@ -28,113 +28,119 @@ import { initializeOpencodeAuthStorage } from "./utils/opencode-auth";
 import opencodeAuthRouter from "./opencode-auth";
 import { loadJwtSecret } from "./utils/jwt-secret";
 import { getFrontendDistDirectory } from "./utils/runtime-paths";
-const app = express();
-const frontendDistDirectory = getFrontendDistDirectory();
+export function createApp(): express.Express {
+    const app = express();
+    const frontendDistDirectory = getFrontendDistDirectory();
 
-app.use(express.json());
+    app.use(express.json());
 
-// Logging middleware
-// app.use((req, res, next) => {
-//     const start = Date.now();
-//     res.on('finish', async () => {
-//         const duration = Date.now() - start;
-//         const logData = {
-//             method: req.method,
-//             path: req.path,
-//             statusCode: res.statusCode,
-//             duration: `${duration}ms`,
-//             userAgent: req.get('user-agent'),
-//             ip: req.ip
-//         };
-//         logInfo(`HTTP Request: ${req.method} ${req.path} ${res.statusCode}`, { meta: logData });
-//     });
-//     next();
-// });
+    // Logging middleware
+    // app.use((req, res, next) => {
+    //     const start = Date.now();
+    //     res.on('finish', async () => {
+    //         const duration = Date.now() - start;
+    //         const logData = {
+    //             method: req.method,
+    //             path: req.path,
+    //             statusCode: res.statusCode,
+    //             duration: `${duration}ms`,
+    //             userAgent: req.get('user-agent'),
+    //             ip: req.ip
+    //         };
+    //         logInfo(`HTTP Request: ${req.method} ${req.path} ${res.statusCode}`, { meta: logData });
+    //     });
+    //     next();
+    // });
 
-// Mount auth routes directly (no sanitization for token responses)
-app.use('/api/auth', authRouter);
+    // Mount auth routes directly (no sanitization for token responses)
+    app.use('/api/auth', authRouter);
 
-const apiRouter = express.Router();
+    const apiRouter = express.Router();
 
-apiRouter.use((_req, res, next) => {
-    const originalJson = res.json.bind(res);
-    const originalSend = res.send.bind(res);
-    const shouldSkipSanitization = () => Boolean((res.locals as { skipResponseSanitization?: boolean }).skipResponseSanitization);
-    const hasJsonContentType = () => {
-        const contentType = res.getHeader("Content-Type");
-        if (typeof contentType === "string") {
-            return contentType.includes("application/json");
-        }
-        if (Array.isArray(contentType)) {
-            return contentType.some((value) => value.includes("application/json"));
-        }
-        return false;
-    };
+    apiRouter.use((_req, res, next) => {
+        const originalJson = res.json.bind(res);
+        const originalSend = res.send.bind(res);
+        const shouldSkipSanitization = () => Boolean((res.locals as { skipResponseSanitization?: boolean }).skipResponseSanitization);
+        const hasJsonContentType = () => {
+            const contentType = res.getHeader("Content-Type");
+            if (typeof contentType === "string") {
+                return contentType.includes("application/json");
+            }
+            if (Array.isArray(contentType)) {
+                return contentType.some((value) => value.includes("application/json"));
+            }
+            return false;
+        };
 
-    res.json = ((body: unknown) => {
-        if (shouldSkipSanitization()) {
-            return originalJson(body);
-        }
-        return originalJson(sanitizeForClient(body));
-    }) as typeof res.json;
+        res.json = ((body: unknown) => {
+            if (shouldSkipSanitization()) {
+                return originalJson(body);
+            }
+            return originalJson(sanitizeForClient(body));
+        }) as typeof res.json;
 
-    res.send = ((body?: unknown) => {
-        if (shouldSkipSanitization()) {
-            return originalSend(body);
-        }
-        if (typeof body === "string") {
-            if (hasJsonContentType()) {
+        res.send = ((body?: unknown) => {
+            if (shouldSkipSanitization()) {
                 return originalSend(body);
             }
-            return originalSend(sanitizeStringContent(body));
-        }
-        if (Buffer.isBuffer(body)) {
-            if (hasJsonContentType()) {
-                return originalSend(body);
+            if (typeof body === "string") {
+                if (hasJsonContentType()) {
+                    return originalSend(body);
+                }
+                return originalSend(sanitizeStringContent(body));
             }
-            return originalSend(Buffer.from(sanitizeStringContent(body.toString("utf-8")), "utf-8"));
+            if (Buffer.isBuffer(body)) {
+                if (hasJsonContentType()) {
+                    return originalSend(body);
+                }
+                return originalSend(Buffer.from(sanitizeStringContent(body.toString("utf-8")), "utf-8"));
+            }
+            return originalSend(sanitizeForClient(body));
+        }) as typeof res.send;
+
+        next();
+    });
+
+    apiRouter.get("/", (_req, res) => {
+        // for healthcheck
+        res.send("Hello from the API!");
+    });
+
+    apiRouter.get("/workspace", apiHandler(async (_req, res) => {
+        const workspaceDir = getWorkspaceDirFromEnv();
+        res.json({ workspace_dir: workspaceDir });
+    }, false));
+
+    apiRouter.use('/workflows', workflowsRouter);
+    apiRouter.use('/chat', chatRouter);
+    apiRouter.use('/skills', skillsRouter);
+    apiRouter.use('/users', usersRouter);
+    apiRouter.use('/secrets', secretsRouter);
+    apiRouter.use('/opencode-auth', opencodeAuthRouter);
+
+    app.use('/api', apiRouter);
+
+    // Serve static assets (JS, CSS, etc.) with correct MIME types
+    app.use(express.static(frontendDistDirectory));
+
+    // SPA fallback: serve index.html for non-API routes (client-side routing)
+    app.get("*", (_req, res) => {
+        res.sendFile(path.join(frontendDistDirectory, "index.html"));
+    });
+
+    app.use(async (err: any, req: express.Request, res: express.Response, _: express.NextFunction) => {
+        let status = err.status || 500;
+        let doLogging = err.doLogging !== false;
+        if (status !== 404 && doLogging) {
+            logError({ err, apiPath: req.path, apiMethod: req.method });
         }
-        return originalSend(sanitizeForClient(body));
-    }) as typeof res.send;
+        res.status(status).json({ message: err.message || 'Unknown error' });
+    });
 
-    next();
-});
+    return app;
+}
 
-apiRouter.get("/", (_req, res) => {
-    // for healthcheck
-    res.send("Hello from the API!");
-});
-
-apiRouter.get("/workspace", apiHandler(async (_req, res) => {
-    const workspaceDir = getWorkspaceDirFromEnv();
-    res.json({ workspace_dir: workspaceDir });
-}, false));
-
-apiRouter.use('/workflows', workflowsRouter);
-apiRouter.use('/chat', chatRouter);
-apiRouter.use('/skills', skillsRouter);
-apiRouter.use('/users', usersRouter);
-apiRouter.use('/secrets', secretsRouter);
-apiRouter.use('/opencode-auth', opencodeAuthRouter);
-
-app.use('/api', apiRouter);
-
-// Serve static assets (JS, CSS, etc.) with correct MIME types
-app.use(express.static(frontendDistDirectory));
-
-// SPA fallback: serve index.html for non-API routes (client-side routing)
-app.get("*", (_req, res) => {
-    res.sendFile(path.join(frontendDistDirectory, "index.html"));
-});
-
-app.use(async (err: any, req: express.Request, res: express.Response, _: express.NextFunction) => {
-    let status = err.status || 500;
-    let doLogging = err.doLogging !== false;
-    if (status !== 404 && doLogging) {
-        logError({ err, apiPath: req.path, apiMethod: req.method });
-    }
-    res.status(status).json({ message: err.message || 'Unknown error' });
-})
+const app = createApp();
 
 let httpServer: Server | null = null;
 let isShuttingDown = false;
@@ -189,7 +195,9 @@ process.on("unhandledRejection", (reason) => {
     void shutdown(1);
 });
 
-void bootstrap().catch((err) => {
-    console.error("Failed to start server:", err);
-    process.exit(1);
-});
+if (require.main === module) {
+    void bootstrap().catch((err) => {
+        console.error("Failed to start server:", err);
+        process.exit(1);
+    });
+}

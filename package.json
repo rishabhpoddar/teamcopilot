@@ -82,7 +82,9 @@
     "uuid": "^11.1.0"
   },
   "devDependencies": {
+    "@types/supertest": "^7.2.0",
     "concurrently": "^9.2.1",
+    "supertest": "^7.2.2",
     "ts-prune": "^0.10.3"
   }
 }
