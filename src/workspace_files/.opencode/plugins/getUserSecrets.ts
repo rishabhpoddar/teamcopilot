@@ -65,7 +65,7 @@ export const GetUserSecretsPlugin: Plugin = async ({ client }) => {
     tool: {
       getUserSecrets: tool({
         description:
-          "Get all resolved secrets available to the current user. Returns the merged key/value map after applying TeamCopilot's precedence rules: user secret first, then global secret.",
+          "Get all secret keys available to the current user. Returns the merged key inventory after applying TeamCopilot's precedence rules: user secret first, then global secret. This tool does not return plaintext secret values.",
         args: {},
         async execute(_args, context) {
           const { sessionID } = context
@@ -86,24 +86,14 @@ export const GetUserSecretsPlugin: Plugin = async ({ client }) => {
           }
 
           const payload = (await response.json()) as {
-            secrets?: Array<{
-              key?: string
-              value?: string
-            }>
-          }
-
-          const secretMap: Record<string, string> = {}
-          for (const secret of payload.secrets ?? []) {
-            if (typeof secret.key !== "string" || typeof secret.value !== "string") {
-              continue
-            }
-            secretMap[secret.key] = secret.value
+            secret_keys?: string[]
+            total?: number
           }
 
           return JSON.stringify(
             {
-              secretMap,
-              total: Object.keys(secretMap).length,
+              secret_keys: Array.isArray(payload.secret_keys) ? payload.secret_keys : [],
+              total: typeof payload.total === "number" ? payload.total : 0,
             },
             null,
             2

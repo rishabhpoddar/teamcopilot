@@ -1,7 +1,12 @@
 import express from "express";
 import prisma from "../prisma/client";
 import { apiHandler } from "../utils/index";
-import { assertSecretKey, listResolvedSecretsForUser, toSecretListItem } from "../utils/secrets";
+import {
+    assertSecretKey,
+    listResolvedSecretsForUser,
+    resolveSecretPlaceholdersForUser,
+    toSecretListItem
+} from "../utils/secrets";
 
 const router = express.Router({ mergeParams: true });
 
@@ -34,15 +39,41 @@ router.get("/me/secrets", apiHandler(async (req, res) => {
 
 router.get("/me/resolved-secrets", apiHandler(async (req, res) => {
     const resolvedSecretMap = await listResolvedSecretsForUser(req.userId!);
-    const shouldMaskValues = req.opencode_session_id === undefined;
 
     res.json({
-        secrets: Object.entries(resolvedSecretMap).map(([key, value]) => toSecretListItem({
-            key,
-            value,
-            created_at: BigInt(0),
-            updated_at: BigInt(0),
-        }, shouldMaskValues))
+        secret_keys: Object.keys(resolvedSecretMap),
+        total: Object.keys(resolvedSecretMap).length,
+    });
+}, true));
+
+router.post("/me/resolve-secret-placeholders", apiHandler(async (req, res) => {
+    if (req.opencode_session_id === undefined) {
+        throw {
+            status: 403,
+            message: "This endpoint requires an opencode session token"
+        };
+    }
+
+    const text = typeof req.body?.text === "string" ? req.body.text : "";
+    if (text.length === 0) {
+        throw {
+            status: 400,
+            message: "text is required"
+        };
+    }
+
+    const resolution = await resolveSecretPlaceholdersForUser(req.userId!, text);
+    if (resolution.missingKeys.length > 0) {
+        throw {
+            status: 400,
+            message: `This command references missing secrets: ${resolution.missingKeys.join(", ")}. Ask the user to add these keys in TeamCopilot Profile Secrets before retrying.`
+        };
+    }
+
+    res.json({
+        referenced_keys: resolution.referencedKeys,
+        missing_keys: resolution.missingKeys,
+        substituted_text: resolution.substitutedText,
     });
 }, true));
 

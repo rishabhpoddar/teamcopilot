@@ -68,7 +68,7 @@ export const GetSkillContentPlugin: Plugin = async ({ client }) => {
     tool: {
       getSkillContent: tool({
         description:
-          "Get the contents of a skill by slug. Uses backend auth and permission checks; returns the original SKILL.md content plus a separate secretMap when the current user has access and all required secrets are configured.",
+          "Get the contents of a skill by slug. Uses backend auth and permission checks; returns the original SKILL.md content plus required secret key metadata when the current user has access and all required secrets are configured.",
         args: {
           slug: tool.schema
             .string()
@@ -107,7 +107,7 @@ export const GetSkillContentPlugin: Plugin = async ({ client }) => {
               slug?: string
               path?: string
               content?: string
-              secretMap?: Record<string, string>
+              required_secrets?: string[]
             }
           }
 
@@ -117,7 +117,7 @@ export const GetSkillContentPlugin: Plugin = async ({ client }) => {
                 slug: payload.skill?.slug ?? slug,
                 path: payload.skill?.path ?? "SKILL.md",
                 content: payload.skill?.content ?? "",
-                secretMap: payload.skill?.secretMap ?? {},
+                required_secrets: payload.skill?.required_secrets ?? [],
               },
             },
             null,
