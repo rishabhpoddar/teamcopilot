@@ -56,7 +56,12 @@ export function sanitizeStringContent(input: string): string {
     // "Authorization: Bearer <token>" doesn't get partially masked as "***rer".
     text = text.replace(
         /(\bAuthorization\s*[:=]\s*)(Bearer\s+)([A-Za-z0-9._~+/=-]{8,})/gi,
-        (_full: string, prefix: string, bearer: string, token: string) => `${prefix}${bearer}${maskValue(token)}`
+        (_full: string, prefix: string, bearer: string, token: string) => {
+            if (isProtectedSecretPlaceholderToken(token)) {
+                return `${prefix}${bearer}${token}`;
+            }
+            return `${prefix}${bearer}${maskValue(token)}`;
+        }
     );
 
     // Redact sensitive markdown list/label items such as:
@@ -171,6 +176,9 @@ export function sanitizeStringContent(input: string): string {
             if (key.toLowerCase() === "authorization" && authorizationMatch) {
                 const bearerPrefix = authorizationMatch[1];
                 const bearerToken = authorizationMatch[2];
+                if (isProtectedSecretPlaceholderToken(bearerToken)) {
+                    return full;
+                }
                 const maskedBearer = `${bearerPrefix}${maskValue(bearerToken)}`;
                 if (doubleQuoted !== undefined) {
                     return `${lead}${assignmentPrefix}"${maskedBearer}"`;
@@ -193,7 +201,12 @@ export function sanitizeStringContent(input: string): string {
     );
 
     // Redact common bearer and provider token forms.
-    text = text.replace(/\b(Bearer\s+)([A-Za-z0-9._~+/=-]{8,})\b/gi, (_full, prefix: string, token: string) => `${prefix}${maskValue(token)}`);
+    text = text.replace(/\b(Bearer\s+)([A-Za-z0-9._~+/=-]{8,})\b/gi, (_full, prefix: string, token: string) => {
+        if (isProtectedSecretPlaceholderToken(token)) {
+            return `${prefix}${token}`;
+        }
+        return `${prefix}${maskValue(token)}`;
+    });
     text = text.replace(/\b(sk-[A-Za-z0-9_-]{8,})\b/g, (token: string) => maskValue(token));
     text = text.replace(/\b(ghp_[A-Za-z0-9]{8,})\b/g, (token: string) => maskValue(token));
 
