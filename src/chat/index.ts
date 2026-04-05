@@ -871,6 +871,7 @@ router.get('/sessions/:id/file-diff', apiHandler(async (req, res) => {
         content_sha256: trackedFile.content_sha256,
     })));
 
+    (res.locals as { skipResponseSanitization?: boolean }).skipResponseSanitization = true;
     res.json(diff);
 }, true));
 

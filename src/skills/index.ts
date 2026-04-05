@@ -300,6 +300,7 @@ router.get("/:slug/approval-diff", apiHandler(async (req, res) => {
     const previousSnapshot = await loadApprovedSkillSnapshotFromDb(slug);
     const currentSnapshot = collectCurrentSkillSnapshot(slug);
     const diff = buildSkillApprovalDiffResponse(previousSnapshot, currentSnapshot);
+    (res.locals as { skipResponseSanitization?: boolean }).skipResponseSanitization = true;
     res.json(diff);
 }, true));
 

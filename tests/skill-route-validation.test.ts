@@ -183,6 +183,60 @@ Use this skill with {{SECRET:GITHUB_TOKEN}}.
         assert.equal(validSaveResponse.body.path, "SKILL.md");
         assert.ok(typeof validSaveResponse.body.etag === "string" && validSaveResponse.body.etag.length > 0);
 
+        const approvalNow = now + 1n;
+        await prisma.resource_approved_snapshots.create({
+            data: {
+                resource_kind: "skill",
+                resource_slug: slug,
+                file_count: 1,
+                created_at: approvalNow,
+                updated_at: approvalNow,
+            }
+        });
+        await prisma.resource_approved_snapshot_files.create({
+            data: {
+                resource_kind: "skill",
+                resource_slug: slug,
+                relative_path: "SKILL.md",
+                content_kind: "text",
+                text_content: `---
+name: "route-validation-skill"
+description: "Route validation test"
+required_secrets:
+  - GITHUB_TOKEN
+---
+
+Use this skill without placeholders.
+`,
+                binary_content: null,
+                size_bytes: 0,
+                content_sha256: "approval-diff-text",
+            }
+        });
+        await prisma.resource_metadata.update({
+            where: {
+                resource_kind_resource_slug: {
+                    resource_kind: "skill",
+                    resource_slug: slug,
+                }
+            },
+            data: {
+                approved_by_user_id: user.id,
+                updated_at: approvalNow,
+            }
+        });
+
+        const approvalDiffResponse = await request(app)
+            .get(`/api/skills/${slug}/approval-diff`)
+            .set("Authorization", `Bearer ${authToken}`)
+            .expect(200);
+
+        const diffJson = JSON.stringify(approvalDiffResponse.body);
+        assert.ok(
+            diffJson.includes("{{SECRET:GITHUB_TOKEN}}"),
+            `Expected approval diff to include the raw skill placeholder, got: ${diffJson}`
+        );
+
         console.log("Skill route validation tests passed");
     } finally {
         await prisma.$disconnect();
