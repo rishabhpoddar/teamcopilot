@@ -154,8 +154,102 @@ async function readErrorMessageFromResponse(
   }
 }
 
-function tokenizeCommand(command: string): string[] {
-  return command.match(/"[^"]*"|'[^']*'|&&|\|\||[;|]|[^\s]+/g) ?? []
+type CommandToken = {
+  raw: string
+  start: number
+  end: number
+}
+
+function tokenizeCommand(command: string): CommandToken[] {
+  const tokens: CommandToken[] = []
+  const length = command.length
+  let index = 0
+
+  while (index < length) {
+    const char = command[index]
+    if (char === undefined) {
+      break
+    }
+
+    if (/\s/.test(char)) {
+      index += 1
+      continue
+    }
+
+    const start = index
+    if (char === "&" && command[index + 1] === "&") {
+      index += 2
+      tokens.push({ raw: command.slice(start, index), start, end: index })
+      continue
+    }
+
+    if (char === "|" && command[index + 1] === "|") {
+      index += 2
+      tokens.push({ raw: command.slice(start, index), start, end: index })
+      continue
+    }
+
+    if (char === ";" || char === "|") {
+      index += 1
+      tokens.push({ raw: command.slice(start, index), start, end: index })
+      continue
+    }
+
+    while (index < length) {
+      const current = command[index]
+      if (current === undefined) {
+        break
+      }
+
+      if (current === "'") {
+        index += 1
+        while (index < length && command[index] !== "'") {
+          index += 1
+        }
+        if (index < length) {
+          index += 1
+        }
+        continue
+      }
+
+      if (current === "\"") {
+        index += 1
+        while (index < length) {
+          const quoted = command[index]
+          if (quoted === undefined) {
+            break
+          }
+          if (quoted === "\\") {
+            index += Math.min(2, length - index)
+            continue
+          }
+          index += 1
+          if (quoted === "\"") {
+            break
+          }
+        }
+        continue
+      }
+
+      if (/\s/.test(current)) {
+        break
+      }
+
+      if (current === "&" && command[index + 1] === "&") {
+        break
+      }
+
+      if (current === "|" || current === ";") {
+        break
+      }
+
+      index += 1
+    }
+
+    tokens.push({ raw: command.slice(start, index), start, end: index })
+  }
+
+  return tokens
 }
 
 function unwrapToken(rawToken: string): { quote: '"' | "'" | null; inner: string } {
@@ -530,6 +624,7 @@ export const SecretProxyPlugin: Plugin = async ({ client }) => {
       }
     }
 
+    const replacements: Array<{ start: number; end: number; text: string }> = []
     const referencedKeys = new Set<string>()
     let mutated = false
     let atCommandStart = true
@@ -537,7 +632,7 @@ export const SecretProxyPlugin: Plugin = async ({ client }) => {
     for (let index = 0; index < rawTokens.length; index += 1) {
       const rawToken = rawTokens[index]
 
-      if (SHELL_CONTROL_TOKENS.has(rawToken)) {
+      if (SHELL_CONTROL_TOKENS.has(rawToken.raw)) {
         atCommandStart = true
         continue
       }
@@ -546,7 +641,7 @@ export const SecretProxyPlugin: Plugin = async ({ client }) => {
         continue
       }
 
-      if (!isCurlExecutableToken(rawToken)) {
+      if (!isCurlExecutableToken(rawToken.raw)) {
         atCommandStart = false
         continue
       }
@@ -556,26 +651,30 @@ export const SecretProxyPlugin: Plugin = async ({ client }) => {
 
       for (let j = index + 1; j < rawTokens.length; j += 1) {
         const segmentToken = rawTokens[j]
-        if (SHELL_CONTROL_TOKENS.has(segmentToken)) {
+        if (SHELL_CONTROL_TOKENS.has(segmentToken.raw)) {
           atCommandStart = true
           index = j - 1
           break
         }
 
-        const { inner } = unwrapToken(segmentToken)
+        const { inner } = unwrapToken(segmentToken.raw)
 
         if (expectedValueKind !== null) {
           const rewritten = expectedValueKind === "safe"
-            ? rewriteRawToken(segmentToken)
+            ? rewriteRawToken(segmentToken.raw)
             : expectedValueKind === "header"
-              ? rewriteHeaderTokenIfAllowed(segmentToken)
-              : { rewritten: segmentToken, referencedKeys: [] }
-          if (rewritten.rewritten !== segmentToken) {
-            rawTokens[j] = rewritten.rewritten
+              ? rewriteHeaderTokenIfAllowed(segmentToken.raw)
+              : { rewritten: segmentToken.raw, referencedKeys: [] }
+          if (rewritten.rewritten !== segmentToken.raw) {
+            replacements.push({
+              start: segmentToken.start,
+              end: segmentToken.end,
+              text: rewritten.rewritten,
+            })
             mutated = true
-            for (const key of rewritten.referencedKeys) {
-              referencedKeys.add(key)
-            }
+          }
+          for (const key of rewritten.referencedKeys) {
+            referencedKeys.add(key)
           }
           expectedValueKind = null
           continue
@@ -595,14 +694,18 @@ export const SecretProxyPlugin: Plugin = async ({ client }) => {
             const optionName = getLongOptionName(inner) ?? inner
             if (inner.includes("=")) {
               const rewritten = optionName === "--header"
-                ? rewriteInlineHeaderValueIfAllowed(segmentToken)
-                : rewriteRawTokenValuePortion(segmentToken)
-              if (rewritten.rewritten !== segmentToken) {
-                rawTokens[j] = rewritten.rewritten
+                ? rewriteInlineHeaderValueIfAllowed(segmentToken.raw)
+                : rewriteRawTokenValuePortion(segmentToken.raw)
+              if (rewritten.rewritten !== segmentToken.raw) {
+                replacements.push({
+                  start: segmentToken.start,
+                  end: segmentToken.end,
+                  text: rewritten.rewritten,
+                })
                 mutated = true
-                for (const key of rewritten.referencedKeys) {
-                  referencedKeys.add(key)
-                }
+              }
+              for (const key of rewritten.referencedKeys) {
+                referencedKeys.add(key)
               }
             } else {
               expectedValueKind = optionName === "-H" || optionName === "--header" ? "header" : "safe"
@@ -611,19 +714,36 @@ export const SecretProxyPlugin: Plugin = async ({ client }) => {
           continue
         }
 
-        const rewritten = rewriteRawToken(segmentToken)
-        if (rewritten.rewritten !== segmentToken) {
-          rawTokens[j] = rewritten.rewritten
+        const rewritten = rewriteRawToken(segmentToken.raw)
+        if (rewritten.rewritten !== segmentToken.raw) {
+          replacements.push({
+            start: segmentToken.start,
+            end: segmentToken.end,
+            text: rewritten.rewritten,
+          })
           mutated = true
-          for (const key of rewritten.referencedKeys) {
-            referencedKeys.add(key)
-          }
+        }
+        for (const key of rewritten.referencedKeys) {
+          referencedKeys.add(key)
         }
       }
     }
 
+    let rewrittenText = text
+    if (mutated) {
+      const output: string[] = []
+      let cursor = 0
+      for (const replacement of replacements.sort((left, right) => left.start - right.start)) {
+        output.push(text.slice(cursor, replacement.start))
+        output.push(replacement.text)
+        cursor = replacement.end
+      }
+      output.push(text.slice(cursor))
+      rewrittenText = output.join("")
+    }
+
     return {
-      rewritten: mutated ? rawTokens.join(" ") : text,
+      rewritten: rewrittenText,
       referencedKeys: Array.from(referencedKeys).sort(),
     }
   }

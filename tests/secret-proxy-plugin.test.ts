@@ -266,6 +266,65 @@ function main(): void {
     assert.equal((singleQuotedUrl.output as ToolCase["output"]).args.command, "curl \"https://api.example.com/${__TEAMCOPILOT_RUNTIME_SECRET_OPENAI_API_KEY}?mode=full&debug=1\""); assertions += 1;
     assertFetchKeys(singleQuotedUrl, ["OPENAI_API_KEY"], "converts single-quoted curl URL tokens to double quotes for env expansion"); assertions += 1;
 
+    const multilineCurlHeader = runHookCase({
+        kind: "tool",
+        input: {
+            tool: "bash",
+            sessionID: "child-session",
+            callID: "6b-1",
+            args: {
+                command: "curl -sS \\\n  -H 'Authorization: Bearer {{SECRET:API_TOKEN}}' \\\n  \"https://example.com\"",
+            },
+        },
+        output: {
+            args: {
+                command: "curl -sS \\\n  -H 'Authorization: Bearer {{SECRET:API_TOKEN}}' \\\n  \"https://example.com\"",
+            },
+        },
+    });
+    assert.equal(
+        (multilineCurlHeader.output as ToolCase["output"]).args.command,
+        "curl -sS \\\n  -H \"Authorization: Bearer ${__TEAMCOPILOT_RUNTIME_SECRET_API_TOKEN}\" \\\n  \"https://example.com\"",
+    ); assertions += 1;
+    assertFetchKeys(multilineCurlHeader, ["API_TOKEN"], "preserves multiline curl header formatting and line continuations"); assertions += 1;
+
+    const multilineCurlData = runHookCase({
+        kind: "tool",
+        input: {
+            tool: "bash",
+            sessionID: "child-session",
+            callID: "6b-2",
+            args: {
+                command: "curl \\\n    -d '{\"token\":\"{{SECRET:OPENAI_API_KEY}}\"}' \\\n    https://example.com",
+            },
+        },
+        output: {
+            args: {
+                command: "curl \\\n    -d '{\"token\":\"{{SECRET:OPENAI_API_KEY}}\"}' \\\n    https://example.com",
+            },
+        },
+    });
+    assert.equal(
+        (multilineCurlData.output as ToolCase["output"]).args.command,
+        "curl \\\n    -d \"{\\\"token\\\":\\\"${__TEAMCOPILOT_RUNTIME_SECRET_OPENAI_API_KEY}\\\"}\" \\\n    https://example.com",
+    ); assertions += 1;
+    assertFetchKeys(multilineCurlData, ["OPENAI_API_KEY"], "preserves multiline curl data formatting and indentation"); assertions += 1;
+
+    const commandHookMultilineCurl = runHookCase({
+        kind: "command",
+        input: {
+            command: "curl",
+            arguments: "-sS \\\n  -H 'Authorization: Bearer {{SECRET:API_TOKEN}}' \\\n  https://example.com",
+            sessionID: "child-session",
+        },
+        output: { parts: [] },
+    });
+    assert.equal(
+        (commandHookMultilineCurl.input as CommandCase["input"]).arguments,
+        "-sS \\\n  -H \"Authorization: Bearer ${__TEAMCOPILOT_RUNTIME_SECRET_API_TOKEN}\" \\\n  https://example.com",
+    ); assertions += 1;
+    assertFetchKeys(commandHookMultilineCurl, ["API_TOKEN"], "preserves multiline curl formatting in command hook arguments"); assertions += 1;
+
     const multiPlaceholderAllowedHeader = runHookCase({
         kind: "tool",
         input: { tool: "bash", sessionID: "child-session", callID: "6c", args: { command: "curl -H 'X-Api-Key: a={{SECRET:OPENAI_API_KEY}};b={{SECRET:GITHUB_TOKEN}}' https://example.com" } },
