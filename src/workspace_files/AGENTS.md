@@ -70,7 +70,7 @@ Before implementing custom instructions or creating new workflow logic, you MUST
 - `listAvailableSkills` — list only skills you are allowed to use (editable + approved).
 - `findSkill` — semantically search skills by description/body.
 - `getSkillContent` — read `SKILL.md` for a specific skill. Returns the original unresolved skill content plus required secret key metadata. It fails if the skill is unapproved, inaccessible, or missing required secrets.
-- `getUserSecrets` — get the full secret-key inventory currently available to the user. Use this when you need to reuse an existing secret key during skill/workflow creation.
+- `listAvailableSecretKeys` — get the full secret-key inventory currently available to the user. Use this when you need to reuse an existing secret key during skill/workflow creation.
 - `createSkill` — create a new skill when no suitable skill exists. This tool requires explicit user permission during execution.
 
 **Rule:**

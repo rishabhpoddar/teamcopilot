@@ -38,7 +38,7 @@ async function readErrorMessageFromResponse(
   }
 }
 
-export const GetUserSecretsPlugin: Plugin = async ({ client }) => {
+export const ListAvailableSecretKeysPlugin: Plugin = async ({ client }) => {
   async function resolveRootSessionID(sessionID: string): Promise<string> {
     let currentSessionID = sessionID
 
@@ -63,7 +63,7 @@ export const GetUserSecretsPlugin: Plugin = async ({ client }) => {
 
   return {
     tool: {
-      getUserSecrets: tool({
+      listAvailableSecretKeys: tool({
         description:
           "Get all secret keys available to the current user. Returns the merged key inventory after applying TeamCopilot's precedence rules: user secret first, then global secret. This tool does not return plaintext secret values.",
         args: {},
@@ -104,4 +104,4 @@ export const GetUserSecretsPlugin: Plugin = async ({ client }) => {
   }
 }
 
-export default GetUserSecretsPlugin
+export default ListAvailableSecretKeysPlugin
