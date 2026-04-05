@@ -33,7 +33,7 @@ import {
     restoreSkillToApprovedSnapshot,
 } from "../utils/skill-approval-snapshot";
 import { getResourceAccessSummary } from "../utils/resource-access";
-import { resolveSecretsForUser } from "../utils/secrets";
+import { listResolvedSecretsForUser, resolveSecretsForUser, resolveSecretsFromResolvedMap } from "../utils/secrets";
 import { validateSkillSecretContract } from "../utils/secret-contract-validation";
 
 const router = express.Router({ mergeParams: true });
@@ -108,6 +108,7 @@ router.get("/", apiHandler(async (req, res) => {
     const slugs = listSkillSlugs();
     const skills: SkillSummary[] = [];
     const creatorIds = new Set<string>();
+    const resolvedSecrets = await listResolvedSecretsForUser(req.userId!);
 
     const metadataBySlug = new Map<string, Awaited<ReturnType<typeof getOrCreateSkillMetadataAndEnsurePermission>>>();
     for (const slug of slugs) {
@@ -156,7 +157,7 @@ router.get("/", apiHandler(async (req, res) => {
             permission_mode: accessSummary.permission_mode,
             is_locked_due_to_missing_users: accessSummary.is_locked_due_to_missing_users,
             required_secrets: manifest.required_secrets,
-            missing_required_secrets: (await resolveSecretsForUser(req.userId!, manifest.required_secrets)).missingKeys,
+            missing_required_secrets: resolveSecretsFromResolvedMap(resolvedSecrets, manifest.required_secrets).missingKeys,
         });
     }
 

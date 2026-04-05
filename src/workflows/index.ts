@@ -45,7 +45,7 @@ import { isWorkflowSessionInterrupted, markWorkflowSessionAborted } from "../uti
 import { abortOpencodeSession } from "../utils/session-abort";
 import { registerResourceFileRoutes } from "../utils/resource-file-routes";
 import { getResourceAccessSummary } from "../utils/resource-access";
-import { resolveSecretsForUser } from "../utils/secrets";
+import { listResolvedSecretsForUser, resolveSecretsForUser, resolveSecretsFromResolvedMap } from "../utils/secrets";
 import { validateWorkflowFilesAtPath } from "../utils/secret-contract-validation";
 
 const router = express.Router({ mergeParams: true });
@@ -149,6 +149,7 @@ router.get('/', apiHandler(async (req, res) => {
     const creatorIds = new Set<string>();
     const manifests = new Map<string, WorkflowManifest>();
     const metadataBySlug = new Map<string, WorkflowMetadata>();
+    const resolvedSecrets = await listResolvedSecretsForUser(req.userId!);
 
     for (const slug of slugs) {
         const { manifest, metadata } = await readWorkflowManifestAndEnsurePermissions(slug);
@@ -192,7 +193,7 @@ router.get('/', apiHandler(async (req, res) => {
             permission_mode: accessSummary.permission_mode,
             is_locked_due_to_missing_users: accessSummary.is_locked_due_to_missing_users,
             required_secrets: manifest.required_secrets ?? [],
-            missing_required_secrets: (await resolveSecretsForUser(req.userId!, manifest.required_secrets ?? [])).missingKeys,
+            missing_required_secrets: resolveSecretsFromResolvedMap(resolvedSecrets, manifest.required_secrets ?? []).missingKeys,
         });
     }
 

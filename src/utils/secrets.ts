@@ -98,6 +98,21 @@ export async function resolveSecretsForUser(userId: string, requiredKeys: string
     }
 
     const resolvedSecrets = await listResolvedSecretsForUser(userId);
+    return resolveSecretsFromResolvedMap(resolvedSecrets, keys);
+}
+
+export function resolveSecretsFromResolvedMap(
+    resolvedSecrets: Record<string, string>,
+    requiredKeys: string[],
+): SecretResolutionResult {
+    const keys = normalizeSecretKeyList(requiredKeys);
+    if (keys.length === 0) {
+        return {
+            secretMap: {},
+            missingKeys: [],
+        };
+    }
+
     const secretMap: Record<string, string> = {};
     const missingKeys: string[] = [];
 
