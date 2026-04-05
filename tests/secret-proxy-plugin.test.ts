@@ -101,11 +101,11 @@ const hooks = await mod.SecretProxyPlugin({
   client: {
     session: {
       get: async ({ path }) => {
-        if (path.id === "child-session") {
-          return { data: { id: "child-session", parentID: "root-session" } };
-        }
         if (path.id === "grandchild-session") {
           return { data: { id: "grandchild-session", parentID: "child-session" } };
+        }
+        if (path.id === "child-session") {
+          return { data: { id: "child-session", parentID: "root-session" } };
         }
         return { data: { id: path.id, parentID: null } };
       },
@@ -160,7 +160,11 @@ try {
     return JSON.parse(jsonLine) as HookResult;
 }
 
-function assertFetchCalls(result: HookResult, expectedTexts: string[], label: string): void {
+function assertNoFetch(result: HookResult, label: string): void {
+    assert.deepEqual(result.fetchCalls, [], label);
+}
+
+function assertFetchTexts(result: HookResult, expectedTexts: string[], label: string): void {
     assert.deepEqual(
         result.fetchCalls,
         expectedTexts.map((text) => ({ authorization: "Bearer root-session", text })),
@@ -168,454 +172,395 @@ function assertFetchCalls(result: HookResult, expectedTexts: string[], label: st
     );
 }
 
-function assertNoFetch(result: HookResult, label: string): void {
-    assert.deepEqual(result.fetchCalls, [], label);
-}
-
-function assertNoError(result: HookResult, label: string): void {
-    assert.equal(result.error, undefined, label);
-}
-
-function assertError(result: HookResult, expectedMessage: string, label: string): void {
-    assert.equal(result.error, expectedMessage, label);
-}
-
 function main(): void {
     let assertions = 0;
 
-    const toolCommand = runHookCase({
+    const curlCommand = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "1", args: { command: "curl https://api.example.com/{{SECRET:OPENAI_API_KEY}}" } },
+        output: { args: { command: "curl https://api.example.com/{{SECRET:OPENAI_API_KEY}}" } },
+    });
+    assert.equal((curlCommand.output as ToolCase["output"]).args.command, "curl https://api.example.com/resolved-openai_api_key"); assertions += 1;
+    assert.equal((curlCommand.input as ToolCase["input"]).args?.command, "curl https://api.example.com/resolved-openai_api_key"); assertions += 1;
+    assertFetchTexts(curlCommand, ["https://api.example.com/{{SECRET:OPENAI_API_KEY}}"], "substitutes bare curl URL tokens"); assertions += 1;
+
+    const curlCmdField = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "2", args: { cmd: "curl -H 'Authorization: Bearer {{SECRET:API_TOKEN}}' https://example.com" } },
+        output: { args: { cmd: "curl -H 'Authorization: Bearer {{SECRET:API_TOKEN}}' https://example.com" } },
+    });
+    assert.equal((curlCmdField.output as ToolCase["output"]).args.cmd, "curl -H 'Authorization: Bearer resolved-api_token' https://example.com"); assertions += 1;
+    assertFetchTexts(curlCmdField, ["Authorization: Bearer {{SECRET:API_TOKEN}}"], "substitutes curl header values"); assertions += 1;
+
+    const inlineHeader = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "3", args: { command: "curl --header=Authorization:Bearer-{{SECRET:API_TOKEN}} https://example.com" } },
+        output: { args: { command: "curl --header=Authorization:Bearer-{{SECRET:API_TOKEN}} https://example.com" } },
+    });
+    assert.equal((inlineHeader.output as ToolCase["output"]).args.command, "curl --header=Authorization:Bearer-resolved-api_token https://example.com"); assertions += 1;
+    assertFetchTexts(inlineHeader, ["Authorization:Bearer-{{SECRET:API_TOKEN}}"], "substitutes inline curl --header values"); assertions += 1;
+
+    const dataOption = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "4", args: { command: "curl -d '{\"token\":\"{{SECRET:OPENAI_API_KEY}}\"}' https://example.com" } },
+        output: { args: { command: "curl -d '{\"token\":\"{{SECRET:OPENAI_API_KEY}}\"}' https://example.com" } },
+    });
+    assert.equal((dataOption.output as ToolCase["output"]).args.command, "curl -d '{\"token\":\"resolved-openai_api_key\"}' https://example.com"); assertions += 1;
+    assertFetchTexts(dataOption, ['{"token":"{{SECRET:OPENAI_API_KEY}}"}'], "substitutes curl -d payload values"); assertions += 1;
+
+    const caseInsensitiveHeader = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "4a", args: { command: "curl -H 'aUtHoRiZaTiOn: Bearer {{SECRET:OPENAI_API_KEY}}' https://example.com" } },
+        output: { args: { command: "curl -H 'aUtHoRiZaTiOn: Bearer {{SECRET:OPENAI_API_KEY}}' https://example.com" } },
+    });
+    assert.equal((caseInsensitiveHeader.output as ToolCase["output"]).args.command, "curl -H 'aUtHoRiZaTiOn: Bearer resolved-openai_api_key' https://example.com"); assertions += 1;
+    assertFetchTexts(caseInsensitiveHeader, ["aUtHoRiZaTiOn: Bearer {{SECRET:OPENAI_API_KEY}}"], "matches allowed header names case-insensitively"); assertions += 1;
+
+    const allowedCookieHeader = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "4b", args: { command: "curl -H 'Cookie: session={{SECRET:API_TOKEN}}' https://example.com" } },
+        output: { args: { command: "curl -H 'Cookie: session={{SECRET:API_TOKEN}}' https://example.com" } },
+    });
+    assert.equal((allowedCookieHeader.output as ToolCase["output"]).args.command, "curl -H 'Cookie: session=resolved-api_token' https://example.com"); assertions += 1;
+    assertFetchTexts(allowedCookieHeader, ["Cookie: session={{SECRET:API_TOKEN}}"], "allows cookie header substitution"); assertions += 1;
+
+    const allowedPrivateTokenHeader = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "4c", args: { command: "curl -H 'PRIVATE-TOKEN: {{SECRET:GITHUB_TOKEN}}' https://example.com" } },
+        output: { args: { command: "curl -H 'PRIVATE-TOKEN: {{SECRET:GITHUB_TOKEN}}' https://example.com" } },
+    });
+    assert.equal((allowedPrivateTokenHeader.output as ToolCase["output"]).args.command, "curl -H 'PRIVATE-TOKEN: resolved-github_token' https://example.com"); assertions += 1;
+    assertFetchTexts(allowedPrivateTokenHeader, ["PRIVATE-TOKEN: {{SECRET:GITHUB_TOKEN}}"], "allows additional auth-like headers case-insensitively"); assertions += 1;
+
+    const allowedHasuraHeader = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "4d", args: { command: "curl -H 'X-Hasura-Admin-Secret: {{SECRET:SLACK_TOKEN}}' https://example.com" } },
+        output: { args: { command: "curl -H 'X-Hasura-Admin-Secret: {{SECRET:SLACK_TOKEN}}' https://example.com" } },
+    });
+    assert.equal((allowedHasuraHeader.output as ToolCase["output"]).args.command, "curl -H 'X-Hasura-Admin-Secret: resolved-slack_token' https://example.com"); assertions += 1;
+    assertFetchTexts(allowedHasuraHeader, ["X-Hasura-Admin-Secret: {{SECRET:SLACK_TOKEN}}"], "allows hasura admin secret headers"); assertions += 1;
+
+    const disallowedHeader = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "4e", args: { command: "curl -H 'X-Custom-Debug: {{SECRET:OPENAI_API_KEY}}' https://example.com" } },
+        output: { args: { command: "curl -H 'X-Custom-Debug: {{SECRET:OPENAI_API_KEY}}' https://example.com" } },
+    });
+    assert.equal((disallowedHeader.output as ToolCase["output"]).args.command, "curl -H 'X-Custom-Debug: {{SECRET:OPENAI_API_KEY}}' https://example.com"); assertions += 1;
+    assertNoFetch(disallowedHeader, "does not substitute disallowed custom headers"); assertions += 1;
+
+    const disallowedInlineHeader = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "4f", args: { command: "curl --header=X-Custom-Debug:{{SECRET:OPENAI_API_KEY}} https://example.com" } },
+        output: { args: { command: "curl --header=X-Custom-Debug:{{SECRET:OPENAI_API_KEY}} https://example.com" } },
+    });
+    assert.equal((disallowedInlineHeader.output as ToolCase["output"]).args.command, "curl --header=X-Custom-Debug:{{SECRET:OPENAI_API_KEY}} https://example.com"); assertions += 1;
+    assertNoFetch(disallowedInlineHeader, "does not substitute disallowed inline custom headers"); assertions += 1;
+
+    const userOption = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "5", args: { command: "curl -u user:{{SECRET:GITHUB_TOKEN}} https://example.com" } },
+        output: { args: { command: "curl -u user:{{SECRET:GITHUB_TOKEN}} https://example.com" } },
+    });
+    assert.equal((userOption.output as ToolCase["output"]).args.command, "curl -u user:resolved-github_token https://example.com"); assertions += 1;
+    assertFetchTexts(userOption, ["user:{{SECRET:GITHUB_TOKEN}}"], "substitutes curl -u values"); assertions += 1;
+
+    const formOption = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "6", args: { command: "curl -F 'token={{SECRET:SLACK_TOKEN}}' https://example.com" } },
+        output: { args: { command: "curl -F 'token={{SECRET:SLACK_TOKEN}}' https://example.com" } },
+    });
+    assert.equal((formOption.output as ToolCase["output"]).args.command, "curl -F 'token=resolved-slack_token' https://example.com"); assertions += 1;
+    assertFetchTexts(formOption, ["token={{SECRET:SLACK_TOKEN}}"], "substitutes curl -F values"); assertions += 1;
+
+    const unsafeOutputOption = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "7", args: { command: "curl --output {{SECRET:OPENAI_API_KEY}} https://example.com" } },
+        output: { args: { command: "curl --output {{SECRET:OPENAI_API_KEY}} https://example.com" } },
+    });
+    assert.equal((unsafeOutputOption.output as ToolCase["output"]).args.command, "curl --output {{SECRET:OPENAI_API_KEY}} https://example.com"); assertions += 1;
+    assertNoFetch(unsafeOutputOption, "does not substitute unsafe curl output targets"); assertions += 1;
+
+    const unsafeConfigOption = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "8", args: { command: "curl --config {{SECRET:OPENAI_API_KEY}}" } },
+        output: { args: { command: "curl --config {{SECRET:OPENAI_API_KEY}}" } },
+    });
+    assert.equal((unsafeConfigOption.output as ToolCase["output"]).args.command, "curl --config {{SECRET:OPENAI_API_KEY}}"); assertions += 1;
+    assertNoFetch(unsafeConfigOption, "does not substitute unsafe curl config targets"); assertions += 1;
+
+    const mixedSafeUnsafe = runHookCase({
         kind: "tool",
         input: {
             tool: "bash",
             sessionID: "child-session",
-            callID: "c1",
-            args: { command: "echo {{SECRET:OPENAI_API_KEY}}" },
+            callID: "9",
+            args: { command: "curl -H 'Authorization: Bearer {{SECRET:OPENAI_API_KEY}}' --output {{SECRET:GITHUB_TOKEN}} https://example.com" },
         },
         output: {
-            args: { command: "echo {{SECRET:OPENAI_API_KEY}}" },
+            args: { command: "curl -H 'Authorization: Bearer {{SECRET:OPENAI_API_KEY}}' --output {{SECRET:GITHUB_TOKEN}} https://example.com" },
         },
     });
-    assertNoError(toolCommand, "tool command rewrite should succeed"); assertions += 1;
-    assert.equal((toolCommand.output as ToolCase["output"]).args.command, "echo resolved-openai_api_key", "rewrites output.args.command"); assertions += 1;
-    assert.equal((toolCommand.input as ToolCase["input"]).args?.command, "echo resolved-openai_api_key", "rewrites input.args.command"); assertions += 1;
-    assertFetchCalls(toolCommand, ["echo {{SECRET:OPENAI_API_KEY}}"], "deduplicates identical command strings across input/output"); assertions += 1;
+    assert.equal((mixedSafeUnsafe.output as ToolCase["output"]).args.command, "curl -H 'Authorization: Bearer resolved-openai_api_key' --output {{SECRET:GITHUB_TOKEN}} https://example.com"); assertions += 1;
+    assertFetchTexts(mixedSafeUnsafe, ["Authorization: Bearer {{SECRET:OPENAI_API_KEY}}"], "substitutes only safe curl tokens in mixed commands"); assertions += 1;
 
-    const toolCmd = runHookCase({
+    const echoCommand = runHookCase({
         kind: "tool",
-        input: { tool: "bash", sessionID: "child-session", callID: "c2", args: { cmd: "printf {{SECRET:API_TOKEN}}" } },
-        output: { args: { cmd: "printf {{SECRET:API_TOKEN}}" } },
+        input: { tool: "bash", sessionID: "child-session", callID: "10", args: { command: "echo {{SECRET:OPENAI_API_KEY}}" } },
+        output: { args: { command: "echo {{SECRET:OPENAI_API_KEY}}" } },
     });
-    assertNoError(toolCmd, "tool cmd rewrite should succeed"); assertions += 1;
-    assert.equal((toolCmd.output as ToolCase["output"]).args.cmd, "printf resolved-api_token", "rewrites output.args.cmd"); assertions += 1;
+    assert.equal((echoCommand.output as ToolCase["output"]).args.command, "echo {{SECRET:OPENAI_API_KEY}}"); assertions += 1;
+    assertNoFetch(echoCommand, "does not substitute placeholders in non-curl commands"); assertions += 1;
 
-    const nestedObject = runHookCase({
+    const nestedPlainString = runHookCase({
         kind: "tool",
-        input: { tool: "bash", sessionID: "child-session", callID: "c3", args: { command: "echo ok" } },
-        output: {
-            args: {
-                metadata: {
-                    nested: "Bearer {{SECRET:OPENAI_API_KEY}}",
-                    untouched: "hello",
-                },
-            },
-        },
+        input: { tool: "bash", sessionID: "child-session", callID: "11", args: { command: "echo ok" } },
+        output: { args: { metadata: { nested: "Bearer {{SECRET:OPENAI_API_KEY}}" } } },
     });
-    assertNoError(nestedObject, "nested object rewrite should succeed"); assertions += 1;
-    assert.equal(((nestedObject.output as ToolCase["output"]).args.metadata as { nested: string }).nested, "Bearer resolved-openai_api_key", "rewrites nested object field"); assertions += 1;
-    assert.equal(((nestedObject.output as ToolCase["output"]).args.metadata as { untouched: string }).untouched, "hello", "preserves untouched nested object field"); assertions += 1;
+    assert.equal(((nestedPlainString.output as ToolCase["output"]).args.metadata as { nested: string }).nested, "Bearer {{SECRET:OPENAI_API_KEY}}"); assertions += 1;
+    assertNoFetch(nestedPlainString, "does not substitute non-command nested strings"); assertions += 1;
 
-    const nestedArray = runHookCase({
+    const nestedCurlString = runHookCase({
         kind: "tool",
-        input: { tool: "bash", sessionID: "child-session", callID: "c4", args: { command: "echo ok" } },
-        output: {
-            args: {
-                parts: [
-                    "pre",
-                    "token={{SECRET:GITHUB_TOKEN}}",
-                    { deep: "Bearer {{SECRET:SLACK_TOKEN}}" },
-                    ["{{SECRET:OPENAI_API_KEY}}", "literal"],
-                ],
-            },
-        },
+        input: { tool: "bash", sessionID: "child-session", callID: "12", args: { command: "echo ok" } },
+        output: { args: { metadata: { nested: "curl -H 'X-Api-Key: {{SECRET:OPENAI_API_KEY}}' https://example.com" } } },
     });
-    assertNoError(nestedArray, "nested array rewrite should succeed"); assertions += 1;
-    const nestedArrayParts = (nestedArray.output as ToolCase["output"]).args.parts as unknown[];
-    assert.equal(nestedArrayParts[0], "pre", "preserves leading plain array string"); assertions += 1;
-    assert.equal(nestedArrayParts[1], "token=resolved-github_token", "rewrites direct array string"); assertions += 1;
-    assert.equal((nestedArrayParts[2] as { deep: string }).deep, "Bearer resolved-slack_token", "rewrites object inside array"); assertions += 1;
-    assert.equal((nestedArrayParts[3] as string[])[0], "resolved-openai_api_key", "rewrites nested array string"); assertions += 1;
-    assert.equal((nestedArrayParts[3] as string[])[1], "literal", "preserves nested array plain string"); assertions += 1;
+    assert.equal(((nestedCurlString.output as ToolCase["output"]).args.metadata as { nested: string }).nested, "curl -H 'X-Api-Key: resolved-openai_api_key' https://example.com"); assertions += 1;
+    assertFetchTexts(nestedCurlString, ["X-Api-Key: {{SECRET:OPENAI_API_KEY}}"], "substitutes nested strings only when they are curl commands"); assertions += 1;
 
-    const duplicateNestedStrings = runHookCase({
+    const arrayCurlString = runHookCase({
         kind: "tool",
-        input: { tool: "bash", sessionID: "child-session", callID: "c5", args: { command: "echo ok" } },
-        output: {
-            args: {
-                one: "{{SECRET:OPENAI_API_KEY}}",
-                two: "{{SECRET:OPENAI_API_KEY}}",
-                arr: ["{{SECRET:OPENAI_API_KEY}}", "{{SECRET:OPENAI_API_KEY}}"],
-            },
-        },
+        input: { tool: "bash", sessionID: "child-session", callID: "13", args: { command: "echo ok" } },
+        output: { args: { parts: ["curl https://example.com/{{SECRET:OPENAI_API_KEY}}", "echo {{SECRET:GITHUB_TOKEN}}"] } },
     });
-    assertNoError(duplicateNestedStrings, "duplicate nested strings should succeed"); assertions += 1;
-    assertFetchCalls(duplicateNestedStrings, ["{{SECRET:OPENAI_API_KEY}}"], "deduplicates repeated identical string values within one hook call"); assertions += 1;
+    assert.deepEqual((arrayCurlString.output as ToolCase["output"]).args.parts, ["curl https://example.com/resolved-openai_api_key", "echo {{SECRET:GITHUB_TOKEN}}"]); assertions += 1;
+    assertFetchTexts(arrayCurlString, ["https://example.com/{{SECRET:OPENAI_API_KEY}}"], "substitutes only curl strings inside arrays"); assertions += 1;
 
-    const multipleDistinctStrings = runHookCase({
+    const duplicateHeaderSameString = runHookCase({
         kind: "tool",
-        input: { tool: "bash", sessionID: "child-session", callID: "c6", args: { command: "echo ok" } },
-        output: {
-            args: {
-                a: "echo {{SECRET:OPENAI_API_KEY}}",
-                b: "curl {{SECRET:GITHUB_TOKEN}}",
-                c: "Authorization: {{SECRET:SLACK_TOKEN}}",
-            },
-        },
+        input: { tool: "bash", sessionID: "child-session", callID: "14", args: { command: "echo ok" } },
+        output: { args: { one: "curl -H 'X-Api-Key: {{SECRET:OPENAI_API_KEY}}' https://example.com", two: "curl -H 'X-Api-Key: {{SECRET:OPENAI_API_KEY}}' https://example.com" } },
     });
-    assertNoError(multipleDistinctStrings, "multiple distinct strings should succeed"); assertions += 1;
-    assertFetchCalls(
-        multipleDistinctStrings,
-        ["echo {{SECRET:OPENAI_API_KEY}}", "curl {{SECRET:GITHUB_TOKEN}}", "Authorization: {{SECRET:SLACK_TOKEN}}"],
-        "resolves each distinct placeholder-containing string once",
-    ); assertions += 1;
+    assertFetchTexts(duplicateHeaderSameString, ["X-Api-Key: {{SECRET:OPENAI_API_KEY}}"], "deduplicates identical supported strings"); assertions += 1;
+
+    const differentHeaderStrings = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "15", args: { command: "echo ok" } },
+        output: { args: { one: "curl -H 'Authorization: Bearer {{SECRET:OPENAI_API_KEY}}' https://example.com", two: "curl -H 'X-Api-Key: {{SECRET:OPENAI_API_KEY}}' https://example.com" } },
+    });
+    assertFetchTexts(differentHeaderStrings, ["Authorization: Bearer {{SECRET:OPENAI_API_KEY}}", "X-Api-Key: {{SECRET:OPENAI_API_KEY}}"], "resolves distinct supported strings separately"); assertions += 1;
+
+    const multipleHeadersSingleCurl = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "16", args: { command: "curl -H 'Authorization: Bearer {{SECRET:OPENAI_API_KEY}}' -H 'X-Api-Key: {{SECRET:GITHUB_TOKEN}}' https://example.com" } },
+        output: { args: { command: "curl -H 'Authorization: Bearer {{SECRET:OPENAI_API_KEY}}' -H 'X-Api-Key: {{SECRET:GITHUB_TOKEN}}' https://example.com" } },
+    });
+    assert.equal((multipleHeadersSingleCurl.output as ToolCase["output"]).args.command, "curl -H 'Authorization: Bearer resolved-openai_api_key' -H 'X-Api-Key: resolved-github_token' https://example.com"); assertions += 1;
+    assertFetchTexts(multipleHeadersSingleCurl, ["Authorization: Bearer {{SECRET:OPENAI_API_KEY}}", "X-Api-Key: {{SECRET:GITHUB_TOKEN}}"], "substitutes multiple safe curl tokens in one command"); assertions += 1;
+
+    const chainedCommand = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "17", args: { command: "echo start && curl -H 'X-Api-Key: {{SECRET:OPENAI_API_KEY}}' https://example.com && echo done" } },
+        output: { args: { command: "echo start && curl -H 'X-Api-Key: {{SECRET:OPENAI_API_KEY}}' https://example.com && echo done" } },
+    });
+    assert.equal((chainedCommand.output as ToolCase["output"]).args.command, "echo start && curl -H 'X-Api-Key: resolved-openai_api_key' https://example.com && echo done"); assertions += 1;
+    assertFetchTexts(chainedCommand, ["X-Api-Key: {{SECRET:OPENAI_API_KEY}}"], "substitutes curl segments inside chained shell commands"); assertions += 1;
+
+    const pipedCommand = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "18", args: { command: "printf hi | curl -H 'X-Api-Key: {{SECRET:OPENAI_API_KEY}}' https://example.com" } },
+        output: { args: { command: "printf hi | curl -H 'X-Api-Key: {{SECRET:OPENAI_API_KEY}}' https://example.com" } },
+    });
+    assert.equal((pipedCommand.output as ToolCase["output"]).args.command, "printf hi | curl -H 'X-Api-Key: resolved-openai_api_key' https://example.com"); assertions += 1;
+    assertFetchTexts(pipedCommand, ["X-Api-Key: {{SECRET:OPENAI_API_KEY}}"], "substitutes curl segments after a pipe"); assertions += 1;
+
+    const dashDashUrl = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "19", args: { command: "curl -- {{SECRET:OPENAI_API_KEY}}" } },
+        output: { args: { command: "curl -- {{SECRET:OPENAI_API_KEY}}" } },
+    });
+    assert.equal((dashDashUrl.output as ToolCase["output"]).args.command, "curl -- resolved-openai_api_key"); assertions += 1;
+    assertFetchTexts(dashDashUrl, ["{{SECRET:OPENAI_API_KEY}}"], "substitutes bare curl arguments after --"); assertions += 1;
+
+    const pathToCurl = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "grandchild-session", callID: "20", args: { command: "/usr/bin/curl -H 'X-Api-Key: {{SECRET:OPENAI_API_KEY}}' https://example.com" } },
+        output: { args: { command: "/usr/bin/curl -H 'X-Api-Key: {{SECRET:OPENAI_API_KEY}}' https://example.com" } },
+    });
+    assert.equal((pathToCurl.output as ToolCase["output"]).args.command, "/usr/bin/curl -H 'X-Api-Key: resolved-openai_api_key' https://example.com"); assertions += 1;
+    assert.deepEqual(pathToCurl.fetchCalls, [{ authorization: "Bearer root-session", text: "X-Api-Key: {{SECRET:OPENAI_API_KEY}}" }], "resolves root session through multiple parents"); assertions += 1;
 
     const nonBashTool = runHookCase({
         kind: "tool",
-        input: { tool: "task", sessionID: "child-session", callID: "c7", args: { command: "echo {{SECRET:OPENAI_API_KEY}}" } },
-        output: { args: { command: "echo {{SECRET:OPENAI_API_KEY}}" } },
+        input: { tool: "task", sessionID: "child-session", callID: "21", args: { command: "curl -H 'X-Api-Key: {{SECRET:OPENAI_API_KEY}}' https://example.com" } },
+        output: { args: { command: "curl -H 'X-Api-Key: {{SECRET:OPENAI_API_KEY}}' https://example.com" } },
     });
-    assertNoError(nonBashTool, "non-bash tools should not error"); assertions += 1;
-    assert.equal((nonBashTool.output as ToolCase["output"]).args.command, "echo {{SECRET:OPENAI_API_KEY}}", "does not rewrite non-bash tool output"); assertions += 1;
-    assertNoFetch(nonBashTool, "does not call resolver for non-bash tools"); assertions += 1;
+    assert.equal((nonBashTool.output as ToolCase["output"]).args.command, "curl -H 'X-Api-Key: {{SECRET:OPENAI_API_KEY}}' https://example.com"); assertions += 1;
+    assertNoFetch(nonBashTool, "does not run on non-bash tools"); assertions += 1;
 
-    const missingSessionTool = runHookCase({
+    const missingSession = runHookCase({
         kind: "tool",
-        input: { tool: "bash", sessionID: "", callID: "c8", args: { command: "echo {{SECRET:OPENAI_API_KEY}}" } },
-        output: { args: { command: "echo {{SECRET:OPENAI_API_KEY}}" } },
+        input: { tool: "bash", sessionID: "", callID: "22", args: { command: "curl -H 'X-Api-Key: {{SECRET:OPENAI_API_KEY}}' https://example.com" } },
+        output: { args: { command: "curl -H 'X-Api-Key: {{SECRET:OPENAI_API_KEY}}' https://example.com" } },
     });
-    assertNoError(missingSessionTool, "missing session tool should not error"); assertions += 1;
-    assert.equal((missingSessionTool.output as ToolCase["output"]).args.command, "echo {{SECRET:OPENAI_API_KEY}}", "does not rewrite without session id"); assertions += 1;
-    assertNoFetch(missingSessionTool, "does not call resolver without session id for tool hook"); assertions += 1;
+    assert.equal((missingSession.output as ToolCase["output"]).args.command, "curl -H 'X-Api-Key: {{SECRET:OPENAI_API_KEY}}' https://example.com"); assertions += 1;
+    assertNoFetch(missingSession, "does nothing without a session id"); assertions += 1;
 
-    const missingSessionCommand = runHookCase({
+    const commandExecutableCurl = runHookCase({
         kind: "command",
-        input: { command: "echo {{SECRET:OPENAI_API_KEY}}", arguments: "", sessionID: "" },
+        input: { command: "curl", arguments: "-H 'Authorization: Bearer {{SECRET:OPENAI_API_KEY}}' https://example.com", sessionID: "child-session" },
         output: { parts: [] },
     });
-    assertNoError(missingSessionCommand, "missing session command should not error"); assertions += 1;
-    assert.equal((missingSessionCommand.input as CommandCase["input"]).command, "echo {{SECRET:OPENAI_API_KEY}}", "does not rewrite command.execute.before without session id"); assertions += 1;
-    assertNoFetch(missingSessionCommand, "does not call resolver without session id for command hook"); assertions += 1;
+    assert.equal((commandExecutableCurl.input as CommandCase["input"]).command, "curl"); assertions += 1;
+    assert.equal((commandExecutableCurl.input as CommandCase["input"]).arguments, "-H 'Authorization: Bearer resolved-openai_api_key' https://example.com"); assertions += 1;
+    assertFetchTexts(commandExecutableCurl, ["Authorization: Bearer {{SECRET:OPENAI_API_KEY}}"], "substitutes command.execute.before curl arguments"); assertions += 1;
 
-    const noArgsTool = runHookCase({
-        kind: "tool",
-        input: { tool: "bash", sessionID: "child-session", callID: "c9" },
-        output: { args: {} },
+    const commandExecutableCurlUnsafe = runHookCase({
+        kind: "command",
+        input: { command: "curl", arguments: "--output {{SECRET:OPENAI_API_KEY}} https://example.com", sessionID: "child-session" },
+        output: { parts: [] },
     });
-    assertNoError(noArgsTool, "empty tool args should not error"); assertions += 1;
-    assertNoFetch(noArgsTool, "does nothing when tool args contain no strings"); assertions += 1;
+    assert.equal((commandExecutableCurlUnsafe.input as CommandCase["input"]).arguments, "--output {{SECRET:OPENAI_API_KEY}} https://example.com"); assertions += 1;
+    assertNoFetch(commandExecutableCurlUnsafe, "does not substitute unsafe curl arguments in command hook"); assertions += 1;
 
-    const numericBooleanFields = runHookCase({
-        kind: "tool",
-        input: { tool: "bash", sessionID: "child-session", callID: "c10", args: { command: "echo ok", retries: 2, dryRun: true } as Record<string, unknown> },
-        output: { args: { command: "echo ok", retries: 3, dryRun: false, nested: { count: 1, flag: true } } },
+    const commandFullCurlString = runHookCase({
+        kind: "command",
+        input: { command: "curl -H 'X-Api-Key: {{SECRET:OPENAI_API_KEY}}' https://example.com", arguments: "", sessionID: "child-session" },
+        output: { parts: [] },
     });
-    assertNoError(numericBooleanFields, "non-string fields should not error"); assertions += 1;
-    assert.deepEqual((numericBooleanFields.output as ToolCase["output"]).args, { command: "echo ok", retries: 3, dryRun: false, nested: { count: 1, flag: true } }, "preserves non-string fields exactly"); assertions += 1;
-    assertNoFetch(numericBooleanFields, "does not call resolver for non-string-only payloads"); assertions += 1;
+    assert.equal((commandFullCurlString.input as CommandCase["input"]).command, "curl -H 'X-Api-Key: resolved-openai_api_key' https://example.com"); assertions += 1;
+    assert.equal((commandFullCurlString.input as CommandCase["input"]).arguments, "", "preserves empty arguments for full curl command strings"); assertions += 1;
 
-    const nullUndefinedLikeStructures = runHookCase({
-        kind: "tool",
-        input: { tool: "bash", sessionID: "child-session", callID: "c11", args: { command: "echo ok", maybe: null } as Record<string, unknown> },
-        output: { args: { command: "echo ok", maybe: null, list: [null, 123, false] } },
-    });
-    assertNoError(nullUndefinedLikeStructures, "null structures should not error"); assertions += 1;
-    assertNoFetch(nullUndefinedLikeStructures, "does not resolve null/primitive structures"); assertions += 1;
-
-    const lowerCaseKey = runHookCase({
-        kind: "tool",
-        input: { tool: "bash", sessionID: "child-session", callID: "c12", args: { command: "echo {{SECRET:openai_api_key}}" } },
-        output: { args: { command: "echo {{SECRET:openai_api_key}}" } },
-    });
-    assertNoError(lowerCaseKey, "lowercase placeholders should succeed"); assertions += 1;
-    assert.equal((lowerCaseKey.output as ToolCase["output"]).args.command, "echo resolved-openai_api_key", "rewrites lowercase placeholder keys"); assertions += 1;
-
-    const multiplePlaceholdersSingleString = runHookCase({
-        kind: "tool",
-        input: { tool: "bash", sessionID: "child-session", callID: "c13", args: { command: "curl -H 'A: {{SECRET:OPENAI_API_KEY}}' -H 'B: {{SECRET:GITHUB_TOKEN}}'" } },
-        output: { args: { command: "curl -H 'A: {{SECRET:OPENAI_API_KEY}}' -H 'B: {{SECRET:GITHUB_TOKEN}}'" } },
-    });
-    assertNoError(multiplePlaceholdersSingleString, "multiple placeholders in one string should succeed"); assertions += 1;
-    assert.equal(
-        (multiplePlaceholdersSingleString.output as ToolCase["output"]).args.command,
-        "curl -H 'A: resolved-openai_api_key' -H 'B: resolved-github_token'",
-        "rewrites multiple placeholders in a single string",
-    ); assertions += 1;
-
-    const missingSingleKey = runHookCase({
-        kind: "tool",
-        input: { tool: "bash", sessionID: "child-session", callID: "c14", args: { command: "echo {{SECRET:MISSING_KEY}}" } },
-        output: { args: { command: "echo {{SECRET:MISSING_KEY}}" } },
-    });
-    assertError(
-        missingSingleKey,
-        "This command references missing secrets: MISSING_KEY. Ask the user to add these keys in TeamCopilot Profile Secrets before retrying.",
-        "returns exact single missing key",
-    ); assertions += 1;
-
-    const missingMultipleKeys = runHookCase({
-        kind: "tool",
-        input: {
-            tool: "bash",
-            sessionID: "child-session",
-            callID: "c15",
-            args: { command: "echo {{SECRET:MISSING_KEY}} {{SECRET:MISSING_ANOTHER_KEY}}" },
-        },
-        output: {
-            args: { command: "echo {{SECRET:MISSING_KEY}} {{SECRET:MISSING_ANOTHER_KEY}}" },
-        },
-    });
-    assertError(
-        missingMultipleKeys,
-        "This command references missing secrets: MISSING_KEY, MISSING_ANOTHER_KEY. Ask the user to add these keys in TeamCopilot Profile Secrets before retrying.",
-        "returns exact multiple missing keys",
-    ); assertions += 1;
-
-    const apiFailure = runHookCase({
-        kind: "tool",
-        input: { tool: "bash", sessionID: "child-session", callID: "c16", args: { command: "echo {{SECRET:API_FAIL}}" } },
-        output: { args: { command: "echo {{SECRET:API_FAIL}}" } },
-    });
-    assertError(apiFailure, "Internal secret resolution failure", "surfaces upstream API failure text"); assertions += 1;
-
-    const commandHookCommandOnly = runHookCase({
+    const commandNonCurl = runHookCase({
         kind: "command",
         input: { command: "echo {{SECRET:OPENAI_API_KEY}}", arguments: "", sessionID: "child-session" },
         output: { parts: [] },
     });
-    assertNoError(commandHookCommandOnly, "command hook command-only should succeed"); assertions += 1;
-    assert.equal((commandHookCommandOnly.input as CommandCase["input"]).command, "echo resolved-openai_api_key", "rewrites command.execute.before command"); assertions += 1;
-    assert.equal((commandHookCommandOnly.input as CommandCase["input"]).arguments, "", "preserves empty command arguments"); assertions += 1;
+    assert.equal((commandNonCurl.input as CommandCase["input"]).command, "echo {{SECRET:OPENAI_API_KEY}}"); assertions += 1;
+    assertNoFetch(commandNonCurl, "does not substitute non-curl command hook text"); assertions += 1;
 
-    const commandHookArgumentsOnly = runHookCase({
+    const wgetCommand = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "26a", args: { command: "wget --header='Authorization: Bearer {{SECRET:OPENAI_API_KEY}}' https://example.com" } },
+        output: { args: { command: "wget --header='Authorization: Bearer {{SECRET:OPENAI_API_KEY}}' https://example.com" } },
+    });
+    assert.equal((wgetCommand.output as ToolCase["output"]).args.command, "wget --header='Authorization: Bearer {{SECRET:OPENAI_API_KEY}}' https://example.com"); assertions += 1;
+    assertNoFetch(wgetCommand, "does not substitute wget commands"); assertions += 1;
+
+    const pythonInlineCommand = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "26b", args: { command: "python -c \"print('{{SECRET:OPENAI_API_KEY}}')\"" } },
+        output: { args: { command: "python -c \"print('{{SECRET:OPENAI_API_KEY}}')\"" } },
+    });
+    assert.equal((pythonInlineCommand.output as ToolCase["output"]).args.command, "python -c \"print('{{SECRET:OPENAI_API_KEY}}')\""); assertions += 1;
+    assertNoFetch(pythonInlineCommand, "does not substitute python -c commands"); assertions += 1;
+
+    const nodeInlineCommand = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "26c", args: { command: "node -e \"console.log('{{SECRET:OPENAI_API_KEY}}')\"" } },
+        output: { args: { command: "node -e \"console.log('{{SECRET:OPENAI_API_KEY}}')\"" } },
+    });
+    assert.equal((nodeInlineCommand.output as ToolCase["output"]).args.command, "node -e \"console.log('{{SECRET:OPENAI_API_KEY}}')\""); assertions += 1;
+    assertNoFetch(nodeInlineCommand, "does not substitute node -e commands"); assertions += 1;
+
+    const bashLcCommand = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "26d", args: { command: "bash -lc \"curl -H 'X-Api-Key: {{SECRET:OPENAI_API_KEY}}' https://example.com\"" } },
+        output: { args: { command: "bash -lc \"curl -H 'X-Api-Key: {{SECRET:OPENAI_API_KEY}}' https://example.com\"" } },
+    });
+    assert.equal((bashLcCommand.output as ToolCase["output"]).args.command, "bash -lc \"curl -H 'X-Api-Key: {{SECRET:OPENAI_API_KEY}}' https://example.com\""); assertions += 1;
+    assertNoFetch(bashLcCommand, "does not substitute nested curl embedded inside bash -lc strings"); assertions += 1;
+
+    const redirectionCommand = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "26e", args: { command: "echo {{SECRET:OPENAI_API_KEY}} > secret.txt" } },
+        output: { args: { command: "echo {{SECRET:OPENAI_API_KEY}} > secret.txt" } },
+    });
+    assert.equal((redirectionCommand.output as ToolCase["output"]).args.command, "echo {{SECRET:OPENAI_API_KEY}} > secret.txt"); assertions += 1;
+    assertNoFetch(redirectionCommand, "does not substitute redirected echo commands"); assertions += 1;
+
+    const teeCommand = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "26f", args: { command: "printf '{{SECRET:OPENAI_API_KEY}}' | tee secret.txt" } },
+        output: { args: { command: "printf '{{SECRET:OPENAI_API_KEY}}' | tee secret.txt" } },
+    });
+    assert.equal((teeCommand.output as ToolCase["output"]).args.command, "printf '{{SECRET:OPENAI_API_KEY}}' | tee secret.txt"); assertions += 1;
+    assertNoFetch(teeCommand, "does not substitute tee pipelines"); assertions += 1;
+
+    const scpCommand = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "26g", args: { command: "scp file.txt user@host:{{SECRET:OPENAI_API_KEY}}" } },
+        output: { args: { command: "scp file.txt user@host:{{SECRET:OPENAI_API_KEY}}" } },
+    });
+    assert.equal((scpCommand.output as ToolCase["output"]).args.command, "scp file.txt user@host:{{SECRET:OPENAI_API_KEY}}"); assertions += 1;
+    assertNoFetch(scpCommand, "does not substitute scp commands"); assertions += 1;
+
+    const plainArrayNonCurl = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "26h", args: { command: "echo ok" } },
+        output: { args: { items: ["echo {{SECRET:OPENAI_API_KEY}}", "python -c \"print('{{SECRET:GITHUB_TOKEN}}')\""] } },
+    });
+    assert.deepEqual((plainArrayNonCurl.output as ToolCase["output"]).args.items, ["echo {{SECRET:OPENAI_API_KEY}}", "python -c \"print('{{SECRET:GITHUB_TOKEN}}')\""]); assertions += 1;
+    assertNoFetch(plainArrayNonCurl, "does not substitute non-curl strings inside arrays"); assertions += 1;
+
+    const toolMissingKey = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "23", args: { command: "curl -H 'X-Api-Key: {{SECRET:MISSING_KEY}}' https://example.com" } },
+        output: { args: { command: "curl -H 'X-Api-Key: {{SECRET:MISSING_KEY}}' https://example.com" } },
+    });
+    assert.equal(toolMissingKey.error, "This command references missing secrets: MISSING_KEY. Ask the user to add these keys in TeamCopilot Profile Secrets before retrying."); assertions += 1;
+
+    const toolMultipleMissingKeys = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "24", args: { command: "curl -H 'Authorization: Bearer {{SECRET:MISSING_KEY}}' -H 'X-Api-Key: {{SECRET:MISSING_OTHER_KEY}}' https://example.com" } },
+        output: { args: { command: "curl -H 'Authorization: Bearer {{SECRET:MISSING_KEY}}' -H 'X-Api-Key: {{SECRET:MISSING_OTHER_KEY}}' https://example.com" } },
+    });
+    assert.equal(toolMultipleMissingKeys.error, "This command references missing secrets: MISSING_KEY. Ask the user to add these keys in TeamCopilot Profile Secrets before retrying."); assertions += 1;
+    assertFetchTexts(toolMultipleMissingKeys, ["Authorization: Bearer {{SECRET:MISSING_KEY}}"], "stops at the first failing supported curl token"); assertions += 1;
+
+    const toolApiFailure = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "25", args: { command: "curl -H 'X-Api-Key: {{SECRET:API_FAIL}}' https://example.com" } },
+        output: { args: { command: "curl -H 'X-Api-Key: {{SECRET:API_FAIL}}' https://example.com" } },
+    });
+    assert.equal(toolApiFailure.error, "Internal secret resolution failure"); assertions += 1;
+
+    const commandMissingKey = runHookCase({
         kind: "command",
-        input: { command: "node script.js", arguments: "--token={{SECRET:GITHUB_TOKEN}}", sessionID: "child-session" },
+        input: { command: "curl", arguments: "-H 'X-Api-Key: {{SECRET:MISSING_KEY}}' https://example.com", sessionID: "child-session" },
         output: { parts: [] },
     });
-    assertNoError(commandHookArgumentsOnly, "command hook arguments-only should succeed"); assertions += 1;
-    assert.equal((commandHookArgumentsOnly.input as CommandCase["input"]).command, "node script.js", "preserves plain command"); assertions += 1;
-    assert.equal((commandHookArgumentsOnly.input as CommandCase["input"]).arguments, "--token=resolved-github_token", "rewrites command arguments"); assertions += 1;
+    assert.equal(commandMissingKey.error, "This command references missing secrets: MISSING_KEY. Ask the user to add these keys in TeamCopilot Profile Secrets before retrying."); assertions += 1;
 
-    const commandHookBothFields = runHookCase({
+    const commandApiFailure = runHookCase({
         kind: "command",
-        input: { command: "echo {{SECRET:OPENAI_API_KEY}}", arguments: "--header={{SECRET:GITHUB_TOKEN}}", sessionID: "child-session" },
+        input: { command: "curl", arguments: "-H 'X-Api-Key: {{SECRET:API_FAIL}}' https://example.com", sessionID: "child-session" },
         output: { parts: [] },
     });
-    assertNoError(commandHookBothFields, "command hook both fields should succeed"); assertions += 1;
-    assert.equal((commandHookBothFields.input as CommandCase["input"]).command, "echo resolved-openai_api_key", "rewrites command hook command with placeholder"); assertions += 1;
-    assert.equal((commandHookBothFields.input as CommandCase["input"]).arguments, "--header=resolved-github_token", "rewrites command hook arguments with placeholder"); assertions += 1;
+    assert.equal(commandApiFailure.error, "Internal secret resolution failure"); assertions += 1;
 
-    const commandHookNoPlaceholders = runHookCase({
+    const plainPayloadPreserved = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "26", args: { cwd: "/tmp", script: "echo hi" } as Record<string, unknown> },
+        output: { args: { cwd: "/tmp", script: "echo hi", nested: { count: 1, ok: true }, list: [1, false, null] } },
+    });
+    assert.deepEqual((plainPayloadPreserved.output as ToolCase["output"]).args, { cwd: "/tmp", script: "echo hi", nested: { count: 1, ok: true }, list: [1, false, null] }); assertions += 1;
+    assertNoFetch(plainPayloadPreserved, "preserves plain non-curl payloads exactly"); assertions += 1;
+
+    const commandWithMixedArguments = runHookCase({
         kind: "command",
-        input: { command: "echo hello", arguments: "--verbose", sessionID: "child-session" },
+        input: { command: "curl", arguments: "-H 'Authorization: Bearer {{SECRET:OPENAI_API_KEY}}' --output {{SECRET:GITHUB_TOKEN}} https://example.com", sessionID: "child-session" },
         output: { parts: [] },
     });
-    assertNoError(commandHookNoPlaceholders, "plain command hook should succeed"); assertions += 1;
-    assertNoFetch(commandHookNoPlaceholders, "plain command hook should not resolve"); assertions += 1;
+    assert.equal((commandWithMixedArguments.input as CommandCase["input"]).arguments, "-H 'Authorization: Bearer resolved-openai_api_key' --output {{SECRET:GITHUB_TOKEN}} https://example.com"); assertions += 1;
+    assertFetchTexts(commandWithMixedArguments, ["Authorization: Bearer {{SECRET:OPENAI_API_KEY}}"], "substitutes only safe command-hook curl arguments"); assertions += 1;
 
-    const commandHookMissingKey = runHookCase({
+    const commandWithPathExecutable = runHookCase({
         kind: "command",
-        input: { command: "echo {{SECRET:MISSING_KEY}}", arguments: "", sessionID: "child-session" },
+        input: { command: "/usr/bin/curl", arguments: "--header=X-Api-Key:{{SECRET:OPENAI_API_KEY}} https://example.com", sessionID: "child-session" },
         output: { parts: [] },
     });
-    assertError(
-        commandHookMissingKey,
-        "This command references missing secrets: MISSING_KEY. Ask the user to add these keys in TeamCopilot Profile Secrets before retrying.",
-        "command hook returns exact missing key",
-    ); assertions += 1;
-
-    const commandHookApiFailure = runHookCase({
-        kind: "command",
-        input: { command: "echo {{SECRET:API_FAIL}}", arguments: "", sessionID: "child-session" },
-        output: { parts: [] },
-    });
-    assertError(commandHookApiFailure, "Internal secret resolution failure", "command hook surfaces API failure"); assertions += 1;
-
-    const deepSessionResolution = runHookCase({
-        kind: "tool",
-        input: { tool: "bash", sessionID: "grandchild-session", callID: "c17", args: { command: "echo {{SECRET:OPENAI_API_KEY}}" } },
-        output: { args: { command: "echo {{SECRET:OPENAI_API_KEY}}" } },
-    });
-    assertNoError(deepSessionResolution, "deep session resolution should succeed"); assertions += 1;
-    assert.deepEqual(
-        deepSessionResolution.fetchCalls,
-        [{ authorization: "Bearer root-session", text: "echo {{SECRET:OPENAI_API_KEY}}" }],
-        "resolves through multiple parent sessions to root session token",
-    ); assertions += 1;
-
-    const preservesShape = runHookCase({
-        kind: "tool",
-        input: {
-            tool: "bash",
-            sessionID: "child-session",
-            callID: "c18",
-            args: {
-                command: "echo ok",
-                nested: { a: "{{SECRET:OPENAI_API_KEY}}", b: 1 },
-                arr: ["{{SECRET:GITHUB_TOKEN}}", { x: "{{SECRET:SLACK_TOKEN}}" }],
-            },
-        },
-        output: {
-            args: {
-                command: "echo ok",
-                nested: { a: "{{SECRET:OPENAI_API_KEY}}", b: 1 },
-                arr: ["{{SECRET:GITHUB_TOKEN}}", { x: "{{SECRET:SLACK_TOKEN}}" }],
-            },
-        },
-    });
-    assertNoError(preservesShape, "shape preservation case should succeed"); assertions += 1;
-    assert.deepEqual(
-        Object.keys((preservesShape.output as ToolCase["output"]).args).sort(),
-        ["arr", "command", "nested"],
-        "preserves top-level output arg keys",
-    ); assertions += 1;
-    assert.deepEqual(
-        Object.keys(((preservesShape.output as ToolCase["output"]).args.nested as Record<string, unknown>)).sort(),
-        ["a", "b"],
-        "preserves nested object keys",
-    ); assertions += 1;
-
-    const plainStringsMixedWithSecretStrings = runHookCase({
-        kind: "tool",
-        input: { tool: "bash", sessionID: "child-session", callID: "c19", args: { command: "echo ok", note: "hello" } as Record<string, unknown> },
-        output: {
-            args: {
-                command: "echo ok",
-                note: "hello",
-                env: ["A=1", "B={{SECRET:OPENAI_API_KEY}}", "C=3"],
-            },
-        },
-    });
-    assertNoError(plainStringsMixedWithSecretStrings, "mixed plain and secret strings should succeed"); assertions += 1;
-    assert.deepEqual(
-        (plainStringsMixedWithSecretStrings.output as ToolCase["output"]).args.env,
-        ["A=1", "B=resolved-openai_api_key", "C=3"],
-        "rewrites only the secret-bearing strings in arrays",
-    ); assertions += 1;
-
-    const noStructureChangeWhenNothingFound = runHookCase({
-        kind: "tool",
-        input: { tool: "bash", sessionID: "child-session", callID: "c20", args: { cwd: "/tmp", script: "echo hi" } as Record<string, unknown> },
-        output: { args: { cwd: "/tmp", script: "echo hi" } },
-    });
-    assertNoError(noStructureChangeWhenNothingFound, "no placeholder structures should not error"); assertions += 1;
-    assert.deepEqual((noStructureChangeWhenNothingFound.output as ToolCase["output"]).args, { cwd: "/tmp", script: "echo hi" }, "preserves exact args when nothing is rewritten"); assertions += 1;
-
-    const nestedMissingKey = runHookCase({
-        kind: "tool",
-        input: { tool: "bash", sessionID: "child-session", callID: "c21", args: { command: "echo ok" } },
-        output: { args: { nested: { auth: "Bearer {{SECRET:MISSING_KEY}}" } } },
-    });
-    assertError(
-        nestedMissingKey,
-        "This command references missing secrets: MISSING_KEY. Ask the user to add these keys in TeamCopilot Profile Secrets before retrying.",
-        "nested missing keys still fail with exact key",
-    ); assertions += 1;
-
-    const nestedApiFailure = runHookCase({
-        kind: "tool",
-        input: { tool: "bash", sessionID: "child-session", callID: "c22", args: { command: "echo ok" } },
-        output: { args: { nested: { auth: "Bearer {{SECRET:API_FAIL}}" } } },
-    });
-    assertError(nestedApiFailure, "Internal secret resolution failure", "nested API failure surfaces error"); assertions += 1;
-
-    const plainStringRoot = runHookCase({
-        kind: "tool",
-        input: { tool: "bash", sessionID: "child-session", callID: "c23", args: { command: "literal" } },
-        output: { args: { command: "literal", note: "still literal" } },
-    });
-    assertNoError(plainStringRoot, "plain root strings should not error"); assertions += 1;
-    assertNoFetch(plainStringRoot, "plain root strings should not call resolver"); assertions += 1;
-
-    const arrayOnlyArgs = runHookCase({
-        kind: "tool",
-        input: { tool: "bash", sessionID: "child-session", callID: "c24", args: { command: "echo ok" } },
-        output: { args: { list: ["{{SECRET:OPENAI_API_KEY}}", "{{SECRET:GITHUB_TOKEN}}", "x"] } },
-    });
-    assertNoError(arrayOnlyArgs, "array-only args should succeed"); assertions += 1;
-    assert.deepEqual((arrayOnlyArgs.output as ToolCase["output"]).args.list, ["resolved-openai_api_key", "resolved-github_token", "x"], "rewrites arrays without command/cmd fields"); assertions += 1;
-
-    const objectOnlyArgs = runHookCase({
-        kind: "tool",
-        input: { tool: "bash", sessionID: "child-session", callID: "c25", args: { command: "echo ok" } },
-        output: { args: { headers: { Authorization: "Bearer {{SECRET:OPENAI_API_KEY}}" } } },
-    });
-    assertNoError(objectOnlyArgs, "object-only args should succeed"); assertions += 1;
-    assert.equal(((objectOnlyArgs.output as ToolCase["output"]).args.headers as { Authorization: string }).Authorization, "Bearer resolved-openai_api_key", "rewrites object-only args without changing shape"); assertions += 1;
-
-    const commandArgumentsMultiplePlaceholders = runHookCase({
-        kind: "command",
-        input: {
-            command: "node cli.js",
-            arguments: "--a={{SECRET:OPENAI_API_KEY}} --b={{SECRET:GITHUB_TOKEN}}",
-            sessionID: "child-session",
-        },
-        output: { parts: [] },
-    });
-    assertNoError(commandArgumentsMultiplePlaceholders, "command arguments multiple placeholders should succeed"); assertions += 1;
-    assert.equal(
-        (commandArgumentsMultiplePlaceholders.input as CommandCase["input"]).arguments,
-        "--a=resolved-openai_api_key --b=resolved-github_token",
-        "rewrites multiple placeholders inside command arguments",
-    ); assertions += 1;
-
-    const commandMixedNoFetchForPlainArgument = runHookCase({
-        kind: "command",
-        input: { command: "node cli.js", arguments: "", sessionID: "child-session" },
-        output: { parts: [] },
-    });
-    assertNoError(commandMixedNoFetchForPlainArgument, "plain command+args should succeed"); assertions += 1;
-    assertNoFetch(commandMixedNoFetchForPlainArgument, "plain command+args should not fetch"); assertions += 1;
-
-    const inputOnlyNestedMutation = runHookCase({
-        kind: "tool",
-        input: {
-            tool: "bash",
-            sessionID: "child-session",
-            callID: "c26",
-            args: { metadata: { nested: "token={{SECRET:OPENAI_API_KEY}}" } },
-        },
-        output: { args: { result: "ok" } },
-    });
-    assertNoError(inputOnlyNestedMutation, "input-only nested mutation should succeed"); assertions += 1;
-    assert.equal((((inputOnlyNestedMutation.input as ToolCase["input"]).args?.metadata as { nested: string }).nested), "token=resolved-openai_api_key", "rewrites nested strings in input args too"); assertions += 1;
-
-    const outputOnlyDuplicateButDifferentStrings = runHookCase({
-        kind: "tool",
-        input: { tool: "bash", sessionID: "child-session", callID: "c27", args: { command: "echo ok" } },
-        output: {
-            args: {
-                one: "A={{SECRET:OPENAI_API_KEY}}",
-                two: "B={{SECRET:OPENAI_API_KEY}}",
-            },
-        },
-    });
-    assertNoError(outputOnlyDuplicateButDifferentStrings, "different strings with same key should succeed"); assertions += 1;
-    assertFetchCalls(
-        outputOnlyDuplicateButDifferentStrings,
-        ["A={{SECRET:OPENAI_API_KEY}}", "B={{SECRET:OPENAI_API_KEY}}"],
-        "treats distinct strings as distinct resolution requests",
-    ); assertions += 1;
-
-    const commandRootSessionNoParent = runHookCase({
-        kind: "command",
-        input: { command: "echo {{SECRET:OPENAI_API_KEY}}", arguments: "", sessionID: "root-session" },
-        output: { parts: [] },
-    });
-    assertNoError(commandRootSessionNoParent, "root session command should succeed"); assertions += 1;
-    assert.deepEqual(
-        commandRootSessionNoParent.fetchCalls,
-        [{ authorization: "Bearer root-session", text: "echo {{SECRET:OPENAI_API_KEY}}" }],
-        "uses root session token directly when already at root",
-    ); assertions += 1;
+    assert.equal((commandWithPathExecutable.input as CommandCase["input"]).arguments, "--header=X-Api-Key:resolved-openai_api_key https://example.com"); assertions += 1;
+    assertFetchTexts(commandWithPathExecutable, ["X-Api-Key:{{SECRET:OPENAI_API_KEY}}"], "supports path-based curl executables in command hook"); assertions += 1;
 
     console.log(`Secret proxy plugin tests passed: ${assertions}`);
 }
