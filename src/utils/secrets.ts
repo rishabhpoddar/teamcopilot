@@ -65,7 +65,6 @@ export function extractSecretPlaceholderKeys(text: string): string[] {
 
 export type SecretProxyResolutionResult = {
     referencedKeys: string[];
-    missingKeys: string[];
     substitutedText: string;
 };
 
@@ -148,7 +147,6 @@ export async function resolveSecretPlaceholdersForUser(userId: string, text: str
     if (referencedKeys.length === 0) {
         return {
             referencedKeys: [],
-            missingKeys: [],
             substitutedText: text,
         };
     }
@@ -156,11 +154,9 @@ export async function resolveSecretPlaceholdersForUser(userId: string, text: str
     const { secretMap, missingKeys } = await resolveSecretsForUser(userId, referencedKeys);
 
     if (missingKeys.length > 0) {
-        return {
-            referencedKeys,
-            missingKeys,
-            substitutedText: text,
-        };
+        throw new Error(
+            `This command references missing secrets: ${missingKeys.join(", ")}. Ask the user to add these keys in TeamCopilot Profile Secrets before retrying.`
+        );
     }
 
     const substitutedText = text.replace(SECRET_PLACEHOLDER_REGEX, (_match, rawKey: string) => {
@@ -174,7 +170,6 @@ export async function resolveSecretPlaceholdersForUser(userId: string, text: str
 
     return {
         referencedKeys,
-        missingKeys: [],
         substitutedText,
     };
 }

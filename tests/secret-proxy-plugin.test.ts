@@ -101,6 +101,9 @@ const hooks = await mod.SecretProxyPlugin({
   client: {
     session: {
       get: async ({ path }) => {
+        if (path.id === "bad-session") {
+          return { error: { message: "Session lookup failed from API" } };
+        }
         if (path.id === "grandchild-session") {
           return { data: { id: "grandchild-session", parentID: "child-session" } };
         }
@@ -523,6 +526,14 @@ function main(): void {
         output: { args: { command: "curl -H 'X-Api-Key: {{SECRET:API_FAIL}}' https://example.com" } },
     });
     assert.equal(toolApiFailure.error, "Internal secret resolution failure"); assertions += 1;
+
+    const rootSessionLookupFailure = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "bad-session", callID: "25a", args: { command: "curl -H 'X-Api-Key: {{SECRET:OPENAI_API_KEY}}' https://example.com" } },
+        output: { args: { command: "curl -H 'X-Api-Key: {{SECRET:OPENAI_API_KEY}}' https://example.com" } },
+    });
+    assert.equal(rootSessionLookupFailure.error, "Session lookup failed from API"); assertions += 1;
+    assertNoFetch(rootSessionLookupFailure, "does not call secret resolution when root session lookup fails"); assertions += 1;
 
     const commandMissingKey = runHookCase({
         kind: "command",

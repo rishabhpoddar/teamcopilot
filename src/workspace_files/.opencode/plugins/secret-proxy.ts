@@ -16,6 +16,19 @@ interface SessionLookupResponse {
   }
 }
 
+function readSessionLookupErrorMessage(error: unknown, fallbackMessage: string): string {
+  if (typeof error === "string" && error.trim().length > 0) {
+    return error
+  }
+  if (error && typeof error === "object" && "message" in error) {
+    const message = (error as { message?: unknown }).message
+    if (typeof message === "string" && message.trim().length > 0) {
+      return message
+    }
+  }
+  return fallbackMessage
+}
+
 async function readErrorMessageFromResponse(
   response: Response,
   fallbackMessage: string
@@ -216,7 +229,12 @@ export const SecretProxyPlugin: Plugin = async ({ client }) => {
         },
       })) as SessionLookupResponse
       if (response.error) {
-        throw new Error(`Failed to resolve root session for ${currentSessionID}`)
+        throw new Error(
+          readSessionLookupErrorMessage(
+            response.error,
+            `Failed to resolve root session for ${currentSessionID}`
+          )
+        )
       }
 
       const parentID = response.data?.parentID

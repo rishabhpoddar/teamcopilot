@@ -57,7 +57,6 @@ async function main(): Promise<void> {
             "echo {{SECRET:USER_ONLY_KEY}} {{SECRET:GLOBAL_ONLY_KEY}}",
         );
         assert.deepEqual(resolved.referencedKeys, ["USER_ONLY_KEY", "GLOBAL_ONLY_KEY"], "tracks referenced keys");
-        assert.deepEqual(resolved.missingKeys, [], "finds no missing keys when all placeholders resolve");
         assert.equal(
             resolved.substitutedText,
             "echo user-secret-value global-secret-value",
@@ -92,21 +91,17 @@ async function main(): Promise<void> {
             "user secret values override globals for the same key",
         );
 
-        const missing = await resolveSecretPlaceholdersForUser(
-            userId,
-            "echo {{SECRET:MISSING_KEY}} {{SECRET:GLOBAL_ONLY_KEY}}",
-        );
-        assert.deepEqual(missing.referencedKeys, ["MISSING_KEY", "GLOBAL_ONLY_KEY"], "tracks referenced keys even when some are missing");
-        assert.deepEqual(missing.missingKeys, ["MISSING_KEY"], "reports missing placeholder keys");
-        assert.equal(
-            missing.substitutedText,
-            "echo {{SECRET:MISSING_KEY}} {{SECRET:GLOBAL_ONLY_KEY}}",
-            "does not partially substitute when any key is missing",
+        await assert.rejects(
+            () => resolveSecretPlaceholdersForUser(
+                userId,
+                "echo {{SECRET:MISSING_KEY}} {{SECRET:GLOBAL_ONLY_KEY}}",
+            ),
+            /This command references missing secrets: MISSING_KEY\. Ask the user to add these keys in TeamCopilot Profile Secrets before retrying\./,
+            "throws with the exact missing placeholder keys when any are absent",
         );
 
         const noPlaceholders = await resolveSecretPlaceholdersForUser(userId, "echo hello");
         assert.deepEqual(noPlaceholders.referencedKeys, [], "returns no referenced keys when none exist");
-        assert.deepEqual(noPlaceholders.missingKeys, [], "returns no missing keys when none exist");
         assert.equal(noPlaceholders.substitutedText, "echo hello", "leaves plain text untouched");
 
         console.log("Secret proxy tests passed");

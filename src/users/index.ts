@@ -63,16 +63,9 @@ router.post("/me/resolve-secret-placeholders", apiHandler(async (req, res) => {
     }
 
     const resolution = await resolveSecretPlaceholdersForUser(req.userId!, text);
-    if (resolution.missingKeys.length > 0) {
-        throw {
-            status: 400,
-            message: `This command references missing secrets: ${resolution.missingKeys.join(", ")}. Ask the user to add these keys in TeamCopilot Profile Secrets before retrying.`
-        };
-    }
 
     res.json({
         referenced_keys: resolution.referencedKeys,
-        missing_keys: resolution.missingKeys,
         substituted_text: resolution.substitutedText,
     });
 }, true));
