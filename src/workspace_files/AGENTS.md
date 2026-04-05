@@ -436,7 +436,7 @@ required_secrets:
 - When using secrets in bash commands, use placeholder references like `{{SECRET:OPENAI_API_KEY}}` (general form is `{{SECRET:KEY_NAME}}`).
 - In bash, TeamCopilot only substitutes `{{SECRET:KEY}}` placeholders in supported `curl` use cases. Unsupported contexts are left unchanged.
 - TeamCopilot may internally rewrite supported secret placeholders to runtime-only env references such as `${__TEAMCOPILOT_RUNTIME_SECRET_OPENAI_API_KEY}` before execution. Those `__TEAMCOPILOT_RUNTIME_SECRET_*` references are internal only.
-- Never write `${__TEAMCOPILOT_RUNTIME_SECRET_*}` or `$__TEAMCOPILOT_RUNTIME_SECRET_*` yourself in tool calls, scripts, or command text. Direct agent-authored `__TEAMCOPILOT_RUNTIME_SECRET_*` references are rejected. Always use `{{SECRET:KEY}}` instead.
+- Never write `__TEAMCOPILOT_RUNTIME_SECRET_*` yourself in tool calls, scripts, or command text, even without `$` or `${}`. Agent-authored `__TEAMCOPILOT_RUNTIME_SECRET_*` references are rejected. Always use `{{SECRET:KEY}}` instead.
 - Supported `curl` substitution contexts include:
   - auth-like headers passed with `-H` / `--header` when the header name is an allowed auth/session header
   - request URLs and explicit `--url` values

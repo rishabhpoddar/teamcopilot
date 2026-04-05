@@ -441,7 +441,7 @@ function main(): void {
         input: { tool: "bash", sessionID: "child-session", callID: "26", args: { command: "echo $__TEAMCOPILOT_RUNTIME_SECRET_OPENAI_API_KEY" } },
         output: { args: { command: "echo $__TEAMCOPILOT_RUNTIME_SECRET_OPENAI_API_KEY" } },
     });
-    assert.equal(directSecretEnvReferenceTool.error, "Direct __TEAMCOPILOT_RUNTIME_SECRET_* references are not allowed. Use {{SECRET:KEY}} placeholders instead."); assertions += 1;
+    assert.equal(directSecretEnvReferenceTool.error, "Agent-authored __TEAMCOPILOT_RUNTIME_SECRET_* references are not allowed. Use {{SECRET:KEY}} placeholders instead."); assertions += 1;
     assertNoFetch(directSecretEnvReferenceTool, "rejects direct shell-style secret env references before any resolution"); assertions += 1;
 
     const directSecretEnvReferenceBracedTool = runHookCase({
@@ -449,7 +449,7 @@ function main(): void {
         input: { tool: "bash", sessionID: "child-session", callID: "27", args: { command: "echo ${__TEAMCOPILOT_RUNTIME_SECRET_OPENAI_API_KEY}" } },
         output: { args: { command: "echo ${__TEAMCOPILOT_RUNTIME_SECRET_OPENAI_API_KEY}" } },
     });
-    assert.equal(directSecretEnvReferenceBracedTool.error, "Direct __TEAMCOPILOT_RUNTIME_SECRET_* references are not allowed. Use {{SECRET:KEY}} placeholders instead."); assertions += 1;
+    assert.equal(directSecretEnvReferenceBracedTool.error, "Agent-authored __TEAMCOPILOT_RUNTIME_SECRET_* references are not allowed. Use {{SECRET:KEY}} placeholders instead."); assertions += 1;
     assertNoFetch(directSecretEnvReferenceBracedTool, "rejects direct braced secret env references before any resolution"); assertions += 1;
 
     const directSecretEnvReferenceCommandHook = runHookCase({
@@ -457,8 +457,24 @@ function main(): void {
         input: { command: "echo $__TEAMCOPILOT_RUNTIME_SECRET_OPENAI_API_KEY", arguments: "", sessionID: "child-session" },
         output: { parts: [] },
     });
-    assert.equal(directSecretEnvReferenceCommandHook.error, "Direct __TEAMCOPILOT_RUNTIME_SECRET_* references are not allowed. Use {{SECRET:KEY}} placeholders instead."); assertions += 1;
+    assert.equal(directSecretEnvReferenceCommandHook.error, "Agent-authored __TEAMCOPILOT_RUNTIME_SECRET_* references are not allowed. Use {{SECRET:KEY}} placeholders instead."); assertions += 1;
     assertNoFetch(directSecretEnvReferenceCommandHook, "rejects direct secret env references in command hook input"); assertions += 1;
+
+    const printenvSecretEnvReferenceTool = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "28", args: { command: "printenv __TEAMCOPILOT_RUNTIME_SECRET_OPENAI_API_KEY" } },
+        output: { args: { command: "printenv __TEAMCOPILOT_RUNTIME_SECRET_OPENAI_API_KEY" } },
+    });
+    assert.equal(printenvSecretEnvReferenceTool.error, "Agent-authored __TEAMCOPILOT_RUNTIME_SECRET_* references are not allowed. Use {{SECRET:KEY}} placeholders instead."); assertions += 1;
+    assertNoFetch(printenvSecretEnvReferenceTool, "rejects bare runtime secret env names before any resolution"); assertions += 1;
+
+    const quotedSecretEnvReferenceTool = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "29", args: { command: "python -c 'print(\"__TEAMCOPILOT_RUNTIME_SECRET_OPENAI_API_KEY\")'" } },
+        output: { args: { command: "python -c 'print(\"__TEAMCOPILOT_RUNTIME_SECRET_OPENAI_API_KEY\")'" } },
+    });
+    assert.equal(quotedSecretEnvReferenceTool.error, "Agent-authored __TEAMCOPILOT_RUNTIME_SECRET_* references are not allowed. Use {{SECRET:KEY}} placeholders instead."); assertions += 1;
+    assertNoFetch(quotedSecretEnvReferenceTool, "rejects quoted runtime secret env names before any resolution"); assertions += 1;
 
     console.log(`Secret proxy plugin tests passed: ${assertions}`);
 }
