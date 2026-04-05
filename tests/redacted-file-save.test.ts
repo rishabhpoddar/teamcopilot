@@ -3,7 +3,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { createResourceFileManager } from "../src/utils/resource-files";
-import { sanitizeForClient, sanitizeStringContent } from "../src/utils/redact";
+import { sanitizeStringContent } from "../src/utils/redact";
 
 type SaveRoundTripCase = {
     name: string;
@@ -43,12 +43,10 @@ function runSaveRoundTrip(testCase: SaveRoundTripCase): void {
 
         const manager = createManager(resourceRoot, testCase.resourceLabel);
         const readResult = readVisibleContent(manager, testCase.filePath);
-        const effectiveVisibleContent = testCase.resourceLabel === "skill"
-            ? sanitizeForClient({ content: readResult.content }).content
-            : readResult.content;
+        const effectiveVisibleContent = readResult.content;
         const expectedVisibleContent = testCase.expectedVisibleContent ?? (
             testCase.resourceLabel === "skill"
-                ? sanitizeForClient({ content: testCase.rawContent }).content
+                ? testCase.rawContent
                 : sanitizeStringContent(testCase.rawContent)
         );
 
@@ -76,7 +74,7 @@ function runSaveRoundTrip(testCase: SaveRoundTripCase): void {
     }
 }
 
-function assertSkillReadIsRedacted(): void {
+function assertSkillReadIsRaw(): void {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "teamcopilot-skill-read-"));
     try {
         const resourceRoot = path.join(tempRoot, "skill");
@@ -92,11 +90,100 @@ function assertSkillReadIsRedacted(): void {
 
         const manager = createManager(resourceRoot, "skill");
         const readResult = readVisibleContent(manager, "SKILL.md");
-        assert.equal(readResult.content, rawContent, "Skill file manager should return raw content before API sanitization.");
+        assert.equal(readResult.content, rawContent, "Skill file manager should return raw content.");
+    } finally {
+        fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+}
+
+function assertWorkflowNonDotenvReadIsRaw(): void {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "teamcopilot-workflow-read-"));
+    try {
+        const resourceRoot = path.join(tempRoot, "workflow");
+        fs.mkdirSync(resourceRoot, { recursive: true });
+
+        const files = [
+            {
+                filePath: "README.md",
+                rawContent: [
+                    "# Example Workflow",
+                    "",
+                    "Authorization: Bearer sk-1234567890abcdef",
+                    "",
+                ].join("\n"),
+            },
+            {
+                filePath: "run.py",
+                rawContent: [
+                    "API_KEY = 'sk-1234567890abcdef'",
+                    "print(API_KEY)",
+                    "",
+                ].join("\n"),
+            },
+        ];
+
+        const manager = createManager(resourceRoot, "workflow");
+        for (const file of files) {
+            const absolutePath = path.join(resourceRoot, file.filePath);
+            fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
+            fs.writeFileSync(absolutePath, file.rawContent, "utf-8");
+
+            const readResult = readVisibleContent(manager, file.filePath);
+            assert.equal(
+                readResult.content,
+                file.rawContent,
+                `Workflow non-.env file ${file.filePath} should remain raw`,
+            );
+        }
+    } finally {
+        fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+}
+
+function assertWorkflowDotenvReadIsRedacted(): void {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "teamcopilot-workflow-dotenv-read-"));
+    try {
+        const resourceRoot = path.join(tempRoot, "workflow");
+        fs.mkdirSync(resourceRoot, { recursive: true });
+        const dotenvPath = path.join(resourceRoot, ".env");
+        const rawContent = [
+            "API_KEY=abcdef123456",
+            "NORMAL=value",
+            "",
+        ].join("\n");
+        fs.writeFileSync(dotenvPath, rawContent, "utf-8");
+
+        const manager = createManager(resourceRoot, "workflow");
+        const readResult = readVisibleContent(manager, ".env");
         assert.equal(
-            sanitizeForClient({ content: readResult.content }).content,
-            sanitizeForClient({ content: rawContent }).content,
-            "Skill file reads should use the shared response redaction behavior after API sanitization."
+            readResult.content,
+            sanitizeStringContent(rawContent),
+            "Workflow .env reads should still be redacted",
+        );
+    } finally {
+        fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+}
+
+function assertSkillDotenvReadIsRedacted(): void {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "teamcopilot-skill-dotenv-read-"));
+    try {
+        const resourceRoot = path.join(tempRoot, "skill");
+        fs.mkdirSync(resourceRoot, { recursive: true });
+        const dotenvPath = path.join(resourceRoot, ".env");
+        const rawContent = [
+            "API_KEY=abcdef123456",
+            "NORMAL=value",
+            "",
+        ].join("\n");
+        fs.writeFileSync(dotenvPath, rawContent, "utf-8");
+
+        const manager = createManager(resourceRoot, "skill");
+        const readResult = readVisibleContent(manager, ".env");
+        assert.equal(
+            readResult.content,
+            sanitizeStringContent(rawContent),
+            "Skill .env reads should still be redacted",
         );
     } finally {
         fs.rmSync(tempRoot, { recursive: true, force: true });
@@ -105,78 +192,6 @@ function assertSkillReadIsRedacted(): void {
 
 function runSaveRoundTripCases(): void {
     const cases: SaveRoundTripCase[] = [
-        {
-            name: "skill save preserves unchanged masked secret while updating plain text",
-            resourceLabel: "skill",
-            filePath: "SKILL.md",
-            rawContent: [
-                "# Example Skill",
-                "",
-                "- **secret**: sk-1234567890abcdef # keep available",
-                "Keep this instructional text intact.",
-                "",
-            ].join("\n"),
-            edit: (visible) => visible
-                .replace("Keep this instructional text intact.", "Keep this instructional text updated.")
-                .replace("# keep available", "# keep available for operators"),
-            expectedPersistedContent: [
-                "# Example Skill",
-                "",
-                "- **secret**: sk-1234567890abcdef # keep available for operators",
-                "Keep this instructional text updated.",
-                "",
-            ].join("\n"),
-        },
-        {
-            name: "skill save fully replaces a masked secret with a new literal value",
-            resourceLabel: "skill",
-            filePath: "SKILL.md",
-            rawContent: "- **secret**: sk-1234567890abcdef\n",
-            edit: (visible) => visible.replace("***def", "totally-new-secret"),
-            expectedPersistedContent: "- **secret**: totally-new-secret\n",
-        },
-        {
-            name: "skill save partial masked edit splices the new suffix into the old raw secret",
-            resourceLabel: "skill",
-            filePath: "SKILL.md",
-            rawContent: "- **secret**: sk-1234567890abcdef\n",
-            edit: (visible) => visible.replace("***def", "***xyz"),
-            expectedPersistedContent: "- **secret**: sk-1234567890abcxyz\n",
-        },
-        {
-            name: "skill save supports deleting a line adjacent to a masked secret",
-            resourceLabel: "skill",
-            filePath: "SKILL.md",
-            rawContent: [
-                "# Title",
-                "- **secret**: sk-1234567890abcdef",
-                "Remove this line",
-                "",
-            ].join("\n"),
-            edit: (visible) => visible.replace("Remove this line\n", ""),
-            expectedPersistedContent: [
-                "# Title",
-                "- **secret**: sk-1234567890abcdef",
-                "",
-            ].join("\n"),
-        },
-        {
-            name: "skill save supports inserting text around a masked secret",
-            resourceLabel: "skill",
-            filePath: "SKILL.md",
-            rawContent: [
-                "# Title",
-                "- **secret**: sk-1234567890abcdef",
-                "",
-            ].join("\n"),
-            edit: (visible) => visible.replace("# Title", "# Title\nInserted guidance"),
-            expectedPersistedContent: [
-                "# Title",
-                "Inserted guidance",
-                "- **secret**: sk-1234567890abcdef",
-                "",
-            ].join("\n"),
-        },
         {
             name: "workflow env save preserves unchanged masked secret while updating plain text",
             resourceLabel: "workflow",
@@ -225,14 +240,6 @@ function runSaveRoundTripCases(): void {
             expectedVisibleContent: "token=abcdef\n",
             expectedPersistedContent: "token=replaced-directly\n",
         },
-        {
-            name: "skill nested file remains redacted and saves correctly",
-            resourceLabel: "skill",
-            filePath: "docs/guide.md",
-            rawContent: "Authorization: Bearer myverylongtokensecretvalue\n",
-            edit: (visible) => visible.replace("***lue", "***XYZ"),
-            expectedPersistedContent: "Authorization: Bearer myveryXYZ\n",
-        },
     ];
 
     for (const testCase of cases) {
@@ -241,7 +248,10 @@ function runSaveRoundTripCases(): void {
 }
 
 function main(): void {
-    assertSkillReadIsRedacted();
+    assertSkillReadIsRaw();
+    assertSkillDotenvReadIsRedacted();
+    assertWorkflowNonDotenvReadIsRaw();
+    assertWorkflowDotenvReadIsRedacted();
     runSaveRoundTripCases();
     console.log("Redacted file save tests passed");
 }

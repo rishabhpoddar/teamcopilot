@@ -318,7 +318,6 @@ registerResourceFileRoutes({
     uploadFileFromTempPath: uploadSkillFileFromTempPath,
     renamePath: renameSkillPath,
     deletePath: deleteSkillPath,
-    skipResponseSanitizationForFileContentRead: false,
 });
 
 const updateSkillPermissionsHandler = apiHandler(async (req, res) => {

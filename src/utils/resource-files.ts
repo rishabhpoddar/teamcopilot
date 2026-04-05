@@ -408,7 +408,7 @@ export function createResourceFileManager(options: ResourceFileManagerOptions): 
 
         const name = path.basename(relativePath);
         const currentRawContent = currentBytes.toString("utf-8");
-        const wasServedRedacted = name === ".env" || resourceLabel === "skill";
+        const wasServedRedacted = name === ".env";
         const nextContent = wasServedRedacted
             ? mergeRedactedEditorContent(currentRawContent, request.content)
             : request.content;
