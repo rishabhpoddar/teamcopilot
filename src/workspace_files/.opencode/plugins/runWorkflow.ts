@@ -99,7 +99,7 @@ export const RunWorkflowPlugin: Plugin = async ({ client }) => {
     tool: {
       runWorkflow: tool({
         description:
-          "Execute a workflow with the provided inputs. Validates inputs against the workflow's schema defined in workflow.json, runs the workflow's venv Python with run.py and appropriate arguments, streams output in real-time, and enforces the timeout defined in workflow.json.",
+          "Execute a workflow by slug, optionally passing runtime arguments in `inputs`. The `inputs` object is the supported way to provide workflow parameters: it is validated against the schema in workflow.json and then forwarded to the workflow's `run.py` as command-line arguments. The tool streams output in real-time and enforces the timeout defined in workflow.json.",
         args: {
           slug: tool.schema
             .string()
@@ -111,7 +111,7 @@ export const RunWorkflowPlugin: Plugin = async ({ client }) => {
             .optional()
             .default({})
             .describe(
-              "Key-value pairs matching the workflow's input schema from workflow.json"
+              "Runtime workflow arguments. Provide key-value pairs matching the `inputs` schema in workflow.json; these values are validated and passed through to `run.py`."
             ),
         },
         async execute(args, context) {

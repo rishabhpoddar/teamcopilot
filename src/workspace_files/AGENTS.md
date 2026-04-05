@@ -51,7 +51,20 @@ You may run normal shell commands (including `python`, `pip`, `node`, `npm`, etc
 
 **Required action:**
 - ✅ Use the `runWorkflow` tool to execute any workflow
+- ✅ Pass runtime workflow arguments through `runWorkflow` using its `inputs` object; those values are forwarded to the workflow execution and then passed to `run.py` as command-line arguments based on `workflow.json`
 - ✅ After `createWorkflow`, immediately create `workflows/<slug>/.venv` using `python -m venv .venv` (or `python3 -m venv .venv`) from inside that workflow folder
+
+Small example:
+
+```text
+runWorkflow({
+  slug: "failed-stripe-payments",
+  inputs: {
+    customer_id: "cus_123",
+    days_back: 14
+  }
+})
+```
 
 **Allowed shell commands:**
 - ✅ Any command, except for executing a workflow entrypoint directly from shell.
@@ -101,6 +114,7 @@ A **workflow** is a self-contained automation package that lives in `workflows/<
 - Is filesystem-first: the folder contents are the source of truth
 - Must be self-contained on disk: **any external additions** required by the workflow (e.g., cloned git repos, downloaded SDKs/assets, vendored scripts, fixtures) **must be placed inside** `workflows/<slug>/` and **must not** be created/checked out anywhere outside the workflow folder
 - Can be triggered manually via the `runWorkflow` tool (by you) or from the UI (by a human)
+- When using `runWorkflow`, provide runtime values in the tool's `inputs` argument. Those values are validated against `workflow.json` and passed through to the workflow's `run.py`.
 - Must be **approved by an engineer user** before it can be executed
 - Internally runs through approved platform runtime entrypoints
   - **Agent execution**: must be invoked via `runWorkflow` (never via shell)
@@ -171,7 +185,7 @@ Document:
 The main script that executes the workflow logic. It must:
 - Not be run directly with Python from shell; execution must happen via approved platform tooling only
 - Be end-to-end self-contained: it should perform the full workflow (setup (if needed) + inputs → processing → outputs) in one invocation
-- Read inputs via args passed to the script.
+- Read inputs via args passed to the script. When an agent uses `runWorkflow({ slug, inputs })`, each entry from `inputs` is forwarded to this script according to the workflow contract in `workflow.json`.
 - Write outputs to to the console.
 - Handle errors gracefully
 
