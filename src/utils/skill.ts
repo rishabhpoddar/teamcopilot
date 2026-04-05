@@ -204,6 +204,8 @@ function readSkillManifest(slug: string): SkillManifest {
 
     const name = extractFrontmatterValue(frontmatter, "name") ?? slug;
     const description = extractFrontmatterValue(frontmatter, "description") ?? "";
+    // Keep manifest reads lenient so malformed skills still show up in browse/editor flows and can be repaired.
+    // Strict secret-contract validation is enforced on save and at runtime via getSkillContent.
     const requiredSecrets = extractFrontmatterStringArray(frontmatter, "required_secrets");
 
     return {
