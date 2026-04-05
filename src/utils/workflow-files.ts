@@ -1,32 +1,10 @@
 import { createResourceFileManager } from "./resource-files";
 import { getWorkflowPath } from "./workflow";
-import fs from "fs";
-import path from "path";
-import { validateWorkflowSecretContract } from "./secret-contract-validation";
 
 const workflowFileManager = createResourceFileManager({
     getResourcePath: getWorkflowPath,
     resourceLabel: "workflow",
     editorLabel: "Workflow",
-    validateBeforeSave: ({ resourcePath, relativePath, nextContent }) => {
-        if (relativePath !== "workflow.json" && relativePath !== "run.py") {
-            return;
-        }
-
-        const workflowJsonPath = path.join(resourcePath, "workflow.json");
-        const runPyPath = path.join(resourcePath, "run.py");
-        const workflowJsonContent = relativePath === "workflow.json"
-            ? nextContent
-            : fs.readFileSync(workflowJsonPath, "utf-8");
-        const runPyContent = relativePath === "run.py"
-            ? nextContent
-            : fs.readFileSync(runPyPath, "utf-8");
-
-        validateWorkflowSecretContract({
-            workflowJsonContent,
-            runPyContent,
-        });
-    }
 });
 
 export const listWorkflowDirectory = workflowFileManager.listDirectory;
