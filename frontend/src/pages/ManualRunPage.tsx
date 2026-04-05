@@ -167,12 +167,12 @@ export default function ManualRunPage() {
                         <h2>{workflow.name || workflow.slug}</h2>
                         <p>Provide input values and run the workflow manually.</p>
                         {workflow.required_secrets.length > 0 && (
-                            <p>
+                            <p className="manual-run-card-meta">
                                 Required secrets: {workflow.required_secrets.join(', ')}
                             </p>
                         )}
                         {workflow.missing_required_secrets.length > 0 && (
-                            <p className="manual-run-state error">
+                            <p className="manual-run-card-error">
                                 Missing secrets: {workflow.missing_required_secrets.join(', ')}. Add them in Profile Secrets before running this workflow.
                             </p>
                         )}
