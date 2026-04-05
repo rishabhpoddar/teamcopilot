@@ -57,6 +57,13 @@ function runWorkflowDeclarationTests(): void {
     );
 
     assertThrowsMessage(
+        () => parseWorkflowRequiredSecrets(JSON.stringify({
+            required_secrets: ["bad-key"]
+        })),
+        "workflow.json required_secrets contains invalid required secret keys: bad-key. Secret keys must start with a letter and contain only uppercase letters, numbers, and underscores. Example: GITHUB_TOKEN",
+    );
+
+    assertThrowsMessage(
         () => parseWorkflowRequiredSecrets("{invalid json"),
         "workflow.json must contain valid JSON",
     );
@@ -128,6 +135,17 @@ function runSkillDeclarationTests(): void {
             "---",
         ].join("\n")),
         "SKILL.md frontmatter required_secrets must be a valid string array",
+    );
+
+    assertThrowsMessage(
+        () => parseSkillRequiredSecrets([
+            "---",
+            "name: demo-skill",
+            "required_secrets:",
+            "  - bad-key",
+            "---",
+        ].join("\n")),
+        "SKILL.md required_secrets contains invalid required secret keys: bad-key. Secret keys must start with a letter and contain only uppercase letters, numbers, and underscores. Example: GITHUB_TOKEN",
     );
 
     validateSkillSecretContract([

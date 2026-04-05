@@ -7,9 +7,9 @@ import path from "path";
 import { WorkflowManifest, WorkflowMetadata } from "../types/workflow";
 import prisma from "../prisma/client";
 import { assertCondition } from "./assert";
+import { parseWorkflowRequiredSecrets } from "./secret-contract-validation";
 import { ensureWorkflowRunPermissionsForMetadata } from "./workflow-permissions";
 import { getWorkspaceDirFromEnv } from "./workspace-sync";
-import { normalizeSecretKeyList } from "./secrets";
 
 /** Get the absolute path to the workspace directory */
 function getWorkspacePath(): string {
@@ -75,7 +75,7 @@ function readWorkflowManifest(slug: string): WorkflowManifest {
 
     const content = fs.readFileSync(manifestPath, "utf-8");
     const manifest = JSON.parse(content) as WorkflowManifest;
-    manifest.required_secrets = normalizeSecretKeyList(manifest.required_secrets);
+    manifest.required_secrets = parseWorkflowRequiredSecrets(content);
     return manifest;
 }
 

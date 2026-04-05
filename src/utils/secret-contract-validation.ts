@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { normalizeSecretKeyList } from "./secrets";
+import { assertValidSecretKeyList } from "./secrets";
 
 const PYTHON_SECRET_PATTERNS = [
     /os\.environ\[\s*["']([A-Za-z_][A-Za-z0-9_]*)["']\s*\]/g,
@@ -9,10 +9,6 @@ const PYTHON_SECRET_PATTERNS = [
 ];
 
 const SKILL_SECRET_PLACEHOLDER_PATTERN = /\{\{SECRET:([A-Z][A-Z0-9_]*)\}\}/g;
-
-function uniqueNormalizedKeys(keys: string[]): string[] {
-    return normalizeSecretKeyList(keys);
-}
 
 function findDuplicateKeys(rawKeys: unknown[]): string[] {
     const seen = new Set<string>();
@@ -81,7 +77,10 @@ export function parseWorkflowRequiredSecrets(workflowJsonContent: string): strin
 
     const rawKeys = Array.isArray(parsed?.required_secrets) ? parsed.required_secrets : [];
     assertNoDuplicateSecretKeys(rawKeys, "workflow.json required_secrets");
-    return uniqueNormalizedKeys(rawKeys.filter((item): item is string => typeof item === "string"));
+    return assertValidSecretKeyList(
+        rawKeys.filter((item): item is string => typeof item === "string"),
+        "workflow.json required_secrets",
+    );
 }
 
 function extractSkillFrontmatterBlock(skillMarkdownContent: string): string {
@@ -119,7 +118,7 @@ function extractFrontmatterRequiredSecrets(frontmatter: string): { raw: string[]
             assertNoDuplicateSecretKeys(parsed, "SKILL.md required_secrets");
             return {
                 raw: parsed,
-                normalized: uniqueNormalizedKeys(parsed),
+                normalized: assertValidSecretKeyList(parsed, "SKILL.md required_secrets"),
             };
         }
 
@@ -127,7 +126,7 @@ function extractFrontmatterRequiredSecrets(frontmatter: string): { raw: string[]
             assertNoDuplicateSecretKeys([rawValue], "SKILL.md required_secrets");
             return {
                 raw: [rawValue],
-                normalized: uniqueNormalizedKeys([rawValue]),
+                normalized: assertValidSecretKeyList([rawValue], "SKILL.md required_secrets"),
             };
         }
 
@@ -146,7 +145,7 @@ function extractFrontmatterRequiredSecrets(frontmatter: string): { raw: string[]
         assertNoDuplicateSecretKeys(items, "SKILL.md required_secrets");
         return {
             raw: items,
-            normalized: uniqueNormalizedKeys(items),
+            normalized: assertValidSecretKeyList(items, "SKILL.md required_secrets"),
         };
     }
 

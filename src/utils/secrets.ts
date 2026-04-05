@@ -46,6 +46,26 @@ export function normalizeSecretKeyList(keys: string[] | undefined | null): strin
     return normalized;
 }
 
+export function assertValidSecretKeyList(rawKeys: string[] | undefined | null, context: string): string[] {
+    if (!Array.isArray(rawKeys)) {
+        return [];
+    }
+
+    const invalidKeys = rawKeys
+        .filter((rawKey) => typeof rawKey === "string")
+        .map((rawKey) => rawKey.trim())
+        .filter((key) => key.length > 0 && !SECRET_KEY_REGEX.test(key.toUpperCase()));
+
+    if (invalidKeys.length > 0) {
+        throw {
+            status: 400,
+            message: `${context} contains invalid required secret keys: ${invalidKeys.join(", ")}. Secret keys must start with a letter and contain only uppercase letters, numbers, and underscores. Example: GITHUB_TOKEN`
+        };
+    }
+
+    return normalizeSecretKeyList(rawKeys);
+}
+
 function maskSecretValue(value: string): string {
     if (value.length === 0) {
         return "***";

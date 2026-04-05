@@ -135,6 +135,31 @@ Use this skill safely.
             "SKILL.md required_secrets contains duplicate required secret keys: GITHUB_TOKEN",
         );
 
+        const invalidRequiredSecretsContent = `---
+name: "route-validation-skill"
+description: "Route validation test"
+required_secrets:
+  - bad-key
+---
+
+Use this skill safely.
+`;
+
+        const invalidRequiredSecretsResponse = await request(app)
+            .put(`/api/skills/${slug}/files/content`)
+            .set("Authorization", `Bearer ${authToken}`)
+            .send({
+                path: "SKILL.md",
+                content: invalidRequiredSecretsContent,
+                base_etag: baseEtag,
+            })
+            .expect(400);
+
+        assert.equal(
+            invalidRequiredSecretsResponse.body.message,
+            "SKILL.md required_secrets contains invalid required secret keys: bad-key. Secret keys must start with a letter and contain only uppercase letters, numbers, and underscores. Example: GITHUB_TOKEN",
+        );
+
         const validContent = `---
 name: "route-validation-skill"
 description: "Route validation test"
