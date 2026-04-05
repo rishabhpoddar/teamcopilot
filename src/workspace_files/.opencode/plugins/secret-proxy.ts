@@ -21,9 +21,9 @@ type SecretMapResolutionResponse = {
 }
 
 const SECRET_PLACEHOLDER_PATTERN = /\{\{SECRET:([A-Za-z_][A-Za-z0-9_]*)\}\}/g
-const SECRET_ENV_REFERENCE_PATTERN = /\$\{TC_SECRET_([A-Z][A-Z0-9_]*)\}/g
-const AGENT_VISIBLE_SECRET_ENV_REFERENCE_PATTERN = /\$TC_SECRET_[A-Z][A-Z0-9_]*|\$\{TC_SECRET_[A-Z][A-Z0-9_]*\}/
-const SECRET_ENV_PREFIX = "TC_SECRET_"
+const SECRET_ENV_REFERENCE_PATTERN = /\$\{__TEAMCOPILOT_RUNTIME_SECRET_([A-Z][A-Z0-9_]*)\}/g
+const AGENT_VISIBLE_SECRET_ENV_REFERENCE_PATTERN = /\$__TEAMCOPILOT_RUNTIME_SECRET_[A-Z][A-Z0-9_]*|\$\{__TEAMCOPILOT_RUNTIME_SECRET_[A-Z][A-Z0-9_]*\}/
+const SECRET_ENV_PREFIX = "__TEAMCOPILOT_RUNTIME_SECRET_"
 const SHELL_CONTROL_TOKENS = new Set(["&&", "||", ";", "|"])
 const CURL_SAFE_VALUE_OPTIONS = new Set([
   "-H",
@@ -294,7 +294,7 @@ function assertNoAgentAuthoredSecretEnvReference(value: unknown): void {
   if (typeof value === "string") {
     if (AGENT_VISIBLE_SECRET_ENV_REFERENCE_PATTERN.test(value)) {
       throw new Error(
-        "Direct TC_SECRET_* references are not allowed. Use {{SECRET:KEY}} placeholders instead."
+        "Direct __TEAMCOPILOT_RUNTIME_SECRET_* references are not allowed. Use {{SECRET:KEY}} placeholders instead."
       )
     }
     return

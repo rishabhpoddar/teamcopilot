@@ -196,26 +196,26 @@ function main(): void {
         input: { tool: "bash", sessionID: "child-session", callID: "1", args: { command: "curl https://api.example.com/{{SECRET:OPENAI_API_KEY}}" } },
         output: { args: { command: "curl https://api.example.com/{{SECRET:OPENAI_API_KEY}}" } },
     });
-    assert.equal((curlCommand.output as ToolCase["output"]).args.command, "curl https://api.example.com/${TC_SECRET_OPENAI_API_KEY}"); assertions += 1;
-    assert.equal((curlCommand.input as ToolCase["input"]).args?.command, "curl https://api.example.com/${TC_SECRET_OPENAI_API_KEY}"); assertions += 1;
+    assert.equal((curlCommand.output as ToolCase["output"]).args.command, "curl https://api.example.com/${__TEAMCOPILOT_RUNTIME_SECRET_OPENAI_API_KEY}"); assertions += 1;
+    assert.equal((curlCommand.input as ToolCase["input"]).args?.command, "curl https://api.example.com/${__TEAMCOPILOT_RUNTIME_SECRET_OPENAI_API_KEY}"); assertions += 1;
     assertFetchKeys(curlCommand, ["OPENAI_API_KEY"], "injects env only for referenced curl URL secrets"); assertions += 1;
-    assert.deepEqual(curlCommand.shellEnv, { TC_SECRET_OPENAI_API_KEY: "resolved-openai_api_key" }); assertions += 1;
+    assert.deepEqual(curlCommand.shellEnv, { __TEAMCOPILOT_RUNTIME_SECRET_OPENAI_API_KEY: "resolved-openai_api_key" }); assertions += 1;
 
     const curlHeader = runHookCase({
         kind: "tool",
         input: { tool: "bash", sessionID: "child-session", callID: "2", args: { cmd: "curl -H 'Authorization: Bearer {{SECRET:API_TOKEN}}' https://example.com" } },
         output: { args: { cmd: "curl -H 'Authorization: Bearer {{SECRET:API_TOKEN}}' https://example.com" } },
     });
-    assert.equal((curlHeader.output as ToolCase["output"]).args.cmd, "curl -H \"Authorization: Bearer \${TC_SECRET_API_TOKEN}\" https://example.com"); assertions += 1;
+    assert.equal((curlHeader.output as ToolCase["output"]).args.cmd, "curl -H \"Authorization: Bearer \${__TEAMCOPILOT_RUNTIME_SECRET_API_TOKEN}\" https://example.com"); assertions += 1;
     assertFetchKeys(curlHeader, ["API_TOKEN"], "injects env for supported curl header secrets"); assertions += 1;
-    assert.deepEqual(curlHeader.shellEnv, { TC_SECRET_API_TOKEN: "resolved-api_token" }); assertions += 1;
+    assert.deepEqual(curlHeader.shellEnv, { __TEAMCOPILOT_RUNTIME_SECRET_API_TOKEN: "resolved-api_token" }); assertions += 1;
 
     const inlineHeader = runHookCase({
         kind: "tool",
         input: { tool: "bash", sessionID: "child-session", callID: "3", args: { command: "curl --header=Authorization:Bearer-{{SECRET:API_TOKEN}} https://example.com" } },
         output: { args: { command: "curl --header=Authorization:Bearer-{{SECRET:API_TOKEN}} https://example.com" } },
     });
-    assert.equal((inlineHeader.output as ToolCase["output"]).args.command, "curl --header=Authorization:Bearer-${TC_SECRET_API_TOKEN} https://example.com"); assertions += 1;
+    assert.equal((inlineHeader.output as ToolCase["output"]).args.command, "curl --header=Authorization:Bearer-${__TEAMCOPILOT_RUNTIME_SECRET_API_TOKEN} https://example.com"); assertions += 1;
     assertFetchKeys(inlineHeader, ["API_TOKEN"], "injects env for inline curl headers"); assertions += 1;
 
     const dataOption = runHookCase({
@@ -223,7 +223,7 @@ function main(): void {
         input: { tool: "bash", sessionID: "child-session", callID: "4", args: { command: "curl -d '{\"token\":\"{{SECRET:OPENAI_API_KEY}}\"}' https://example.com" } },
         output: { args: { command: "curl -d '{\"token\":\"{{SECRET:OPENAI_API_KEY}}\"}' https://example.com" } },
     });
-    assert.equal((dataOption.output as ToolCase["output"]).args.command, "curl -d \"{\\\"token\\\":\\\"${TC_SECRET_OPENAI_API_KEY}\\\"}\" https://example.com"); assertions += 1;
+    assert.equal((dataOption.output as ToolCase["output"]).args.command, "curl -d \"{\\\"token\\\":\\\"${__TEAMCOPILOT_RUNTIME_SECRET_OPENAI_API_KEY}\\\"}\" https://example.com"); assertions += 1;
     assertFetchKeys(dataOption, ["OPENAI_API_KEY"], "injects env for curl data payload placeholders"); assertions += 1;
 
     const allowedCookieHeader = runHookCase({
@@ -231,7 +231,7 @@ function main(): void {
         input: { tool: "bash", sessionID: "child-session", callID: "4b", args: { command: "curl -H 'Cookie: session={{SECRET:API_TOKEN}}' https://example.com" } },
         output: { args: { command: "curl -H 'Cookie: session={{SECRET:API_TOKEN}}' https://example.com" } },
     });
-    assert.equal((allowedCookieHeader.output as ToolCase["output"]).args.command, "curl -H \"Cookie: session=${TC_SECRET_API_TOKEN}\" https://example.com"); assertions += 1;
+    assert.equal((allowedCookieHeader.output as ToolCase["output"]).args.command, "curl -H \"Cookie: session=${__TEAMCOPILOT_RUNTIME_SECRET_API_TOKEN}\" https://example.com"); assertions += 1;
     assertFetchKeys(allowedCookieHeader, ["API_TOKEN"], "injects env for cookie header substitution"); assertions += 1;
 
     const userOption = runHookCase({
@@ -239,7 +239,7 @@ function main(): void {
         input: { tool: "bash", sessionID: "child-session", callID: "5", args: { command: "curl -u user:{{SECRET:GITHUB_TOKEN}} https://example.com" } },
         output: { args: { command: "curl -u user:{{SECRET:GITHUB_TOKEN}} https://example.com" } },
     });
-    assert.equal((userOption.output as ToolCase["output"]).args.command, "curl -u user:${TC_SECRET_GITHUB_TOKEN} https://example.com"); assertions += 1;
+    assert.equal((userOption.output as ToolCase["output"]).args.command, "curl -u user:${__TEAMCOPILOT_RUNTIME_SECRET_GITHUB_TOKEN} https://example.com"); assertions += 1;
     assertFetchKeys(userOption, ["GITHUB_TOKEN"], "injects env for curl -u values"); assertions += 1;
 
     const formOption = runHookCase({
@@ -247,7 +247,7 @@ function main(): void {
         input: { tool: "bash", sessionID: "child-session", callID: "6", args: { command: "curl -F 'token={{SECRET:SLACK_TOKEN}}' https://example.com" } },
         output: { args: { command: "curl -F 'token={{SECRET:SLACK_TOKEN}}' https://example.com" } },
     });
-    assert.equal((formOption.output as ToolCase["output"]).args.command, "curl -F \"token=${TC_SECRET_SLACK_TOKEN}\" https://example.com"); assertions += 1;
+    assert.equal((formOption.output as ToolCase["output"]).args.command, "curl -F \"token=${__TEAMCOPILOT_RUNTIME_SECRET_SLACK_TOKEN}\" https://example.com"); assertions += 1;
     assertFetchKeys(formOption, ["SLACK_TOKEN"], "injects env for curl form values"); assertions += 1;
 
     const doubleQuotedHeader = runHookCase({
@@ -255,7 +255,7 @@ function main(): void {
         input: { tool: "bash", sessionID: "child-session", callID: "6a", args: { command: "curl -H \"Authorization: Bearer {{SECRET:API_TOKEN}}\" https://example.com" } },
         output: { args: { command: "curl -H \"Authorization: Bearer {{SECRET:API_TOKEN}}\" https://example.com" } },
     });
-    assert.equal((doubleQuotedHeader.output as ToolCase["output"]).args.command, "curl -H \"Authorization: Bearer ${TC_SECRET_API_TOKEN}\" https://example.com"); assertions += 1;
+    assert.equal((doubleQuotedHeader.output as ToolCase["output"]).args.command, "curl -H \"Authorization: Bearer ${__TEAMCOPILOT_RUNTIME_SECRET_API_TOKEN}\" https://example.com"); assertions += 1;
     assertFetchKeys(doubleQuotedHeader, ["API_TOKEN"], "preserves double quotes when rewriting supported header tokens"); assertions += 1;
 
     const singleQuotedUrl = runHookCase({
@@ -263,7 +263,7 @@ function main(): void {
         input: { tool: "bash", sessionID: "child-session", callID: "6b", args: { command: "curl 'https://api.example.com/{{SECRET:OPENAI_API_KEY}}?mode=full&debug=1'" } },
         output: { args: { command: "curl 'https://api.example.com/{{SECRET:OPENAI_API_KEY}}?mode=full&debug=1'" } },
     });
-    assert.equal((singleQuotedUrl.output as ToolCase["output"]).args.command, "curl \"https://api.example.com/${TC_SECRET_OPENAI_API_KEY}?mode=full&debug=1\""); assertions += 1;
+    assert.equal((singleQuotedUrl.output as ToolCase["output"]).args.command, "curl \"https://api.example.com/${__TEAMCOPILOT_RUNTIME_SECRET_OPENAI_API_KEY}?mode=full&debug=1\""); assertions += 1;
     assertFetchKeys(singleQuotedUrl, ["OPENAI_API_KEY"], "converts single-quoted curl URL tokens to double quotes for env expansion"); assertions += 1;
 
     const multiPlaceholderAllowedHeader = runHookCase({
@@ -271,7 +271,7 @@ function main(): void {
         input: { tool: "bash", sessionID: "child-session", callID: "6c", args: { command: "curl -H 'X-Api-Key: a={{SECRET:OPENAI_API_KEY}};b={{SECRET:GITHUB_TOKEN}}' https://example.com" } },
         output: { args: { command: "curl -H 'X-Api-Key: a={{SECRET:OPENAI_API_KEY}};b={{SECRET:GITHUB_TOKEN}}' https://example.com" } },
     });
-    assert.equal((multiPlaceholderAllowedHeader.output as ToolCase["output"]).args.command, "curl -H \"X-Api-Key: a=${TC_SECRET_OPENAI_API_KEY};b=${TC_SECRET_GITHUB_TOKEN}\" https://example.com"); assertions += 1;
+    assert.equal((multiPlaceholderAllowedHeader.output as ToolCase["output"]).args.command, "curl -H \"X-Api-Key: a=${__TEAMCOPILOT_RUNTIME_SECRET_OPENAI_API_KEY};b=${__TEAMCOPILOT_RUNTIME_SECRET_GITHUB_TOKEN}\" https://example.com"); assertions += 1;
     assertFetchKeys(multiPlaceholderAllowedHeader, ["GITHUB_TOKEN", "OPENAI_API_KEY"], "rewrites multiple placeholders inside one allowed single-quoted header token"); assertions += 1;
 
     const multiPlaceholderJsonData = runHookCase({
@@ -279,7 +279,7 @@ function main(): void {
         input: { tool: "bash", sessionID: "child-session", callID: "6d", args: { command: "curl -d '{\"token\":\"{{SECRET:OPENAI_API_KEY}}\",\"backup\":\"{{SECRET:GITHUB_TOKEN}}\"}' https://example.com" } },
         output: { args: { command: "curl -d '{\"token\":\"{{SECRET:OPENAI_API_KEY}}\",\"backup\":\"{{SECRET:GITHUB_TOKEN}}\"}' https://example.com" } },
     });
-    assert.equal((multiPlaceholderJsonData.output as ToolCase["output"]).args.command, "curl -d \"{\\\"token\\\":\\\"${TC_SECRET_OPENAI_API_KEY}\\\",\\\"backup\\\":\\\"${TC_SECRET_GITHUB_TOKEN}\\\"}\" https://example.com"); assertions += 1;
+    assert.equal((multiPlaceholderJsonData.output as ToolCase["output"]).args.command, "curl -d \"{\\\"token\\\":\\\"${__TEAMCOPILOT_RUNTIME_SECRET_OPENAI_API_KEY}\\\",\\\"backup\\\":\\\"${__TEAMCOPILOT_RUNTIME_SECRET_GITHUB_TOKEN}\\\"}\" https://example.com"); assertions += 1;
     assertFetchKeys(multiPlaceholderJsonData, ["GITHUB_TOKEN", "OPENAI_API_KEY"], "rewrites multiple placeholders inside single-quoted JSON payloads"); assertions += 1;
 
     const backtickEscapingHeader = runHookCase({
@@ -287,7 +287,7 @@ function main(): void {
         input: { tool: "bash", sessionID: "child-session", callID: "6e", args: { command: "curl -H 'X-Api-Key: prefix`{{SECRET:OPENAI_API_KEY}}`suffix' https://example.com" } },
         output: { args: { command: "curl -H 'X-Api-Key: prefix`{{SECRET:OPENAI_API_KEY}}`suffix' https://example.com" } },
     });
-    assert.equal((backtickEscapingHeader.output as ToolCase["output"]).args.command, "curl -H \"X-Api-Key: prefix\\`${TC_SECRET_OPENAI_API_KEY}\\`suffix\" https://example.com"); assertions += 1;
+    assert.equal((backtickEscapingHeader.output as ToolCase["output"]).args.command, "curl -H \"X-Api-Key: prefix\\`${__TEAMCOPILOT_RUNTIME_SECRET_OPENAI_API_KEY}\\`suffix\" https://example.com"); assertions += 1;
     assertFetchKeys(backtickEscapingHeader, ["OPENAI_API_KEY"], "escapes backticks when converting single-quoted header tokens to double quotes"); assertions += 1;
 
     const backslashEscapingHeader = runHookCase({
@@ -295,7 +295,7 @@ function main(): void {
         input: { tool: "bash", sessionID: "child-session", callID: "6f", args: { command: "curl -H 'X-Api-Key: path\\\\{{SECRET:OPENAI_API_KEY}}' https://example.com" } },
         output: { args: { command: "curl -H 'X-Api-Key: path\\\\{{SECRET:OPENAI_API_KEY}}' https://example.com" } },
     });
-    assert.equal((backslashEscapingHeader.output as ToolCase["output"]).args.command, "curl -H \"X-Api-Key: path\\\\\\\\${TC_SECRET_OPENAI_API_KEY}\" https://example.com"); assertions += 1;
+    assert.equal((backslashEscapingHeader.output as ToolCase["output"]).args.command, "curl -H \"X-Api-Key: path\\\\\\\\${__TEAMCOPILOT_RUNTIME_SECRET_OPENAI_API_KEY}\" https://example.com"); assertions += 1;
     assertFetchKeys(backslashEscapingHeader, ["OPENAI_API_KEY"], "escapes backslashes when converting single-quoted header tokens to double quotes"); assertions += 1;
 
     const embeddedDoubleQuoteEscaping = runHookCase({
@@ -303,7 +303,7 @@ function main(): void {
         input: { tool: "bash", sessionID: "child-session", callID: "6g", args: { command: "curl -d '{\"note\":\"say \\\"hi\\\" to {{SECRET:OPENAI_API_KEY}}\"}' https://example.com" } },
         output: { args: { command: "curl -d '{\"note\":\"say \\\"hi\\\" to {{SECRET:OPENAI_API_KEY}}\"}' https://example.com" } },
     });
-    assert.equal((embeddedDoubleQuoteEscaping.output as ToolCase["output"]).args.command, "curl -d \"{\\\"note\\\":\\\"say \\\\\\\"hi\\\\\\\" to ${TC_SECRET_OPENAI_API_KEY}\\\"}\" https://example.com"); assertions += 1;
+    assert.equal((embeddedDoubleQuoteEscaping.output as ToolCase["output"]).args.command, "curl -d \"{\\\"note\\\":\\\"say \\\\\\\"hi\\\\\\\" to ${__TEAMCOPILOT_RUNTIME_SECRET_OPENAI_API_KEY}\\\"}\" https://example.com"); assertions += 1;
     assertFetchKeys(embeddedDoubleQuoteEscaping, ["OPENAI_API_KEY"], "keeps embedded escaped double quotes valid after single-quote to double-quote conversion"); assertions += 1;
 
     const unsafeOutputOption = runHookCase({
@@ -327,7 +327,7 @@ function main(): void {
             args: { command: "curl -H 'Authorization: Bearer {{SECRET:OPENAI_API_KEY}}' --output {{SECRET:GITHUB_TOKEN}} https://example.com" },
         },
     });
-    assert.equal((mixedSafeUnsafe.output as ToolCase["output"]).args.command, "curl -H \"Authorization: Bearer \${TC_SECRET_OPENAI_API_KEY}\" --output {{SECRET:GITHUB_TOKEN}} https://example.com"); assertions += 1;
+    assert.equal((mixedSafeUnsafe.output as ToolCase["output"]).args.command, "curl -H \"Authorization: Bearer \${__TEAMCOPILOT_RUNTIME_SECRET_OPENAI_API_KEY}\" --output {{SECRET:GITHUB_TOKEN}} https://example.com"); assertions += 1;
     assertFetchKeys(mixedSafeUnsafe, ["OPENAI_API_KEY"], "injects env only for safe mixed curl placeholders"); assertions += 1;
 
     const echoCommand = runHookCase({
@@ -343,7 +343,7 @@ function main(): void {
         input: { tool: "bash", sessionID: "child-session", callID: "12", args: { command: "echo ok" } },
         output: { args: { metadata: { nested: "curl -H 'X-Api-Key: {{SECRET:OPENAI_API_KEY}}' https://example.com" } } },
     });
-    assert.equal(((nestedCurlString.output as ToolCase["output"]).args.metadata as { nested: string }).nested, "curl -H \"X-Api-Key: ${TC_SECRET_OPENAI_API_KEY}\" https://example.com"); assertions += 1;
+    assert.equal(((nestedCurlString.output as ToolCase["output"]).args.metadata as { nested: string }).nested, "curl -H \"X-Api-Key: ${__TEAMCOPILOT_RUNTIME_SECRET_OPENAI_API_KEY}\" https://example.com"); assertions += 1;
     assertFetchKeys(nestedCurlString, ["OPENAI_API_KEY"], "injects env for nested curl strings"); assertions += 1;
 
     const arrayCurlString = runHookCase({
@@ -351,7 +351,7 @@ function main(): void {
         input: { tool: "bash", sessionID: "child-session", callID: "13", args: { command: "echo ok" } },
         output: { args: { parts: ["curl https://example.com/{{SECRET:OPENAI_API_KEY}}", "echo {{SECRET:GITHUB_TOKEN}}"] } },
     });
-    assert.deepEqual((arrayCurlString.output as ToolCase["output"]).args.parts, ["curl https://example.com/${TC_SECRET_OPENAI_API_KEY}", "echo {{SECRET:GITHUB_TOKEN}}"]); assertions += 1;
+    assert.deepEqual((arrayCurlString.output as ToolCase["output"]).args.parts, ["curl https://example.com/${__TEAMCOPILOT_RUNTIME_SECRET_OPENAI_API_KEY}", "echo {{SECRET:GITHUB_TOKEN}}"]); assertions += 1;
     assertFetchKeys(arrayCurlString, ["OPENAI_API_KEY"], "injects env only for curl strings inside arrays"); assertions += 1;
 
     const differentHeaderStrings = runHookCase({
@@ -361,8 +361,8 @@ function main(): void {
     });
     assertFetchKeys(differentHeaderStrings, ["GITHUB_TOKEN", "OPENAI_API_KEY"], "injects env for all distinct supported keys in one pass"); assertions += 1;
     assert.deepEqual(differentHeaderStrings.shellEnv, {
-        TC_SECRET_GITHUB_TOKEN: "resolved-github_token",
-        TC_SECRET_OPENAI_API_KEY: "resolved-openai_api_key",
+        __TEAMCOPILOT_RUNTIME_SECRET_GITHUB_TOKEN: "resolved-github_token",
+        __TEAMCOPILOT_RUNTIME_SECRET_OPENAI_API_KEY: "resolved-openai_api_key",
     }); assertions += 1;
 
     const chainedCommand = runHookCase({
@@ -370,7 +370,7 @@ function main(): void {
         input: { tool: "bash", sessionID: "child-session", callID: "17", args: { command: "echo start && curl -H 'X-Api-Key: {{SECRET:OPENAI_API_KEY}}' https://example.com && echo done" } },
         output: { args: { command: "echo start && curl -H 'X-Api-Key: {{SECRET:OPENAI_API_KEY}}' https://example.com && echo done" } },
     });
-    assert.equal((chainedCommand.output as ToolCase["output"]).args.command, "echo start && curl -H \"X-Api-Key: ${TC_SECRET_OPENAI_API_KEY}\" https://example.com && echo done"); assertions += 1;
+    assert.equal((chainedCommand.output as ToolCase["output"]).args.command, "echo start && curl -H \"X-Api-Key: ${__TEAMCOPILOT_RUNTIME_SECRET_OPENAI_API_KEY}\" https://example.com && echo done"); assertions += 1;
     assertFetchKeys(chainedCommand, ["OPENAI_API_KEY"], "injects env for chained curl segments"); assertions += 1;
 
     const pathToCurl = runHookCase({
@@ -378,7 +378,7 @@ function main(): void {
         input: { tool: "bash", sessionID: "grandchild-session", callID: "20", args: { command: "/usr/bin/curl -H 'X-Api-Key: {{SECRET:OPENAI_API_KEY}}' https://example.com" } },
         output: { args: { command: "/usr/bin/curl -H 'X-Api-Key: {{SECRET:OPENAI_API_KEY}}' https://example.com" } },
     });
-    assert.equal((pathToCurl.output as ToolCase["output"]).args.command, "/usr/bin/curl -H \"X-Api-Key: ${TC_SECRET_OPENAI_API_KEY}\" https://example.com"); assertions += 1;
+    assert.equal((pathToCurl.output as ToolCase["output"]).args.command, "/usr/bin/curl -H \"X-Api-Key: ${__TEAMCOPILOT_RUNTIME_SECRET_OPENAI_API_KEY}\" https://example.com"); assertions += 1;
     assertFetchKeys(pathToCurl, ["OPENAI_API_KEY"], "resolves root session through multiple parents for shell env"); assertions += 1;
 
     const nonBashTool = runHookCase({
@@ -394,7 +394,7 @@ function main(): void {
         input: { command: "curl", arguments: "-H 'Authorization: Bearer {{SECRET:OPENAI_API_KEY}}' https://example.com", sessionID: "child-session" },
         output: { parts: [] },
     });
-    assert.equal((commandExecutableCurl.input as CommandCase["input"]).arguments, "-H \"Authorization: Bearer ${TC_SECRET_OPENAI_API_KEY}\" https://example.com"); assertions += 1;
+    assert.equal((commandExecutableCurl.input as CommandCase["input"]).arguments, "-H \"Authorization: Bearer ${__TEAMCOPILOT_RUNTIME_SECRET_OPENAI_API_KEY}\" https://example.com"); assertions += 1;
     assertFetchKeys(commandExecutableCurl, ["OPENAI_API_KEY"], "injects env for command hook curl arguments"); assertions += 1;
 
     const commandWithMixedArguments = runHookCase({
@@ -402,7 +402,7 @@ function main(): void {
         input: { command: "curl", arguments: "-H 'Authorization: Bearer {{SECRET:OPENAI_API_KEY}}' --output {{SECRET:GITHUB_TOKEN}} https://example.com", sessionID: "child-session" },
         output: { parts: [] },
     });
-    assert.equal((commandWithMixedArguments.input as CommandCase["input"]).arguments, "-H \"Authorization: Bearer ${TC_SECRET_OPENAI_API_KEY}\" --output {{SECRET:GITHUB_TOKEN}} https://example.com"); assertions += 1;
+    assert.equal((commandWithMixedArguments.input as CommandCase["input"]).arguments, "-H \"Authorization: Bearer ${__TEAMCOPILOT_RUNTIME_SECRET_OPENAI_API_KEY}\" --output {{SECRET:GITHUB_TOKEN}} https://example.com"); assertions += 1;
     assertFetchKeys(commandWithMixedArguments, ["OPENAI_API_KEY"], "injects env only for safe command-hook placeholders"); assertions += 1;
 
     const bashLcCommand = runHookCase({
@@ -418,7 +418,7 @@ function main(): void {
         input: { tool: "bash", sessionID: "child-session", callID: "23", args: { command: "curl -H 'X-Api-Key: {{SECRET:MISSING_KEY}}' https://example.com" } },
         output: { args: { command: "curl -H 'X-Api-Key: {{SECRET:MISSING_KEY}}' https://example.com" } },
     });
-    assert.equal((toolMissingKey.output as ToolCase["output"]).args.command, "curl -H \"X-Api-Key: ${TC_SECRET_MISSING_KEY}\" https://example.com"); assertions += 1;
+    assert.equal((toolMissingKey.output as ToolCase["output"]).args.command, "curl -H \"X-Api-Key: ${__TEAMCOPILOT_RUNTIME_SECRET_MISSING_KEY}\" https://example.com"); assertions += 1;
     assert.equal(toolMissingKey.error, "This command references missing secrets: MISSING_KEY. Ask the user to add these keys in TeamCopilot Profile Secrets before retrying."); assertions += 1;
 
     const toolApiFailure = runHookCase({
@@ -438,26 +438,26 @@ function main(): void {
 
     const directSecretEnvReferenceTool = runHookCase({
         kind: "tool",
-        input: { tool: "bash", sessionID: "child-session", callID: "26", args: { command: "echo $TC_SECRET_OPENAI_API_KEY" } },
-        output: { args: { command: "echo $TC_SECRET_OPENAI_API_KEY" } },
+        input: { tool: "bash", sessionID: "child-session", callID: "26", args: { command: "echo $__TEAMCOPILOT_RUNTIME_SECRET_OPENAI_API_KEY" } },
+        output: { args: { command: "echo $__TEAMCOPILOT_RUNTIME_SECRET_OPENAI_API_KEY" } },
     });
-    assert.equal(directSecretEnvReferenceTool.error, "Direct TC_SECRET_* references are not allowed. Use {{SECRET:KEY}} placeholders instead."); assertions += 1;
+    assert.equal(directSecretEnvReferenceTool.error, "Direct __TEAMCOPILOT_RUNTIME_SECRET_* references are not allowed. Use {{SECRET:KEY}} placeholders instead."); assertions += 1;
     assertNoFetch(directSecretEnvReferenceTool, "rejects direct shell-style secret env references before any resolution"); assertions += 1;
 
     const directSecretEnvReferenceBracedTool = runHookCase({
         kind: "tool",
-        input: { tool: "bash", sessionID: "child-session", callID: "27", args: { command: "echo ${TC_SECRET_OPENAI_API_KEY}" } },
-        output: { args: { command: "echo ${TC_SECRET_OPENAI_API_KEY}" } },
+        input: { tool: "bash", sessionID: "child-session", callID: "27", args: { command: "echo ${__TEAMCOPILOT_RUNTIME_SECRET_OPENAI_API_KEY}" } },
+        output: { args: { command: "echo ${__TEAMCOPILOT_RUNTIME_SECRET_OPENAI_API_KEY}" } },
     });
-    assert.equal(directSecretEnvReferenceBracedTool.error, "Direct TC_SECRET_* references are not allowed. Use {{SECRET:KEY}} placeholders instead."); assertions += 1;
+    assert.equal(directSecretEnvReferenceBracedTool.error, "Direct __TEAMCOPILOT_RUNTIME_SECRET_* references are not allowed. Use {{SECRET:KEY}} placeholders instead."); assertions += 1;
     assertNoFetch(directSecretEnvReferenceBracedTool, "rejects direct braced secret env references before any resolution"); assertions += 1;
 
     const directSecretEnvReferenceCommandHook = runHookCase({
         kind: "command",
-        input: { command: "echo $TC_SECRET_OPENAI_API_KEY", arguments: "", sessionID: "child-session" },
+        input: { command: "echo $__TEAMCOPILOT_RUNTIME_SECRET_OPENAI_API_KEY", arguments: "", sessionID: "child-session" },
         output: { parts: [] },
     });
-    assert.equal(directSecretEnvReferenceCommandHook.error, "Direct TC_SECRET_* references are not allowed. Use {{SECRET:KEY}} placeholders instead."); assertions += 1;
+    assert.equal(directSecretEnvReferenceCommandHook.error, "Direct __TEAMCOPILOT_RUNTIME_SECRET_* references are not allowed. Use {{SECRET:KEY}} placeholders instead."); assertions += 1;
     assertNoFetch(directSecretEnvReferenceCommandHook, "rejects direct secret env references in command hook input"); assertions += 1;
 
     console.log(`Secret proxy plugin tests passed: ${assertions}`);
