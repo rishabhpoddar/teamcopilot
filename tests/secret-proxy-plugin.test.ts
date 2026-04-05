@@ -30,6 +30,18 @@ type HookResult = {
     error?: string;
 };
 
+type MultiHookStepResult = {
+    input: HookCase["input"];
+    output: HookCase["output"];
+    shellEnv: Record<string, string>;
+    error?: string;
+};
+
+type MultiHookResult = {
+    steps: MultiHookStepResult[];
+    fetchCalls: FetchCall[];
+};
+
 function runHookCase(pluginCase: HookCase): HookResult {
     const pluginFile = path.resolve(process.cwd(), "src/workspace_files/.opencode/plugins/secret-proxy.ts");
     const pluginUrl = pathToFileURL(pluginFile).href;
@@ -174,6 +186,141 @@ try {
     assert.ok(jsonLine, `Missing JSON output from subprocess.\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
 
     return JSON.parse(jsonLine) as HookResult;
+}
+
+function runHookSequence(pluginCases: HookCase[]): MultiHookResult {
+    const pluginFile = path.resolve(process.cwd(), "src/workspace_files/.opencode/plugins/secret-proxy.ts");
+    const pluginUrl = pathToFileURL(pluginFile).href;
+
+    const script = `
+const pluginPath = process.env.SECRET_PROXY_PLUGIN_PATH;
+const payload = JSON.parse(process.env.SECRET_PROXY_CASE_JSON || "[]");
+const mod = await import(pluginPath);
+const fetchCalls = [];
+
+globalThis.fetch = async (_url, options = {}) => {
+  const headers = options.headers ?? {};
+  const authorization = typeof headers.Authorization === "string"
+    ? headers.Authorization
+    : typeof headers.authorization === "string"
+      ? headers.authorization
+      : "";
+  const body = typeof options.body === "string" ? JSON.parse(options.body) : {};
+  const keys = Array.isArray(body.keys)
+    ? body.keys.filter((key) => typeof key === "string").map((key) => String(key).trim().toUpperCase())
+    : [];
+  fetchCalls.push({ authorization, keys });
+
+  const missingKeys = keys.filter((key) => key.startsWith("MISSING_"));
+  if (missingKeys.length > 0) {
+    return {
+      ok: false,
+      status: 400,
+      text: async () => JSON.stringify({
+        message: "This command references missing secrets: " + missingKeys.join(", ") + ". Ask the user to add these keys in TeamCopilot Profile Secrets before retrying."
+      }),
+    };
+  }
+
+  const secretMap = {};
+  for (const key of keys) {
+    secretMap[key] = "resolved-" + key.toLowerCase();
+  }
+
+  return {
+    ok: true,
+    json: async () => ({ secret_map: secretMap }),
+    text: async () => "",
+  };
+};
+
+const hooks = await mod.SecretProxyPlugin({
+  directory: process.cwd(),
+  worktree: process.cwd(),
+  project: {},
+  $: {},
+  serverUrl: new URL("http://localhost"),
+  client: {
+    session: {
+      get: async ({ path }) => {
+        if (path.id === "child-session") {
+          return { data: { id: "child-session", parentID: "root-session" } };
+        }
+        return { data: { id: path.id, parentID: null } };
+      },
+    },
+  },
+});
+
+const steps = [];
+for (const hookCase of payload) {
+  const shellOutput = { env: {} };
+  try {
+    if (hookCase.kind === "tool") {
+      await hooks["tool.execute.before"](hookCase.input, hookCase.output);
+      await hooks["shell.env"](
+        {
+          sessionID: hookCase.input.sessionID,
+          cwd: process.cwd(),
+          command: hookCase.output?.args?.command ?? hookCase.output?.args?.cmd ?? "",
+          args: hookCase.output?.args ?? {},
+        },
+        shellOutput
+      );
+    } else {
+      await hooks["command.execute.before"](hookCase.input, hookCase.output);
+      await hooks["shell.env"](
+        {
+          sessionID: hookCase.input.sessionID,
+          cwd: process.cwd(),
+          command: hookCase.input.command,
+          arguments: hookCase.input.arguments,
+        },
+        shellOutput
+      );
+    }
+    steps.push({ input: hookCase.input, output: hookCase.output, shellEnv: shellOutput.env });
+  } catch (err) {
+    steps.push({
+      input: hookCase.input,
+      output: hookCase.output,
+      shellEnv: shellOutput.env,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+console.log(JSON.stringify({ steps, fetchCalls }));
+`;
+
+    const result = spawnSync(
+        process.execPath,
+        ["--loader", "ts-node/esm/transpile-only", "--input-type=module", "-e", script],
+        {
+            encoding: "utf8",
+            env: {
+                ...process.env,
+                TEAMCOPILOT_PORT: "5124",
+                SECRET_PROXY_PLUGIN_PATH: pluginUrl,
+                SECRET_PROXY_CASE_JSON: JSON.stringify(pluginCases),
+            },
+        },
+    );
+
+    if (result.status !== 0) {
+        throw new Error(
+            `Subprocess failed (${result.status}).\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+        );
+    }
+
+    const lines = (result.stdout || "")
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean);
+    const jsonLine = [...lines].reverse().find((line) => line.startsWith("{") && line.endsWith("}"));
+    assert.ok(jsonLine, `Missing JSON output from subprocess.\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
+
+    return JSON.parse(jsonLine) as MultiHookResult;
 }
 
 function assertNoFetch(result: HookResult, label: string): void {
@@ -479,6 +626,27 @@ function main(): void {
     });
     assert.equal((toolMissingKey.output as ToolCase["output"]).args.command, "curl -H \"X-Api-Key: ${__TEAMCOPILOT_RUNTIME_SECRET_MISSING_KEY}\" https://example.com"); assertions += 1;
     assert.equal(toolMissingKey.error, "This command references missing secrets: MISSING_KEY. Ask the user to add these keys in TeamCopilot Profile Secrets before retrying."); assertions += 1;
+
+    const failedThenUnrelatedSequence = runHookSequence([
+        {
+            kind: "tool",
+            input: { tool: "bash", sessionID: "child-session", callID: "23a", args: { command: "curl -H 'X-Api-Key: {{SECRET:MISSING_KEY}}' https://example.com" } },
+            output: { args: { command: "curl -H 'X-Api-Key: {{SECRET:MISSING_KEY}}' https://example.com" } },
+        },
+        {
+            kind: "tool",
+            input: { tool: "bash", sessionID: "child-session", callID: "23b", args: { command: "echo hello-world" } },
+            output: { args: { command: "echo hello-world" } },
+        },
+    ]);
+    assert.equal(failedThenUnrelatedSequence.steps[0]?.error, "This command references missing secrets: MISSING_KEY. Ask the user to add these keys in TeamCopilot Profile Secrets before retrying."); assertions += 1;
+    assert.equal(failedThenUnrelatedSequence.steps[1]?.error, undefined); assertions += 1;
+    assert.deepEqual(failedThenUnrelatedSequence.steps[1]?.shellEnv, {}); assertions += 1;
+    assert.deepEqual(
+        failedThenUnrelatedSequence.fetchCalls,
+        [{ authorization: "Bearer root-session", keys: ["MISSING_KEY"] }],
+        "does not carry failed secret resolution state into a later unrelated command in the same session",
+    ); assertions += 1;
 
     const toolApiFailure = runHookCase({
         kind: "tool",

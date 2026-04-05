@@ -411,20 +411,6 @@ function assertNoAgentAuthoredSecretEnvReference(value: unknown): void {
 }
 
 export const SecretProxyPlugin: Plugin = async ({ client }) => {
-  const pendingEnvKeysBySession = new Map<string, Set<string>>()
-
-  function addPendingEnvKeys(sessionID: string, keys: string[]): void {
-    if (keys.length === 0) {
-      return
-    }
-
-    const existing = pendingEnvKeysBySession.get(sessionID) ?? new Set<string>()
-    for (const key of keys) {
-      existing.add(key)
-    }
-    pendingEnvKeysBySession.set(sessionID, existing)
-  }
-
   async function resolveRootSessionID(sessionID: string): Promise<string> {
     let currentSessionID = sessionID
 
@@ -481,7 +467,6 @@ export const SecretProxyPlugin: Plugin = async ({ client }) => {
   }
 
   async function rewriteStringFieldsInPlace(
-    sessionID: string,
     value: unknown,
     cache: Map<string, { rewritten: string; referencedKeys: string[] }>,
   ): Promise<void> {
@@ -495,10 +480,9 @@ export const SecretProxyPlugin: Plugin = async ({ client }) => {
         if (typeof item === "string") {
           const rewritten = await maybeRewriteSupportedString(item, cache)
           value[index] = rewritten.rewritten
-          addPendingEnvKeys(sessionID, rewritten.referencedKeys)
           continue
         }
-        await rewriteStringFieldsInPlace(sessionID, item, cache)
+        await rewriteStringFieldsInPlace(item, cache)
       }
       return
     }
@@ -511,10 +495,9 @@ export const SecretProxyPlugin: Plugin = async ({ client }) => {
       if (typeof nestedValue === "string") {
         const rewritten = await maybeRewriteSupportedString(nestedValue, cache)
         value[key] = rewritten.rewritten
-        addPendingEnvKeys(sessionID, rewritten.referencedKeys)
         continue
       }
-      await rewriteStringFieldsInPlace(sessionID, nestedValue, cache)
+      await rewriteStringFieldsInPlace(nestedValue, cache)
     }
   }
 
@@ -765,7 +748,6 @@ export const SecretProxyPlugin: Plugin = async ({ client }) => {
             ? `${input.command} ${input.arguments}`
             : input.command
           const rewritten = substitutePlaceholdersInCurlShellString(fullCurlCommand)
-          addPendingEnvKeys(sessionID, rewritten.referencedKeys)
           const prefix = `${input.command} `
           if (rewritten.rewritten.startsWith(prefix)) {
             input.arguments = rewritten.rewritten.slice(prefix.length)
@@ -776,7 +758,6 @@ export const SecretProxyPlugin: Plugin = async ({ client }) => {
         } else {
           const rewritten = await maybeRewriteSupportedString(input.command, commandCache)
           input.command = rewritten.rewritten
-          addPendingEnvKeys(sessionID, rewritten.referencedKeys)
         }
       }
       if (typeof input.arguments === "string" && input.arguments.includes("{{SECRET:")) {
@@ -785,7 +766,6 @@ export const SecretProxyPlugin: Plugin = async ({ client }) => {
             ? `${input.command} ${input.arguments}`
             : input.command
           const rewritten = substitutePlaceholdersInCurlShellString(fullCurlCommand)
-          addPendingEnvKeys(sessionID, rewritten.referencedKeys)
           const prefix = `${input.command} `
           if (rewritten.rewritten.startsWith(prefix)) {
             input.arguments = rewritten.rewritten.slice(prefix.length)
@@ -793,7 +773,6 @@ export const SecretProxyPlugin: Plugin = async ({ client }) => {
         } else {
           const rewritten = await maybeRewriteSupportedString(input.arguments, commandCache)
           input.arguments = rewritten.rewritten
-          addPendingEnvKeys(sessionID, rewritten.referencedKeys)
         }
       }
     },
@@ -811,8 +790,8 @@ export const SecretProxyPlugin: Plugin = async ({ client }) => {
       assertNoAgentAuthoredSecretEnvReference(output.args)
 
       const cache = new Map<string, { rewritten: string; referencedKeys: string[] }>()
-      await rewriteStringFieldsInPlace(sessionID, output.args, cache)
-      await rewriteStringFieldsInPlace(sessionID, input.args, cache)
+      await rewriteStringFieldsInPlace(output.args, cache)
+      await rewriteStringFieldsInPlace(input.args, cache)
     },
     "shell.env": async (input, output) => {
       const sessionID = typeof input.sessionID === "string" ? input.sessionID.trim() : ""
@@ -824,13 +803,6 @@ export const SecretProxyPlugin: Plugin = async ({ client }) => {
       collectReferencedEnvKeys(input, referencedKeys)
       collectReferencedEnvKeys(output, referencedKeys)
 
-      const pendingKeys = pendingEnvKeysBySession.get(sessionID)
-      if (pendingKeys) {
-        for (const key of pendingKeys) {
-          referencedKeys.add(key)
-        }
-      }
-
       if (referencedKeys.size === 0) {
         return
       }
@@ -839,7 +811,6 @@ export const SecretProxyPlugin: Plugin = async ({ client }) => {
       for (const [key, value] of Object.entries(resolvedSecretMap)) {
         output.env[`${SECRET_ENV_PREFIX}${key}`] = value
       }
-      pendingEnvKeysBySession.delete(sessionID)
     },
   }
 }
