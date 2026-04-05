@@ -251,7 +251,6 @@ router.get("/:slug/runtime-content", apiHandler(async (req, res) => {
             slug,
             path: skillContent.path,
             content: skillContent.content ?? "",
-            secretMap: secretResolution.secretMap,
         }
     });
 }, true));

@@ -69,8 +69,8 @@ Before implementing custom instructions or creating new workflow logic, you MUST
 **Required skill tools:**
 - `listAvailableSkills` — list only skills you are allowed to use (editable + approved).
 - `findSkill` — semantically search skills by description/body.
-- `getSkillContent` — read `SKILL.md` for a specific skill. Returns the original unresolved skill content plus a separate `secretMap` of resolved secret values for the current user. It fails if the skill is unapproved, inaccessible, or missing required secrets.
-- `getUserSecrets` — get the full resolved secret map currently available to the user. Use this when you need to reuse an existing secret key during skill/workflow creation or when you need the full merged key/value map at execution time.
+- `getSkillContent` — read `SKILL.md` for a specific skill. Returns the original unresolved skill content from disk. It fails if the skill is unapproved, inaccessible, or missing required secrets.
+- `listAvailableSecretKeys` — get the full secret-key inventory currently available to the user. Use this when you need to reuse an existing secret key during skill/workflow creation.
 - `createSkill` — create a new skill when no suitable skill exists. This tool requires explicit user permission during execution.
 
 **Rule:**
@@ -398,6 +398,7 @@ These rules exist to prevent data loss, secret leakage, and unsafe behavior. Vio
 - Do not proactively ask users to paste secrets in chat; prefer asking them to add them in TeamCopilot Profile Secrets.
 - User secrets override global secrets when both define the same key.
 - TeamCopilot resolves secrets in this order: current user's secret first, then global secret, otherwise missing.
+- Never expect to see raw secret values. TeamCopilot exposes secret keys and proxy placeholders to you, not plaintext secret contents.
 - Workflows must declare runtime secret keys in `workflow.json` under `required_secrets`. Format:
 ```json
 {
@@ -418,25 +419,33 @@ required_secrets:
 ---
 ```
 - Skill bodies may contain placeholders like `{{SECRET:OPENAI_API_KEY}}`.
-- If a skill body references `{{SECRET:KEY}}` but `KEY` is missing from `required_secrets`, TeamCopilot rejects that skill during save or `getSkillContent`.
-- `getSkillContent` returns the original unresolved `content` from disk plus a separate `secretMap` of resolved plaintext values for the current user. Example shape:
+- When using secrets in bash commands, use placeholder references like `{{SECRET:OPENAI_API_KEY}}` (general form is `{{SECRET:KEY_NAME}}`).
+- In bash, TeamCopilot only substitutes `{{SECRET:KEY}}` placeholders in supported `curl` use cases. Unsupported contexts are left unchanged.
+- Supported `curl` substitution contexts include:
+  - auth-like headers passed with `-H` / `--header` when the header name is an allowed auth/session header
+  - request URLs and explicit `--url` values
+  - auth/data-related curl arguments such as `--user`, `--proxy-user`, `--oauth2-bearer`, `--data*`, `--form*`, `--cookie`, `--referer`, `--user-agent`, `--proxy`, `--resolve`, and `--connect-to`
+- Do not assume `{{SECRET:KEY}}` will resolve inside arbitrary shell text.
+- Do not rely on placeholder substitution in `echo`, `printf`, heredocs, redirects, `tee`, `python -c`, `node -e`, `bash -lc`, `scp`, `wget`, or file-writing commands.
+- For non-`curl` secret usage, prefer workflow runtime env injection via `required_secrets`.
+- If the currently supported `curl` substitution cases or allowed headers are not sufficient, prefer creating (using the `createWorkflow` tool) or updating a workflow instead of trying to force secret use through bash.
+- If you need to write a script or multi-step automation that uses secrets, prefer creating (using the `createWorkflow` tool) or updating a workflow instead of embedding secret placeholders in shell scripts. In workflows, all declared secrets are injected into the runtime environment (no matter where or how they are used) when you call the `runWorkflow` tool. This is secure since workflow execution is gated by engineer approval.
+- Do not try to manually replace `{{SECRET:KEY}}` with a raw value yourself.
+- If you use a secret like `{{SECRET:KEY_NAME}}` and that secret doesn't exist in the user's profile, the tool call will fail, and then you should ask the user to add that key to their Profile Secrets before retrying.
+- `getSkillContent` returns the original unresolved `content` from disk. Example shape:
 ```json
 {
   "skill": {
     "slug": "example-skill",
     "path": "SKILL.md",
-    "content": "Use {{SECRET:OPENAI_API_KEY}} for authentication.",
-    "secretMap": {
-      "OPENAI_API_KEY": "..."
-    }
+    "content": "Use {{SECRET:OPENAI_API_KEY}} for authentication."
   }
 }
 ```
-- When executing a skill, keep the placeholder text in `content` as the source-of-truth for what is on disk, and use `secretMap` for the actual resolved values during execution.
-- When creating or editing a workflow/skill, reuse an existing secret key if one already fits.
+- When executing a skill, keep the placeholder text in `content` as the source-of-truth for what is on disk. Do not invent or inline raw secret values.
+- When creating or editing a workflow/skill, reuse an existing secret key if one already fits (The list of available secret keys is available in the "Available secrets for this user" section of the first chat message, and if that's not available, use the `listAvailableSecretKeys` tool to get the full inventory).
 - If you introduce a new secret key while creating or editing a workflow/skill, add it to `required_secrets` and explicitly tell the user they must add that key in TeamCopilot Profile Secrets before the workflow/skill can run.
-- If `getSkillContent` fails because secrets are missing, tell the user exactly which keys they need to add in TeamCopilot Profile Secrets.
-- If workflow execution fails because secrets are missing, tell the user exactly which keys they need to add in TeamCopilot Profile Secrets.
+- If `getSkillContent` or the `runWorkflow` tool fails because secrets are missing, tell the user exactly which keys they need to add in TeamCopilot Profile Secrets.
 - Do not store secret values in `README.md`, `workflow.json`, `requirements.txt`, `requirements.lock.txt`, `data/`, or `SKILL.md`.
 
 ### Filesystem safety boundaries
@@ -511,7 +520,7 @@ When a user asks for behavior that may already be captured as reusable instructi
    - If the first chat message already lists an obviously matching skill, you may use that inventory directly and skip this search.
 2. For promising matches, use `getSkillContent` to inspect `SKILL.md`.
 3. If `getSkillContent` fails because secrets are missing, tell the user which Profile Secret keys they need to add.
-4. If a skill fits, follow that skill's instructions and use its returned `secretMap` when applying any `{{SECRET:KEY}}` placeholders.
+4. If a skill fits, follow that skill's instructions and keep any `{{SECRET:KEY}}` placeholders literal in the content or command text; TeamCopilot only resolves them automatically in supported `curl` contexts.
 5. If no approved + accessible skill fits, ask whether to create one and then use `createSkill`.
 
 ## Example: Creating a New Skill

@@ -18,3 +18,9 @@ export interface SkillSummary {
 }
 
 export type Skill = SkillSummary;
+
+export interface SkillRuntimeContent {
+    slug: string;
+    path: string;
+    content: string;
+}

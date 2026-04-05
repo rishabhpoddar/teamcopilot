@@ -213,19 +213,19 @@ async function buildAvailableSkillsPrompt(userId: string): Promise<string | null
 
 async function buildAvailableSecretsPrompt(userId: string): Promise<string | null> {
     const secretMap = await listResolvedSecretsForUser(userId);
-    const entries = Object.entries(secretMap);
-    if (entries.length === 0) {
+    const keys = Object.keys(secretMap);
+    if (keys.length === 0) {
         return null;
     }
 
-    const secretLines = entries.map(([key, value]) => `${key}=${value}`);
     return [
         "# Available secrets for this user",
         "",
-        "These secrets are resolved for the current user for this session. You may use them during skill execution, and you should reuse these exact keys when creating or editing skills and workflows whenever they fit the need.",
+        "These secret keys are available to the current user for this session. Reuse these exact keys when creating or editing skills and workflows whenever they fit the need.",
+        "When referring to a secret in skill content or bash commands, use the proxy placeholder format {{SECRET:KEY}} instead of a raw value.",
         "If you create a skill or workflow that needs a new secret key not listed here, you may introduce that new key, but you must tell the user to add it in their Profile Secrets before the skill or workflow can be used.",
         "",
-        ...secretLines,
+        `Available secret keys: ${keys.join(", ")}`,
     ].join("\n");
 }
 
