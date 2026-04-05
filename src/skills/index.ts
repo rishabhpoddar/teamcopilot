@@ -33,6 +33,8 @@ import {
     restoreSkillToApprovedSnapshot,
 } from "../utils/skill-approval-snapshot";
 import { getResourceAccessSummary } from "../utils/resource-access";
+import { listResolvedSecretsForUser, resolveSecretsForUser, resolveSecretsFromResolvedMap } from "../utils/secrets";
+import { validateSkillSecretContract } from "../utils/secret-contract-validation";
 
 const router = express.Router({ mergeParams: true });
 const uploadTmpDir = path.join(os.tmpdir(), "teamcopilot-skill-uploads");
@@ -106,6 +108,7 @@ router.get("/", apiHandler(async (req, res) => {
     const slugs = listSkillSlugs();
     const skills: SkillSummary[] = [];
     const creatorIds = new Set<string>();
+    const resolvedSecrets = await listResolvedSecretsForUser(req.userId!);
 
     const metadataBySlug = new Map<string, Awaited<ReturnType<typeof getOrCreateSkillMetadataAndEnsurePermission>>>();
     for (const slug of slugs) {
@@ -153,6 +156,8 @@ router.get("/", apiHandler(async (req, res) => {
             can_edit: accessSummary.can_edit,
             permission_mode: accessSummary.permission_mode,
             is_locked_due_to_missing_users: accessSummary.is_locked_due_to_missing_users,
+            required_secrets: manifest.required_secrets,
+            missing_required_secrets: resolveSecretsFromResolvedMap(resolvedSecrets, manifest.required_secrets).missingKeys,
         });
     }
 
@@ -178,6 +183,7 @@ router.get("/:slug", apiHandler(async (req, res) => {
     const approver = approvedByUserId ? (usersById.get(approvedByUserId) ?? null) : null;
     const accessSummary = await getResourceAccessSummary("skill", slug, req.userId!);
     const permission = await getSkillAccessPermissionWithUsers(slug);
+    const secretResolution = await resolveSecretsForUser(req.userId!, manifest.required_secrets);
     const permissionMode = assertCommonPermissionMode(permission.permission_mode, "skill access");
     const permissions = permissionMode === "everyone"
         ? { mode: "everyone" as const }
@@ -198,6 +204,8 @@ router.get("/:slug", apiHandler(async (req, res) => {
             can_edit: accessSummary.can_edit,
             permission_mode: accessSummary.permission_mode,
             is_locked_due_to_missing_users: accessSummary.is_locked_due_to_missing_users,
+            required_secrets: manifest.required_secrets,
+            missing_required_secrets: secretResolution.missingKeys,
             permissions,
             allowed_users_resolved: permission.allowedUsers.map((row) => ({
                 user_id: row.user.id,
@@ -206,6 +214,44 @@ router.get("/:slug", apiHandler(async (req, res) => {
                 is_owner: row.user.id === metadata.created_by_user_id,
                 is_approver: row.user.id === metadata.approved_by_user_id
             })),
+        }
+    });
+}, true));
+
+router.get("/:slug/runtime-content", apiHandler(async (req, res) => {
+    const slug = req.params.slug as string;
+    await assertCanViewSkillFiles(slug, req.userId!);
+    const { manifest } = await readSkillManifestAndEnsurePermissions(slug);
+    const accessSummary = await getResourceAccessSummary("skill", slug, req.userId!);
+    if (!accessSummary.is_approved) {
+        throw {
+            status: 403,
+            message: `Skill "${slug}" is not approved yet. Only approved skills can be read through getSkillContent.`
+        };
+    }
+    const skillContent = await readSkillFileContent(slug, "SKILL.md");
+
+    if (skillContent.kind !== "text") {
+        throw {
+            status: 500,
+            message: "SKILL.md must be a text file"
+        };
+    }
+    validateSkillSecretContract(skillContent.content ?? "");
+
+    const secretResolution = await resolveSecretsForUser(req.userId!, manifest.required_secrets);
+    if (secretResolution.missingKeys.length > 0) {
+        throw {
+            status: 400,
+            message: `I can't use skill "${slug}" because these required secrets are missing: ${secretResolution.missingKeys.join(", ")}. Ask the user to add these keys in TeamCopilot Profile Secrets before using this skill.`
+        };
+    }
+
+    res.json({
+        skill: {
+            slug,
+            path: skillContent.path,
+            content: skillContent.content ?? "",
         }
     });
 }, true));
@@ -254,6 +300,7 @@ router.get("/:slug/approval-diff", apiHandler(async (req, res) => {
     const previousSnapshot = await loadApprovedSkillSnapshotFromDb(slug);
     const currentSnapshot = collectCurrentSkillSnapshot(slug);
     const diff = buildSkillApprovalDiffResponse(previousSnapshot, currentSnapshot);
+    (res.locals as { skipResponseSanitization?: boolean }).skipResponseSanitization = true;
     res.json(diff);
 }, true));
 
@@ -273,7 +320,6 @@ registerResourceFileRoutes({
     uploadFileFromTempPath: uploadSkillFileFromTempPath,
     renamePath: renameSkillPath,
     deletePath: deleteSkillPath,
-    skipResponseSanitizationForFileContentRead: false,
 });
 
 const updateSkillPermissionsHandler = apiHandler(async (req, res) => {

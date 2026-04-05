@@ -318,6 +318,26 @@
   color: #888;
 }
 
+.workflow-secret-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.workflow-secret-summary,
+.workflow-secret-warning {
+  margin: 0;
+  font-size: 0.8rem;
+}
+
+.workflow-secret-summary {
+  color: #93c5fd;
+}
+
+.workflow-secret-warning {
+  color: #fca5a5;
+}
+
 .workflow-card-run-btn {
   align-self: flex-start;
   padding: 0.5rem 1rem;

@@ -11,24 +11,25 @@ function getApiBaseUrl(): string {
 
 const SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
-interface SkillFileContentResponse {
-  path: string
-  kind: "text" | "binary"
-  content?: string
-}
-
-interface SkillDetailsResponse {
-  skill?: {
-    is_approved?: boolean
-  }
-}
-
 interface SessionLookupResponse {
   error?: unknown
   data?: {
     id?: string
     parentID?: string
   }
+}
+
+function readSessionLookupErrorMessage(error: unknown, fallbackMessage: string): string {
+  if (typeof error === "string" && error.trim().length > 0) {
+    return error
+  }
+  if (error && typeof error === "object" && "message" in error) {
+    const message = (error as { message?: unknown }).message
+    if (typeof message === "string" && message.trim().length > 0) {
+      return message
+    }
+  }
+  return fallbackMessage
 }
 
 async function readErrorMessageFromResponse(
@@ -64,7 +65,12 @@ export const GetSkillContentPlugin: Plugin = async ({ client }) => {
         },
       })) as SessionLookupResponse
       if (response.error) {
-        throw new Error(`Failed to resolve root session for ${currentSessionID}`)
+        throw new Error(
+          readSessionLookupErrorMessage(
+            response.error,
+            `Failed to resolve root session for ${currentSessionID}`
+          )
+        )
       }
 
       const parentID = response.data?.parentID
@@ -80,7 +86,7 @@ export const GetSkillContentPlugin: Plugin = async ({ client }) => {
     tool: {
       getSkillContent: tool({
         description:
-          "Get the contents of a skill by slug. Uses backend auth and permission checks; returns SKILL.md content only if the current user has access.",
+          "Get the contents of a skill by slug. Uses backend auth and permission checks; returns the original unresolved SKILL.md content from disk when the current user has access and all required secrets are configured.",
         args: {
           slug: tool.schema
             .string()
@@ -97,35 +103,8 @@ export const GetSkillContentPlugin: Plugin = async ({ client }) => {
             )
           }
 
-          const skillDetailsResponse = await fetch(
-            `${getApiBaseUrl()}/api/skills/${encodeURIComponent(slug)}`,
-            {
-              headers: {
-                Authorization: `Bearer ${authSessionID}`,
-              },
-            }
-          )
-
-          if (!skillDetailsResponse.ok) {
-            const errorMessage = await readErrorMessageFromResponse(
-              skillDetailsResponse,
-              `Failed to fetch skill metadata for ${slug} (HTTP ${skillDetailsResponse.status})`
-            )
-            throw new Error(errorMessage)
-          }
-
-          const skillDetailsPayload =
-            (await skillDetailsResponse.json()) as SkillDetailsResponse
-          const isApproved = skillDetailsPayload.skill?.is_approved === true
-
-          if (!isApproved) {
-            throw new Error(
-              `Skill \"${slug}\" is not approved yet. Only approved skills can be read through getSkillContent.`
-            )
-          }
-
           const response = await fetch(
-            `${getApiBaseUrl()}/api/skills/${encodeURIComponent(slug)}/files/content?path=${encodeURIComponent("SKILL.md")}`,
+            `${getApiBaseUrl()}/api/skills/${encodeURIComponent(slug)}/runtime-content`,
             {
               headers: {
                 Authorization: `Bearer ${authSessionID}`,
@@ -136,22 +115,25 @@ export const GetSkillContentPlugin: Plugin = async ({ client }) => {
           if (!response.ok) {
             const errorMessage = await readErrorMessageFromResponse(
               response,
-              `Failed to get skill content for ${slug} (HTTP ${response.status})`
+              `Failed to get runtime skill content for ${slug} (HTTP ${response.status})`
             )
             throw new Error(errorMessage)
           }
 
-          const payload = (await response.json()) as SkillFileContentResponse
-          if (payload.kind !== "text") {
-            throw new Error(`SKILL.md for ${slug} is not a text file.`)
+          const payload = (await response.json()) as {
+            skill?: {
+              slug?: string
+              path?: string
+              content?: string
+            }
           }
 
           return JSON.stringify(
             {
               skill: {
-                slug,
-                path: payload.path,
-                content: payload.content ?? "",
+                slug: payload.skill?.slug ?? slug,
+                path: payload.skill?.path ?? "SKILL.md",
+                content: payload.skill?.content ?? "",
               },
             },
             null,

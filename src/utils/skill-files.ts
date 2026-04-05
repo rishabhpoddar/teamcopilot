@@ -1,10 +1,17 @@
 import { createResourceFileManager } from "./resource-files";
 import { getSkillPath } from "./skill";
+import { validateSkillSecretContract } from "./secret-contract-validation";
 
 const skillFileManager = createResourceFileManager({
     getResourcePath: getSkillPath,
     resourceLabel: "skill",
     editorLabel: "Skill",
+    validateBeforeSave: ({ relativePath, nextContent }) => {
+        if (relativePath !== "SKILL.md") {
+            return;
+        }
+        validateSkillSecretContract(nextContent);
+    }
 });
 
 export const listSkillDirectory = skillFileManager.listDirectory;

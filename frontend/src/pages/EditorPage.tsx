@@ -25,6 +25,8 @@ type ResourceDetails = {
     approved_by_user_email: string | null;
     permission_mode?: 'restricted' | 'everyone';
     is_locked_due_to_missing_users?: boolean;
+    required_secrets?: string[];
+    missing_required_secrets?: string[];
 };
 
 type ActiveFileState =
@@ -625,6 +627,20 @@ export default function EditorPage({ entity = 'workflow' }: { entity?: EditorEnt
                                         {resourceDetails.approved_by_user_id
                                             ? displayUser(resourceDetails.approved_by_user_name, resourceDetails.approved_by_user_email)
                                             : 'Not approved yet'}
+                                    </div>
+
+                                    <div className="wf-workflow-meta-label">Required Secrets</div>
+                                    <div className="wf-workflow-meta-value">
+                                        {resourceDetails.required_secrets && resourceDetails.required_secrets.length > 0
+                                            ? resourceDetails.required_secrets.join(', ')
+                                            : 'None'}
+                                    </div>
+
+                                    <div className="wf-workflow-meta-label">Missing Secrets</div>
+                                    <div className="wf-workflow-meta-value">
+                                        {resourceDetails.missing_required_secrets && resourceDetails.missing_required_secrets.length > 0
+                                            ? `${resourceDetails.missing_required_secrets.join(', ')} (add them in Profile Secrets)`
+                                            : 'None'}
                                     </div>
 
                                 </div>

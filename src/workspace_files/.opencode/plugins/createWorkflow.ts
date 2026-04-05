@@ -25,6 +25,7 @@ interface WorkflowInput {
 interface WorkflowManifest {
   intent_summary: string
   inputs?: Record<string, WorkflowInput>
+  required_secrets?: string[]
   triggers?: {
     manual?: boolean
   }
@@ -230,7 +231,7 @@ export const CreateWorkflowPlugin: Plugin = async ({ client }) => {
     tool: {
       createWorkflow: tool({
         description:
-          "Create a new workflow with the specified slug and configuration. Creates the workflow folder with all required files (workflow.json, run.py, requirements.txt, etc.). The workflow will need admin approval before it can be executed.",
+          "Create a new workflow with the specified slug and configuration. Creates the workflow folder with the required files (workflow.json, run.py, requirements.txt, requirements.lock.txt, README.md). The workflow will need admin approval before it can be executed.",
         args: {
           slug: tool.schema
             .string()
@@ -324,6 +325,7 @@ export const CreateWorkflowPlugin: Plugin = async ({ client }) => {
           const workflowJson: WorkflowManifest = {
             intent_summary,
             inputs: inputs as Record<string, WorkflowInput>,
+            required_secrets: [],
             triggers: { manual: true },
             runtime: { timeout_seconds },
           }
@@ -337,8 +339,6 @@ export const CreateWorkflowPlugin: Plugin = async ({ client }) => {
           await fs.writeFile(path.join(workflowDir, "run.py"), "", "utf-8")
           await fs.writeFile(path.join(workflowDir, "requirements.txt"), "", "utf-8")
           await fs.writeFile(path.join(workflowDir, "requirements.lock.txt"), "", "utf-8")
-          await fs.writeFile(path.join(workflowDir, ".env"), "", "utf-8")
-          await fs.writeFile(path.join(workflowDir, ".env.example"), "", "utf-8")
           await fs.writeFile(path.join(workflowDir, "README.md"), "", "utf-8")
 
           const creatorResponse = await fetch(

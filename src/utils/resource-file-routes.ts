@@ -25,7 +25,6 @@ interface ResourceFileRouteOptions {
     uploadFileFromTempPath: (slug: string, parentPath: string, name: string, tempFilePath: string) => FileNode;
     renamePath: (slug: string, path: string, newName: string) => { old_path: string; new_path: string; node: FileNode };
     deletePath: (slug: string, rawPath: string | undefined) => void;
-    skipResponseSanitizationForFileContentRead?: boolean;
 }
 
 export function registerResourceFileRoutes(options: ResourceFileRouteOptions): void {
@@ -43,7 +42,6 @@ export function registerResourceFileRoutes(options: ResourceFileRouteOptions): v
         uploadFileFromTempPath,
         renamePath,
         deletePath,
-        skipResponseSanitizationForFileContentRead = true,
     } = options;
 
     router.get("/:slug/files/access", apiHandler(async (req, res) => {
@@ -70,9 +68,7 @@ export function registerResourceFileRoutes(options: ResourceFileRouteOptions): v
         await ensureResourceExists(slug);
         const rawPath = typeof req.query.path === "string" ? req.query.path : undefined;
         const content = readFileContent(slug, rawPath);
-        if (skipResponseSanitizationForFileContentRead) {
-            (res.locals as { skipResponseSanitization?: boolean }).skipResponseSanitization = true;
-        }
+        (res.locals as { skipResponseSanitization?: boolean }).skipResponseSanitization = true;
         res.json(content);
     }, true));
 

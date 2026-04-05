@@ -1,4 +1,5 @@
 const SENSITIVE_KEY_PATTERN = /(token|secret|password|passwd|api[_-]?key|auth|credential)/i;
+const SECRET_PLACEHOLDER_PATTERN = /\{\{SECRET:[A-Z][A-Z0-9_]*\}\}/g;
 
 function maskValue(value: string): string {
     if (value.startsWith("***")) {
@@ -13,8 +14,36 @@ function isLikelySensitiveKey(key: string): boolean {
     return SENSITIVE_KEY_PATTERN.test(key);
 }
 
+function isProtectedSecretPlaceholderToken(value: string): boolean {
+    return /__TCPLH_\d+__/.test(value.trim());
+}
+
+function isSecretPlaceholderValue(value: string): boolean {
+    return value.trim().match(/^\{\{SECRET:[A-Z][A-Z0-9_]*\}\}$/) !== null;
+}
+
+function protectSecretPlaceholders(input: string): {
+    protectedText: string;
+    restore: (value: string) => string;
+} {
+    const placeholders: string[] = [];
+    const protectedText = input.replace(SECRET_PLACEHOLDER_PATTERN, (match) => {
+        const index = placeholders.push(match) - 1;
+        return `__TCPLH_${index}__`;
+    });
+
+    return {
+        protectedText,
+        restore: (value: string) => value.replace(/__TCPLH_(\d+)__/g, (_full, rawIndex: string) => {
+            const index = Number(rawIndex);
+            return placeholders[index] ?? _full;
+        }),
+    };
+}
+
 export function sanitizeStringContent(input: string): string {
-    let text = input;
+    const { protectedText, restore } = protectSecretPlaceholders(input);
+    let text = protectedText;
 
     // Redact credentials embedded in URLs such as:
     // https://user:password@host/path
@@ -27,7 +56,12 @@ export function sanitizeStringContent(input: string): string {
     // "Authorization: Bearer <token>" doesn't get partially masked as "***rer".
     text = text.replace(
         /(\bAuthorization\s*[:=]\s*)(Bearer\s+)([A-Za-z0-9._~+/=-]{8,})/gi,
-        (_full: string, prefix: string, bearer: string, token: string) => `${prefix}${bearer}${maskValue(token)}`
+        (_full: string, prefix: string, bearer: string, token: string) => {
+            if (isProtectedSecretPlaceholderToken(token)) {
+                return `${prefix}${bearer}${token}`;
+            }
+            return `${prefix}${bearer}${maskValue(token)}`;
+        }
     );
 
     // Redact sensitive markdown list/label items such as:
@@ -54,6 +88,9 @@ export function sanitizeStringContent(input: string): string {
 
             const rawValue = doubleQuoted ?? singleQuoted ?? bare ?? "";
             if (!rawValue) {
+                return full;
+            }
+            if (isProtectedSecretPlaceholderToken(rawValue)) {
                 return full;
             }
 
@@ -91,6 +128,9 @@ export function sanitizeStringContent(input: string): string {
             if (!rawValue) {
                 return full;
             }
+            if (isProtectedSecretPlaceholderToken(rawValue)) {
+                return full;
+            }
 
             const masked = maskValue(rawValue);
             if (doubleQuoted !== undefined) {
@@ -124,6 +164,9 @@ export function sanitizeStringContent(input: string): string {
             if (!rawValue) {
                 return full;
             }
+            if (isProtectedSecretPlaceholderToken(rawValue)) {
+                return full;
+            }
 
             if (key.toLowerCase() === "authorization" && /^bearer$/i.test(rawValue)) {
                 return full;
@@ -133,6 +176,9 @@ export function sanitizeStringContent(input: string): string {
             if (key.toLowerCase() === "authorization" && authorizationMatch) {
                 const bearerPrefix = authorizationMatch[1];
                 const bearerToken = authorizationMatch[2];
+                if (isProtectedSecretPlaceholderToken(bearerToken)) {
+                    return full;
+                }
                 const maskedBearer = `${bearerPrefix}${maskValue(bearerToken)}`;
                 if (doubleQuoted !== undefined) {
                     return `${lead}${assignmentPrefix}"${maskedBearer}"`;
@@ -155,17 +201,27 @@ export function sanitizeStringContent(input: string): string {
     );
 
     // Redact common bearer and provider token forms.
-    text = text.replace(/\b(Bearer\s+)([A-Za-z0-9._~+/=-]{8,})\b/gi, (_full, prefix: string, token: string) => `${prefix}${maskValue(token)}`);
+    text = text.replace(/\b(Bearer\s+)([A-Za-z0-9._~+/=-]{8,})\b/gi, (_full, prefix: string, token: string) => {
+        if (isProtectedSecretPlaceholderToken(token)) {
+            return `${prefix}${token}`;
+        }
+        return `${prefix}${maskValue(token)}`;
+    });
     text = text.replace(/\b(sk-[A-Za-z0-9_-]{8,})\b/g, (token: string) => maskValue(token));
     text = text.replace(/\b(ghp_[A-Za-z0-9]{8,})\b/g, (token: string) => maskValue(token));
 
-    return text;
+    return restore(text);
 }
 
 function sanitizeObjectRecord(input: Record<string, unknown>): Record<string, unknown> {
     const output: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(input)) {
-        if (typeof value === "string" && isLikelySensitiveKey(key)) {
+        if (
+            typeof value === "string"
+            && isLikelySensitiveKey(key)
+            && !isProtectedSecretPlaceholderToken(value)
+            && !isSecretPlaceholderValue(value)
+        ) {
             output[key] = maskValue(value);
             continue;
         }

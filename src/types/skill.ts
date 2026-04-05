@@ -13,6 +13,14 @@ export interface SkillSummary {
     can_edit: boolean;
     permission_mode: PermissionMode;
     is_locked_due_to_missing_users: boolean;
+    required_secrets: string[];
+    missing_required_secrets: string[];
 }
 
 export type Skill = SkillSummary;
+
+export interface SkillRuntimeContent {
+    slug: string;
+    path: string;
+    content: string;
+}

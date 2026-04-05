@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { AxiosError } from 'axios'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './lib/auth'
 import { axiosInstance } from './utils'
 import Login from './pages/Login'
@@ -14,6 +14,7 @@ import ManualRunPage from './pages/ManualRunPage'
 import OpencodeAuthSetup from './pages/OpencodeAuthSetup'
 import OpencodeAuthComplete from './pages/OpencodeAuthComplete'
 import UserInstructionsPage from './pages/UserInstructionsPage'
+import ProfileSecretsPage from './pages/ProfileSecretsPage'
 import './App.css'
 
 type OpencodeAuthStatus = {
@@ -99,6 +100,7 @@ function GuestRoute({ children }: { children: React.ReactNode }) {
 
 function AppShell() {
   const auth = useAuth()
+  const navigate = useNavigate()
   const [workspaceDir, setWorkspaceDir] = useState<string | null>(null)
   const [workspaceError, setWorkspaceError] = useState<string | null>(null)
   const [isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false)
@@ -163,6 +165,9 @@ function AppShell() {
           </div>
           <div className="app-header-meta">
             {!auth.loading && auth.user && (
+              <button className="app-header-link-btn" onClick={() => navigate('/profile/secrets')}>Profile Secrets</button>
+            )}
+            {!auth.loading && auth.user && (
               <div className="app-user">
                 <span className="app-user-name">{auth.user.name}</span>
                 <span className="app-user-email">{auth.user.email}</span>
@@ -193,6 +198,9 @@ function AppShell() {
               <span className="app-header-mobile-value">{auth.user.name}</span>
               <span className="app-header-mobile-subvalue">{auth.user.email}</span>
             </div>
+            <button className="app-header-link-btn app-header-link-btn-mobile" onClick={() => navigate('/profile/secrets')}>
+              Profile Secrets
+            </button>
             <button className="app-signout app-signout-mobile" onClick={auth.logout}>Sign Out</button>
           </div>
         )}
@@ -202,6 +210,7 @@ function AppShell() {
         <Route path="/opencode-auth" element={<ProtectedRoute><OpencodeSetupRoute /></ProtectedRoute>} />
         <Route path="/opencode-auth/complete" element={<ProtectedRoute><OpencodeSetupCompleteRoute /></ProtectedRoute>} />
         <Route path="/user-instructions" element={<ProtectedRoute><CredentialedRoute><UserInstructionsPage /></CredentialedRoute></ProtectedRoute>} />
+        <Route path="/profile/secrets" element={<ProtectedRoute><CredentialedRoute><ProfileSecretsPage /></CredentialedRoute></ProtectedRoute>} />
         <Route path="/" element={<ProtectedRoute><CredentialedRoute><Home /></CredentialedRoute></ProtectedRoute>} />
         <Route path="/runs/:id" element={<ProtectedRoute><CredentialedRoute><RunDetailsPage /></CredentialedRoute></ProtectedRoute>} />
         <Route path="/workflows/:slug/manual-run" element={<ProtectedRoute><CredentialedRoute><ManualRunPage /></CredentialedRoute></ProtectedRoute>} />

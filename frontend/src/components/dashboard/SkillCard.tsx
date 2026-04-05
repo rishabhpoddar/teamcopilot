@@ -26,6 +26,8 @@ export default function SkillCard(props: SkillCardProps) {
             can_edit={props.can_edit}
             permission_mode={props.permission_mode}
             is_locked_due_to_missing_users={props.is_locked_due_to_missing_users}
+            required_secrets={props.required_secrets}
+            missing_required_secrets={props.missing_required_secrets}
             can_run={false}
             userRole={props.userRole}
             currentUserId={props.currentUserId}

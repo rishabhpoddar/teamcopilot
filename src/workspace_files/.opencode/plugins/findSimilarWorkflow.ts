@@ -20,11 +20,41 @@ interface WorkflowMatch {
   slug: string
   similarity: number
   summary: string
+  arguments: WorkflowArgumentGroups
 }
 
 interface WorkflowSummary {
   slug: string
   intent_summary: string
+}
+
+interface WorkflowInput {
+  type: "string" | "number" | "boolean"
+  required?: boolean
+  default?: string | number | boolean
+  description?: string
+}
+
+interface WorkflowManifest {
+  inputs?: Record<string, WorkflowInput>
+}
+
+interface WorkflowDetailsResponse {
+  workflow?: {
+    manifest?: WorkflowManifest
+  }
+}
+
+interface WorkflowArgument {
+  name: string
+  type: "string" | "number" | "boolean"
+  description: string
+  default?: string | number | boolean
+}
+
+interface WorkflowArgumentGroups {
+  required: WorkflowArgument[]
+  optional: WorkflowArgument[]
 }
 
 interface SessionLookupResponse {
@@ -55,6 +85,31 @@ async function readErrorMessageFromResponse(
   } catch {
     return fallbackMessage
   }
+}
+
+function formatWorkflowArguments(inputs: Record<string, WorkflowInput>): WorkflowArgumentGroups {
+  const required: WorkflowArgument[] = []
+  const optional: WorkflowArgument[] = []
+
+  for (const [name, input] of Object.entries(inputs)) {
+    const baseArgument: WorkflowArgument = {
+      name,
+      type: input.type,
+      description: input.description ?? "",
+    }
+
+    if (input.required) {
+      required.push(baseArgument)
+      continue
+    }
+
+    optional.push({
+      ...baseArgument,
+      ...(input.default !== undefined ? { default: input.default } : {}),
+    })
+  }
+
+  return { required, optional }
 }
 
 // ============================================================================
@@ -121,7 +176,7 @@ export const FindSimilarWorkflowPlugin: Plugin = async ({ client }) => {
     tool: {
       findSimilarWorkflow: tool({
         description:
-          "Query for existing workflows before creating new ones or for searching for a workflow to run. Returns up to N candidate workflows with paths and summaries based on semantic similarity to the provided description. Use this to avoid duplicate work and find workflows that can be reused or adapted.",
+          "Query for existing workflows before creating new ones or for searching for a workflow to run. Returns up to N candidate workflows with paths, summaries, and argument information based on semantic similarity to the provided description. Use this to avoid duplicate work and find workflows that can be reused or adapted.",
         args: {
           description: tool.schema
             .string()
@@ -173,7 +228,12 @@ export const FindSimilarWorkflowPlugin: Plugin = async ({ client }) => {
           // Get embedding for the query description
           const queryEmbedding = await getEmbedding(description)
 
-          const matches: WorkflowMatch[] = []
+          const rankedMatches: Array<{
+            path: string
+            slug: string
+            similarity: number
+            summary: string
+          }> = []
 
           for (const workflow of candidateWorkflows) {
             const summary = workflow.intent_summary
@@ -184,7 +244,7 @@ export const FindSimilarWorkflowPlugin: Plugin = async ({ client }) => {
             // Calculate cosine similarity
             const similarity = cosineSimilarity(queryEmbedding, workflowEmbedding)
 
-            matches.push({
+            rankedMatches.push({
               slug: workflow.slug,
               path: `workflows/${workflow.slug}`,
               similarity: Math.round(similarity * 100) / 100,
@@ -193,8 +253,36 @@ export const FindSimilarWorkflowPlugin: Plugin = async ({ client }) => {
           }
 
           // Sort by similarity descending and take top N
-          matches.sort((a, b) => b.similarity - a.similarity)
-          const topMatches = matches.slice(0, limit)
+          rankedMatches.sort((a, b) => b.similarity - a.similarity)
+          const topRankedMatches = rankedMatches.slice(0, limit)
+          const topMatches: WorkflowMatch[] = []
+
+          for (const match of topRankedMatches) {
+            const detailsResponse = await fetch(
+              `${getApiBaseUrl()}/api/workflows/${encodeURIComponent(match.slug)}`,
+              {
+                headers: {
+                  Authorization: `Bearer ${authSessionID}`,
+                },
+              }
+            )
+
+            if (!detailsResponse.ok) {
+              const errorMessage = await readErrorMessageFromResponse(
+                detailsResponse,
+                `Failed to fetch workflow details for '${match.slug}' (HTTP ${detailsResponse.status})`
+              )
+              throw new Error(errorMessage)
+            }
+
+            const detailsPayload = (await detailsResponse.json()) as WorkflowDetailsResponse
+            const inputs = detailsPayload.workflow?.manifest?.inputs ?? {}
+
+            topMatches.push({
+              ...match,
+              arguments: formatWorkflowArguments(inputs),
+            })
+          }
 
           return JSON.stringify({ matches: topMatches }, null, 2)
         },

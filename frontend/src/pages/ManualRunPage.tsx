@@ -11,6 +11,8 @@ import './ManualRunPage.css';
 interface WorkflowForManualRun {
     slug: string;
     name: string;
+    required_secrets: string[];
+    missing_required_secrets: string[];
     manifest: {
         inputs: Record<string, WorkflowInput>;
     };
@@ -164,6 +166,16 @@ export default function ManualRunPage() {
                     <section className="manual-run-card">
                         <h2>{workflow.name || workflow.slug}</h2>
                         <p>Provide input values and run the workflow manually.</p>
+                        {workflow.required_secrets.length > 0 && (
+                            <p className="manual-run-card-meta">
+                                Required secrets: {workflow.required_secrets.join(', ')}
+                            </p>
+                        )}
+                        {workflow.missing_required_secrets.length > 0 && (
+                            <p className="manual-run-card-error">
+                                Missing secrets: {workflow.missing_required_secrets.join(', ')}. Add them in Profile Secrets before running this workflow.
+                            </p>
+                        )}
                     </section>
 
                     <section className="manual-run-card">
@@ -213,7 +225,7 @@ export default function ManualRunPage() {
                                 onClick={() => {
                                     void handleRun();
                                 }}
-                                disabled={submitting}
+                                disabled={submitting || workflow.missing_required_secrets.length > 0}
                             >
                                 {submitting ? 'Starting...' : 'Run Workflow'}
                             </button>

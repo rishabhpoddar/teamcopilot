@@ -7,6 +7,7 @@ import prisma from "../prisma/client";
 import { apiHandler } from "../utils/index";
 import { getResourceAccessSummary } from "../utils/resource-access";
 import { listSkillSlugs, readSkillManifestAndEnsurePermissions } from "../utils/skill";
+import { listResolvedSecretsForUser } from "../utils/secrets";
 import {
     getOpencodeClient,
     getPendingQuestionForSession,
@@ -208,6 +209,24 @@ async function buildAvailableSkillsPrompt(userId: string): Promise<string | null
     );
 
     return `# Available custom skills\n\nThese custom skills are available to you for this session (this is also the result of calling listAvailableSkills at this point in time). Use getSkillContent tool for a specific skill when you need to inspect its SKILL.md before using it.\n\n${skillLines.join("\n\n")}`;
+}
+
+async function buildAvailableSecretsPrompt(userId: string): Promise<string | null> {
+    const secretMap = await listResolvedSecretsForUser(userId);
+    const keys = Object.keys(secretMap);
+    if (keys.length === 0) {
+        return null;
+    }
+
+    return [
+        "# Available secrets for this user",
+        "",
+        "These secret keys are available to the current user for this session. Reuse these exact keys when creating or editing skills and workflows whenever they fit the need.",
+        "When referring to a secret in skill content or bash commands, use the proxy placeholder format {{SECRET:KEY}} instead of a raw value.",
+        "If you create a skill or workflow that needs a new secret key not listed here, you may introduce that new key, but you must tell the user to add it in their Profile Secrets before the skill or workflow can be used.",
+        "",
+        `Available secret keys: ${keys.join(", ")}`,
+    ].join("\n");
 }
 
 async function writeWorkspaceUserInstructions(content: string): Promise<void> {
@@ -852,6 +871,7 @@ router.get('/sessions/:id/file-diff', apiHandler(async (req, res) => {
         content_sha256: trackedFile.content_sha256,
     })));
 
+    (res.locals as { skipResponseSanitization?: boolean }).skipResponseSanitization = true;
     res.json(diff);
 }, true));
 
@@ -1002,13 +1022,17 @@ router.post('/sessions/:id/messages', apiHandler(async (req, res) => {
     if ((existingMessagesResult.data || []).length === 0) {
         const userInstructions = await readWorkspaceUserInstructions();
         const availableSkillsPrompt = await buildAvailableSkillsPrompt(req.userId!);
-        if (userInstructions || availableSkillsPrompt) {
+        const availableSecretsPrompt = await buildAvailableSecretsPrompt(req.userId!);
+        if (userInstructions || availableSkillsPrompt || availableSecretsPrompt) {
             const preambleSections: string[] = [];
             if (userInstructions) {
                 preambleSections.push(`# Custom user instructions (in case of conflicts, the instructions here take precedence over the contents of the AGENTS.md file)\n\n${userInstructions}`);
             }
             if (availableSkillsPrompt) {
                 preambleSections.push(availableSkillsPrompt);
+            }
+            if (availableSecretsPrompt) {
+                preambleSections.push(availableSecretsPrompt);
             }
 
             const wrappedUserInstructions = `${preambleSections.join("\n\n")}\n\n${ACTUAL_USER_MESSAGE_MARKER}\n\n`;

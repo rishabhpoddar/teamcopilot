@@ -176,29 +176,6 @@ async function requestCreationPermission(
   throw new Error("Permission request timed out")
 }
 
-function stripLeadingFrontmatter(markdown: string): string {
-  const trimmedStart = markdown.trimStart()
-  if (!trimmedStart.startsWith("---\n")) {
-    return markdown.trim()
-  }
-
-  const frontmatterEnd = trimmedStart.indexOf("\n---\n", 4)
-  if (frontmatterEnd < 0) {
-    return markdown.trim()
-  }
-
-  return trimmedStart.slice(frontmatterEnd + "\n---\n".length).trim()
-}
-
-function buildSkillMarkdown(
-  slug: string,
-  description: string,
-  markdownContent: string
-): string {
-  const body = stripLeadingFrontmatter(markdownContent)
-  return `---\nname: ${JSON.stringify(slug)}\ndescription: ${JSON.stringify(description)}\n---\n\n${body}\n`
-}
-
 export const CreateSkillPlugin: Plugin = async ({ client }) => {
   async function resolveRootSessionID(sessionID: string): Promise<string> {
     let currentSessionID = sessionID
@@ -327,8 +304,6 @@ export const CreateSkillPlugin: Plugin = async ({ client }) => {
             throw new Error(`SKILL.md for ${slug} is not a text file.`)
           }
 
-          const nextContent = buildSkillMarkdown(slug, description, content)
-
           const saveResponse = await fetch(`${getApiBaseUrl()}/api/skills/${encodeURIComponent(slug)}/files/content`, {
             method: "PUT",
             headers: {
@@ -337,7 +312,7 @@ export const CreateSkillPlugin: Plugin = async ({ client }) => {
             },
             body: JSON.stringify({
               path: "SKILL.md",
-              content: nextContent,
+              content,
               base_etag: filePayload.etag,
             }),
           })

@@ -45,6 +45,16 @@
   color: #9a9a9a;
 }
 
+.manual-run-card-meta {
+  margin-top: 0.35rem;
+}
+
+.manual-run-card-error {
+  margin-top: 0.75rem;
+  color: #ff6b6b !important;
+  line-height: 1.45;
+}
+
 .manual-run-form-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
