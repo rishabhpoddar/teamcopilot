@@ -74,7 +74,15 @@ function readWorkflowManifest(slug: string): WorkflowManifest {
     }
 
     const content = fs.readFileSync(manifestPath, "utf-8");
-    const manifest = JSON.parse(content) as WorkflowManifest;
+    let manifest: WorkflowManifest;
+    try {
+        manifest = JSON.parse(content) as WorkflowManifest;
+    } catch {
+        throw {
+            status: 400,
+            message: `Workflow "${slug}" has an invalid workflow.json file. workflow.json must contain valid JSON.`
+        };
+    }
     manifest.required_secrets = parseWorkflowRequiredSecrets(content);
     return manifest;
 }
