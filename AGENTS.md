@@ -4,7 +4,14 @@ This file provides guidance to the agent when working with code in this reposito
 
 ## Project Overview
 
-TeamCopilot is an open-source platform for running AI agent workflows on your local machine with a web interface. It uses a filesystem-first approach where workflows live as folder packages in a workspace directory.
+TeamCopilot is an open-source multi-user AI agent platform for teams that want shared agent capabilities without giving up control, visibility, or operational guardrails.
+
+At a high level, TeamCopilot combines:
+- a web UI for chatting with an agent remotely
+- a shared filesystem-backed workspace of custom skills and workflows
+- approval and permission controls for risky or reusable automation
+- auditability for chat sessions and file changes
+- team-oriented secret management for agent-assisted execution
 
 ## Repository Structure
 
@@ -75,9 +82,45 @@ All API routes are mounted under `/api` via `apiRouter`.
 
 Non-API `GET *` requests serve `frontend/dist/index.html` for client-side routing.
 
+`src/index.ts` also exports `createApp()` so route-level tests can mount the Express app in-process without starting a separate server.
+
 ### Database
 
-SQLite via Prisma ORM. Schema is at `prisma/schema.prisma`. Currently two tables: `users` and `key_value`. SQLite uses WAL mode for concurrency (configured in `src/prisma/client.ts`).
+SQLite via Prisma ORM. Schema is at `prisma/schema.prisma`. The database now stores much more than just auth metadata, including users, permissions, approvals, chat/session data, and secret-management tables such as `user_secrets` and `global_secrets`. SQLite uses WAL mode for concurrency (configured in `src/prisma/client.ts`).
+
+### Shared Workspace Model
+
+TeamCopilot is filesystem-first:
+- workflows live in `workflows/<slug>/`
+- custom skills live in `.agents/skills/<slug>/`
+- the filesystem contents are the source of truth for those resources
+
+This means most resource creation, editing, approval diffs, and runtime behavior are driven by real files on disk rather than opaque database blobs.
+
+### Secrets Model
+
+TeamCopilot has two secret scopes:
+- user secrets: private to a specific user
+- global secrets: shared across the team and managed by engineers
+
+Resolution order is:
+1. current user's secret
+2. global secret
+3. missing
+
+Important implementation details:
+- workflows declare required secret keys in `workflow.json` under `required_secrets`
+- workflow runs receive resolved secrets as environment variables at runtime
+- skills declare required secret keys in `SKILL.md` frontmatter
+- skills keep placeholder references like `{{SECRET:OPENAI_API_KEY}}` in file content rather than storing raw secret values
+- agent-facing secret usage in shell goes through a secret-proxy model; plaintext secret values are not included in the LLM-visible context
+- `.env` files are still redacted in editor/file APIs, but AI-authored workflows should rely on declared runtime secrets rather than workflow-local `.env` files
+
+### Approvals And Runtime Boundaries
+
+- Workflows and custom skills can require engineer approval before they are usable.
+- Workflow execution must go through the platform runtime rather than direct shell execution of `run.py`.
+- Approval diffs and chat session file diffs are part of the product’s audit trail and are intentionally inspectable.
 
 ### Logging
 
@@ -102,7 +145,13 @@ Optional: `WORKSPACE_DIR` (absolute path or relative to project root, default `.
 
 ## Design Direction
 
-Per `plan-single-tenant.md`, TeamCopilot is evolving toward: a Next.js frontend, PostgreSQL database, WebSocket/SSE for real-time agent communication, and integration with the `opencode` agent running on user machines. Workflows are filesystem-first folder packages with `workflow.json` manifests, `run.py` entrypoints, and per-workflow `.env` + `.venv`.
+Per `plan-single-tenant.md`, TeamCopilot is evolving toward a more fully integrated multi-user agent platform with richer real-time communication and stronger operational controls. The current implementation already centers around:
+- a filesystem-first workspace model
+- embedded OpenCode-based agent execution
+- approval and audit flows
+- profile/global secret management with a secret-proxy approach
+
+Workflows remain filesystem-first folder packages with `workflow.json` manifests, `run.py` entrypoints, and per-workflow `.venv`. AI-authored workflow secret handling should use `required_secrets` plus runtime injection rather than workflow-local `.env` files.
 
 ## Code style
 
