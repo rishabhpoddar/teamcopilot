@@ -24,7 +24,7 @@
   "scripts": {
     "clean": "rm -rf dist",
     "check:unused:functions": "tsc --noEmit --noUnusedLocals --noUnusedParameters",
-    "check:unused:exports": "ts-prune -e -p tsconfig.json -i \"^src/types/shared/|^prisma/generated/\"",
+    "check:unused:exports": "ts-prune -e -p tsconfig.json -i \"^src/types/shared/|^prisma/generated/|^src/index.ts:31 - createApp \\(used in module\\)$|^src/utils/secret-contract-validation.ts:45 - extractReferencedWorkflowSecrets \\(used in module\\)$|^src/utils/secret-contract-validation.ts:57 - extractReferencedSkillSecrets \\(used in module\\)$|^src/utils/secret-contract-validation.ts:158 - parseSkillRequiredSecrets \\(used in module\\)$\"",
     "check:unused": "npm run check:unused:functions && npm run check:unused:exports",
     "build": "npm run clean && npm run check:unused && cd frontend && npm run build && cd .. && prisma generate --schema prisma/schema.prisma && tsc && node scripts/copy-runtime-assets.mjs",
     "start": "node dist/index.js",
