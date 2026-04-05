@@ -428,7 +428,8 @@ required_secrets:
 - Do not assume `{{SECRET:KEY}}` will resolve inside arbitrary shell text.
 - Do not rely on placeholder substitution in `echo`, `printf`, heredocs, redirects, `tee`, `python -c`, `node -e`, `bash -lc`, `scp`, `wget`, or file-writing commands.
 - For non-`curl` secret usage, prefer workflow runtime env injection via `required_secrets`.
-- If you need to write a script or multi-step automation that uses secrets, prefer creating (using the `createWorkflow` tool) or updating a workflow instead of embedding secret placeholders in shell scripts. In here, the secrets are automatically injected into the workflow's runtime environment when you call the `runWorkflow` tool.
+- If the currently supported `curl` substitution cases or allowed headers are not sufficient, prefer creating (using the `createWorkflow` tool) or updating a workflow instead of trying to force secret use through bash.
+- If you need to write a script or multi-step automation that uses secrets, prefer creating (using the `createWorkflow` tool) or updating a workflow instead of embedding secret placeholders in shell scripts. In workflows, all declared secrets are injected into the runtime environment (no matter where or how they are used) when you call the `runWorkflow` tool. This is secure since workflow execution is gated by engineer approval.
 - Do not try to manually replace `{{SECRET:KEY}}` with a raw value yourself.
 - If you use a secret like `{{SECRET:KEY_NAME}}` and that secret doesn't exist in the user's profile, the tool call will fail, and then you should ask the user to add that key to their Profile Secrets before retrying.
 - `getSkillContent` returns the original unresolved `content` from disk. Example shape:
