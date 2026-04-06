@@ -43,6 +43,7 @@ done
 PACKAGE_NAME="$(node -p "require('./package.json').name")"
 PACKAGE_VERSION="$(node -p "require('./package.json').version")"
 PACKAGE_LOCK_VERSION="$(node -p "require('./package-lock.json').version")"
+PACKAGE_LOCK_PACKAGES_VERSION="$(node -p "require('./package-lock.json').packages[''].version")"
 
 if [[ -f "$ENV_FILE" ]]; then
   eval "$(
@@ -77,7 +78,11 @@ trap cleanup EXIT
 
 echo "Preparing npm release for ${PACKAGE_NAME}@${PACKAGE_VERSION}"
 if [[ "$PACKAGE_VERSION" != "$PACKAGE_LOCK_VERSION" ]]; then
-  echo "Version mismatch: package.json=${PACKAGE_VERSION}, package-lock.json=${PACKAGE_LOCK_VERSION}" >&2
+  echo "Version mismatch: package.json=${PACKAGE_VERSION}, package-lock.json (top-level)=${PACKAGE_LOCK_VERSION}" >&2
+  exit 1
+fi
+if [[ "$PACKAGE_VERSION" != "$PACKAGE_LOCK_PACKAGES_VERSION" ]]; then
+  echo "Version mismatch: package.json=${PACKAGE_VERSION}, package-lock.json (packages[\"\"])=${PACKAGE_LOCK_PACKAGES_VERSION}" >&2
   exit 1
 fi
 

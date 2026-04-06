@@ -34,7 +34,7 @@ This skill authenticates with an npm access token from the repo-root `.env`. Set
 
 - Reads the package `name` and `version` from the repo root `package.json`
 - Shows the exact release target, for example `teamcopilot@0.0.1`
-- Verifies `package.json` and `package-lock.json` have the same version
+- Verifies `package.json`, `package-lock.json` (top-level `version`), and `package-lock.json` (`packages[""].version`) all have the same version
 - Loads `NPM_TOKEN` and `NODE_AUTH_TOKEN` from the repo-root `.env` when present
 - Requires `NPM_TOKEN` or `NODE_AUTH_TOKEN` to be set after loading `.env` and shell overrides
 - Creates a temporary npm config that authenticates to `registry.npmjs.org` with the access token
@@ -53,7 +53,7 @@ This skill authenticates with an npm access token from the repo-root `.env`. Set
 ## Rules
 
 - Treat the `package.json` version as the source of truth for the release version.
-- Stop if `package-lock.json` does not have the same version.
+- Stop if `package-lock.json` top-level `version` or `packages[""].version` does not match `package.json`.
 - Stop if neither `NPM_TOKEN` nor `NODE_AUTH_TOKEN` is set in `.env` or the shell environment.
 - Prefer `--dry-run` before `--publish`.
 - Prefer `NPM_TOKEN` in the repo-root `.env` for local runs. Use `NODE_AUTH_TOKEN` only when the environment already standardizes on it.
