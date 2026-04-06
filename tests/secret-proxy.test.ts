@@ -4,6 +4,8 @@ import prisma from "../src/prisma/client";
 
 async function main(): Promise<void> {
     const userId = `secret-proxy-user-${Date.now()}`;
+    const globalOnlyKey = `GLOBAL_ONLY_KEY_${Date.now()}`;
+    const userOnlyKey = `USER_ONLY_KEY_${Date.now()}`;
     await prisma.users.create({
         data: {
             id: userId,
@@ -20,7 +22,7 @@ async function main(): Promise<void> {
         await prisma.global_secrets.create({
             data: {
                 id: `secret-proxy-global-${Date.now()}`,
-                key: "GLOBAL_ONLY_KEY",
+                key: globalOnlyKey,
                 value: "global-secret-value",
                 created_by_user_id: userId,
                 updated_by_user_id: userId,
@@ -33,7 +35,7 @@ async function main(): Promise<void> {
             data: {
                 id: `secret-proxy-user-secret-${Date.now()}`,
                 user_id: userId,
-                key: "USER_ONLY_KEY",
+                key: userOnlyKey,
                 value: "user-secret-value",
                 created_at: BigInt(Date.now()),
                 updated_at: BigInt(Date.now()),
@@ -42,23 +44,26 @@ async function main(): Promise<void> {
 
         const resolvedList = await listResolvedSecretsForUser(userId);
         assert.deepEqual(
-            resolvedList,
             {
-                GLOBAL_ONLY_KEY: "global-secret-value",
-                USER_ONLY_KEY: "user-secret-value",
+                [globalOnlyKey]: resolvedList[globalOnlyKey],
+                [userOnlyKey]: resolvedList[userOnlyKey],
             },
-            "lists the merged user and global secret map",
+            {
+                [globalOnlyKey]: "global-secret-value",
+                [userOnlyKey]: "user-secret-value",
+            },
+            "lists the merged user and global secret map for this test user",
         );
 
         const resolvedSpecific = await resolveSecretsForUser(
             userId,
-            ["user_only_key", "GLOBAL_ONLY_KEY"],
+            [userOnlyKey.toLowerCase(), globalOnlyKey],
         );
         assert.deepEqual(
             resolvedSpecific.secretMap,
             {
-                USER_ONLY_KEY: "user-secret-value",
-                GLOBAL_ONLY_KEY: "global-secret-value",
+                [userOnlyKey]: "user-secret-value",
+                [globalOnlyKey]: "global-secret-value",
             },
             "resolves requested secret keys after normalization",
         );
@@ -69,10 +74,10 @@ async function main(): Promise<void> {
         );
 
         await prisma.global_secrets.upsert({
-            where: { key: "USER_ONLY_KEY" },
+            where: { key: userOnlyKey },
             create: {
                 id: `secret-proxy-global-override-${Date.now()}`,
-                key: "USER_ONLY_KEY",
+                key: userOnlyKey,
                 value: "global-should-not-win",
                 created_by_user_id: userId,
                 updated_by_user_id: userId,
@@ -88,24 +93,24 @@ async function main(): Promise<void> {
 
         const userOverridesGlobal = await resolveSecretsForUser(
             userId,
-            ["USER_ONLY_KEY"],
+            [userOnlyKey],
         );
         assert.deepEqual(
             userOverridesGlobal.secretMap,
             {
-                USER_ONLY_KEY: "user-secret-value",
+                [userOnlyKey]: "user-secret-value",
             },
             "user secret values override globals for the same key",
         );
 
         const missing = await resolveSecretsForUser(
             userId,
-            ["MISSING_KEY", "GLOBAL_ONLY_KEY"],
+            ["MISSING_KEY", globalOnlyKey],
         );
         assert.deepEqual(
             missing.secretMap,
             {
-                GLOBAL_ONLY_KEY: "global-secret-value",
+                [globalOnlyKey]: "global-secret-value",
             },
             "returns the subset of requested secret values that resolve",
         );

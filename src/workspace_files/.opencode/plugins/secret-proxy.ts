@@ -411,6 +411,35 @@ function assertNoAgentAuthoredSecretEnvReference(value: unknown): void {
 }
 
 export const SecretProxyPlugin: Plugin = async ({ client }) => {
+  const pendingEnvKeysByCall = new Map<string, string[]>()
+  const pendingEnvKeysBySession = new Map<string, string[]>()
+
+  function rememberPendingEnvKeysForCall(callID: string, keys: string[]): void {
+    if (keys.length === 0) {
+      return
+    }
+    pendingEnvKeysByCall.set(callID, keys)
+  }
+
+  function consumePendingEnvKeysForCall(callID: string): string[] {
+    const keys = pendingEnvKeysByCall.get(callID) ?? []
+    pendingEnvKeysByCall.delete(callID)
+    return keys
+  }
+
+  function rememberPendingEnvKeysForSession(sessionID: string, keys: string[]): void {
+    if (keys.length === 0) {
+      return
+    }
+    pendingEnvKeysBySession.set(sessionID, keys)
+  }
+
+  function consumePendingEnvKeysForSession(sessionID: string): string[] {
+    const keys = pendingEnvKeysBySession.get(sessionID) ?? []
+    pendingEnvKeysBySession.delete(sessionID)
+    return keys
+  }
+
   async function resolveRootSessionID(sessionID: string): Promise<string> {
     let currentSessionID = sessionID
 
@@ -775,6 +804,13 @@ export const SecretProxyPlugin: Plugin = async ({ client }) => {
           input.arguments = rewritten.rewritten
         }
       }
+
+      const fullCommand = input.arguments.trim().length > 0
+        ? `${input.command} ${input.arguments}`
+        : input.command
+      const referencedKeys = new Set<string>()
+      collectReferencedEnvKeys(fullCommand, referencedKeys)
+      rememberPendingEnvKeysForSession(sessionID, Array.from(referencedKeys).sort())
     },
     "tool.execute.before": async (input, output) => {
       if (input.tool !== "bash") {
@@ -792,6 +828,11 @@ export const SecretProxyPlugin: Plugin = async ({ client }) => {
       const cache = new Map<string, { rewritten: string; referencedKeys: string[] }>()
       await rewriteStringFieldsInPlace(output.args, cache)
       await rewriteStringFieldsInPlace(input.args, cache)
+
+      const referencedKeys = new Set<string>()
+      collectReferencedEnvKeys(input.args, referencedKeys)
+      collectReferencedEnvKeys(output.args, referencedKeys)
+      rememberPendingEnvKeysForCall(input.callID, Array.from(referencedKeys).sort())
     },
     "shell.env": async (input, output) => {
       const sessionID = typeof input.sessionID === "string" ? input.sessionID.trim() : ""
@@ -800,8 +841,17 @@ export const SecretProxyPlugin: Plugin = async ({ client }) => {
       }
 
       const referencedKeys = new Set<string>()
-      collectReferencedEnvKeys(input, referencedKeys)
-      collectReferencedEnvKeys(output, referencedKeys)
+      const callID = typeof input.callID === "string" ? input.callID.trim() : ""
+      if (callID) {
+        for (const key of consumePendingEnvKeysForCall(callID)) {
+          referencedKeys.add(key)
+        }
+      }
+      if (referencedKeys.size === 0) {
+        for (const key of consumePendingEnvKeysForSession(sessionID)) {
+          referencedKeys.add(key)
+        }
+      }
 
       if (referencedKeys.size === 0) {
         return
