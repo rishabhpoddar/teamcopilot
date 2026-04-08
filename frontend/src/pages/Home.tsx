@@ -5,12 +5,14 @@ import WorkflowsSection from '../components/dashboard/WorkflowsSection';
 import RunHistorySection from '../components/dashboard/RunHistorySection';
 import AIModeSection from '../components/dashboard/AIModeSection';
 import SkillsSection from '../components/dashboard/SkillsSection';
+import UsageSection from '../components/dashboard/UsageSection';
 import './Home.css';
 
-type Tab = 'workflows' | 'history' | 'ai' | 'skills';
-const validTabs: Tab[] = ['ai', 'workflows', 'skills', 'history'];
+type Tab = 'workflows' | 'history' | 'ai' | 'skills' | 'usage';
+const validTabs: Tab[] = ['ai', 'usage', 'workflows', 'skills', 'history'];
 const tabTitles: Record<Tab, string> = {
     ai: 'AI Chat',
+    usage: 'Usage',
     workflows: 'Workflows',
     skills: 'Skills',
     history: 'Run History'
@@ -60,6 +62,8 @@ export default function Home() {
                 return <RunHistorySection />;
             case 'skills':
                 return <SkillsSection />;
+            case 'usage':
+                return <UsageSection />;
             case 'ai':
                 return (
                     <AIModeSection
@@ -79,6 +83,12 @@ export default function Home() {
                     onClick={() => setActiveTab('ai')}
                 >
                     AI chat
+                </button>
+                <button
+                    className={`tab-btn ${activeTab === 'usage' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('usage')}
+                >
+                    Usage
                 </button>
                 <button
                     className={`tab-btn ${activeTab === 'workflows' ? 'active' : ''}`}

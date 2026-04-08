@@ -16,6 +16,7 @@ import chatRouter from "./chat";
 import skillsRouter from "./skills";
 import usersRouter from "./users";
 import secretsRouter from "./secrets";
+import usageRouter from "./usage";
 import { startCronJobs } from "./cronjob";
 import { startOpencodeServer, stopOpencodeServer } from "./opencode-server";
 import path from 'path';
@@ -116,6 +117,7 @@ export function createApp(): express.Express {
     apiRouter.use('/skills', skillsRouter);
     apiRouter.use('/users', usersRouter);
     apiRouter.use('/secrets', secretsRouter);
+    apiRouter.use('/usage', usageRouter);
     apiRouter.use('/opencode-auth', opencodeAuthRouter);
 
     app.use('/api', apiRouter);

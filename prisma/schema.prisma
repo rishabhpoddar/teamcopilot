@@ -89,7 +89,19 @@ model chat_sessions {
   created_at          BigInt
   updated_at          BigInt
   trackedFiles        chat_session_tracked_files[]
+  usage               chat_session_usage?
   user                users                      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+}
+
+model chat_session_usage {
+  chat_session_id String @id
+  input_tokens    Int
+  output_tokens   Int
+  cached_tokens   Int
+  cost_usd        Float
+  model_id        String
+  updated_at      BigInt
+  session         chat_sessions @relation(fields: [chat_session_id], references: [id], onDelete: Cascade)
 }
 
 model chat_session_tracked_files {

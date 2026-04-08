@@ -34,6 +34,7 @@ import {
     captureCurrentFileBaseline,
     normalizeWorkspaceRelativePath,
 } from "../utils/chat-session-file-diff";
+import { syncChatSessionUsage } from "../utils/chat-usage";
 
 const router = express.Router({ mergeParams: true });
 const USER_INSTRUCTIONS_FILENAME = "USER_INSTRUCTIONS.md";
@@ -1413,6 +1414,11 @@ router.get('/sessions/:id/events', apiHandler(async (req, res) => {
 
                             // Filter events to only include ones for this session
                             if (eventSessionId === session.opencode_session_id) {
+                                if (event.type === "session.idle") {
+                                    void syncChatSessionUsage(session.id, session.opencode_session_id).catch(() => {
+                                        // Usage analytics are best-effort estimates.
+                                    });
+                                }
                                 const sanitizedEvent = sanitizeEventForClient(event as Record<string, unknown>);
                                 res.write(`data: ${JSON.stringify(sanitizeForClient(sanitizedEvent))}\n\n`);
                             }
