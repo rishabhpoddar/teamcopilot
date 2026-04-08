@@ -10,7 +10,7 @@ type AssistantTokens = {
     };
 };
 
-type AssistantMessage = {
+type AssistantMessageInfo = {
     role?: string;
     modelID?: string;
     tokens?: AssistantTokens;
@@ -18,6 +18,10 @@ type AssistantMessage = {
         created?: number;
         completed?: number;
     };
+};
+
+type SessionMessageContainer = {
+    info?: AssistantMessageInfo;
 };
 
 function asNonNegativeInt(value: unknown): number {
@@ -37,7 +41,7 @@ export async function syncChatSessionUsage(chatSessionId: string, opencodeSessio
         throw new Error("Failed to load session messages for usage sync");
     }
 
-    const messages = Array.isArray(result.data) ? result.data as AssistantMessage[] : [];
+    const messages = Array.isArray(result.data) ? result.data as SessionMessageContainer[] : [];
     let inputTokens = 0;
     let outputTokens = 0;
     let cachedTokens = 0;
@@ -46,20 +50,21 @@ export async function syncChatSessionUsage(chatSessionId: string, opencodeSessio
     let hasAssistantMessage = false;
 
     for (const message of messages) {
-        if (message.role !== "assistant") {
+        const info = message.info;
+        if (info?.role !== "assistant") {
             continue;
         }
 
         hasAssistantMessage = true;
-        inputTokens += asNonNegativeInt(message.tokens?.input);
-        outputTokens += asNonNegativeInt(message.tokens?.output);
-        cachedTokens += asNonNegativeInt(message.tokens?.cache?.read);
+        inputTokens += asNonNegativeInt(info.tokens?.input);
+        outputTokens += asNonNegativeInt(info.tokens?.output);
+        cachedTokens += asNonNegativeInt(info.tokens?.cache?.read);
 
-        const timestamp = asNonNegativeInt(message.time?.completed) || asNonNegativeInt(message.time?.created);
+        const timestamp = asNonNegativeInt(info.time?.completed) || asNonNegativeInt(info.time?.created);
         if (timestamp >= latestAssistantTimestamp) {
             latestAssistantTimestamp = timestamp;
-            modelId = typeof message.modelID === "string" && message.modelID.length > 0
-                ? message.modelID
+            modelId = typeof info.modelID === "string" && info.modelID.length > 0
+                ? info.modelID
                 : "unknown";
         }
     }

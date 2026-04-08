@@ -952,6 +952,27 @@ router.get('/sessions/:id/messages', apiHandler(async (req, res) => {
     });
 }, true));
 
+router.post('/sessions/:id/sync-usage', apiHandler(async (req, res) => {
+    const id = req.params.id as string;
+
+    const session = await prisma.chat_sessions.findFirst({
+        where: {
+            id,
+            user_id: req.userId!
+        }
+    });
+
+    if (!session) {
+        throw {
+            status: 404,
+            message: 'Session not found'
+        };
+    }
+
+    await syncChatSessionUsage(session.id, session.opencode_session_id);
+    res.json({ success: true });
+}, true));
+
 // POST /api/chat/sessions/:id/messages - Send message
 router.post('/sessions/:id/messages', apiHandler(async (req, res) => {
     const id = req.params.id as string;
@@ -1414,11 +1435,6 @@ router.get('/sessions/:id/events', apiHandler(async (req, res) => {
 
                             // Filter events to only include ones for this session
                             if (eventSessionId === session.opencode_session_id) {
-                                if (event.type === "session.idle") {
-                                    void syncChatSessionUsage(session.id, session.opencode_session_id).catch(() => {
-                                        // Usage analytics are best-effort estimates.
-                                    });
-                                }
                                 const sanitizedEvent = sanitizeEventForClient(event as Record<string, unknown>);
                                 res.write(`data: ${JSON.stringify(sanitizeForClient(sanitizedEvent))}\n\n`);
                             }

@@ -177,6 +177,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
     const abortControllerRef = useRef<AbortController | null>(null);
     const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
     const completedAssistantMessageIdsRef = useRef<Set<string>>(new Set());
+    const syncedUsageMessageIdsRef = useRef<Set<string>>(new Set());
     const lastEscapePressRef = useRef<number>(0);
     // const currentSessionInfoRef = useRef<{ id: string; isEmpty: boolean } | null>(null);
     const handledComposeKeyRef = useRef<string | null>(null);
@@ -222,6 +223,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
         setExpandedDiffPaths([]);
         setIsStreaming(false);
         completedAssistantMessageIdsRef.current = new Set();
+        syncedUsageMessageIdsRef.current = new Set();
     }, [abortSessionDataRequests]);
 
     const token = auth.loading ? null : auth.token;
@@ -277,6 +279,22 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
         }
     }, []);
 
+    const syncUsageForSession = useCallback(async (sessionId: string) => {
+        if (!token || sessionId === PENDING_SESSION_ID) {
+            return;
+        }
+
+        try {
+            await axiosInstance.post(
+                `/api/chat/sessions/${sessionId}/sync-usage`,
+                {},
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+        } catch {
+            // Usage analytics are best-effort estimates.
+        }
+    }, [token]);
+
     const handleSSEEvent = useCallback((event: SSEEvent) => {
         switch (event.type) {
             case 'message.updated': {
@@ -284,6 +302,14 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                 if (info.role === 'assistant') {
                     if (info.time.completed) {
                         completedAssistantMessageIdsRef.current.add(info.id);
+                        if (
+                            activeSessionId
+                            && activeSessionId !== PENDING_SESSION_ID
+                            && !syncedUsageMessageIdsRef.current.has(info.id)
+                        ) {
+                            syncedUsageMessageIdsRef.current.add(info.id);
+                            void syncUsageForSession(activeSessionId);
+                        }
                     } else if (completedAssistantMessageIdsRef.current.has(info.id)) {
                         // Ignore stale out-of-order updates that regress a completed assistant message.
                         break;
@@ -398,7 +424,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                 break;
             }
         }
-    }, [assertPermissionHasToolCall]);
+    }, [activeSessionId, assertPermissionHasToolCall, syncUsageForSession]);
 
     const startSSE = useCallback((sessionId: string) => {
         if (!token) return;
@@ -664,6 +690,10 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                     .filter((message) => message.role === 'assistant' && Boolean(message.time.completed))
                     .map((message) => message.id)
             );
+            syncedUsageMessageIdsRef.current = new Set(completedAssistantMessageIdsRef.current);
+            if (loadedMessages.some((message) => message.role === 'assistant' && Boolean(message.time.completed))) {
+                void syncUsageForSession(sessionId);
+            }
             const isSessionBusy = sessionStatus === 'busy' || sessionStatus === 'retry';
             if (!isSessionBusy) {
                 setIsStreaming(false);
@@ -689,7 +719,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                 messagesAbortControllerRef.current = null;
             }
         }
-    }, [token]);
+    }, [syncUsageForSession, token]);
 
     const loadPendingPermissions = useCallback(async (sessionId: string) => {
         if (!token) return;
