@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AxiosError } from 'axios';
 import { useAuth } from '../../lib/auth';
 import { axiosInstance } from '../../utils';
@@ -72,29 +72,92 @@ function formatBucketLabel(timestamp: number, range: UsageRange): string {
     return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
 }
 
-function SimpleBars({
-    data,
-    colorClass,
-    valueKey,
+function ChartScroller({
+    children,
+    points,
 }: {
-    data: UsageBucket[];
-    colorClass: string;
-    valueKey: 'cost_usd' | 'input_tokens' | 'output_tokens' | 'cached_tokens';
+    children: ReactNode;
+    points: number;
 }) {
-    const maxValue = Math.max(...data.map((item) => item[valueKey]), 0);
+    const minWidth = Math.max(360, points * 56);
+    return (
+        <div className="usage-chart-scroll">
+            <div className="usage-chart-scroll-inner" style={{ minWidth: `${minWidth}px` }}>
+                {children}
+            </div>
+        </div>
+    );
+}
+
+function CostBars({ data, range }: { data: UsageBucket[]; range: UsageRange }) {
+    const maxValue = Math.max(...data.map((item) => item.cost_usd), 0);
+    const gridTemplateColumns = `repeat(${Math.max(data.length, 1)}, minmax(32px, 1fr))`;
+
+    if (maxValue === 0) {
+        return <div className="usage-chart-empty">No cost recorded in this time range.</div>;
+    }
 
     return (
-        <div className="usage-bars">
-            {data.map((item) => {
-                const value = item[valueKey];
-                const height = maxValue === 0 ? 6 : Math.max(6, (value / maxValue) * 100);
-                return (
-                    <div key={`${valueKey}-${item.bucket_start}`} className="usage-bar-column">
-                        <div className={`usage-bar ${colorClass}`} style={{ height: `${height}%` }} />
-                    </div>
-                );
-            })}
-        </div>
+        <ChartScroller points={data.length}>
+            <div className="usage-bars" style={{ gridTemplateColumns }}>
+                {data.map((item) => {
+                    const value = item.cost_usd;
+                    const height = (value / maxValue) * 100;
+                    return (
+                        <div key={`cost-${item.bucket_start}`} className="usage-bar-column">
+                            <div className="usage-bar-rail">
+                                <div className="usage-bar cost" style={{ height: `${height}%` }} />
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+            <div className="usage-axis-labels" style={{ gridTemplateColumns }}>
+                {data.map((bucket) => (
+                    <span key={`cost-label-${bucket.bucket_start}`}>{formatBucketLabel(bucket.bucket_start, range)}</span>
+                ))}
+            </div>
+        </ChartScroller>
+    );
+}
+
+function TokenBars({ data, range }: { data: UsageBucket[]; range: UsageRange }) {
+    const totals = data.map((bucket) => bucket.input_tokens + bucket.output_tokens + bucket.cached_tokens);
+    const maxTotal = Math.max(...totals, 0);
+    const gridTemplateColumns = `repeat(${Math.max(data.length, 1)}, minmax(32px, 1fr))`;
+
+    if (maxTotal === 0) {
+        return <div className="usage-chart-empty">No token activity recorded in this time range.</div>;
+    }
+
+    return (
+        <ChartScroller points={data.length}>
+            <div className="usage-bars" style={{ gridTemplateColumns }}>
+                {data.map((item) => {
+                    const bucketTotal = item.input_tokens + item.output_tokens + item.cached_tokens;
+                    const stackHeight = (bucketTotal / maxTotal) * 100;
+                    const inputHeight = bucketTotal === 0 ? 0 : (item.input_tokens / bucketTotal) * 100;
+                    const outputHeight = bucketTotal === 0 ? 0 : (item.output_tokens / bucketTotal) * 100;
+                    const cachedHeight = bucketTotal === 0 ? 0 : (item.cached_tokens / bucketTotal) * 100;
+                    return (
+                        <div key={`tokens-${item.bucket_start}`} className="usage-bar-column">
+                            <div className="usage-bar-rail">
+                                <div className="usage-stacked-bar" style={{ height: `${stackHeight}%` }}>
+                                    <div className="usage-stacked-segment input" style={{ height: `${inputHeight}%` }} />
+                                    <div className="usage-stacked-segment output" style={{ height: `${outputHeight}%` }} />
+                                    <div className="usage-stacked-segment cached" style={{ height: `${cachedHeight}%` }} />
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+            <div className="usage-axis-labels" style={{ gridTemplateColumns }}>
+                {data.map((bucket) => (
+                    <span key={`token-label-${bucket.bucket_start}`}>{formatBucketLabel(bucket.bucket_start, range)}</span>
+                ))}
+            </div>
+        </ChartScroller>
     );
 }
 
@@ -218,12 +281,7 @@ export default function UsageSection() {
                             <h3>Estimated Cost Over Time</h3>
                             <span>{formatUsd(data.summary.total_cost_usd)}</span>
                         </div>
-                        <SimpleBars data={data.timeseries} valueKey="cost_usd" colorClass="cost" />
-                        <div className="usage-axis-labels">
-                            {data.timeseries.map((bucket) => (
-                                <span key={`cost-label-${bucket.bucket_start}`}>{formatBucketLabel(bucket.bucket_start, data.range)}</span>
-                            ))}
-                        </div>
+                        <CostBars data={data.timeseries} range={data.range} />
                     </article>
                 ) : null}
 
@@ -232,28 +290,7 @@ export default function UsageSection() {
                         <h3>Token Usage Over Time</h3>
                         <span>{formatTokenCount(totalTokens)}</span>
                     </div>
-                    <div className="usage-stacked-bars">
-                        {data.timeseries.map((bucket) => {
-                            const bucketTotal = bucket.input_tokens + bucket.output_tokens + bucket.cached_tokens;
-                            const inputHeight = bucketTotal === 0 ? 0 : (bucket.input_tokens / bucketTotal) * 100;
-                            const outputHeight = bucketTotal === 0 ? 0 : (bucket.output_tokens / bucketTotal) * 100;
-                            const cachedHeight = bucketTotal === 0 ? 0 : (bucket.cached_tokens / bucketTotal) * 100;
-                            return (
-                                <div key={`tokens-${bucket.bucket_start}`} className="usage-bar-column">
-                                    <div className="usage-stacked-bar">
-                                        <div className="usage-stacked-segment input" style={{ height: `${inputHeight}%` }} />
-                                        <div className="usage-stacked-segment output" style={{ height: `${outputHeight}%` }} />
-                                        <div className="usage-stacked-segment cached" style={{ height: `${cachedHeight}%` }} />
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                    <div className="usage-axis-labels">
-                        {data.timeseries.map((bucket) => (
-                            <span key={`token-label-${bucket.bucket_start}`}>{formatBucketLabel(bucket.bucket_start, data.range)}</span>
-                        ))}
-                    </div>
+                    <TokenBars data={data.timeseries} range={data.range} />
                     <div className="usage-legend">
                         <span><i className="input" />Input</span>
                         <span><i className="output" />Output</span>

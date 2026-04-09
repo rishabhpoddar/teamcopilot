@@ -82,11 +82,17 @@
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .usage-kpi-card strong {
-  font-size: clamp(1.35rem, 2vw, 2rem);
+  font-size: clamp(1.15rem, 1.8vw, 1.85rem);
   letter-spacing: -0.04em;
+  line-height: 1.05;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  font-variant-numeric: tabular-nums;
 }
 
 .usage-kpi-label {
@@ -105,42 +111,67 @@
   margin-bottom: 0.9rem;
 }
 
-.usage-bars,
-.usage-stacked-bars {
+.usage-chart-header span {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.usage-chart-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 0.35rem;
+}
+
+.usage-chart-scroll-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.usage-bars {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(14px, 1fr));
-  gap: 0.45rem;
+  gap: 0.75rem;
   align-items: end;
-  height: 220px;
-  padding: 0.75rem 0 0;
+  height: 240px;
+  padding: 0.5rem 0 0;
 }
 
 .usage-bar-column {
   height: 100%;
   display: flex;
   align-items: end;
+  min-width: 0;
+}
+
+.usage-bar-rail {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: end;
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01));
+  padding: 0.25rem;
 }
 
 .usage-bar,
 .usage-stacked-bar {
   width: 100%;
-  border-radius: 999px 999px 0 0;
-}
-
-.usage-bar {
-  min-height: 6px;
+  border-radius: 12px 12px 8px 8px;
 }
 
 .usage-bar.cost {
-  background: linear-gradient(180deg, #6ea8fe, #1f6feb);
+  background: linear-gradient(180deg, #8bc5ff, #2d74ff 65%, #1f5ae0);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 
 .usage-stacked-bar {
-  height: 100%;
   display: flex;
   flex-direction: column-reverse;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(255, 255, 255, 0.04);
+  min-height: 0;
 }
 
 .usage-stacked-segment.input,
@@ -160,17 +191,25 @@
 
 .usage-axis-labels {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(14px, 1fr));
-  gap: 0.45rem;
-  margin-top: 0.75rem;
+  gap: 0.75rem;
   color: #77809b;
-  font-size: 0.72rem;
+  font-size: 0.75rem;
 }
 
 .usage-axis-labels span {
-  writing-mode: vertical-rl;
-  transform: rotate(180deg);
-  text-align: left;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.usage-chart-empty {
+  min-height: 240px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed rgba(148, 163, 184, 0.2);
+  border-radius: 18px;
+  color: #8e98b3;
+  background: rgba(15, 23, 42, 0.28);
 }
 
 .usage-legend {
@@ -209,6 +248,9 @@
   padding: 0.8rem 0.35rem;
   text-align: left;
   border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  font-variant-numeric: tabular-nums;
 }
 
 .usage-table th {
@@ -266,7 +308,9 @@
   }
 
   .usage-stacked-bar,
-  .usage-pricing-card {
+  .usage-pricing-card,
+  .usage-bar-rail,
+  .usage-chart-empty {
     background: rgba(226, 232, 240, 0.45);
   }
 }
@@ -314,8 +358,11 @@
     border-radius: 18px;
   }
 
-  .usage-bars,
-  .usage-stacked-bars {
+  .usage-bars {
     height: 180px;
+  }
+
+  .usage-chart-empty {
+    min-height: 180px;
   }
 }

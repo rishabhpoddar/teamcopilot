@@ -12,7 +12,7 @@ type Tab = 'workflows' | 'history' | 'ai' | 'skills' | 'usage';
 const validTabs: Tab[] = ['ai', 'usage', 'workflows', 'skills', 'history'];
 const tabTitles: Record<Tab, string> = {
     ai: 'AI Chat',
-    usage: 'Usage',
+    usage: 'Token Usage',
     workflows: 'Workflows',
     skills: 'Skills',
     history: 'Run History'
@@ -88,7 +88,7 @@ export default function Home() {
                     className={`tab-btn ${activeTab === 'usage' ? 'active' : ''}`}
                     onClick={() => setActiveTab('usage')}
                 >
-                    Usage
+                    Token Usage
                 </button>
                 <button
                     className={`tab-btn ${activeTab === 'workflows' ? 'active' : ''}`}
