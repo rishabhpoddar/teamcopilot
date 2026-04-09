@@ -166,6 +166,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
     const [sessionDiffLoading, setSessionDiffLoading] = useState(false);
     const [sessionDiffError, setSessionDiffError] = useState<string | null>(null);
     const [expandedDiffPaths, setExpandedDiffPaths] = useState<string[]>([]);
+    const [usageSyncWarning, setUsageSyncWarning] = useState<string | null>(null);
     const draftMessagesBySessionIdRef = useRef<Record<string, string>>({});
     const [draftRevisionBySessionId, setDraftRevisionBySessionId] = useState<Record<string, number>>({});
     const [pendingPermissions, setPendingPermissions] = useState<PermissionRequest[]>([]);
@@ -221,6 +222,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
         setSessionDiffError(null);
         setSessionDiffLoading(false);
         setExpandedDiffPaths([]);
+        setUsageSyncWarning(null);
         setIsStreaming(false);
         completedAssistantMessageIdsRef.current = new Set();
         syncedUsageMessageIdsRef.current = new Set();
@@ -290,8 +292,11 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                 {},
                 { headers: { Authorization: `Bearer ${token}` } }
             );
+            setUsageSyncWarning(null);
         } catch {
-            // Usage analytics are best-effort estimates.
+            const warningMessage = 'Failed to sync usage analytics. Usage totals may be stale until the next successful refresh.';
+            setUsageSyncWarning(warningMessage);
+            toast.error(warningMessage);
         }
     }, [token]);
 
@@ -1269,6 +1274,11 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                         </span>
                     </div>
                 </div>
+                {usageSyncWarning ? (
+                    <div className="chat-usage-sync-warning" role="status">
+                        {usageSyncWarning}
+                    </div>
+                ) : null}
                 {activeSessionId ? (
                     <div className="chat-workspace without-diff">
                         <div className="chat-column chat-column-main">
