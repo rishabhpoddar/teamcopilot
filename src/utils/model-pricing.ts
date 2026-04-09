@@ -89,7 +89,73 @@ const MODEL_PRICING: Record<string, Record<string, ModelPricing>> = {
     },
 };
 
+function assertNonNegativeNumber(value: unknown, label: string): asserts value is number {
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+        throw new Error(`${label} must be a non-negative number`);
+    }
+}
+
+function parseOptionalNonNegativeNumber(raw: string | undefined, label: string): number | null {
+    if (raw === undefined || raw.length === 0) {
+        return null;
+    }
+
+    const parsed = Number(raw);
+    assertNonNegativeNumber(parsed, label);
+    return parsed;
+}
+
+function getPricingOverrideForConfiguredModel(providerId: string, modelId: string): ModelPricing | null {
+    const configuredModel = process.env.OPENCODE_MODEL;
+    if (!configuredModel) {
+        return null;
+    }
+
+    const [configuredProviderId, ...configuredModelParts] = configuredModel.split("/");
+    const configuredModelId = configuredModelParts.join("/");
+    if (!configuredProviderId || !configuredModelId) {
+        throw new Error("OPENCODE_MODEL must be in the format <provider>/<model>");
+    }
+
+    if (providerId !== configuredProviderId || modelId !== configuredModelId) {
+        return null;
+    }
+
+    const inputPerMillionUsd = parseOptionalNonNegativeNumber(
+        process.env.TEAMCOPILOT_MODEL_INPUT_PER_MILLION_USD,
+        "TEAMCOPILOT_MODEL_INPUT_PER_MILLION_USD"
+    );
+    const cachedInputPerMillionUsd = parseOptionalNonNegativeNumber(
+        process.env.TEAMCOPILOT_MODEL_CACHED_INPUT_PER_MILLION_USD,
+        "TEAMCOPILOT_MODEL_CACHED_INPUT_PER_MILLION_USD"
+    );
+    const outputPerMillionUsd = parseOptionalNonNegativeNumber(
+        process.env.TEAMCOPILOT_MODEL_OUTPUT_PER_MILLION_USD,
+        "TEAMCOPILOT_MODEL_OUTPUT_PER_MILLION_USD"
+    );
+
+    if (inputPerMillionUsd === null && cachedInputPerMillionUsd === null && outputPerMillionUsd === null) {
+        return null;
+    }
+
+    if (inputPerMillionUsd === null || cachedInputPerMillionUsd === null || outputPerMillionUsd === null) {
+        throw new Error(
+            "TEAMCOPILOT_MODEL_INPUT_PER_MILLION_USD, TEAMCOPILOT_MODEL_CACHED_INPUT_PER_MILLION_USD, and TEAMCOPILOT_MODEL_OUTPUT_PER_MILLION_USD must either all be set or all be unset"
+        );
+    }
+
+    return {
+        inputPerMillionUsd,
+        cachedInputPerMillionUsd,
+        outputPerMillionUsd,
+    };
+}
+
 export function getModelPricing(providerId: string, modelId: string): ModelPricing | null {
+    const override = getPricingOverrideForConfiguredModel(providerId, modelId);
+    if (override) {
+        return override;
+    }
     return MODEL_PRICING[providerId]?.[modelId] ?? null;
 }
 
