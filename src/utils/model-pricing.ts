@@ -50,42 +50,7 @@ const MODEL_PRICING: Record<string, Record<string, ModelPricing>> = {
             inputPerMillionUsd: 0.05,
             cachedInputPerMillionUsd: 0.005,
             outputPerMillionUsd: 0.4,
-        },
-        "gpt-4.1": {
-            inputPerMillionUsd: 2,
-            cachedInputPerMillionUsd: 0.5,
-            outputPerMillionUsd: 8,
-        },
-        "gpt-4.1-mini": {
-            inputPerMillionUsd: 0.4,
-            cachedInputPerMillionUsd: 0.1,
-            outputPerMillionUsd: 1.6,
-        },
-        "gpt-4.1-nano": {
-            inputPerMillionUsd: 0.1,
-            cachedInputPerMillionUsd: 0.025,
-            outputPerMillionUsd: 0.4,
-        },
-        "gpt-4o": {
-            inputPerMillionUsd: 2.5,
-            cachedInputPerMillionUsd: 1.25,
-            outputPerMillionUsd: 10,
-        },
-        "gpt-4o-mini": {
-            inputPerMillionUsd: 0.15,
-            cachedInputPerMillionUsd: 0.075,
-            outputPerMillionUsd: 0.6,
-        },
-        "o4-mini": {
-            inputPerMillionUsd: 1.1,
-            cachedInputPerMillionUsd: 0.275,
-            outputPerMillionUsd: 4.4,
-        },
-        "o3-mini": {
-            inputPerMillionUsd: 1.1,
-            cachedInputPerMillionUsd: 0.55,
-            outputPerMillionUsd: 4.4,
-        },
+        }
     },
 };
 
