@@ -2,6 +2,7 @@
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
+  min-width: 0;
 }
 
 .usage-header {
@@ -54,6 +55,7 @@
 .usage-detail-grid {
   display: grid;
   gap: 1rem;
+  min-width: 0;
 }
 
 .usage-kpi-grid {
@@ -75,6 +77,9 @@
     linear-gradient(180deg, rgba(17, 24, 39, 0.95), rgba(11, 16, 27, 0.98)),
     #0d1320;
   box-shadow: 0 18px 40px rgba(2, 6, 23, 0.28);
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .usage-kpi-card {
@@ -118,6 +123,9 @@
 }
 
 .usage-chart-scroll {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
   padding-bottom: 0.35rem;
@@ -127,6 +135,8 @@
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  width: max-content;
+  max-width: none;
 }
 
 .usage-bars {
@@ -253,6 +263,10 @@
   font-variant-numeric: tabular-nums;
 }
 
+.usage-table td::before {
+  content: none;
+}
+
 .usage-table th {
   color: #8e98b3;
   font-weight: 600;
@@ -339,11 +353,23 @@
 
   .usage-range-picker {
     width: 100%;
-    justify-content: space-between;
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
 
   .usage-range-btn {
-    flex: 1 1 0;
+    flex: 1 1 calc(50% - 0.35rem);
+    min-width: 0;
+  }
+
+  .usage-chart-header,
+  .usage-panel-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .usage-chart-header span {
+    text-align: left;
   }
 }
 
@@ -356,6 +382,7 @@
   .usage-panel,
   .usage-kpi-card {
     border-radius: 18px;
+    padding: 0.85rem;
   }
 
   .usage-bars {
@@ -364,5 +391,73 @@
 
   .usage-chart-empty {
     min-height: 180px;
+  }
+
+  .usage-header h2 {
+    font-size: 1.35rem;
+  }
+
+  .usage-subtitle {
+    font-size: 0.92rem;
+  }
+
+  .usage-range-picker {
+    gap: 0.4rem;
+    padding: 0.4rem;
+    border-radius: 18px;
+  }
+
+  .usage-range-btn {
+    flex: 1 1 calc(50% - 0.4rem);
+    padding: 0.65rem 0.7rem;
+  }
+
+  .usage-legend {
+    gap: 0.65rem;
+    font-size: 0.8rem;
+  }
+
+  .usage-table thead {
+    display: none;
+  }
+
+  .usage-table,
+  .usage-table tbody {
+    display: block;
+  }
+
+  .usage-table tr {
+    display: grid;
+    gap: 0.45rem;
+    padding: 0.8rem 0;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+  }
+
+  .usage-table tr:last-child {
+    border-bottom: none;
+  }
+
+  .usage-table td {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    align-items: flex-start;
+    padding: 0;
+    border-bottom: none;
+    font-size: 0.9rem;
+  }
+
+  .usage-table td::before {
+    content: attr(data-label);
+    color: #8e98b3;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    flex: 0 0 auto;
+  }
+
+  .usage-model-cell {
+    align-items: flex-end;
+    text-align: right;
   }
 }

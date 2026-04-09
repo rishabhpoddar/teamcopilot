@@ -319,17 +319,17 @@ export default function UsageSection() {
                             <tbody>
                                 {data.models.map((model) => (
                                     <tr key={model.model_id}>
-                                        <td>
+                                        <td data-label="Model">
                                             <div className="usage-model-cell">
                                                 <strong>{model.model_id}</strong>
                                                 {!model.pricing_available ? <span>Pricing unavailable</span> : null}
                                             </div>
                                         </td>
-                                        <td>{formatTokenCount(model.session_count)}</td>
-                                        <td>{formatTokenCount(model.input_tokens)}</td>
-                                        <td>{formatTokenCount(model.output_tokens)}</td>
-                                        <td>{formatTokenCount(model.cached_tokens)}</td>
-                                        {!shouldHideCosting ? <td>{formatUsd(model.cost_usd)}</td> : null}
+                                        <td data-label="Sessions">{formatTokenCount(model.session_count)}</td>
+                                        <td data-label="Input">{formatTokenCount(model.input_tokens)}</td>
+                                        <td data-label="Output">{formatTokenCount(model.output_tokens)}</td>
+                                        <td data-label="Cached">{formatTokenCount(model.cached_tokens)}</td>
+                                        {!shouldHideCosting ? <td data-label="Estimated Cost">{formatUsd(model.cost_usd)}</td> : null}
                                     </tr>
                                 ))}
                             </tbody>
