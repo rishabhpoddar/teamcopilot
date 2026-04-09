@@ -17,6 +17,7 @@ type OpencodeAssistantTokens = {
 
 type OpencodeUserMessageInfo = {
     role: "user";
+    id: string;
     time: {
         created: number;
     };
@@ -24,6 +25,7 @@ type OpencodeUserMessageInfo = {
 
 type OpencodeAssistantMessageInfo = {
     role: "assistant";
+    id: string;
     time: {
         created: number;
         completed?: number;
@@ -55,6 +57,7 @@ function assertSessionMessages(value: unknown): asserts value is OpencodeSession
 
         const time = info.time as Record<string, unknown>;
         assertNonNegativeNumber(time.created, `Session message at index ${index} time.created`);
+        assertCondition(typeof info.id === "string" && info.id.length > 0, `Session message at index ${index} is missing id`);
 
         if (info.role === "assistant") {
             assertCondition(typeof info.modelID === "string" && info.modelID.length > 0, `Assistant message at index ${index} is missing modelID`);
@@ -90,41 +93,65 @@ export async function syncChatSessionUsage(chatSessionId: string, opencodeSessio
 
     assertSessionMessages(result.data);
     const messages = result.data;
-    let inputTokens = 0;
-    let outputTokens = 0;
-    let cachedTokens = 0;
-    let latestAssistantTimestamp = -1;
-    let modelId = "unknown";
-    let hasAssistantMessage = false;
+    const existingUsage = await prisma.chat_session_usage.findUnique({
+        where: {
+            chat_session_id: chatSessionId,
+        }
+    });
 
-    for (const message of messages) {
+    let startIndex = 0;
+    if (existingUsage) {
+        const lastSyncedIndex = messages.findIndex((message) => (
+            message.info.role === "assistant"
+            && message.info.id === existingUsage.last_synced_message_id
+        ));
+        if (lastSyncedIndex === -1) {
+            return;
+        }
+        startIndex = lastSyncedIndex + 1;
+    }
+
+    let deltaInputTokens = 0;
+    let deltaOutputTokens = 0;
+    let deltaCachedTokens = 0;
+    let latestProcessedAssistantMessageId: string | null = null;
+    let latestProcessedProviderId: string | null = null;
+    let latestProcessedModelId: string | null = null;
+
+    for (const message of messages.slice(startIndex)) {
         const info = message.info;
         if (info.role !== "assistant") {
             continue;
         }
 
-        hasAssistantMessage = true;
-        inputTokens += info.tokens.input;
-        outputTokens += info.tokens.output;
-        cachedTokens += info.tokens.cache.read;
-
-        const timestamp = info.time.completed ?? info.time.created;
-        if (timestamp >= latestAssistantTimestamp) {
-            latestAssistantTimestamp = timestamp;
-            modelId = info.modelID;
-        }
+        deltaInputTokens += info.tokens.input;
+        deltaOutputTokens += info.tokens.output;
+        deltaCachedTokens += info.tokens.cache.read;
+        latestProcessedAssistantMessageId = info.id;
+        latestProcessedProviderId = info.providerID;
+        latestProcessedModelId = info.modelID;
     }
 
-    if (!hasAssistantMessage) {
+    if (
+        latestProcessedAssistantMessageId === null
+        || latestProcessedProviderId === null
+        || latestProcessedModelId === null
+    ) {
         return;
     }
 
-    const costUsd = calculateEstimatedCostUsd({
-        modelId,
-        inputTokens,
-        outputTokens,
-        cachedTokens,
+    const deltaCostUsd = calculateEstimatedCostUsd({
+        providerId: latestProcessedProviderId,
+        modelId: latestProcessedModelId,
+        inputTokens: deltaInputTokens,
+        outputTokens: deltaOutputTokens,
+        cachedTokens: deltaCachedTokens,
     });
+
+    const nextInputTokens = (existingUsage?.input_tokens ?? 0) + deltaInputTokens;
+    const nextOutputTokens = (existingUsage?.output_tokens ?? 0) + deltaOutputTokens;
+    const nextCachedTokens = (existingUsage?.cached_tokens ?? 0) + deltaCachedTokens;
+    const nextCostUsd = (existingUsage?.cost_usd ?? 0) + deltaCostUsd;
 
     await prisma.chat_session_usage.upsert({
         where: {
@@ -132,19 +159,23 @@ export async function syncChatSessionUsage(chatSessionId: string, opencodeSessio
         },
         create: {
             chat_session_id: chatSessionId,
-            input_tokens: inputTokens,
-            output_tokens: outputTokens,
-            cached_tokens: cachedTokens,
-            cost_usd: costUsd,
-            model_id: modelId,
+            last_synced_message_id: latestProcessedAssistantMessageId,
+            provider_id: latestProcessedProviderId,
+            input_tokens: nextInputTokens,
+            output_tokens: nextOutputTokens,
+            cached_tokens: nextCachedTokens,
+            cost_usd: nextCostUsd,
+            model_id: latestProcessedModelId,
             updated_at: BigInt(Date.now()),
         },
         update: {
-            input_tokens: inputTokens,
-            output_tokens: outputTokens,
-            cached_tokens: cachedTokens,
-            cost_usd: costUsd,
-            model_id: modelId,
+            last_synced_message_id: latestProcessedAssistantMessageId,
+            provider_id: latestProcessedProviderId,
+            input_tokens: nextInputTokens,
+            output_tokens: nextOutputTokens,
+            cached_tokens: nextCachedTokens,
+            cost_usd: nextCostUsd,
+            model_id: latestProcessedModelId,
             updated_at: BigInt(Date.now()),
         }
     });
@@ -211,6 +242,7 @@ export async function buildUsageOverview(rawRange: unknown) {
 
     const bucketMap = new Map<number, UsageBucket>();
     const modelMap = new Map<string, {
+        provider_id: string;
         model_id: string;
         input_tokens: number;
         output_tokens: number;
@@ -244,21 +276,23 @@ export async function buildUsageOverview(rawRange: unknown) {
         bucket.session_count += 1;
         bucketMap.set(bucketStart, bucket);
 
-        const model = modelMap.get(row.model_id) ?? {
+        const modelKey = `${row.provider_id}:${row.model_id}`;
+        const model = modelMap.get(modelKey) ?? {
+            provider_id: row.provider_id,
             model_id: row.model_id,
             input_tokens: 0,
             output_tokens: 0,
             cached_tokens: 0,
             cost_usd: 0,
             session_count: 0,
-            pricing_available: getModelPricing(row.model_id) !== null,
+            pricing_available: getModelPricing(row.provider_id, row.model_id) !== null,
         };
         model.input_tokens += row.input_tokens;
         model.output_tokens += row.output_tokens;
         model.cached_tokens += row.cached_tokens;
         model.cost_usd += row.cost_usd;
         model.session_count += 1;
-        modelMap.set(row.model_id, model);
+        modelMap.set(modelKey, model);
 
         totalInputTokens += row.input_tokens;
         totalOutputTokens += row.output_tokens;
@@ -282,16 +316,18 @@ export async function buildUsageOverview(rawRange: unknown) {
 
     const models = Array.from(modelMap.values()).sort((a, b) => b.cost_usd - a.cost_usd);
     const pricing: Record<string, {
+        provider_id: string;
         input_per_million_usd: number;
         cached_input_per_million_usd: number;
         output_per_million_usd: number;
     }> = {};
     for (const model of models) {
-        const modelPricing = getModelPricing(model.model_id);
+        const modelPricing = getModelPricing(model.provider_id, model.model_id);
         if (!modelPricing) {
             continue;
         }
-        pricing[model.model_id] = {
+        pricing[`${model.provider_id}:${model.model_id}`] = {
+            provider_id: model.provider_id,
             input_per_million_usd: modelPricing.inputPerMillionUsd,
             cached_input_per_million_usd: modelPricing.cachedInputPerMillionUsd,
             output_per_million_usd: modelPricing.outputPerMillionUsd,

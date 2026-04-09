@@ -94,14 +94,16 @@ model chat_sessions {
 }
 
 model chat_session_usage {
-  chat_session_id String @id
-  input_tokens    Int
-  output_tokens   Int
-  cached_tokens   Int
-  cost_usd        Float
-  model_id        String
-  updated_at      BigInt
-  session         chat_sessions @relation(fields: [chat_session_id], references: [id], onDelete: Cascade)
+  chat_session_id        String @id
+  last_synced_message_id String
+  provider_id            String
+  input_tokens           Int
+  output_tokens          Int
+  cached_tokens          Int
+  cost_usd               Float
+  model_id               String
+  updated_at             BigInt
+  session                chat_sessions @relation(fields: [chat_session_id], references: [id], onDelete: Cascade)
 }
 
 model chat_session_tracked_files {

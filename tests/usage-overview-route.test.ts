@@ -89,6 +89,8 @@ async function main(): Promise<void> {
             data: [
                 {
                     chat_session_id: sessionOne.id,
+                    last_synced_message_id: "msg-session-one",
+                    provider_id: "openai",
                     input_tokens: 1000,
                     output_tokens: 300,
                     cached_tokens: 200,
@@ -98,6 +100,8 @@ async function main(): Promise<void> {
                 },
                 {
                     chat_session_id: sessionTwo.id,
+                    last_synced_message_id: "msg-session-two",
+                    provider_id: "azure-openai",
                     input_tokens: 400,
                     output_tokens: 100,
                     cached_tokens: 50,
@@ -107,6 +111,8 @@ async function main(): Promise<void> {
                 },
                 {
                     chat_session_id: oldSession.id,
+                    last_synced_message_id: "msg-old-session",
+                    provider_id: "openai",
                     input_tokens: 9999,
                     output_tokens: 999,
                     cached_tokens: 999,
@@ -133,8 +139,8 @@ async function main(): Promise<void> {
         assert.ok(Math.abs((response.body.summary.total_cost_usd as number) - 0.003375) < 1e-9);
         assert.ok(Array.isArray(response.body.timeseries));
         assert.ok(response.body.timeseries.length >= 7);
-        assert.ok(response.body.pricing["gpt-5.3-codex"]);
-        assert.equal(response.body.pricing["unknown-model"], undefined);
+        assert.ok(response.body.pricing["openai:gpt-5.3-codex"]);
+        assert.equal(response.body.pricing["azure-openai:unknown-model"], undefined);
 
         console.log("Usage overview route tests passed");
     } finally {
