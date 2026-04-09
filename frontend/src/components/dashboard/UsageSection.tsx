@@ -157,6 +157,8 @@ export default function UsageSection() {
         );
     }
 
+    const shouldHideCosting = totalTokens > 0 && data.summary.total_cost_usd === 0;
+
     return (
         <section className="usage-section">
             <div className="usage-header">
@@ -181,10 +183,12 @@ export default function UsageSection() {
             </div>
 
             <div className="usage-kpi-grid">
-                <article className="usage-kpi-card">
-                    <span className="usage-kpi-label">Estimated Cost</span>
-                    <strong>{formatUsd(data.summary.total_cost_usd)}</strong>
-                </article>
+                {!shouldHideCosting ? (
+                    <article className="usage-kpi-card">
+                        <span className="usage-kpi-label">Estimated Cost</span>
+                        <strong>{formatUsd(data.summary.total_cost_usd)}</strong>
+                    </article>
+                ) : null}
                 <article className="usage-kpi-card">
                     <span className="usage-kpi-label">Total Tokens</span>
                     <strong>{formatTokenCount(totalTokens)}</strong>
@@ -208,18 +212,20 @@ export default function UsageSection() {
             </div>
 
             <div className="usage-chart-grid">
-                <article className="usage-chart-card">
-                    <div className="usage-chart-header">
-                        <h3>Estimated Cost Over Time</h3>
-                        <span>{formatUsd(data.summary.total_cost_usd)}</span>
-                    </div>
-                    <SimpleBars data={data.timeseries} valueKey="cost_usd" colorClass="cost" />
-                    <div className="usage-axis-labels">
-                        {data.timeseries.map((bucket) => (
-                            <span key={`cost-label-${bucket.bucket_start}`}>{formatBucketLabel(bucket.bucket_start, data.range)}</span>
-                        ))}
-                    </div>
-                </article>
+                {!shouldHideCosting ? (
+                    <article className="usage-chart-card">
+                        <div className="usage-chart-header">
+                            <h3>Estimated Cost Over Time</h3>
+                            <span>{formatUsd(data.summary.total_cost_usd)}</span>
+                        </div>
+                        <SimpleBars data={data.timeseries} valueKey="cost_usd" colorClass="cost" />
+                        <div className="usage-axis-labels">
+                            {data.timeseries.map((bucket) => (
+                                <span key={`cost-label-${bucket.bucket_start}`}>{formatBucketLabel(bucket.bucket_start, data.range)}</span>
+                            ))}
+                        </div>
+                    </article>
+                ) : null}
 
                 <article className="usage-chart-card">
                     <div className="usage-chart-header">
@@ -270,7 +276,7 @@ export default function UsageSection() {
                                     <th>Input</th>
                                     <th>Output</th>
                                     <th>Cached</th>
-                                    <th>Estimated Cost</th>
+                                    {!shouldHideCosting ? <th>Estimated Cost</th> : null}
                                 </tr>
                             </thead>
                             <tbody>
@@ -286,7 +292,7 @@ export default function UsageSection() {
                                         <td>{formatTokenCount(model.input_tokens)}</td>
                                         <td>{formatTokenCount(model.output_tokens)}</td>
                                         <td>{formatTokenCount(model.cached_tokens)}</td>
-                                        <td>{formatUsd(model.cost_usd)}</td>
+                                        {!shouldHideCosting ? <td>{formatUsd(model.cost_usd)}</td> : null}
                                     </tr>
                                 ))}
                             </tbody>
@@ -294,24 +300,26 @@ export default function UsageSection() {
                     </div>
                 </article>
 
-                <article className="usage-panel">
-                    <div className="usage-panel-header">
-                        <h3>Pricing</h3>
-                    </div>
-                    <div className="usage-pricing-list">
-                        {Object.entries(data.pricing).map(([modelId, pricingEntry]) => (
-                            <div key={modelId} className="usage-pricing-card">
-                                <strong>{modelId}</strong>
-                                <span>Input: {formatUsd(pricingEntry.input_per_million_usd)}/1M</span>
-                                <span>Cached: {formatUsd(pricingEntry.cached_input_per_million_usd)}/1M</span>
-                                <span>Output: {formatUsd(pricingEntry.output_per_million_usd)}/1M</span>
-                            </div>
-                        ))}
-                        {Object.keys(data.pricing).length === 0 ? (
-                            <p className="usage-pricing-empty">No hard-coded pricing matched the models in this range.</p>
-                        ) : null}
-                    </div>
-                </article>
+                {!shouldHideCosting ? (
+                    <article className="usage-panel">
+                        <div className="usage-panel-header">
+                            <h3>Pricing</h3>
+                        </div>
+                        <div className="usage-pricing-list">
+                            {Object.entries(data.pricing).map(([modelId, pricingEntry]) => (
+                                <div key={modelId} className="usage-pricing-card">
+                                    <strong>{modelId}</strong>
+                                    <span>Input: {formatUsd(pricingEntry.input_per_million_usd)}/1M</span>
+                                    <span>Cached: {formatUsd(pricingEntry.cached_input_per_million_usd)}/1M</span>
+                                    <span>Output: {formatUsd(pricingEntry.output_per_million_usd)}/1M</span>
+                                </div>
+                            ))}
+                            {Object.keys(data.pricing).length === 0 ? (
+                                <p className="usage-pricing-empty">No hard-coded pricing matched the models in this range.</p>
+                            ) : null}
+                        </div>
+                    </article>
+                ) : null}
             </div>
         </section>
     );
