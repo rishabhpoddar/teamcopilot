@@ -71,10 +71,7 @@ function parseOptionalNonNegativeNumber(raw: string | undefined, label: string):
 }
 
 function getPricingOverrideForConfiguredModel(providerId: string, modelId: string): ModelPricing | null {
-    const configuredModel = process.env.OPENCODE_MODEL;
-    if (!configuredModel) {
-        return null;
-    }
+    const configuredModel = process.env.OPENCODE_MODEL!;
 
     const [configuredProviderId, ...configuredModelParts] = configuredModel.split("/");
     const configuredModelId = configuredModelParts.join("/");
