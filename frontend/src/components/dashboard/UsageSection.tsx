@@ -16,6 +16,7 @@ type UsageBucket = {
 };
 
 type ModelUsage = {
+    provider_id: string;
     model_id: string;
     input_tokens: number;
     output_tokens: number;
@@ -26,6 +27,7 @@ type ModelUsage = {
 };
 
 type PricingEntry = {
+    provider_id: string;
     input_per_million_usd: number;
     cached_input_per_million_usd: number;
     output_per_million_usd: number;
@@ -404,7 +406,7 @@ export default function UsageSection() {
                             <article key={model.model_id} className="usage-model-card">
                                 <div className="usage-model-card-header">
                                     <div className="usage-model-cell">
-                                        <strong>{model.model_id}</strong>
+                                        <strong>{`${model.provider_id}:${model.model_id}`}</strong>
                                         {!model.pricing_available ? <span>Pricing unavailable</span> : null}
                                     </div>
                                 </div>
