@@ -34,6 +34,7 @@ import {
     captureCurrentFileBaseline,
     normalizeWorkspaceRelativePath,
 } from "../utils/chat-session-file-diff";
+import { syncChatSessionUsage } from "../utils/chat-usage";
 
 const router = express.Router({ mergeParams: true });
 const USER_INSTRUCTIONS_FILENAME = "USER_INSTRUCTIONS.md";
@@ -949,6 +950,27 @@ router.get('/sessions/:id/messages', apiHandler(async (req, res) => {
         messages: sanitizedMessages,
         session_status: sessionStatusType
     });
+}, true));
+
+router.post('/sessions/:id/sync-usage', apiHandler(async (req, res) => {
+    const id = req.params.id as string;
+
+    const session = await prisma.chat_sessions.findFirst({
+        where: {
+            id,
+            user_id: req.userId!
+        }
+    });
+
+    if (!session) {
+        throw {
+            status: 404,
+            message: 'Session not found'
+        };
+    }
+
+    await syncChatSessionUsage(session.id, session.opencode_session_id);
+    res.json({ success: true });
 }, true));
 
 // POST /api/chat/sessions/:id/messages - Send message

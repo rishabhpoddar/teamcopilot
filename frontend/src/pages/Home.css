@@ -27,6 +27,8 @@
   margin-bottom: -1px;
   transition: all 0.2s ease;
   border-radius: 8px 8px 0 0;
+  white-space: normal;
+  line-height: 1.15;
 }
 
 .tab-btn:hover {
@@ -109,7 +111,12 @@
     border-radius: 10px;
     margin-bottom: 0;
     padding: 0.7rem 0.4rem calc(0.7rem + env(safe-area-inset-bottom, 0px));
-    font-size: 0.9rem;
+    font-size: 0.76rem;
+    min-height: 3.35rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
   }
 
   .tab-btn.active {

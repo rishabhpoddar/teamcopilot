@@ -276,6 +276,15 @@
     color: #888;
 }
 
+.chat-usage-sync-warning {
+    padding: 0.7rem 1rem;
+    border-bottom: 1px solid rgba(245, 158, 11, 0.3);
+    background: rgba(245, 158, 11, 0.12);
+    color: #fbbf24;
+    font-size: 0.85rem;
+    line-height: 1.35;
+}
+
 .chat-workspace {
     flex: 1;
     min-height: 0;
