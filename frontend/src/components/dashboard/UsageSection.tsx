@@ -55,6 +55,14 @@ function formatTokenCount(value: number): string {
     }).format(value);
 }
 
+function formatKpiTokenCount(value: number): string {
+    return new Intl.NumberFormat(undefined, {
+        notation: value >= 1000 ? 'compact' : 'standard',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2,
+    }).format(value);
+}
+
 function formatUsd(value: number): string {
     return new Intl.NumberFormat(undefined, {
         style: 'currency',
@@ -249,28 +257,33 @@ export default function UsageSection() {
                 {!shouldHideCosting ? (
                     <article className="usage-kpi-card">
                         <span className="usage-kpi-label">Estimated Cost</span>
-                        <strong>{formatUsd(data.summary.total_cost_usd)}</strong>
+                        <strong>{new Intl.NumberFormat(undefined, {
+                            style: 'currency',
+                            currency: 'USD',
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                        }).format(data.summary.total_cost_usd)}</strong>
                     </article>
                 ) : null}
                 <article className="usage-kpi-card">
                     <span className="usage-kpi-label">Total Tokens</span>
-                    <strong>{formatTokenCount(totalTokens)}</strong>
+                    <strong>{formatKpiTokenCount(totalTokens)}</strong>
                 </article>
                 <article className="usage-kpi-card">
                     <span className="usage-kpi-label">Input Tokens</span>
-                    <strong>{formatTokenCount(data.summary.total_input_tokens)}</strong>
+                    <strong>{formatKpiTokenCount(data.summary.total_input_tokens)}</strong>
                 </article>
                 <article className="usage-kpi-card">
                     <span className="usage-kpi-label">Output Tokens</span>
-                    <strong>{formatTokenCount(data.summary.total_output_tokens)}</strong>
+                    <strong>{formatKpiTokenCount(data.summary.total_output_tokens)}</strong>
                 </article>
                 <article className="usage-kpi-card">
                     <span className="usage-kpi-label">Cached Tokens</span>
-                    <strong>{formatTokenCount(data.summary.total_cached_tokens)}</strong>
+                    <strong>{formatKpiTokenCount(data.summary.total_cached_tokens)}</strong>
                 </article>
                 <article className="usage-kpi-card">
                     <span className="usage-kpi-label">Tracked Sessions</span>
-                    <strong>{formatTokenCount(data.summary.session_count)}</strong>
+                    <strong>{formatKpiTokenCount(data.summary.session_count)}</strong>
                 </article>
             </div>
 
@@ -345,10 +358,24 @@ export default function UsageSection() {
                         <div className="usage-pricing-list">
                             {Object.entries(data.pricing).map(([modelId, pricingEntry]) => (
                                 <div key={modelId} className="usage-pricing-card">
-                                    <strong>{modelId}</strong>
-                                    <span>Input: {formatUsd(pricingEntry.input_per_million_usd)}/1M</span>
-                                    <span>Cached: {formatUsd(pricingEntry.cached_input_per_million_usd)}/1M</span>
-                                    <span>Output: {formatUsd(pricingEntry.output_per_million_usd)}/1M</span>
+                                    <div className="usage-pricing-card-header">
+                                        <strong>{modelId}</strong>
+                                        <span>Per 1M tokens</span>
+                                    </div>
+                                    <div className="usage-pricing-rate-list">
+                                        <div className="usage-pricing-rate-row">
+                                            <span>Input</span>
+                                            <strong>{formatUsd(pricingEntry.input_per_million_usd)}</strong>
+                                        </div>
+                                        <div className="usage-pricing-rate-row">
+                                            <span>Cached</span>
+                                            <strong>{formatUsd(pricingEntry.cached_input_per_million_usd)}</strong>
+                                        </div>
+                                        <div className="usage-pricing-rate-row">
+                                            <span>Output</span>
+                                            <strong>{formatUsd(pricingEntry.output_per_million_usd)}</strong>
+                                        </div>
+                                    </div>
                                 </div>
                             ))}
                             {Object.keys(data.pricing).length === 0 ? (
