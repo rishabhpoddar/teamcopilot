@@ -80,6 +80,14 @@ function formatBucketLabel(timestamp: number, range: UsageRange): string {
     return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
 }
 
+function formatBucketDateTime(timestamp: number, range: UsageRange): string {
+    const date = new Date(timestamp);
+    if (range === '24h') {
+        return date.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    }
+    return date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
 function ChartScroller({
     children,
     points,
@@ -97,7 +105,17 @@ function ChartScroller({
     );
 }
 
-function CostBars({ data, range }: { data: UsageBucket[]; range: UsageRange }) {
+function CostBars({
+    data,
+    range,
+    selectedBucketStart,
+    onSelectBucket,
+}: {
+    data: UsageBucket[];
+    range: UsageRange;
+    selectedBucketStart: number;
+    onSelectBucket: (bucketStart: number) => void;
+}) {
     const maxValue = Math.max(...data.map((item) => item.cost_usd), 0);
     const gridTemplateColumns = `repeat(${Math.max(data.length, 1)}, minmax(32px, 1fr))`;
 
@@ -111,10 +129,18 @@ function CostBars({ data, range }: { data: UsageBucket[]; range: UsageRange }) {
                 {data.map((item) => {
                     const value = item.cost_usd;
                     const height = (value / maxValue) * 100;
+                    const isSelected = selectedBucketStart === item.bucket_start;
                     return (
                         <div key={`cost-${item.bucket_start}`} className="usage-bar-column">
                             <div className="usage-bar-rail">
-                                <div className="usage-bar cost" style={{ height: `${height}%` }} />
+                                <button
+                                    type="button"
+                                    className={`usage-bar-button ${isSelected ? 'selected' : ''}`}
+                                    onClick={() => onSelectBucket(item.bucket_start)}
+                                    aria-label={`Show cost details for ${formatBucketDateTime(item.bucket_start, range)}`}
+                                >
+                                    <div className="usage-bar cost" style={{ height: `${height}%` }} />
+                                </button>
                             </div>
                         </div>
                     );
@@ -129,7 +155,17 @@ function CostBars({ data, range }: { data: UsageBucket[]; range: UsageRange }) {
     );
 }
 
-function TokenBars({ data, range }: { data: UsageBucket[]; range: UsageRange }) {
+function TokenBars({
+    data,
+    range,
+    selectedBucketStart,
+    onSelectBucket,
+}: {
+    data: UsageBucket[];
+    range: UsageRange;
+    selectedBucketStart: number;
+    onSelectBucket: (bucketStart: number) => void;
+}) {
     const totals = data.map((bucket) => bucket.input_tokens + bucket.output_tokens + bucket.cached_tokens);
     const maxTotal = Math.max(...totals, 0);
     const gridTemplateColumns = `repeat(${Math.max(data.length, 1)}, minmax(32px, 1fr))`;
@@ -147,14 +183,22 @@ function TokenBars({ data, range }: { data: UsageBucket[]; range: UsageRange }) 
                     const inputHeight = bucketTotal === 0 ? 0 : (item.input_tokens / bucketTotal) * 100;
                     const outputHeight = bucketTotal === 0 ? 0 : (item.output_tokens / bucketTotal) * 100;
                     const cachedHeight = bucketTotal === 0 ? 0 : (item.cached_tokens / bucketTotal) * 100;
+                    const isSelected = selectedBucketStart === item.bucket_start;
                     return (
                         <div key={`tokens-${item.bucket_start}`} className="usage-bar-column">
                             <div className="usage-bar-rail">
-                                <div className="usage-stacked-bar" style={{ height: `${stackHeight}%` }}>
-                                    <div className="usage-stacked-segment input" style={{ height: `${inputHeight}%` }} />
-                                    <div className="usage-stacked-segment output" style={{ height: `${outputHeight}%` }} />
-                                    <div className="usage-stacked-segment cached" style={{ height: `${cachedHeight}%` }} />
-                                </div>
+                                <button
+                                    type="button"
+                                    className={`usage-bar-button ${isSelected ? 'selected' : ''}`}
+                                    onClick={() => onSelectBucket(item.bucket_start)}
+                                    aria-label={`Show token details for ${formatBucketDateTime(item.bucket_start, range)}`}
+                                >
+                                    <div className="usage-stacked-bar" style={{ height: `${stackHeight}%` }}>
+                                        <div className="usage-stacked-segment input" style={{ height: `${inputHeight}%` }} />
+                                        <div className="usage-stacked-segment output" style={{ height: `${outputHeight}%` }} />
+                                        <div className="usage-stacked-segment cached" style={{ height: `${cachedHeight}%` }} />
+                                    </div>
+                                </button>
                             </div>
                         </div>
                     );
@@ -176,6 +220,8 @@ export default function UsageSection() {
     const [data, setData] = useState<UsageOverviewResponse | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [selectedCostBucketStart, setSelectedCostBucketStart] = useState<number | null>(null);
+    const [selectedTokenBucketStart, setSelectedTokenBucketStart] = useState<number | null>(null);
 
     useEffect(() => {
         if (!token) {
@@ -191,6 +237,9 @@ export default function UsageSection() {
                     headers: { Authorization: `Bearer ${token}` }
                 });
                 setData(response.data);
+                const defaultBucketStart = response.data.timeseries.at(-1)?.bucket_start ?? null;
+                setSelectedCostBucketStart(defaultBucketStart);
+                setSelectedTokenBucketStart(defaultBucketStart);
             } catch (err: unknown) {
                 const errorMessage = err instanceof AxiosError ? err.response?.data?.message || err.response?.data || err.message : 'Failed to load usage overview';
                 setError(errorMessage);
@@ -229,6 +278,8 @@ export default function UsageSection() {
     }
 
     const shouldHideCosting = totalTokens > 0 && data.summary.total_cost_usd === 0;
+    const selectedCostBucket = data.timeseries.find((bucket) => bucket.bucket_start === selectedCostBucketStart) ?? data.timeseries.at(-1) ?? null;
+    const selectedTokenBucket = data.timeseries.find((bucket) => bucket.bucket_start === selectedTokenBucketStart) ?? data.timeseries.at(-1) ?? null;
 
     return (
         <section className="usage-section">
@@ -294,16 +345,46 @@ export default function UsageSection() {
                             <h3>Estimated Cost Over Time</h3>
                             <span>{formatUsd(data.summary.total_cost_usd)}</span>
                         </div>
-                        <CostBars data={data.timeseries} range={data.range} />
+                        <CostBars
+                            data={data.timeseries}
+                            range={data.range}
+                            selectedBucketStart={selectedCostBucket?.bucket_start ?? 0}
+                            onSelectBucket={setSelectedCostBucketStart}
+                        />
+                        {selectedCostBucket ? (
+                            <div className="usage-chart-selection">
+                                <strong>{formatBucketDateTime(selectedCostBucket.bucket_start, data.range)}</strong>
+                                <div className="usage-chart-selection-grid">
+                                    <span>Cost: {formatUsd(selectedCostBucket.cost_usd)}</span>
+                                    <span>Sessions: {formatTokenCount(selectedCostBucket.session_count)}</span>
+                                </div>
+                            </div>
+                        ) : null}
                     </article>
                 ) : null}
 
                 <article className="usage-chart-card">
-                    <div className="usage-chart-header">
-                        <h3>Token Usage Over Time</h3>
-                        <span>{formatTokenCount(totalTokens)}</span>
-                    </div>
-                    <TokenBars data={data.timeseries} range={data.range} />
+                        <div className="usage-chart-header">
+                            <h3>Token Usage Over Time</h3>
+                            <span>{formatTokenCount(totalTokens)}</span>
+                        </div>
+                    <TokenBars
+                        data={data.timeseries}
+                        range={data.range}
+                        selectedBucketStart={selectedTokenBucket?.bucket_start ?? 0}
+                        onSelectBucket={setSelectedTokenBucketStart}
+                    />
+                    {selectedTokenBucket ? (
+                        <div className="usage-chart-selection">
+                            <strong>{formatBucketDateTime(selectedTokenBucket.bucket_start, data.range)}</strong>
+                            <div className="usage-chart-selection-grid">
+                                <span>Input: {formatTokenCount(selectedTokenBucket.input_tokens)}</span>
+                                <span>Output: {formatTokenCount(selectedTokenBucket.output_tokens)}</span>
+                                <span>Cached: {formatTokenCount(selectedTokenBucket.cached_tokens)}</span>
+                                <span>Sessions: {formatTokenCount(selectedTokenBucket.session_count)}</span>
+                            </div>
+                        </div>
+                    ) : null}
                     <div className="usage-legend">
                         <span><i className="input" />Input</span>
                         <span><i className="output" />Output</span>
