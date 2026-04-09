@@ -6,9 +6,9 @@ type ModelPricing = {
 
 const MODEL_PRICING: Record<string, ModelPricing> = {
     "gpt-5.3-codex": {
-        inputPerMillionUsd: 1.5,
-        cachedInputPerMillionUsd: 0.375,
-        outputPerMillionUsd: 6,
+        inputPerMillionUsd: 1.75,
+        cachedInputPerMillionUsd: 0.175,
+        outputPerMillionUsd: 14,
     },
 };
 
