@@ -21,7 +21,7 @@
 
 .usage-subtitle {
   margin: 0.4rem 0 0;
-  color: #8c92a8;
+  color: #888;
   max-width: 52rem;
 }
 
@@ -29,25 +29,23 @@
   display: inline-flex;
   gap: 0.35rem;
   padding: 0.3rem;
-  border: 1px solid #2f3a52;
+  border: 1px solid #333;
   border-radius: 999px;
-  background:
-    radial-gradient(circle at top left, rgba(80, 140, 255, 0.14), transparent 48%),
-    rgba(12, 17, 29, 0.88);
+  background: #1a1a1a;
 }
 
 .usage-range-btn {
   border: none;
   background: transparent;
-  color: #aab2c9;
+  color: #aaa;
   border-radius: 999px;
   padding: 0.55rem 0.9rem;
   font-size: 0.9rem;
 }
 
 .usage-range-btn.active {
-  background: linear-gradient(135deg, #3f6ef7, #2ca6a4);
-  color: white;
+  background: rgba(100, 108, 255, 0.14);
+  color: #e5e7eb;
 }
 
 .usage-kpi-grid,
@@ -70,13 +68,10 @@
 .usage-kpi-card,
 .usage-chart-card,
 .usage-panel {
-  border: 1px solid #283247;
-  border-radius: 22px;
+  border: 1px solid #333;
+  border-radius: 8px;
   padding: 1rem;
-  background:
-    linear-gradient(180deg, rgba(17, 24, 39, 0.95), rgba(11, 16, 27, 0.98)),
-    #0d1320;
-  box-shadow: 0 18px 40px rgba(2, 6, 23, 0.28);
+  background: #1a1a1a;
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
@@ -87,8 +82,6 @@
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  min-width: 0;
-  overflow: hidden;
 }
 
 .usage-kpi-card strong {
@@ -101,7 +94,7 @@
 }
 
 .usage-kpi-label {
-  color: #98a2b9;
+  color: #888;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   font-size: 0.72rem;
@@ -120,6 +113,7 @@
   text-align: right;
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
+  color: #aaa;
 }
 
 .usage-chart-scroll {
@@ -159,39 +153,38 @@
   height: 100%;
   display: flex;
   align-items: end;
-  border-radius: 16px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01));
+  border-radius: 8px;
+  background: #141414;
+  border: 1px solid #2a2a2a;
   padding: 0.25rem;
 }
 
 .usage-bar,
 .usage-stacked-bar {
   width: 100%;
-  border-radius: 12px 12px 8px 8px;
+  border-radius: 6px 6px 4px 4px;
 }
 
 .usage-bar.cost {
-  background: linear-gradient(180deg, #8bc5ff, #2d74ff 65%, #1f5ae0);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  background: #646cff;
 }
 
 .usage-stacked-bar {
   display: flex;
   flex-direction: column-reverse;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.04);
+  background: #202020;
   min-height: 0;
 }
 
 .usage-stacked-segment.input,
 .usage-legend i.input {
-  background: #4f8cff;
+  background: #646cff;
 }
 
 .usage-stacked-segment.output,
 .usage-legend i.output {
-  background: #14b8a6;
+  background: #3b82f6;
 }
 
 .usage-stacked-segment.cached,
@@ -202,7 +195,7 @@
 .usage-axis-labels {
   display: grid;
   gap: 0.75rem;
-  color: #77809b;
+  color: #888;
   font-size: 0.75rem;
 }
 
@@ -216,10 +209,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px dashed rgba(148, 163, 184, 0.2);
-  border-radius: 18px;
-  color: #8e98b3;
-  background: rgba(15, 23, 42, 0.28);
+  border: 1px dashed #444;
+  border-radius: 8px;
+  color: #888;
+  background: #141414;
 }
 
 .usage-legend {
@@ -227,7 +220,7 @@
   gap: 1rem;
   flex-wrap: wrap;
   margin-top: 0.8rem;
-  color: #9ba4bc;
+  color: #aaa;
   font-size: 0.84rem;
 }
 
@@ -257,7 +250,7 @@
 .usage-table td {
   padding: 0.8rem 0.35rem;
   text-align: left;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+  border-bottom: 1px solid #333;
   overflow-wrap: anywhere;
   word-break: break-word;
   font-variant-numeric: tabular-nums;
@@ -268,7 +261,7 @@
 }
 
 .usage-table th {
-  color: #8e98b3;
+  color: #888;
   font-weight: 600;
   font-size: 0.82rem;
 }
@@ -281,7 +274,7 @@
 
 .usage-model-cell span,
 .usage-pricing-empty {
-  color: #8e98b3;
+  color: #888;
   font-size: 0.82rem;
 }
 
@@ -295,9 +288,9 @@
   flex-direction: column;
   gap: 0.3rem;
   padding: 0.9rem 1rem;
-  border-radius: 16px;
-  border: 1px solid rgba(96, 165, 250, 0.18);
-  background: rgba(15, 23, 42, 0.72);
+  border-radius: 8px;
+  border: 1px solid #333;
+  background: #141414;
 }
 
 @media (prefers-color-scheme: light) {
@@ -307,25 +300,28 @@
   .usage-table th,
   .usage-legend,
   .usage-axis-labels {
-    color: #5b6478;
+    color: #666;
   }
 
   .usage-range-picker,
   .usage-kpi-card,
   .usage-chart-card,
   .usage-panel {
-    border-color: #d8dfeb;
-    background:
-      radial-gradient(circle at top left, rgba(80, 140, 255, 0.12), transparent 48%),
-      linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(244, 247, 252, 0.98));
-    box-shadow: 0 16px 32px rgba(148, 163, 184, 0.14);
+    border-color: #ddd;
+    background: #fff;
   }
 
   .usage-stacked-bar,
   .usage-pricing-card,
   .usage-bar-rail,
   .usage-chart-empty {
-    background: rgba(226, 232, 240, 0.45);
+    background: #f5f5f5;
+    border-color: #ddd;
+  }
+
+  .usage-table th,
+  .usage-table td {
+    border-bottom-color: #ddd;
   }
 }
 
@@ -381,7 +377,7 @@
   .usage-chart-card,
   .usage-panel,
   .usage-kpi-card {
-    border-radius: 18px;
+    border-radius: 8px;
     padding: 0.85rem;
   }
 
@@ -430,7 +426,7 @@
     display: grid;
     gap: 0.45rem;
     padding: 0.8rem 0;
-    border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+    border-bottom: 1px solid #333;
   }
 
   .usage-table tr:last-child {
@@ -449,7 +445,7 @@
 
   .usage-table td::before {
     content: attr(data-label);
-    color: #8e98b3;
+    color: #888;
     font-size: 0.78rem;
     text-transform: uppercase;
     letter-spacing: 0.06em;
