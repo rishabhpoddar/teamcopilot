@@ -1,34 +1,81 @@
 import prisma from "../prisma/client";
+import { assertCondition } from "./assert";
 import { getOpencodeClient } from "./opencode-client";
 import { calculateEstimatedCostUsd, getModelPricing } from "./model-pricing";
 
-type AssistantTokens = {
-    input?: number;
-    output?: number;
-    cache?: {
-        read?: number;
+type OpencodeTokenCache = {
+    write: number;
+    read: number;
+};
+
+type OpencodeAssistantTokens = {
+    input: number;
+    output: number;
+    reasoning: number;
+    cache: OpencodeTokenCache;
+};
+
+type OpencodeUserMessageInfo = {
+    role: "user";
+    time: {
+        created: number;
     };
 };
 
-type AssistantMessageInfo = {
-    role?: string;
-    modelID?: string;
-    tokens?: AssistantTokens;
-    time?: {
-        created?: number;
+type OpencodeAssistantMessageInfo = {
+    role: "assistant";
+    time: {
+        created: number;
         completed?: number;
     };
+    modelID: string;
+    providerID: string;
+    tokens: OpencodeAssistantTokens;
 };
 
-type SessionMessageContainer = {
-    info?: AssistantMessageInfo;
+type OpencodeSessionMessage = {
+    info: OpencodeUserMessageInfo | OpencodeAssistantMessageInfo;
 };
 
-function asNonNegativeInt(value: unknown): number {
-    if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
-        return 0;
+function assertNonNegativeNumber(value: unknown, label: string): asserts value is number {
+    assertCondition(typeof value === "number" && Number.isFinite(value) && value >= 0, `${label} must be a non-negative number`);
+}
+
+function assertSessionMessages(value: unknown): asserts value is OpencodeSessionMessage[] {
+    assertCondition(Array.isArray(value), "Session messages response is not an array");
+
+    for (const [index, message] of value.entries()) {
+        assertCondition(message !== null && typeof message === "object", `Session message at index ${index} must be an object`);
+        const messageRecord = message as Record<string, unknown>;
+        assertCondition(messageRecord.info !== null && typeof messageRecord.info === "object", `Session message at index ${index} is missing info`);
+
+        const info = messageRecord.info as Record<string, unknown>;
+        assertCondition(info.role === "user" || info.role === "assistant", `Session message at index ${index} has invalid role`);
+        assertCondition(info.time !== null && typeof info.time === "object", `Session message at index ${index} is missing time`);
+
+        const time = info.time as Record<string, unknown>;
+        assertNonNegativeNumber(time.created, `Session message at index ${index} time.created`);
+
+        if (info.role === "assistant") {
+            assertCondition(typeof info.modelID === "string" && info.modelID.length > 0, `Assistant message at index ${index} is missing modelID`);
+            assertCondition(typeof info.providerID === "string" && info.providerID.length > 0, `Assistant message at index ${index} is missing providerID`);
+            assertCondition(info.tokens !== null && typeof info.tokens === "object", `Assistant message at index ${index} is missing tokens`);
+
+            const tokens = info.tokens as Record<string, unknown>;
+            assertNonNegativeNumber(tokens.input, `Assistant message at index ${index} tokens.input`);
+            assertNonNegativeNumber(tokens.output, `Assistant message at index ${index} tokens.output`);
+            assertNonNegativeNumber(tokens.reasoning, `Assistant message at index ${index} tokens.reasoning`);
+            assertCondition(tokens.cache !== null && typeof tokens.cache === "object", `Assistant message at index ${index} tokens.cache is missing`);
+
+            const cache = tokens.cache as Record<string, unknown>;
+            assertNonNegativeNumber(cache.read, `Assistant message at index ${index} tokens.cache.read`);
+            assertNonNegativeNumber(cache.write, `Assistant message at index ${index} tokens.cache.write`);
+
+            if (time.completed !== undefined) {
+                assertNonNegativeNumber(time.completed, `Assistant message at index ${index} time.completed`);
+            }
+        }
     }
-    return Math.floor(value);
 }
 
 export async function syncChatSessionUsage(chatSessionId: string, opencodeSessionId: string): Promise<void> {
@@ -41,7 +88,8 @@ export async function syncChatSessionUsage(chatSessionId: string, opencodeSessio
         throw new Error("Failed to load session messages for usage sync");
     }
 
-    const messages = Array.isArray(result.data) ? result.data as SessionMessageContainer[] : [];
+    assertSessionMessages(result.data);
+    const messages = result.data;
     let inputTokens = 0;
     let outputTokens = 0;
     let cachedTokens = 0;
@@ -51,21 +99,19 @@ export async function syncChatSessionUsage(chatSessionId: string, opencodeSessio
 
     for (const message of messages) {
         const info = message.info;
-        if (info?.role !== "assistant") {
+        if (info.role !== "assistant") {
             continue;
         }
 
         hasAssistantMessage = true;
-        inputTokens += asNonNegativeInt(info.tokens?.input);
-        outputTokens += asNonNegativeInt(info.tokens?.output);
-        cachedTokens += asNonNegativeInt(info.tokens?.cache?.read);
+        inputTokens += info.tokens.input;
+        outputTokens += info.tokens.output;
+        cachedTokens += info.tokens.cache.read;
 
-        const timestamp = asNonNegativeInt(info.time?.completed) || asNonNegativeInt(info.time?.created);
+        const timestamp = info.time.completed ?? info.time.created;
         if (timestamp >= latestAssistantTimestamp) {
             latestAssistantTimestamp = timestamp;
-            modelId = typeof info.modelID === "string" && info.modelID.length > 0
-                ? info.modelID
-                : "unknown";
+            modelId = info.modelID;
         }
     }
 
