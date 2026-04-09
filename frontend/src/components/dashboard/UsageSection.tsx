@@ -204,7 +204,7 @@ export default function UsageSection() {
     if (auth.loading) return null;
 
     if (loading) {
-        return <div className="section-loading">Loading usage overview...</div>;
+        return null;
     }
 
     if (error) {
