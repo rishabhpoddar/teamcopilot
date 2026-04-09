@@ -257,6 +257,7 @@ export default function UsageSection() {
         }
         return data.summary.total_input_tokens + data.summary.total_output_tokens + data.summary.total_cached_tokens;
     }, [data]);
+    const displayData = data;
 
     if (auth.loading) return null;
 
@@ -268,7 +269,7 @@ export default function UsageSection() {
         return <div className="section-error">{error}</div>;
     }
 
-    if (!data || data.summary.session_count === 0) {
+    if (!displayData || displayData.summary.session_count === 0) {
         return (
             <div className="section-empty">
                 <h3>No Usage Yet</h3>
@@ -277,9 +278,9 @@ export default function UsageSection() {
         );
     }
 
-    const shouldHideCosting = totalTokens > 0 && data.summary.total_cost_usd === 0;
-    const selectedCostBucket = data.timeseries.find((bucket) => bucket.bucket_start === selectedCostBucketStart) ?? data.timeseries.at(-1) ?? null;
-    const selectedTokenBucket = data.timeseries.find((bucket) => bucket.bucket_start === selectedTokenBucketStart) ?? data.timeseries.at(-1) ?? null;
+    const shouldHideCosting = totalTokens > 0 && displayData.summary.total_cost_usd === 0;
+    const selectedCostBucket = displayData.timeseries.find((bucket) => bucket.bucket_start === selectedCostBucketStart) ?? displayData.timeseries.at(-1) ?? null;
+    const selectedTokenBucket = displayData.timeseries.find((bucket) => bucket.bucket_start === selectedTokenBucketStart) ?? displayData.timeseries.at(-1) ?? null;
 
     return (
         <section className="usage-section">
@@ -313,7 +314,7 @@ export default function UsageSection() {
                             currency: 'USD',
                             minimumFractionDigits: 2,
                             maximumFractionDigits: 2,
-                        }).format(data.summary.total_cost_usd)}</strong>
+                        }).format(displayData.summary.total_cost_usd)}</strong>
                     </article>
                 ) : null}
                 <article className="usage-kpi-card">
@@ -322,19 +323,19 @@ export default function UsageSection() {
                 </article>
                 <article className="usage-kpi-card">
                     <span className="usage-kpi-label">Input Tokens</span>
-                    <strong>{formatKpiTokenCount(data.summary.total_input_tokens)}</strong>
+                    <strong>{formatKpiTokenCount(displayData.summary.total_input_tokens)}</strong>
                 </article>
                 <article className="usage-kpi-card">
                     <span className="usage-kpi-label">Output Tokens</span>
-                    <strong>{formatKpiTokenCount(data.summary.total_output_tokens)}</strong>
+                    <strong>{formatKpiTokenCount(displayData.summary.total_output_tokens)}</strong>
                 </article>
                 <article className="usage-kpi-card">
                     <span className="usage-kpi-label">Cached Tokens</span>
-                    <strong>{formatKpiTokenCount(data.summary.total_cached_tokens)}</strong>
+                    <strong>{formatKpiTokenCount(displayData.summary.total_cached_tokens)}</strong>
                 </article>
                 <article className="usage-kpi-card">
                     <span className="usage-kpi-label">Tracked Sessions</span>
-                    <strong>{formatKpiTokenCount(data.summary.session_count)}</strong>
+                    <strong>{formatKpiTokenCount(displayData.summary.session_count)}</strong>
                 </article>
             </div>
 
@@ -343,17 +344,17 @@ export default function UsageSection() {
                     <article className="usage-chart-card">
                         <div className="usage-chart-header">
                             <h3>Estimated Cost Over Time</h3>
-                            <span>{formatUsd(data.summary.total_cost_usd)}</span>
+                            <span>{formatUsd(displayData.summary.total_cost_usd)}</span>
                         </div>
                         <CostBars
-                            data={data.timeseries}
-                            range={data.range}
+                            data={displayData.timeseries}
+                            range={displayData.range}
                             selectedBucketStart={selectedCostBucket?.bucket_start ?? 0}
                             onSelectBucket={setSelectedCostBucketStart}
                         />
                         {selectedCostBucket ? (
                             <div className="usage-chart-selection">
-                                <strong>{formatBucketDateTime(selectedCostBucket.bucket_start, data.range)}</strong>
+                                <strong>{formatBucketDateTime(selectedCostBucket.bucket_start, displayData.range)}</strong>
                                 <div className="usage-chart-selection-grid">
                                     <span>Cost: {formatUsd(selectedCostBucket.cost_usd)}</span>
                                     <span>Sessions: {formatTokenCount(selectedCostBucket.session_count)}</span>
@@ -369,14 +370,14 @@ export default function UsageSection() {
                             <span>{formatTokenCount(totalTokens)}</span>
                         </div>
                     <TokenBars
-                        data={data.timeseries}
-                        range={data.range}
+                        data={displayData.timeseries}
+                        range={displayData.range}
                         selectedBucketStart={selectedTokenBucket?.bucket_start ?? 0}
                         onSelectBucket={setSelectedTokenBucketStart}
                     />
                     {selectedTokenBucket ? (
                         <div className="usage-chart-selection">
-                            <strong>{formatBucketDateTime(selectedTokenBucket.bucket_start, data.range)}</strong>
+                            <strong>{formatBucketDateTime(selectedTokenBucket.bucket_start, displayData.range)}</strong>
                             <div className="usage-chart-selection-grid">
                                 <span>Input: {formatTokenCount(selectedTokenBucket.input_tokens)}</span>
                                 <span>Output: {formatTokenCount(selectedTokenBucket.output_tokens)}</span>
@@ -398,36 +399,41 @@ export default function UsageSection() {
                     <div className="usage-panel-header">
                         <h3>Model Breakdown</h3>
                     </div>
-                    <div className="usage-table-wrap">
-                        <table className="usage-table">
-                            <thead>
-                                <tr>
-                                    <th>Model</th>
-                                    <th>Sessions</th>
-                                    <th>Input</th>
-                                    <th>Output</th>
-                                    <th>Cached</th>
-                                    {!shouldHideCosting ? <th>Estimated Cost</th> : null}
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {data.models.map((model) => (
-                                    <tr key={model.model_id}>
-                                        <td data-label="Model">
-                                            <div className="usage-model-cell">
-                                                <strong>{model.model_id}</strong>
-                                                {!model.pricing_available ? <span>Pricing unavailable</span> : null}
-                                            </div>
-                                        </td>
-                                        <td data-label="Sessions">{formatTokenCount(model.session_count)}</td>
-                                        <td data-label="Input">{formatTokenCount(model.input_tokens)}</td>
-                                        <td data-label="Output">{formatTokenCount(model.output_tokens)}</td>
-                                        <td data-label="Cached">{formatTokenCount(model.cached_tokens)}</td>
-                                        {!shouldHideCosting ? <td data-label="Estimated Cost">{formatUsd(model.cost_usd)}</td> : null}
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                    <div className="usage-model-list">
+                        {displayData.models.map((model) => (
+                            <article key={model.model_id} className="usage-model-card">
+                                <div className="usage-model-card-header">
+                                    <div className="usage-model-cell">
+                                        <strong>{model.model_id}</strong>
+                                        {!model.pricing_available ? <span>Pricing unavailable</span> : null}
+                                    </div>
+                                </div>
+                                <div className="usage-model-stats-grid">
+                                    <div className="usage-model-stat">
+                                        <span>Sessions</span>
+                                        <strong>{formatTokenCount(model.session_count)}</strong>
+                                    </div>
+                                    <div className="usage-model-stat">
+                                        <span>Input</span>
+                                        <strong>{formatTokenCount(model.input_tokens)}</strong>
+                                    </div>
+                                    <div className="usage-model-stat">
+                                        <span>Output</span>
+                                        <strong>{formatTokenCount(model.output_tokens)}</strong>
+                                    </div>
+                                    <div className="usage-model-stat">
+                                        <span>Cached</span>
+                                        <strong>{formatTokenCount(model.cached_tokens)}</strong>
+                                    </div>
+                                    {!shouldHideCosting ? (
+                                        <div className="usage-model-stat">
+                                            <span>Estimated Cost</span>
+                                            <strong>{formatUsd(model.cost_usd)}</strong>
+                                        </div>
+                                    ) : null}
+                                </div>
+                            </article>
+                        ))}
                     </div>
                 </article>
 
@@ -437,7 +443,7 @@ export default function UsageSection() {
                             <h3>Pricing</h3>
                         </div>
                         <div className="usage-pricing-list">
-                            {Object.entries(data.pricing).map(([modelId, pricingEntry]) => (
+                            {Object.entries(displayData.pricing).map(([modelId, pricingEntry]) => (
                                 <div key={modelId} className="usage-pricing-card">
                                     <div className="usage-pricing-card-header">
                                         <strong>{modelId}</strong>
@@ -459,7 +465,7 @@ export default function UsageSection() {
                                     </div>
                                 </div>
                             ))}
-                            {Object.keys(data.pricing).length === 0 ? (
+                            {Object.keys(displayData.pricing).length === 0 ? (
                                 <p className="usage-pricing-empty">No hard-coded pricing matched the models in this range.</p>
                             ) : null}
                         </div>

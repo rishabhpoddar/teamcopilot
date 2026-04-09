@@ -94,6 +94,11 @@
   box-sizing: border-box;
 }
 
+.usage-panel {
+  display: flex;
+  flex-direction: column;
+}
+
 .usage-kpi-card {
   min-height: 7rem;
   display: flex;
@@ -294,42 +299,62 @@
   font-variant-numeric: tabular-nums;
 }
 
-.usage-table-wrap {
+.usage-model-list {
   width: 100%;
   max-width: 100%;
-  overflow-x: auto;
+  max-height: 28rem;
+  overflow-y: auto;
   box-sizing: border-box;
-}
-
-.usage-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.usage-table th,
-.usage-table td {
-  padding: 0.8rem 0.35rem;
-  text-align: left;
-  border-bottom: 1px solid #333;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-  font-variant-numeric: tabular-nums;
-}
-
-.usage-table td::before {
-  content: none;
-}
-
-.usage-table th {
-  color: #888;
-  font-weight: 600;
-  font-size: 0.82rem;
+  display: grid;
+  gap: 0.75rem;
+  padding-right: 0.2rem;
 }
 
 .usage-model-cell {
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
+  min-width: 0;
+}
+
+.usage-model-card {
+  border: 1px solid #333;
+  border-radius: 8px;
+  background: #141414;
+  padding: 0.9rem;
+}
+
+.usage-model-card-header {
+  margin-bottom: 0.8rem;
+}
+
+.usage-model-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.usage-model-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  background: #1a1a1a;
+}
+
+.usage-model-stat span {
+  color: #888;
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.usage-model-stat strong {
+  font-size: 0.96rem;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
 }
 
 .usage-model-cell span,
@@ -341,6 +366,9 @@
 .usage-pricing-list {
   display: grid;
   gap: 0.75rem;
+  max-height: 28rem;
+  overflow-y: auto;
+  padding-right: 0.2rem;
 }
 
 .usage-pricing-card {
@@ -400,7 +428,6 @@
   .usage-subtitle,
   .usage-model-cell span,
   .usage-pricing-empty,
-  .usage-table th,
   .usage-legend,
   .usage-axis-labels {
     color: #666;
@@ -432,9 +459,10 @@
     border-color: #ddd;
   }
 
-  .usage-table th,
-  .usage-table td {
-    border-bottom-color: #ddd;
+  .usage-model-card,
+  .usage-model-stat {
+    border-color: #ddd;
+    background: #fff;
   }
 }
 
@@ -448,6 +476,11 @@
   .usage-chart-grid,
   .usage-detail-grid {
     grid-template-columns: 1fr;
+  }
+
+  .usage-model-list,
+  .usage-pricing-list {
+    max-height: 22rem;
   }
 }
 
@@ -530,51 +563,11 @@
     font-size: 0.8rem;
   }
 
-  .usage-table thead {
-    display: none;
-  }
-
   .usage-chart-selection-grid {
     grid-template-columns: 1fr;
   }
 
-  .usage-table,
-  .usage-table tbody {
-    display: block;
-  }
-
-  .usage-table tr {
-    display: grid;
-    gap: 0.45rem;
-    padding: 0.8rem 0;
-    border-bottom: 1px solid #333;
-  }
-
-  .usage-table tr:last-child {
-    border-bottom: none;
-  }
-
-  .usage-table td {
-    display: flex;
-    justify-content: space-between;
-    gap: 0.75rem;
-    align-items: flex-start;
-    padding: 0;
-    border-bottom: none;
-    font-size: 0.9rem;
-  }
-
-  .usage-table td::before {
-    content: attr(data-label);
-    color: #888;
-    font-size: 0.78rem;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    flex: 0 0 auto;
-  }
-
-  .usage-model-cell {
-    align-items: flex-end;
-    text-align: right;
+  .usage-model-stats-grid {
+    grid-template-columns: 1fr;
   }
 }
