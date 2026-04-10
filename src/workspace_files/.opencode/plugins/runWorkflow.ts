@@ -108,18 +108,20 @@ export const RunWorkflowPlugin: Plugin = async ({ client }) => {
             ),
           inputs: tool.schema
             .record(tool.schema.string(), tool.schema.unknown())
-            .optional()
-            .default({})
             .describe(
-              "Runtime workflow arguments. Provide key-value pairs matching the `inputs` schema in workflow.json; these values are validated and passed through to `run.py`."
+              "Runtime workflow arguments. Provide key-value pairs matching the `inputs` schema in workflow.json for the workflow you want to run; these values are validated and passed through to `run.py`. If the workflow takes no arguments, then pass an empty object assigned to this key, otherwise, pass all the expected arguments always (even if there are default values assigned to them)."
             ),
         },
         async execute(args, context) {
           const { sessionID } = context
           const authSessionID = await resolveRootSessionID(sessionID)
-          const { slug, inputs = {} } = args
+          const { slug, inputs } = args
           const messageId = extractMessageId(context)
           const callId = extractCallId(context)
+
+          if (inputs === undefined) {
+            throw new Error(`You must pass an inputs object when calling runWorkflow. The inputs object contains the workflow arguments. Inspect the workflow README or use the findSimilarWorkflow tool to see the available arguments and their default values. If a workflow has arguments, it's best practice to pass all of them even if they have default values, so that the user can see exactly what's passed. Example: {"inputs":{"topic":"weekly update","dry_run":true}}. If the workflow has no arguments, pass {"inputs":{}}.`)
+          }
 
           if (!messageId) {
             throw new Error("Could not determine message id from tool context.")
