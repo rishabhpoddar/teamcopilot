@@ -146,18 +146,6 @@
   color: #ff6b6b;
 }
 
-@media (prefers-color-scheme: light) {
-  .run-details-back-btn,
-  .run-details-card {
-    border-color: #ddd;
-  }
-
-  .run-details-card pre {
-    background: #f7f7f7;
-    border-color: #e4e4e4;
-  }
-}
-
 @media (max-width: 700px) {
   .run-details-header {
     grid-template-columns: 1fr;

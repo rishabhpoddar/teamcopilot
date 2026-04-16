@@ -96,13 +96,6 @@
   font-size: 0.9rem;
 }
 
-@media (prefers-color-scheme: light) {
-  .auth-form input,
-  .auth-form select {
-    border-color: #ccc;
-  }
-}
-
 @media (max-width: 520px) {
   .auth-container {
     max-width: 100%;

@@ -135,36 +135,6 @@
   color: #ff6b6b;
 }
 
-@media (prefers-color-scheme: light) {
-  .manual-run-back-btn,
-  .manual-run-card {
-    border-color: #ddd;
-  }
-
-  .manual-run-field input[type="text"],
-  .manual-run-field input[type="number"] {
-    background: #f7f7f7;
-    border-color: #ddd;
-  }
-
-  .manual-run-boolean-group {
-    border-color: #ddd;
-  }
-
-  .manual-run-boolean-btn {
-    background: #f7f7f7;
-  }
-
-  .manual-run-boolean-btn + .manual-run-boolean-btn {
-    border-left-color: #ddd;
-  }
-
-  .manual-run-boolean-btn.active {
-    background: #c7d7ff;
-    color: #162f6b;
-  }
-}
-
 @media (max-width: 700px) {
   .manual-run-header {
     flex-direction: column;

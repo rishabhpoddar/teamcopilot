@@ -104,19 +104,3 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
-
-/* Light Mode Overrides */
-@media (prefers-color-scheme: light) {
-  .ai-mode-container {
-    border-color: #ddd;
-  }
-
-  .ai-mode-input-form {
-    background: #f5f5f5;
-    border-top-color: #ddd;
-  }
-
-  .ai-mode-input {
-    border-color: #ccc;
-  }
-}

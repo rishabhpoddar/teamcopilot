@@ -21,12 +21,6 @@
   align-self: flex-start;
 }
 
-@media (prefers-color-scheme: light) {
-  .opencode-auth-complete-card {
-    border-color: #e5e7eb;
-  }
-}
-
 @media (max-width: 520px) {
   .opencode-auth-complete-card {
     padding: 1rem;

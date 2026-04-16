@@ -424,48 +424,6 @@
   white-space: nowrap;
 }
 
-@media (prefers-color-scheme: light) {
-  .usage-subtitle,
-  .usage-model-cell span,
-  .usage-pricing-empty,
-  .usage-legend,
-  .usage-axis-labels {
-    color: #666;
-  }
-
-  .usage-range-picker,
-  .usage-kpi-card,
-  .usage-chart-card,
-  .usage-panel {
-    border-color: #ddd;
-    background: #fff;
-  }
-
-  .usage-stacked-bar,
-  .usage-pricing-card,
-  .usage-bar-rail,
-  .usage-chart-empty {
-    background: #f5f5f5;
-    border-color: #ddd;
-  }
-
-  .usage-chart-selection {
-    background: #f5f5f5;
-    border-color: #ddd;
-  }
-
-  .usage-pricing-rate-row {
-    background: #fff;
-    border-color: #ddd;
-  }
-
-  .usage-model-card,
-  .usage-model-stat {
-    border-color: #ddd;
-    background: #fff;
-  }
-}
-
 @media (max-width: 1100px) {
   .usage-kpi-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));

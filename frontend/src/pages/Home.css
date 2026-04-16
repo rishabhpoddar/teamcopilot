@@ -80,17 +80,6 @@
   font-size: 0.85em;
 }
 
-/* Light Mode Overrides */
-@media (prefers-color-scheme: light) {
-  .dashboard-tabs {
-    border-bottom-color: #ddd;
-  }
-
-  .section-empty code {
-    background: #f0f0f0;
-  }
-}
-
 @media (max-width: 820px) {
   .dashboard-tabs {
     gap: 0.4rem;
@@ -145,13 +134,5 @@
     background: rgba(20, 20, 20, 0.94);
     backdrop-filter: blur(16px);
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
-  }
-}
-
-@media (max-width: 520px) and (prefers-color-scheme: light) {
-  .dashboard-tabs {
-    border-color: #ddd;
-    background: rgba(255, 255, 255, 0.94);
-    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
   }
 }
