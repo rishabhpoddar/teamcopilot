@@ -87,7 +87,7 @@ export default function SessionFileDiffPanel({
                                 >
                                     <div className="chat-session-diff-file-item-main">
                                         <span className="chat-session-diff-file-chevron">{isExpanded ? '▾' : '▸'}</span>
-                                        <span className="chat-session-diff-file-path">{file.path}</span>
+                                        <span className="chat-session-diff-file-path" title={file.path}>{file.path}</span>
                                     </div>
                                     <div className="chat-session-diff-viewer-meta">
                                         <span className={`chat-session-diff-file-badge ${file.status}`}>{file.status}</span>
