@@ -334,7 +334,13 @@ function expectedWrappedCommand(command: string): string {
 }
 
 function expectedWrappedArguments(command: string): string {
-    return command.startsWith("curl ") ? command.slice("curl ".length) : command;
+    if (command.startsWith("curl ")) {
+        return command.slice("curl ".length);
+    }
+    if (command.startsWith("git ")) {
+        return command.slice("git ".length);
+    }
+    return command;
 }
 
 function runExecutedCurlCase(command: string): {
@@ -503,6 +509,185 @@ async function main(): Promise<void> {
     assert.equal((curlCommand.input as ToolCase["input"]).args?.command, expectedWrappedCommand("curl https://api.example.com/${__TEAMCOPILOT_RUNTIME_SECRET_OPENAI_API_KEY}")); assertions += 1;
     assertFetchKeys(curlCommand, ["OPENAI_API_KEY"], "injects env only for referenced curl URL secrets"); assertions += 1;
     assert.deepEqual(curlCommand.shellEnv, { __TEAMCOPILOT_RUNTIME_SECRET_OPENAI_API_KEY: "resolved-openai_api_key" }); assertions += 1;
+
+    const gitCloneCommand = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "1g", args: { command: "git clone https://x-access-token:{{SECRET:GITHUB_TOKEN}}@github.com/acme/private-repo.git" } },
+        output: { args: { command: "git clone https://x-access-token:{{SECRET:GITHUB_TOKEN}}@github.com/acme/private-repo.git" } },
+    });
+    assert.equal((gitCloneCommand.output as ToolCase["output"]).args.command, expectedWrappedCommand("git clone https://x-access-token:${__TEAMCOPILOT_RUNTIME_SECRET_GITHUB_TOKEN}@github.com/acme/private-repo.git")); assertions += 1;
+    assertFetchKeys(gitCloneCommand, ["GITHUB_TOKEN"], "injects env for git clone private repo URL secrets"); assertions += 1;
+    assert.deepEqual(gitCloneCommand.shellEnv, { __TEAMCOPILOT_RUNTIME_SECRET_GITHUB_TOKEN: "resolved-github_token" }); assertions += 1;
+
+    const gitPushCommand = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "1h", args: { command: "git -c 'http.extraHeader=Authorization: Bearer {{SECRET:GITHUB_TOKEN}}' push origin main" } },
+        output: { args: { command: "git -c 'http.extraHeader=Authorization: Bearer {{SECRET:GITHUB_TOKEN}}' push origin main" } },
+    });
+    assert.equal((gitPushCommand.output as ToolCase["output"]).args.command, expectedWrappedCommand("git -c \"http.extraHeader=Authorization: Bearer ${__TEAMCOPILOT_RUNTIME_SECRET_GITHUB_TOKEN}\" push origin main")); assertions += 1;
+    assertFetchKeys(gitPushCommand, ["GITHUB_TOKEN"], "injects env for git config header secrets used by push"); assertions += 1;
+
+    const gitCloneSingleQuotedUrl = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "1i", args: { command: "git clone 'https://oauth2:{{SECRET:GITLAB_TOKEN}}@gitlab.com/acme/private-repo.git'" } },
+        output: { args: { command: "git clone 'https://oauth2:{{SECRET:GITLAB_TOKEN}}@gitlab.com/acme/private-repo.git'" } },
+    });
+    assert.equal((gitCloneSingleQuotedUrl.output as ToolCase["output"]).args.command, expectedWrappedCommand("git clone \"https://oauth2:${__TEAMCOPILOT_RUNTIME_SECRET_GITLAB_TOKEN}@gitlab.com/acme/private-repo.git\"")); assertions += 1;
+    assertFetchKeys(gitCloneSingleQuotedUrl, ["GITLAB_TOKEN"], "converts single-quoted git clone URL tokens to double quotes for env expansion"); assertions += 1;
+
+    const gitRemoteSetUrl = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "1j", args: { command: "git remote set-url origin https://token:{{SECRET:GITHUB_TOKEN}}@github.com/acme/private-repo.git" } },
+        output: { args: { command: "git remote set-url origin https://token:{{SECRET:GITHUB_TOKEN}}@github.com/acme/private-repo.git" } },
+    });
+    assert.equal((gitRemoteSetUrl.output as ToolCase["output"]).args.command, expectedWrappedCommand("git remote set-url origin https://token:${__TEAMCOPILOT_RUNTIME_SECRET_GITHUB_TOKEN}@github.com/acme/private-repo.git")); assertions += 1;
+    assertFetchKeys(gitRemoteSetUrl, ["GITHUB_TOKEN"], "injects env for git remote set-url secrets"); assertions += 1;
+
+    const gitFetchConfigHeader = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "1k", args: { command: "git -c http.https://github.com/.extraheader='AUTHORIZATION: basic {{SECRET:GITHUB_TOKEN}}' fetch origin main" } },
+        output: { args: { command: "git -c http.https://github.com/.extraheader='AUTHORIZATION: basic {{SECRET:GITHUB_TOKEN}}' fetch origin main" } },
+    });
+    assert.equal((gitFetchConfigHeader.output as ToolCase["output"]).args.command, expectedWrappedCommand("git -c \"http.https://github.com/.extraheader=AUTHORIZATION: basic ${__TEAMCOPILOT_RUNTIME_SECRET_GITHUB_TOKEN}\" fetch origin main")); assertions += 1;
+    assertFetchKeys(gitFetchConfigHeader, ["GITHUB_TOKEN"], "injects env for git scoped extraheader secrets"); assertions += 1;
+
+    const gitCommitAuthor = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "1l", args: { command: "git -c user.email='bot+{{SECRET:GITHUB_TOKEN}}@example.com' commit -m 'sync private repo'" } },
+        output: { args: { command: "git -c user.email='bot+{{SECRET:GITHUB_TOKEN}}@example.com' commit -m 'sync private repo'" } },
+    });
+    assert.equal((gitCommitAuthor.output as ToolCase["output"]).args.command, expectedWrappedCommand("git -c \"user.email=bot+${__TEAMCOPILOT_RUNTIME_SECRET_GITHUB_TOKEN}@example.com\" commit -m 'sync private repo'")); assertions += 1;
+    assertFetchKeys(gitCommitAuthor, ["GITHUB_TOKEN"], "injects env for git commit-related config values"); assertions += 1;
+
+    const gitMultipleSecrets = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "1m", args: { command: "git -c 'http.extraHeader=Authorization: Bearer {{SECRET:GITHUB_TOKEN}}' push https://oauth2:{{SECRET:GITLAB_TOKEN}}@gitlab.com/acme/repo.git main" } },
+        output: { args: { command: "git -c 'http.extraHeader=Authorization: Bearer {{SECRET:GITHUB_TOKEN}}' push https://oauth2:{{SECRET:GITLAB_TOKEN}}@gitlab.com/acme/repo.git main" } },
+    });
+    assert.equal((gitMultipleSecrets.output as ToolCase["output"]).args.command, expectedWrappedCommand("git -c \"http.extraHeader=Authorization: Bearer ${__TEAMCOPILOT_RUNTIME_SECRET_GITHUB_TOKEN}\" push https://oauth2:${__TEAMCOPILOT_RUNTIME_SECRET_GITLAB_TOKEN}@gitlab.com/acme/repo.git main")); assertions += 1;
+    assertFetchKeys(gitMultipleSecrets, ["GITHUB_TOKEN", "GITLAB_TOKEN"], "injects env for multiple git placeholders in one command"); assertions += 1;
+    assert.deepEqual(gitMultipleSecrets.shellEnv, {
+        __TEAMCOPILOT_RUNTIME_SECRET_GITHUB_TOKEN: "resolved-github_token",
+        __TEAMCOPILOT_RUNTIME_SECRET_GITLAB_TOKEN: "resolved-gitlab_token",
+    }); assertions += 1;
+
+    const gitPathExecutable = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "grandchild-session", callID: "1n", args: { command: "/usr/bin/git clone https://x-access-token:{{SECRET:GITHUB_TOKEN}}@github.com/acme/private-repo.git" } },
+        output: { args: { command: "/usr/bin/git clone https://x-access-token:{{SECRET:GITHUB_TOKEN}}@github.com/acme/private-repo.git" } },
+    });
+    assert.equal((gitPathExecutable.output as ToolCase["output"]).args.command, expectedWrappedCommand("/usr/bin/git clone https://x-access-token:${__TEAMCOPILOT_RUNTIME_SECRET_GITHUB_TOKEN}@github.com/acme/private-repo.git")); assertions += 1;
+    assertFetchKeys(gitPathExecutable, ["GITHUB_TOKEN"], "injects env for path-qualified git executable tokens"); assertions += 1;
+
+    const chainedGitCommand = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "1o", args: { command: "echo before && git push https://token:{{SECRET:GITHUB_TOKEN}}@github.com/acme/private-repo.git main && echo after" } },
+        output: { args: { command: "echo before && git push https://token:{{SECRET:GITHUB_TOKEN}}@github.com/acme/private-repo.git main && echo after" } },
+    });
+    assert.equal((chainedGitCommand.output as ToolCase["output"]).args.command, expectedWrappedCommand("echo before && git push https://token:${__TEAMCOPILOT_RUNTIME_SECRET_GITHUB_TOKEN}@github.com/acme/private-repo.git main && echo after")); assertions += 1;
+    assertFetchKeys(chainedGitCommand, ["GITHUB_TOKEN"], "injects env for chained git command segments"); assertions += 1;
+
+    const mixedCurlAndGitCommand = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "1p", args: { command: "curl -H 'X-Api-Key: {{SECRET:OPENAI_API_KEY}}' https://example.com && git clone https://x-access-token:{{SECRET:GITHUB_TOKEN}}@github.com/acme/private-repo.git" } },
+        output: { args: { command: "curl -H 'X-Api-Key: {{SECRET:OPENAI_API_KEY}}' https://example.com && git clone https://x-access-token:{{SECRET:GITHUB_TOKEN}}@github.com/acme/private-repo.git" } },
+    });
+    assert.equal((mixedCurlAndGitCommand.output as ToolCase["output"]).args.command, expectedWrappedCommand("curl -H \"X-Api-Key: ${__TEAMCOPILOT_RUNTIME_SECRET_OPENAI_API_KEY}\" https://example.com && git clone https://x-access-token:${__TEAMCOPILOT_RUNTIME_SECRET_GITHUB_TOKEN}@github.com/acme/private-repo.git")); assertions += 1;
+    assertFetchKeys(mixedCurlAndGitCommand, ["GITHUB_TOKEN", "OPENAI_API_KEY"], "injects env for mixed curl and git shell segments"); assertions += 1;
+
+    const multilineGitCommand = runHookCase({
+        kind: "tool",
+        input: {
+            tool: "bash",
+            sessionID: "child-session",
+            callID: "1q",
+            args: {
+                command: "git \\\n  -c 'http.extraHeader=Authorization: Bearer {{SECRET:GITHUB_TOKEN}}' \\\n  fetch origin main",
+            },
+        },
+        output: {
+            args: {
+                command: "git \\\n  -c 'http.extraHeader=Authorization: Bearer {{SECRET:GITHUB_TOKEN}}' \\\n  fetch origin main",
+            },
+        },
+    });
+    assert.equal(
+        (multilineGitCommand.output as ToolCase["output"]).args.command,
+        expectedWrappedCommand("git \\\n  -c \"http.extraHeader=Authorization: Bearer ${__TEAMCOPILOT_RUNTIME_SECRET_GITHUB_TOKEN}\" \\\n  fetch origin main"),
+    ); assertions += 1;
+    assertFetchKeys(multilineGitCommand, ["GITHUB_TOKEN"], "preserves multiline git formatting and line continuations"); assertions += 1;
+
+    const nestedGitString = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "1r", args: { command: "echo ok" } },
+        output: { args: { metadata: { nested: "git clone https://x-access-token:{{SECRET:GITHUB_TOKEN}}@github.com/acme/private-repo.git" } } },
+    });
+    assert.equal(((nestedGitString.output as ToolCase["output"]).args.metadata as { nested: string }).nested, "git clone https://x-access-token:${__TEAMCOPILOT_RUNTIME_SECRET_GITHUB_TOKEN}@github.com/acme/private-repo.git"); assertions += 1;
+    assertFetchKeys(nestedGitString, ["GITHUB_TOKEN"], "injects env for nested git strings"); assertions += 1;
+
+    const arrayGitString = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "1s", args: { command: "echo ok" } },
+        output: { args: { parts: ["git clone https://x-access-token:{{SECRET:GITHUB_TOKEN}}@github.com/acme/private-repo.git", "echo {{SECRET:OPENAI_API_KEY}}"] } },
+    });
+    assert.deepEqual((arrayGitString.output as ToolCase["output"]).args.parts, ["git clone https://x-access-token:${__TEAMCOPILOT_RUNTIME_SECRET_GITHUB_TOKEN}@github.com/acme/private-repo.git", "echo {{SECRET:OPENAI_API_KEY}}"]); assertions += 1;
+    assertFetchKeys(arrayGitString, ["GITHUB_TOKEN"], "injects env only for git strings inside arrays"); assertions += 1;
+
+    const gitInRepositoryNameOnly = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "1t", args: { command: "echo cloning git-private-repo-{{SECRET:GITHUB_TOKEN}}" } },
+        output: { args: { command: "echo cloning git-private-repo-{{SECRET:GITHUB_TOKEN}}" } },
+    });
+    assert.equal((gitInRepositoryNameOnly.output as ToolCase["output"]).args.command, "echo cloning git-private-repo-{{SECRET:GITHUB_TOKEN}}"); assertions += 1;
+    assertNoFetch(gitInRepositoryNameOnly, "does not inject when git appears only inside a non-git argument"); assertions += 1;
+
+    const quotedGitNotExecutable = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "1u", args: { command: "echo 'git clone https://x-access-token:{{SECRET:GITHUB_TOKEN}}@github.com/acme/private-repo.git'" } },
+        output: { args: { command: "echo 'git clone https://x-access-token:{{SECRET:GITHUB_TOKEN}}@github.com/acme/private-repo.git'" } },
+    });
+    assert.equal((quotedGitNotExecutable.output as ToolCase["output"]).args.command, "echo 'git clone https://x-access-token:{{SECRET:GITHUB_TOKEN}}@github.com/acme/private-repo.git'"); assertions += 1;
+    assertNoFetch(quotedGitNotExecutable, "does not inject when git command text is quoted data for another command"); assertions += 1;
+
+    const nestedBashLcGit = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "1v", args: { command: "bash -lc \"git clone https://x-access-token:{{SECRET:GITHUB_TOKEN}}@github.com/acme/private-repo.git\"" } },
+        output: { args: { command: "bash -lc \"git clone https://x-access-token:{{SECRET:GITHUB_TOKEN}}@github.com/acme/private-repo.git\"" } },
+    });
+    assert.equal((nestedBashLcGit.output as ToolCase["output"]).args.command, "bash -lc \"git clone https://x-access-token:{{SECRET:GITHUB_TOKEN}}@github.com/acme/private-repo.git\""); assertions += 1;
+    assertNoFetch(nestedBashLcGit, "does not rewrite nested git embedded in bash -lc"); assertions += 1;
+
+    const gitLikeExecutableName = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "1w", args: { command: "git-lfs fetch https://x-access-token:{{SECRET:GITHUB_TOKEN}}@github.com/acme/private-repo.git" } },
+        output: { args: { command: "git-lfs fetch https://x-access-token:{{SECRET:GITHUB_TOKEN}}@github.com/acme/private-repo.git" } },
+    });
+    assert.equal((gitLikeExecutableName.output as ToolCase["output"]).args.command, "git-lfs fetch https://x-access-token:{{SECRET:GITHUB_TOKEN}}@github.com/acme/private-repo.git"); assertions += 1;
+    assertNoFetch(gitLikeExecutableName, "does not inject for git-like executable names that are not exactly git"); assertions += 1;
+
+    const uppercaseGitExecutable = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "1x", args: { command: "GIT clone https://x-access-token:{{SECRET:GITHUB_TOKEN}}@github.com/acme/private-repo.git" } },
+        output: { args: { command: "GIT clone https://x-access-token:{{SECRET:GITHUB_TOKEN}}@github.com/acme/private-repo.git" } },
+    });
+    assert.equal((uppercaseGitExecutable.output as ToolCase["output"]).args.command, "GIT clone https://x-access-token:{{SECRET:GITHUB_TOKEN}}@github.com/acme/private-repo.git"); assertions += 1;
+    assertNoFetch(uppercaseGitExecutable, "does not inject for uppercase GIT executable token"); assertions += 1;
+
+    const gitPlaceholderInCommandName = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "1y", args: { command: "git-{{SECRET:GITHUB_TOKEN}} status" } },
+        output: { args: { command: "git-{{SECRET:GITHUB_TOKEN}} status" } },
+    });
+    assert.equal((gitPlaceholderInCommandName.output as ToolCase["output"]).args.command, "git-{{SECRET:GITHUB_TOKEN}} status"); assertions += 1;
+    assertNoFetch(gitPlaceholderInCommandName, "does not inject when placeholder is in a git-like command name"); assertions += 1;
+
+    const nonBashGitTool = runHookCase({
+        kind: "tool",
+        input: { tool: "task", sessionID: "child-session", callID: "1z", args: { command: "git clone https://x-access-token:{{SECRET:GITHUB_TOKEN}}@github.com/acme/private-repo.git" } },
+        output: { args: { command: "git clone https://x-access-token:{{SECRET:GITHUB_TOKEN}}@github.com/acme/private-repo.git" } },
+    });
+    assert.equal((nonBashGitTool.output as ToolCase["output"]).args.command, "git clone https://x-access-token:{{SECRET:GITHUB_TOKEN}}@github.com/acme/private-repo.git"); assertions += 1;
+    assertNoFetch(nonBashGitTool, "does not run git secret injection on non-bash tools"); assertions += 1;
 
     const curlHeader = runHookCase({
         kind: "tool",
@@ -802,6 +987,48 @@ async function main(): Promise<void> {
     assert.equal((commandExecutableCurl.input as CommandCase["input"]).arguments, expectedWrappedArguments("curl -H \"Authorization: Bearer ${__TEAMCOPILOT_RUNTIME_SECRET_OPENAI_API_KEY}\" https://example.com")); assertions += 1;
     assertFetchKeys(commandExecutableCurl, ["OPENAI_API_KEY"], "injects env for command hook curl arguments"); assertions += 1;
 
+    const commandExecutableGit = runHookCase({
+        kind: "command",
+        input: { command: "git", arguments: "clone 'https://x-access-token:{{SECRET:GITHUB_TOKEN}}@github.com/acme/private-repo.git'", sessionID: "child-session" },
+        output: { parts: [] },
+    });
+    assert.equal((commandExecutableGit.input as CommandCase["input"]).command, "git"); assertions += 1;
+    assert.equal((commandExecutableGit.input as CommandCase["input"]).arguments, expectedWrappedArguments("git clone \"https://x-access-token:${__TEAMCOPILOT_RUNTIME_SECRET_GITHUB_TOKEN}@github.com/acme/private-repo.git\"")); assertions += 1;
+    assertFetchKeys(commandExecutableGit, ["GITHUB_TOKEN"], "injects env for command hook git arguments"); assertions += 1;
+
+    const commandExecutablePathGit = runHookCase({
+        kind: "command",
+        input: { command: "/usr/bin/git", arguments: "push https://token:{{SECRET:GITHUB_TOKEN}}@github.com/acme/private-repo.git main", sessionID: "child-session" },
+        output: { parts: [] },
+    });
+    assert.equal((commandExecutablePathGit.input as CommandCase["input"]).command, "/usr/bin/git"); assertions += 1;
+    assert.equal((commandExecutablePathGit.input as CommandCase["input"]).arguments, "push https://token:${__TEAMCOPILOT_RUNTIME_SECRET_GITHUB_TOKEN}@github.com/acme/private-repo.git main"); assertions += 1;
+    assertFetchKeys(commandExecutablePathGit, ["GITHUB_TOKEN"], "injects env for command hook path-qualified git arguments"); assertions += 1;
+
+    const commandExecutableGitNoArgs = runHookCase({
+        kind: "command",
+        input: { command: "git", arguments: "status", sessionID: "child-session" },
+        output: { parts: [] },
+    });
+    assert.equal((commandExecutableGitNoArgs.input as CommandCase["input"]).arguments, "status"); assertions += 1;
+    assertNoFetch(commandExecutableGitNoArgs, "does not resolve command hook git commands without placeholders"); assertions += 1;
+
+    const commandGitLikeExecutableName = runHookCase({
+        kind: "command",
+        input: { command: "git-lfs", arguments: "fetch https://x-access-token:{{SECRET:GITHUB_TOKEN}}@github.com/acme/private-repo.git", sessionID: "child-session" },
+        output: { parts: [] },
+    });
+    assert.equal((commandGitLikeExecutableName.input as CommandCase["input"]).arguments, "fetch https://x-access-token:{{SECRET:GITHUB_TOKEN}}@github.com/acme/private-repo.git"); assertions += 1;
+    assertNoFetch(commandGitLikeExecutableName, "does not inject command hook git-like executable names"); assertions += 1;
+
+    const commandGitInShellArguments = runHookCase({
+        kind: "command",
+        input: { command: "bash", arguments: "-lc \"git clone https://x-access-token:{{SECRET:GITHUB_TOKEN}}@github.com/acme/private-repo.git\"", sessionID: "child-session" },
+        output: { parts: [] },
+    });
+    assert.equal((commandGitInShellArguments.input as CommandCase["input"]).arguments, "-lc \"git clone https://x-access-token:{{SECRET:GITHUB_TOKEN}}@github.com/acme/private-repo.git\""); assertions += 1;
+    assertNoFetch(commandGitInShellArguments, "does not inject command hook nested git inside bash arguments"); assertions += 1;
+
     const commandWithMixedArguments = runHookCase({
         kind: "command",
         input: { command: "curl", arguments: "-H 'Authorization: Bearer {{SECRET:OPENAI_API_KEY}}' --output {{SECRET:GITHUB_TOKEN}} https://example.com", sessionID: "child-session" },
@@ -826,6 +1053,14 @@ async function main(): Promise<void> {
     });
     assert.equal((toolMissingKey.output as ToolCase["output"]).args.command, expectedWrappedCommand("curl -H \"X-Api-Key: ${__TEAMCOPILOT_RUNTIME_SECRET_MISSING_KEY}\" https://example.com")); assertions += 1;
     assert.equal(toolMissingKey.error, "This command references missing secrets: MISSING_KEY. Ask the user to add these keys in TeamCopilot Profile Secrets before retrying."); assertions += 1;
+
+    const gitMissingKey = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "23g", args: { command: "git clone https://x-access-token:{{SECRET:MISSING_GITHUB_TOKEN}}@github.com/acme/private-repo.git" } },
+        output: { args: { command: "git clone https://x-access-token:{{SECRET:MISSING_GITHUB_TOKEN}}@github.com/acme/private-repo.git" } },
+    });
+    assert.equal((gitMissingKey.output as ToolCase["output"]).args.command, expectedWrappedCommand("git clone https://x-access-token:${__TEAMCOPILOT_RUNTIME_SECRET_MISSING_GITHUB_TOKEN}@github.com/acme/private-repo.git")); assertions += 1;
+    assert.equal(gitMissingKey.error, "This command references missing secrets: MISSING_GITHUB_TOKEN. Ask the user to add these keys in TeamCopilot Profile Secrets before retrying."); assertions += 1;
 
     const failedThenUnrelatedSequence = runHookSequence([
         {

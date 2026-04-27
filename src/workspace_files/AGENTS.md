@@ -434,17 +434,18 @@ required_secrets:
 ```
 - Skill bodies may contain placeholders like `{{SECRET:OPENAI_API_KEY}}`.
 - When using secrets in bash commands, use placeholder references like `{{SECRET:OPENAI_API_KEY}}` (general form is `{{SECRET:KEY_NAME}}`).
-- In bash, TeamCopilot only substitutes `{{SECRET:KEY}}` placeholders in supported `curl` use cases. Unsupported contexts are left unchanged.
+- In bash, TeamCopilot substitutes `{{SECRET:KEY}}` placeholders in supported top-level `curl` use cases and top-level `git` commands. Unsupported contexts are left unchanged.
 - TeamCopilot may internally rewrite supported secret placeholders to runtime-only env references such as `${__TEAMCOPILOT_RUNTIME_SECRET_OPENAI_API_KEY}` before execution. Those `__TEAMCOPILOT_RUNTIME_SECRET_*` references are internal only.
 - Never write `__TEAMCOPILOT_RUNTIME_SECRET_*` yourself in tool calls, scripts, or command text, even without `$` or `${}`. Agent-authored `__TEAMCOPILOT_RUNTIME_SECRET_*` references are rejected. Always use `{{SECRET:KEY}}` instead.
 - Supported `curl` substitution contexts include:
   - auth-like headers passed with `-H` / `--header` when the header name is an allowed auth/session header
   - request URLs and explicit `--url` values
   - auth/data-related curl arguments such as `--user`, `--proxy-user`, `--oauth2-bearer`, `--data*`, `--form*`, `--cookie`, `--referer`, `--user-agent`, `--proxy`, `--resolve`, and `--connect-to`
+- Supported `git` substitution contexts include any argument in a top-level `git ...` command. This is intended for private repository operations such as `git clone`, authenticated remotes, `git -c http.extraHeader=... fetch`, commits, and pushes.
 - Do not assume `{{SECRET:KEY}}` will resolve inside arbitrary shell text.
 - Do not rely on placeholder substitution in `echo`, `printf`, heredocs, redirects, `tee`, `python -c`, `node -e`, `bash -lc`, `scp`, `wget`, or file-writing commands.
-- For non-`curl` secret usage, prefer workflow runtime env injection via `required_secrets`.
-- If the currently supported `curl` substitution cases or allowed headers are not sufficient, prefer creating (using the `createWorkflow` tool) or updating a workflow instead of trying to force secret use through bash.
+- For secret usage outside supported `curl` and `git` commands, prefer workflow runtime env injection via `required_secrets`.
+- If the currently supported `curl`/`git` substitution cases or allowed headers are not sufficient, prefer creating (using the `createWorkflow` tool) or updating a workflow instead of trying to force secret use through bash.
 - If you need to write a script or multi-step automation that uses secrets, prefer creating (using the `createWorkflow` tool) or updating a workflow instead of embedding secret placeholders in shell scripts. In workflows, all declared secrets are injected into the runtime environment (no matter where or how they are used) when you call the `runWorkflow` tool. This is secure since workflow execution is gated by engineer approval.
 - Do not try to manually replace `{{SECRET:KEY}}` with a raw value yourself.
 - If you use a secret like `{{SECRET:KEY_NAME}}` and that secret doesn't exist in the user's profile, the tool call will fail, and then you should ask the user to add that key to their Profile Secrets before retrying.

@@ -324,6 +324,12 @@ function isCurlExecutableToken(rawToken: string): boolean {
   return base === "curl"
 }
 
+function isGitExecutableToken(rawToken: string): boolean {
+  const { inner } = unwrapToken(rawToken)
+  const base = inner.split("/").pop() ?? inner
+  return base === "git"
+}
+
 function getLongOptionName(inner: string): string | null {
   const eqIndex = inner.indexOf("=")
   const optionName = eqIndex === -1 ? inner : inner.slice(0, eqIndex)
@@ -546,7 +552,12 @@ export const SecretProxyPlugin: Plugin = async ({ client }) => {
       return cached
     }
 
-    const rewritten = substitutePlaceholdersInCurlShellString(text)
+    const curlRewritten = substitutePlaceholdersInCurlShellString(text)
+    const gitRewritten = substitutePlaceholdersInGitShellString(curlRewritten.rewritten)
+    const rewritten = {
+      rewritten: gitRewritten.rewritten,
+      referencedKeys: Array.from(new Set([...curlRewritten.referencedKeys, ...gitRewritten.referencedKeys])).sort(),
+    }
     cache.set(text, rewritten)
     return rewritten
   }
@@ -560,6 +571,27 @@ export const SecretProxyPlugin: Plugin = async ({ client }) => {
     const { rewritten, referencedKeys } = rewriteTokenInner(inner)
     return {
       rewritten: wrapTokenForShellExpansion(quote, rewritten, referencedKeys.length > 0),
+      referencedKeys,
+    }
+  }
+
+  function rewriteGitRawToken(rawToken: string): { rewritten: string; referencedKeys: string[] } {
+    const { quote, inner } = unwrapToken(rawToken)
+    const { rewritten, referencedKeys } = rewriteTokenInner(inner)
+    if (referencedKeys.length === 0) {
+      return {
+        rewritten: rawToken,
+        referencedKeys,
+      }
+    }
+    if (quote === null && rawToken.includes("'")) {
+      return {
+        rewritten: `"${escapeForDoubleQuotedShell(rewritten.replace(/'/g, ""))}"`,
+        referencedKeys,
+      }
+    }
+    return {
+      rewritten: wrapTokenForShellExpansion(quote, rewritten, true),
       referencedKeys,
     }
   }
@@ -760,6 +792,82 @@ export const SecretProxyPlugin: Plugin = async ({ client }) => {
     }
   }
 
+  function substitutePlaceholdersInGitShellString(
+    text: string,
+  ): { rewritten: string; referencedKeys: string[] } {
+    const rawTokens = tokenizeCommand(text)
+    if (rawTokens.length === 0) {
+      return {
+        rewritten: text,
+        referencedKeys: [],
+      }
+    }
+
+    const replacements: Array<{ start: number; end: number; text: string }> = []
+    const referencedKeys = new Set<string>()
+    let mutated = false
+    let atCommandStart = true
+
+    for (let index = 0; index < rawTokens.length; index += 1) {
+      const rawToken = rawTokens[index]
+
+      if (SHELL_CONTROL_TOKENS.has(rawToken.raw)) {
+        atCommandStart = true
+        continue
+      }
+
+      if (!atCommandStart) {
+        continue
+      }
+
+      if (!isGitExecutableToken(rawToken.raw)) {
+        atCommandStart = false
+        continue
+      }
+
+      atCommandStart = false
+      for (let j = index + 1; j < rawTokens.length; j += 1) {
+        const segmentToken = rawTokens[j]
+        if (SHELL_CONTROL_TOKENS.has(segmentToken.raw)) {
+          atCommandStart = true
+          index = j - 1
+          break
+        }
+
+        const rewritten = rewriteGitRawToken(segmentToken.raw)
+        if (rewritten.rewritten !== segmentToken.raw) {
+          replacements.push({
+            start: segmentToken.start,
+            end: segmentToken.end,
+            text: rewritten.rewritten,
+          })
+          mutated = true
+        }
+        for (const key of rewritten.referencedKeys) {
+          referencedKeys.add(key)
+        }
+      }
+    }
+
+    let rewrittenText = text
+    if (mutated) {
+      const output: string[] = []
+      let cursor = 0
+      for (const replacement of replacements.sort((left, right) => left.start - right.start)) {
+        output.push(text.slice(cursor, replacement.start))
+        output.push(replacement.text)
+        cursor = replacement.end
+      }
+      output.push(text.slice(cursor))
+      rewrittenText = output.join("")
+    }
+
+    return {
+      rewritten: rewrittenText,
+      referencedKeys: Array.from(referencedKeys).sort(),
+    }
+  }
+
   return {
     "command.execute.before": async (input) => {
       const sessionID = typeof input.sessionID === "string" ? input.sessionID.trim() : ""
@@ -772,11 +880,13 @@ export const SecretProxyPlugin: Plugin = async ({ client }) => {
 
       const commandCache = new Map<string, { rewritten: string; referencedKeys: string[] }>()
       if (typeof input.command === "string" && input.command.includes("{{SECRET:")) {
-        if (isCurlExecutableToken(input.command) && typeof input.arguments === "string") {
-          const fullCurlCommand = input.arguments.trim().length > 0
+        if ((isCurlExecutableToken(input.command) || isGitExecutableToken(input.command)) && typeof input.arguments === "string") {
+          const fullCommand = input.arguments.trim().length > 0
             ? `${input.command} ${input.arguments}`
             : input.command
-          const rewritten = substitutePlaceholdersInCurlShellString(fullCurlCommand)
+          const rewritten = isCurlExecutableToken(input.command)
+            ? substitutePlaceholdersInCurlShellString(fullCommand)
+            : substitutePlaceholdersInGitShellString(fullCommand)
           const prefix = `${input.command} `
           if (rewritten.rewritten.startsWith(prefix)) {
             input.arguments = rewritten.rewritten.slice(prefix.length)
@@ -790,11 +900,13 @@ export const SecretProxyPlugin: Plugin = async ({ client }) => {
         }
       }
       if (typeof input.arguments === "string" && input.arguments.includes("{{SECRET:")) {
-        if (isCurlExecutableToken(input.command)) {
-          const fullCurlCommand = input.arguments.trim().length > 0
+        if (isCurlExecutableToken(input.command) || isGitExecutableToken(input.command)) {
+          const fullCommand = input.arguments.trim().length > 0
             ? `${input.command} ${input.arguments}`
             : input.command
-          const rewritten = substitutePlaceholdersInCurlShellString(fullCurlCommand)
+          const rewritten = isCurlExecutableToken(input.command)
+            ? substitutePlaceholdersInCurlShellString(fullCommand)
+            : substitutePlaceholdersInGitShellString(fullCommand)
           const prefix = `${input.command} `
           if (rewritten.rewritten.startsWith(prefix)) {
             input.arguments = rewritten.rewritten.slice(prefix.length)
