@@ -53,7 +53,7 @@ import {
     deleteWorkflowApiKey,
     listWorkflowApiKeys,
 } from "../utils/workflow-api-keys";
-import { getWorkflowApiBaseUrl } from "../utils/workflow-api-config";
+import { getWorkflowApiBaseUrl } from "../utils/external-host";
 
 const router = express.Router({ mergeParams: true });
 

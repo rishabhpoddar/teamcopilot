@@ -9,8 +9,7 @@ async function main(): Promise<void> {
     process.env.WORKSPACE_DIR = workspaceDir;
     process.env.TEAMCOPILOT_HOST = "127.0.0.1";
     process.env.TEAMCOPILOT_PORT = "5124";
-    process.env.WORKFLOW_API_HOST = "127.0.0.1";
-    process.env.WORKFLOW_API_PORT = "5125";
+    process.env.EXTERNAL_HOST = "///127.0.0.1:5124///";
 
     const workflowSlug = "api-demo";
     const workflowDir = path.join(workspaceDir, "workflows", workflowSlug);
@@ -41,7 +40,6 @@ async function main(): Promise<void> {
     const { approveWorkflowWithSnapshot } = require("../src/utils/workflow-approval-snapshot") as typeof import("../src/utils/workflow-approval-snapshot");
     const { initializeWorkflowRunPermissionsForCreator } = require("../src/utils/workflow-permissions") as typeof import("../src/utils/workflow-permissions");
     const { createApp } = require("../src/index") as typeof import("../src/index");
-    const { createWorkflowApiApp } = require("../src/workflow-api") as typeof import("../src/workflow-api");
 
     try {
         await ensureWorkspaceDatabase();
@@ -78,7 +76,7 @@ async function main(): Promise<void> {
             .set("Authorization", `Bearer ${chatSession.opencode_session_id}`)
             .expect(200);
 
-        assert.equal(keysResponse.body.api_base_url, "http://127.0.0.1:5125");
+        assert.equal(keysResponse.body.api_base_url, "http://127.0.0.1:5124/api/workflow-api");
         assert.equal(keysResponse.body.api_keys.length, 1);
         assert.match(keysResponse.body.api_keys[0].api_key, /^[0-9a-f-]{36}$/);
 
@@ -113,9 +111,8 @@ async function main(): Promise<void> {
             }
         });
 
-        const workflowApiApp = createWorkflowApiApp();
-        const statusResponse = await request(workflowApiApp)
-            .get(`/runs/${apiRun.id}`)
+        const statusResponse = await request(app)
+            .get(`/api/workflow-api/runs/${apiRun.id}`)
             .set("Authorization", `Bearer ${secondKeyResponse.body.api_key.api_key}`)
             .expect(200);
 
@@ -124,8 +121,8 @@ async function main(): Promise<void> {
         assert.ok(!statusJson.includes("supersecretvalue"), `Expected redacted workflow API response, got: ${statusJson}`);
         assert.ok(statusJson.includes("***"));
 
-        await request(workflowApiApp)
-            .get(`/runs/${apiRun.id}`)
+        await request(app)
+            .get(`/api/workflow-api/runs/${apiRun.id}`)
             .set("Authorization", "Bearer invalid-key")
             .expect(401);
 

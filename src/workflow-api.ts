@@ -9,7 +9,6 @@ import { getWorkflowSnapshotApprovalState } from "./utils/workflow-approval-snap
 import { getWorkspaceDirFromEnv } from "./utils/workspace-sync";
 import { startWorkflowRunViaBackend } from "./utils/workflow-runner";
 import { markWorkflowSessionAborted } from "./utils/workflow-interruption";
-import { logError } from "./logging";
 
 type WorkflowApiRequest = express.Request & {
     workflowApiKey?: {
@@ -126,11 +125,10 @@ async function readWorkflowRunLogs(run: { session_id: string | null; message_id:
     }
 }
 
-export function createWorkflowApiApp(): express.Express {
-    const app = express();
-    app.use(express.json());
+export function createWorkflowApiRouter(): express.Router {
+    const router = express.Router();
 
-    app.use((_req, res, next) => {
+    router.use((_req, res, next) => {
         const originalJson = res.json.bind(res);
         res.json = ((body: unknown) => {
             return originalJson(sanitizeForClient(body));
@@ -138,7 +136,7 @@ export function createWorkflowApiApp(): express.Express {
         next();
     });
 
-    app.post("/runs", workflowApiHandler(async (req, res) => {
+    router.post("/runs", workflowApiHandler(async (req, res) => {
         const body = req.body as { workflow_slug?: unknown; inputs?: unknown };
         if (typeof body.workflow_slug !== "string" || body.workflow_slug.trim().length === 0) {
             throw {
@@ -184,7 +182,7 @@ export function createWorkflowApiApp(): express.Express {
         });
     }));
 
-    app.get("/runs/:runHandle", workflowApiHandler(async (req, res) => {
+    router.get("/runs/:runHandle", workflowApiHandler(async (req, res) => {
         const runHandle = req.params.runHandle as string;
         const run = await assertApiKeyCanAccessRun(req, runHandle);
         const logs = await readWorkflowRunLogs(run);
@@ -201,7 +199,7 @@ export function createWorkflowApiApp(): express.Express {
         });
     }));
 
-    app.post("/runs/:runHandle/stop", workflowApiHandler(async (req, res) => {
+    router.post("/runs/:runHandle/stop", workflowApiHandler(async (req, res) => {
         const runHandle = req.params.runHandle as string;
         const run = await assertApiKeyCanAccessRun(req, runHandle);
 
@@ -218,13 +216,5 @@ export function createWorkflowApiApp(): express.Express {
         res.json({ success: true });
     }));
 
-    app.use(async (err: any, req: express.Request, res: express.Response, _: express.NextFunction) => {
-        const status = err.status || 500;
-        if (status !== 404 && err.doLogging !== false) {
-            logError({ err, apiPath: req.path, apiMethod: req.method });
-        }
-        res.status(status).json({ message: err.message || "Unknown error" });
-    });
-
-    return app;
+    return router;
 }

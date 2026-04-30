@@ -29,8 +29,7 @@ import { initializeOpencodeAuthStorage } from "./utils/opencode-auth";
 import opencodeAuthRouter from "./opencode-auth";
 import { loadJwtSecret } from "./utils/jwt-secret";
 import { getFrontendDistDirectory } from "./utils/runtime-paths";
-import { createWorkflowApiApp } from "./workflow-api";
-import { getWorkflowApiHost, getWorkflowApiPort } from "./utils/workflow-api-config";
+import { createWorkflowApiRouter } from "./workflow-api";
 export function createApp(): express.Express {
     const app = express();
     const frontendDistDirectory = getFrontendDistDirectory();
@@ -121,6 +120,7 @@ export function createApp(): express.Express {
     apiRouter.use('/secrets', secretsRouter);
     apiRouter.use('/usage', usageRouter);
     apiRouter.use('/opencode-auth', opencodeAuthRouter);
+    apiRouter.use('/workflow-api', createWorkflowApiRouter());
 
     app.use('/api', apiRouter);
 
@@ -145,10 +145,8 @@ export function createApp(): express.Express {
 }
 
 const app = createApp();
-const workflowApiApp = createWorkflowApiApp();
 
 let httpServer: Server | null = null;
-let workflowApiHttpServer: Server | null = null;
 let isShuttingDown = false;
 
 async function shutdown(exitCode: number) {
@@ -164,12 +162,6 @@ async function shutdown(exitCode: number) {
             httpServer!.close(() => resolve());
         });
     }
-    if (workflowApiHttpServer) {
-        await new Promise<void>((resolve) => {
-            workflowApiHttpServer!.close(() => resolve());
-        });
-    }
-
     process.exit(exitCode);
 }
 
@@ -187,11 +179,6 @@ async function bootstrap() {
         console.log(`Server running at http://${TEAMCOPILOT_HOST}:${TEAMCOPILOT_PORT}`);
     });
 
-    const WORKFLOW_API_HOST = getWorkflowApiHost();
-    const WORKFLOW_API_PORT = getWorkflowApiPort();
-    workflowApiHttpServer = workflowApiApp.listen(WORKFLOW_API_PORT, WORKFLOW_API_HOST, () => {
-        console.log(`Workflow API running at http://${WORKFLOW_API_HOST}:${WORKFLOW_API_PORT}`);
-    });
 }
 
 process.on("SIGINT", () => {
