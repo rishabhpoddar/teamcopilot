@@ -5,7 +5,7 @@ import * as fsp from "fs/promises";
 import * as path from "path";
 import prisma from "../prisma/client";
 import { isWorkflowSessionInterrupted } from "./workflow-interruption";
-import { normalizeSecretKeyList, resolveSecretsForUser } from "./secrets";
+import { normalizeSecretKeyList, resolveGlobalSecrets, resolveSecretsForUser } from "./secrets";
 import { validateWorkflowSecretContract } from "./secret-contract-validation";
 
 const MAX_OUTPUT_CHARS = 300_000;
@@ -343,11 +343,14 @@ export async function startWorkflowRunViaBackend(options: {
     workspaceDir: string;
     slug: string;
     inputs: Record<string, unknown>;
-    authUserId: string;
+    authUserId: string | null;
     sessionId: string;
     messageId: string;
     callId: string;
     requirePermissionPrompt: boolean;
+    secretResolutionMode: "user" | "global";
+    runSource: "user" | "api";
+    workflowApiKeyId?: string | null;
 }): Promise<{ runId: string; timeoutSeconds: number; completion: Promise<{ status: string; output: string }> }> {
     if (!SLUG_REGEX.test(options.slug)) {
         throw new Error("Invalid workflow slug. Expected lowercase letters/numbers with optional hyphens.");
@@ -388,9 +391,16 @@ export async function startWorkflowRunViaBackend(options: {
         throw new Error(`Input validation failed: ${JSON.stringify(validation.errors)}`);
     }
 
-    const secretResolution = await resolveSecretsForUser(options.authUserId, requiredSecrets);
+    const secretResolutionMode = options.secretResolutionMode;
+    if (secretResolutionMode === "user" && !options.authUserId) {
+        throw new Error("authUserId is required for user secret resolution.");
+    }
+    const secretResolution = secretResolutionMode === "global"
+        ? await resolveGlobalSecrets(requiredSecrets)
+        : await resolveSecretsForUser(options.authUserId!, requiredSecrets);
     if (secretResolution.missingKeys.length > 0) {
-        throw new Error(`Missing required secrets: ${secretResolution.missingKeys.join(", ")}. Add these keys in your profile secrets before running this workflow.`);
+        const secretLocation = secretResolutionMode === "global" ? "global secrets" : "your profile secrets";
+        throw new Error(`Missing required secrets: ${secretResolution.missingKeys.join(", ")}. Add these keys in ${secretLocation} before running this workflow.`);
     }
 
     const timeoutSeconds = parseTimeoutSeconds(workflowJson.runtime?.timeout_seconds);
@@ -408,6 +418,8 @@ export async function startWorkflowRunViaBackend(options: {
             args: JSON.stringify(options.inputs),
             session_id: options.sessionId,
             message_id: options.messageId,
+            run_source: options.runSource,
+            workflow_api_key_id: options.workflowApiKeyId ?? null,
         }
     });
     const workflowRunsDir = path.join(options.workspaceDir, "workflow-runs");

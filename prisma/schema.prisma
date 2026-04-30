@@ -28,7 +28,7 @@ model users {
 
 model workflow_runs {
   id             String  @id @default(uuid())
-  ran_by_user_id String
+  ran_by_user_id String?
   status         String // "running" | "success" | "failed"
   started_at     BigInt
   completed_at   BigInt?
@@ -38,10 +38,26 @@ model workflow_runs {
   workflow_slug  String
   session_id     String?
   message_id     String?
-  user           users   @relation(fields: [ran_by_user_id], references: [id], onDelete: Cascade)
+  run_source     String // "user" | "api"
+  workflow_api_key_id String?
+  user           users?  @relation(fields: [ran_by_user_id], references: [id], onDelete: SetNull)
+  workflowApiKey workflow_api_keys? @relation(fields: [workflow_api_key_id], references: [id], onDelete: SetNull)
 
   @@index([started_at])
   @@index([session_id, message_id])
+  @@index([workflow_api_key_id])
+}
+
+model workflow_api_keys {
+  id                 String          @id @default(uuid())
+  workflow_slug      String
+  api_key            String          @unique
+  created_by_user_id String
+  created_at         BigInt
+  workflowRuns       workflow_runs[]
+
+  @@index([workflow_slug])
+  @@index([created_by_user_id])
 }
 
 model workflow_aborted_sessions {

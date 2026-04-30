@@ -5,14 +5,18 @@
 
 .manual-run-header {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 1.5rem;
-  gap: 1rem;
+  flex-direction: column;
+  align-items: flex-start;
+  margin-bottom: 1.25rem;
+  gap: 0.85rem;
 }
 
 .manual-run-header h1 {
   margin: 0;
+  margin-left: 1rem;
+  font-size: 2rem;
+  line-height: 1.1;
+  letter-spacing: 0;
 }
 
 .manual-run-back-btn {
@@ -137,11 +141,9 @@
 
 @media (max-width: 700px) {
   .manual-run-header {
-    flex-direction: column;
     align-items: flex-start;
   }
 
-  .manual-run-back-btn,
   .manual-run-submit-btn {
     width: 100%;
   }
@@ -156,6 +158,11 @@
 }
 
 @media (max-width: 520px) {
+  .manual-run-header h1 {
+    margin-left: 0.9rem;
+    font-size: 1.75rem;
+  }
+
   .manual-run-card {
     padding: 0.9rem;
   }

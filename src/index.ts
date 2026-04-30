@@ -29,6 +29,7 @@ import { initializeOpencodeAuthStorage } from "./utils/opencode-auth";
 import opencodeAuthRouter from "./opencode-auth";
 import { loadJwtSecret } from "./utils/jwt-secret";
 import { getFrontendDistDirectory } from "./utils/runtime-paths";
+import workflowApiRouter from "./workflow-api";
 export function createApp(): express.Express {
     const app = express();
     const frontendDistDirectory = getFrontendDistDirectory();
@@ -119,6 +120,7 @@ export function createApp(): express.Express {
     apiRouter.use('/secrets', secretsRouter);
     apiRouter.use('/usage', usageRouter);
     apiRouter.use('/opencode-auth', opencodeAuthRouter);
+    apiRouter.use('/workflow-api', workflowApiRouter);
 
     app.use('/api', apiRouter);
 
@@ -160,7 +162,6 @@ async function shutdown(exitCode: number) {
             httpServer!.close(() => resolve());
         });
     }
-
     process.exit(exitCode);
 }
 
@@ -177,6 +178,7 @@ async function bootstrap() {
     httpServer = app.listen(TEAMCOPILOT_PORT, TEAMCOPILOT_HOST, () => {
         console.log(`Server running at http://${TEAMCOPILOT_HOST}:${TEAMCOPILOT_PORT}`);
     });
+
 }
 
 process.on("SIGINT", () => {

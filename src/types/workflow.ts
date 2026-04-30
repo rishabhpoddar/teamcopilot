@@ -58,17 +58,27 @@ export type WorkflowRunStatus = "running" | "success" | "failed";
 export interface WorkflowRun {
     id: string;
     workflow_slug: string;
-    ran_by_user_id: string;
+    ran_by_user_id: string | null;
     status: WorkflowRunStatus;
     started_at: number;
     completed_at: number | null;
     args: string | null;
     error_message: string | null;
     output: string | null;
+    run_source: "user" | "api";
+    workflow_api_key_id: string | null;
     user: {
         name: string;
         email: string;
-    };
+    } | null;
+}
+
+export interface WorkflowApiKey {
+    id: string;
+    workflow_slug: string;
+    api_key: string;
+    created_by_user_id: string;
+    created_at: number;
 }
 
 export type WorkflowApprovalDiffFileStatus = "added" | "modified" | "deleted";

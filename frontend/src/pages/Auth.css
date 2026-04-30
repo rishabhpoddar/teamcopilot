@@ -26,6 +26,9 @@
 
 .auth-container h1 {
   margin-bottom: 1.5rem;
+  font-size: 1.75rem;
+  line-height: 1.15;
+  letter-spacing: 0;
 }
 
 .auth-form {

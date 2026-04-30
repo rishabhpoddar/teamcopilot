@@ -44,6 +44,9 @@ export async function deleteWorkflow(slug: string): Promise<void> {
     await prisma.workflow_runs.deleteMany({
         where: { workflow_slug: slug }
     });
+    await prisma.workflow_api_keys.deleteMany({
+        where: { workflow_slug: slug }
+    });
     await prisma.resource_metadata.deleteMany({
         where: {
             resource_kind: "workflow",

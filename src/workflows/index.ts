@@ -47,6 +47,13 @@ import { registerResourceFileRoutes } from "../utils/resource-file-routes";
 import { getResourceAccessSummary } from "../utils/resource-access";
 import { listResolvedSecretsForUser, resolveSecretsForUser, resolveSecretsFromResolvedMap } from "../utils/secrets";
 import { validateWorkflowFilesAtPath } from "../utils/secret-contract-validation";
+import {
+    assertCanManageWorkflowApiKeys,
+    createWorkflowApiKey,
+    deleteWorkflowApiKey,
+    listWorkflowApiKeys,
+} from "../utils/workflow-api-keys";
+import { getWorkflowApiBaseUrl } from "../utils/external-host";
 
 const router = express.Router({ mergeParams: true });
 
@@ -389,6 +396,8 @@ router.post('/:slug/manual-run', apiHandler(async (req, res) => {
         messageId: manualMessageId,
         callId: manualCallId,
         requirePermissionPrompt: false,
+        runSource: "user",
+        secretResolutionMode: "user",
     });
 
     void startedRun.completion.catch(() => undefined);
@@ -437,6 +446,8 @@ router.post('/execute', apiHandler(async (req, res) => {
         messageId,
         callId,
         requirePermissionPrompt: true,
+        runSource: "user",
+        secretResolutionMode: "user",
     });
 
     const executionId = randomUUID();
@@ -643,6 +654,41 @@ router.delete('/:slug', apiHandler(async (req, res) => {
     }
 
     await deleteWorkflow(slug);
+
+    res.json({ success: true });
+}, true));
+
+// GET /api/workflows/:slug/api-keys - List API keys for an approved workflow
+router.get('/:slug/api-keys', apiHandler(async (req, res) => {
+    const slug = req.params.slug as string;
+    await assertCanManageWorkflowApiKeys(slug, req.userId!);
+    const apiKeys = await listWorkflowApiKeys(slug, req.userId!);
+
+    (res.locals as { skipResponseSanitization?: boolean }).skipResponseSanitization = true;
+    res.json({
+        api_base_url: getWorkflowApiBaseUrl(),
+        api_keys: apiKeys,
+    });
+}, true));
+
+// POST /api/workflows/:slug/api-keys - Add an API key for an approved workflow
+router.post('/:slug/api-keys', apiHandler(async (req, res) => {
+    const slug = req.params.slug as string;
+    await assertCanManageWorkflowApiKeys(slug, req.userId!);
+    const apiKey = await createWorkflowApiKey(slug, req.userId!);
+
+    (res.locals as { skipResponseSanitization?: boolean }).skipResponseSanitization = true;
+    res.json({
+        api_key: apiKey,
+    });
+}, true));
+
+// DELETE /api/workflows/:slug/api-keys/:keyId - Remove an API key
+router.delete('/:slug/api-keys/:keyId', apiHandler(async (req, res) => {
+    const slug = req.params.slug as string;
+    const keyId = req.params.keyId as string;
+    await assertCanManageWorkflowApiKeys(slug, req.userId!);
+    await deleteWorkflowApiKey(slug, keyId);
 
     res.json({ success: true });
 }, true));

@@ -9,6 +9,7 @@ interface WorkflowCardProps extends Workflow {
     onDeleted: () => void;
     onRunWorkflow: (workflowName: string) => void;
     onRunWorkflowManual: (workflowSlug: string) => void;
+    onRunWorkflowApi: (workflowSlug: string) => void;
     onOpenWorkflow: (slug: string) => void;
 }
 
@@ -42,6 +43,7 @@ export default function WorkflowCard(props: WorkflowCardProps) {
             onOpen={props.onOpenWorkflow}
             onRunAi={() => props.onRunWorkflow(props.name || props.slug)}
             onRunManual={() => props.onRunWorkflowManual(props.slug)}
+            onRunApi={() => props.onRunWorkflowApi(props.slug)}
         />
     );
 }
