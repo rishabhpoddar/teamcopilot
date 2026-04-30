@@ -147,7 +147,9 @@ export default function RunDetailsPage() {
                 <button className="run-details-back-btn" onClick={() => navigate('/?tab=history')}>
                     Back to Run History
                 </button>
-                <h1>Run Details</h1>
+                <div className="run-details-heading-block">
+                    <div className="run-details-heading">Run details</div>
+                </div>
             </header>
 
             {loading && null}

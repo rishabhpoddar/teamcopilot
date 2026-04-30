@@ -21,6 +21,12 @@ interface ApiKeysResponse {
     api_keys: WorkflowApiKey[];
 }
 
+interface CurlCommandCardProps {
+    title: string;
+    command: string;
+    onCopy: (value: string, label: string) => void;
+}
+
 function getErrorMessage(err: unknown, fallback: string): string {
     return err instanceof AxiosError ? String(err.response?.data?.message || err.response?.data || err.message) : fallback;
 }
@@ -88,6 +94,24 @@ function buildStopCurl(apiBaseUrl: string, apiKey: string): string {
             `  -H ${shellSingleQuote(`Authorization: Bearer ${apiKey}`)}`,
         ].join(' \\\n'),
     ].join('\n');
+}
+
+function CurlCommandCard({ title, command, onCopy }: CurlCommandCardProps) {
+    return (
+        <section className="workflow-api-card">
+            <div className="workflow-api-card-title-row">
+                <h3>{title}</h3>
+                <button
+                    type="button"
+                    onClick={() => onCopy(command, title)}
+                    disabled={!command}
+                >
+                    Copy
+                </button>
+            </div>
+            <pre>{command}</pre>
+        </section>
+    );
 }
 
 export default function WorkflowApiRunPage() {
@@ -168,6 +192,17 @@ export default function WorkflowApiRunPage() {
         }
     };
 
+    const handleCopy = (value: string, label: string) => {
+        if (!value) return;
+        void navigator.clipboard.writeText(value)
+            .then(() => {
+                toast.success(`${label} copied`);
+            })
+            .catch(() => {
+                toast.error(`Failed to copy ${label.toLowerCase()}`);
+            });
+    };
+
     if (auth.loading) return null;
 
     const primaryKey = apiKeys[0]?.api_key ?? '';
@@ -196,20 +231,9 @@ export default function WorkflowApiRunPage() {
                         <p>Use this workflow from another backend process with a workflow API key.</p>
                     </section>
 
-                    <section className="workflow-api-card">
-                        <h3>Run Command</h3>
-                        <pre>{runCurl}</pre>
-                    </section>
-
-                    <section className="workflow-api-card">
-                        <h3>Status Command</h3>
-                        <pre>{statusCurl}</pre>
-                    </section>
-
-                    <section className="workflow-api-card">
-                        <h3>Stop Command</h3>
-                        <pre>{stopCurl}</pre>
-                    </section>
+                    <CurlCommandCard title="Run Command" command={runCurl} onCopy={handleCopy} />
+                    <CurlCommandCard title="Status Command" command={statusCurl} onCopy={handleCopy} />
+                    <CurlCommandCard title="Stop Command" command={stopCurl} onCopy={handleCopy} />
 
                     <section className="workflow-api-card">
                         <h3>Input Schema</h3>

@@ -36,7 +36,10 @@
 }
 
 .opencode-auth-header h1 {
-  margin: 0;
+    margin: 0;
+    font-size: 1.6rem;
+    line-height: 1.15;
+    letter-spacing: 0;
 }
 
 .opencode-auth-subtitle {
