@@ -1,0 +1,144 @@
+.workflow-api-page {
+    width: 100%;
+    max-width: 960px;
+    margin: 0 auto;
+}
+
+.workflow-api-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 22px;
+}
+
+.workflow-api-header h1 {
+    margin: 0;
+    font-size: 1.7rem;
+}
+
+.workflow-api-back-btn,
+.workflow-api-card button {
+    border: 1px solid #333;
+    background: transparent;
+    color: inherit;
+    border-radius: 8px;
+    padding: 0.45rem 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.workflow-api-back-btn:hover,
+.workflow-api-card button:hover:not(:disabled) {
+    border-color: #646cff;
+}
+
+.workflow-api-card button:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.workflow-api-state {
+    text-align: center;
+    padding: 2rem 1rem;
+    color: #888;
+}
+
+.workflow-api-state.error {
+    color: #ff6b6b;
+}
+
+.workflow-api-content {
+    display: grid;
+    gap: 16px;
+}
+
+.workflow-api-card {
+    border: 1px solid #333;
+    border-radius: 10px;
+    padding: 1rem;
+}
+
+.workflow-api-card h2,
+.workflow-api-card h3,
+.workflow-api-card p {
+    margin-top: 0;
+}
+
+.workflow-api-card p {
+    margin-bottom: 0;
+    color: #9a9a9a;
+}
+
+.workflow-api-card pre {
+    margin: 0;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    border-radius: 8px;
+    background: #111;
+    color: inherit;
+    border: 1px solid #2a2a2a;
+    padding: 0.75rem;
+    line-height: 1.45;
+}
+
+.workflow-api-card-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 0.9rem;
+}
+
+.workflow-api-card-title-row h3 {
+    margin: 0;
+}
+
+.workflow-api-key-list {
+    display: grid;
+    gap: 10px;
+}
+
+.workflow-api-key-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+    align-items: center;
+    border: 1px solid #333;
+    border-radius: 8px;
+    padding: 0.75rem;
+}
+
+.workflow-api-key-row code {
+    overflow-wrap: anywhere;
+    color: inherit;
+}
+
+@media (max-width: 640px) {
+    .workflow-api-header,
+    .workflow-api-card-title-row,
+    .workflow-api-key-row {
+        align-items: stretch;
+    }
+
+    .workflow-api-header {
+        display: grid;
+    }
+
+    .workflow-api-card-title-row,
+    .workflow-api-key-row {
+        grid-template-columns: 1fr;
+    }
+
+    .workflow-api-back-btn,
+    .workflow-api-card button {
+        width: 100%;
+    }
+}
+
+@media (max-width: 520px) {
+    .workflow-api-card {
+        padding: 0.9rem;
+    }
+}

@@ -38,6 +38,16 @@ function parseArgs(args: string | null): string {
     }
 }
 
+function formatRunner(run: WorkflowRun): string {
+    if (run.user) {
+        return `${run.user.name} (${run.user.email})`;
+    }
+    if (run.run_source === 'api') {
+        return 'Workflow API';
+    }
+    return 'Unknown';
+}
+
 export default function RunDetailsPage() {
     const { id = '' } = useParams();
     const navigate = useNavigate();
@@ -167,7 +177,7 @@ export default function RunDetailsPage() {
                         <div className="run-details-grid">
                             <div>
                                 <p className="run-details-label">Ran by</p>
-                                <p>{run.user.name} ({run.user.email})</p>
+                                <p>{formatRunner(run)}</p>
                             </div>
                             <div>
                                 <p className="run-details-label">Started</p>

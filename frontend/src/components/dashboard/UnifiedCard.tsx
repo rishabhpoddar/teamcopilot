@@ -35,6 +35,7 @@ interface UnifiedCardProps {
     onOpen: (slug: string) => void;
     onRunAi?: () => void;
     onRunManual?: () => void;
+    onRunApi?: () => void;
 }
 
 export default function UnifiedCard({
@@ -64,6 +65,7 @@ export default function UnifiedCard({
     onOpen,
     onRunAi,
     onRunManual,
+    onRunApi,
 }: UnifiedCardProps) {
     const [deleting, setDeleting] = useState(false);
     const [showPermissionsEditor, setShowPermissionsEditor] = useState(false);
@@ -366,6 +368,7 @@ export default function UnifiedCard({
                 canRun={can_run}
                 onRunAi={onRunAi}
                 onRunManual={onRunManual}
+                onRunApi={onRunApi}
                 deleteVisible={canDelete}
                 deleting={deleting}
                 onDelete={() => {

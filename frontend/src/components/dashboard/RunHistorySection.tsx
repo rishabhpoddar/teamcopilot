@@ -22,6 +22,16 @@ function StatusBadge({ status }: { status: WorkflowRunStatus }) {
     return <span className={`status-badge status-${status}`}>{status}</span>;
 }
 
+function formatRunner(run: WorkflowRun): string {
+    if (run.user) {
+        return run.user.name;
+    }
+    if (run.run_source === 'api') {
+        return 'Workflow API';
+    }
+    return 'Unknown';
+}
+
 export default function RunHistorySection() {
     const auth = useAuth();
     const navigate = useNavigate();
@@ -101,7 +111,7 @@ export default function RunHistorySection() {
                             <td><StatusBadge status={run.status} /></td>
                             <td>{formatDate(run.started_at)}</td>
                             <td>{formatDuration(run.started_at, run.completed_at)}</td>
-                            <td>{run.user.name}</td>
+                            <td>{formatRunner(run)}</td>
                         </tr>
                     ))}
                 </tbody>

@@ -7,5 +7,6 @@ export type {
     Workflow,
     WorkflowRunStatus,
     WorkflowRun,
+    WorkflowApiKey,
     WorkflowApprovalDiffResponse,
 } from "../../../src/types/shared/workflow";

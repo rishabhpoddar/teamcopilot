@@ -11,6 +11,7 @@ import WorkflowApprovalReviewPage from './pages/WorkflowApprovalReviewPage'
 import SkillApprovalReviewPage from './pages/SkillApprovalReviewPage'
 import RunDetailsPage from './pages/RunDetailsPage'
 import ManualRunPage from './pages/ManualRunPage'
+import WorkflowApiRunPage from './pages/WorkflowApiRunPage'
 import OpencodeAuthSetup from './pages/OpencodeAuthSetup'
 import OpencodeAuthComplete from './pages/OpencodeAuthComplete'
 import UserInstructionsPage from './pages/UserInstructionsPage'
@@ -214,6 +215,7 @@ function AppShell() {
         <Route path="/" element={<ProtectedRoute><CredentialedRoute><Home /></CredentialedRoute></ProtectedRoute>} />
         <Route path="/runs/:id" element={<ProtectedRoute><CredentialedRoute><RunDetailsPage /></CredentialedRoute></ProtectedRoute>} />
         <Route path="/workflows/:slug/manual-run" element={<ProtectedRoute><CredentialedRoute><ManualRunPage /></CredentialedRoute></ProtectedRoute>} />
+        <Route path="/workflows/:slug/api-run" element={<ProtectedRoute><CredentialedRoute><WorkflowApiRunPage /></CredentialedRoute></ProtectedRoute>} />
         <Route path="/workflows/:slug" element={<ProtectedRoute><CredentialedRoute><WorkflowEditorPage /></CredentialedRoute></ProtectedRoute>} />
         <Route path="/skills/:slug" element={<ProtectedRoute><CredentialedRoute><SkillEditorPage /></CredentialedRoute></ProtectedRoute>} />
         <Route path="/workflows/:slug/approval-review" element={<ProtectedRoute><CredentialedRoute><WorkflowApprovalReviewPage /></CredentialedRoute></ProtectedRoute>} />

@@ -29,6 +29,8 @@ import { initializeOpencodeAuthStorage } from "./utils/opencode-auth";
 import opencodeAuthRouter from "./opencode-auth";
 import { loadJwtSecret } from "./utils/jwt-secret";
 import { getFrontendDistDirectory } from "./utils/runtime-paths";
+import { createWorkflowApiApp } from "./workflow-api";
+import { getWorkflowApiHost, getWorkflowApiPort } from "./utils/workflow-api-config";
 export function createApp(): express.Express {
     const app = express();
     const frontendDistDirectory = getFrontendDistDirectory();
@@ -143,8 +145,10 @@ export function createApp(): express.Express {
 }
 
 const app = createApp();
+const workflowApiApp = createWorkflowApiApp();
 
 let httpServer: Server | null = null;
+let workflowApiHttpServer: Server | null = null;
 let isShuttingDown = false;
 
 async function shutdown(exitCode: number) {
@@ -158,6 +162,11 @@ async function shutdown(exitCode: number) {
     if (httpServer) {
         await new Promise<void>((resolve) => {
             httpServer!.close(() => resolve());
+        });
+    }
+    if (workflowApiHttpServer) {
+        await new Promise<void>((resolve) => {
+            workflowApiHttpServer!.close(() => resolve());
         });
     }
 
@@ -176,6 +185,12 @@ async function bootstrap() {
     const TEAMCOPILOT_PORT = parseIntStrict(assertEnv("TEAMCOPILOT_PORT"), "TEAMCOPILOT_PORT");
     httpServer = app.listen(TEAMCOPILOT_PORT, TEAMCOPILOT_HOST, () => {
         console.log(`Server running at http://${TEAMCOPILOT_HOST}:${TEAMCOPILOT_PORT}`);
+    });
+
+    const WORKFLOW_API_HOST = getWorkflowApiHost();
+    const WORKFLOW_API_PORT = getWorkflowApiPort();
+    workflowApiHttpServer = workflowApiApp.listen(WORKFLOW_API_PORT, WORKFLOW_API_HOST, () => {
+        console.log(`Workflow API running at http://${WORKFLOW_API_HOST}:${WORKFLOW_API_PORT}`);
     });
 }
 

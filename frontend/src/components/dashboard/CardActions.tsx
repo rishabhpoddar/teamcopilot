@@ -8,6 +8,7 @@ interface CardActionsProps {
     canRun: boolean;
     onRunAi?: () => void;
     onRunManual?: () => void;
+    onRunApi?: () => void;
     deleteVisible: boolean;
     deleteLabel?: string;
     deleting?: boolean;
@@ -22,6 +23,7 @@ export default function CardActions({
     canRun,
     onRunAi,
     onRunManual,
+    onRunApi,
     deleteVisible,
     deleteLabel = 'Delete',
     deleting = false,
@@ -103,6 +105,18 @@ export default function CardActions({
                         >
                             Manual mode
                         </button>
+                        {onRunApi && (
+                            <button
+                                type="button"
+                                className="workflow-run-mode-manual-btn"
+                                onClick={() => {
+                                    onRunApi();
+                                    setShowRunModeModal(false);
+                                }}
+                            >
+                                Using API
+                            </button>
+                        )}
                     </div>
                 </div>
             )}

@@ -101,6 +101,22 @@ export async function resolveSecretsForUser(userId: string, requiredKeys: string
     return resolveSecretsFromResolvedMap(resolvedSecrets, keys);
 }
 
+export async function resolveGlobalSecrets(requiredKeys: string[]): Promise<SecretResolutionResult> {
+    const keys = normalizeSecretKeyList(requiredKeys);
+    if (keys.length === 0) {
+        return {
+            secretMap: {},
+            missingKeys: [],
+        };
+    }
+
+    const globalSecrets = await prisma.global_secrets.findMany({
+        orderBy: { key: "asc" }
+    });
+    const globalSecretMap = Object.fromEntries(globalSecrets.map((row) => [row.key, row.value]));
+    return resolveSecretsFromResolvedMap(globalSecretMap, keys);
+}
+
 export function resolveSecretsFromResolvedMap(
     resolvedSecrets: Record<string, string>,
     requiredKeys: string[],
