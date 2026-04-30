@@ -29,7 +29,7 @@ import { initializeOpencodeAuthStorage } from "./utils/opencode-auth";
 import opencodeAuthRouter from "./opencode-auth";
 import { loadJwtSecret } from "./utils/jwt-secret";
 import { getFrontendDistDirectory } from "./utils/runtime-paths";
-import { createWorkflowApiRouter } from "./workflow-api";
+import workflowApiRouter from "./workflow-api";
 export function createApp(): express.Express {
     const app = express();
     const frontendDistDirectory = getFrontendDistDirectory();
@@ -120,7 +120,7 @@ export function createApp(): express.Express {
     apiRouter.use('/secrets', secretsRouter);
     apiRouter.use('/usage', usageRouter);
     apiRouter.use('/opencode-auth', opencodeAuthRouter);
-    apiRouter.use('/workflow-api', createWorkflowApiRouter());
+    apiRouter.use('/workflow-api', workflowApiRouter);
 
     app.use('/api', apiRouter);
 

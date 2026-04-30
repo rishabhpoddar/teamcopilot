@@ -3,7 +3,6 @@ import fsPromises from "fs/promises";
 import path from "path";
 import { randomUUID } from "crypto";
 import prisma from "./prisma/client";
-import { sanitizeForClient } from "./utils/redact";
 import { readWorkflowManifestAndEnsurePermissions } from "./utils/workflow";
 import { getWorkflowSnapshotApprovalState } from "./utils/workflow-approval-snapshot";
 import { getWorkspaceDirFromEnv } from "./utils/workspace-sync";
@@ -125,96 +124,95 @@ async function readWorkflowRunLogs(run: { session_id: string | null; message_id:
     }
 }
 
-export function createWorkflowApiRouter(): express.Router {
-    const router = express.Router();
+function parseRunInputs(args: string | null): Record<string, unknown> {
+    if (args === null || args === "") {
+        return {};
+    }
+    return JSON.parse(args) as Record<string, unknown>;
+}
 
-    router.use((_req, res, next) => {
-        const originalJson = res.json.bind(res);
-        res.json = ((body: unknown) => {
-            return originalJson(sanitizeForClient(body));
-        }) as typeof res.json;
-        next();
+const workflowApiRouter = express.Router();
+
+workflowApiRouter.post("/runs", workflowApiHandler(async (req, res) => {
+    const body = req.body as { workflow_slug?: unknown; inputs?: unknown };
+    if (typeof body.workflow_slug !== "string" || body.workflow_slug.trim().length === 0) {
+        throw {
+            status: 400,
+            message: "workflow_slug is required"
+        };
+    }
+    if (body.inputs !== undefined && (!body.inputs || typeof body.inputs !== "object" || Array.isArray(body.inputs))) {
+        throw {
+            status: 400,
+            message: "inputs must be an object"
+        };
+    }
+
+    const slug = body.workflow_slug;
+    if (req.workflowApiKey!.workflow_slug !== slug) {
+        throw {
+            status: 403,
+            message: "Workflow API key does not belong to this workflow"
+        };
+    }
+
+    await assertWorkflowCanRunViaApi(slug);
+
+    const startedRun = await startWorkflowRunViaBackend({
+        workspaceDir: getWorkspaceDirFromEnv(),
+        slug,
+        inputs: (body.inputs ?? {}) as Record<string, unknown>,
+        authUserId: null,
+        sessionId: `api-${req.workflowApiKey!.id}-${randomUUID()}`,
+        messageId: `api-message-${randomUUID()}`,
+        callId: `api-call-${randomUUID()}`,
+        requirePermissionPrompt: false,
+        secretResolutionMode: "global",
+        runSource: "api",
+        workflowApiKeyId: req.workflowApiKey!.id,
     });
 
-    router.post("/runs", workflowApiHandler(async (req, res) => {
-        const body = req.body as { workflow_slug?: unknown; inputs?: unknown };
-        if (typeof body.workflow_slug !== "string" || body.workflow_slug.trim().length === 0) {
+    void startedRun.completion.catch(() => undefined);
+
+    res.json({
+        run_handle: startedRun.runId
+    });
+}));
+
+workflowApiRouter.get("/runs/:runHandle", workflowApiHandler(async (req, res) => {
+    const runHandle = req.params.runHandle as string;
+    const run = await assertApiKeyCanAccessRun(req, runHandle);
+    const logs = await readWorkflowRunLogs(run);
+    const inputs = parseRunInputs(run.args);
+    const success = run.status === "running" ? null : run.status === "success";
+
+    res.json({
+        run_handle: run.id,
+        workflow_slug: run.workflow_slug,
+        success,
+        logs,
+        error_message: run.error_message,
+        started_at: run.started_at,
+        completed_at: run.completed_at,
+        inputs,
+    });
+}));
+
+workflowApiRouter.post("/runs/:runHandle/stop", workflowApiHandler(async (req, res) => {
+    const runHandle = req.params.runHandle as string;
+    const run = await assertApiKeyCanAccessRun(req, runHandle);
+
+    if (run.status === "running") {
+        if (!run.session_id) {
             throw {
-                status: 400,
-                message: "workflow_slug is required"
+                status: 404,
+                message: "Workflow run session not found"
             };
         }
-        if (body.inputs !== undefined && (!body.inputs || typeof body.inputs !== "object" || Array.isArray(body.inputs))) {
-            throw {
-                status: 400,
-                message: "inputs must be an object"
-            };
-        }
+        await markWorkflowSessionAborted(run.session_id);
+    }
 
-        const slug = body.workflow_slug;
-        if (req.workflowApiKey!.workflow_slug !== slug) {
-            throw {
-                status: 403,
-                message: "Workflow API key does not belong to this workflow"
-            };
-        }
+    res.json({ success: true });
+}));
 
-        await assertWorkflowCanRunViaApi(slug);
-
-        const startedRun = await startWorkflowRunViaBackend({
-            workspaceDir: getWorkspaceDirFromEnv(),
-            slug,
-            inputs: (body.inputs ?? {}) as Record<string, unknown>,
-            authUserId: null,
-            sessionId: `api-${req.workflowApiKey!.id}-${randomUUID()}`,
-            messageId: `api-message-${randomUUID()}`,
-            callId: `api-call-${randomUUID()}`,
-            requirePermissionPrompt: false,
-            secretResolutionMode: "global",
-            runSource: "api",
-            workflowApiKeyId: req.workflowApiKey!.id,
-        });
-
-        void startedRun.completion.catch(() => undefined);
-
-        res.json({
-            run_handle: startedRun.runId
-        });
-    }));
-
-    router.get("/runs/:runHandle", workflowApiHandler(async (req, res) => {
-        const runHandle = req.params.runHandle as string;
-        const run = await assertApiKeyCanAccessRun(req, runHandle);
-        const logs = await readWorkflowRunLogs(run);
-
-        res.json({
-            run_handle: run.id,
-            workflow_slug: run.workflow_slug,
-            status: run.status,
-            logs,
-            result: run.output,
-            error_message: run.error_message,
-            started_at: run.started_at,
-            completed_at: run.completed_at,
-        });
-    }));
-
-    router.post("/runs/:runHandle/stop", workflowApiHandler(async (req, res) => {
-        const runHandle = req.params.runHandle as string;
-        const run = await assertApiKeyCanAccessRun(req, runHandle);
-
-        if (run.status === "running") {
-            if (!run.session_id) {
-                throw {
-                    status: 404,
-                    message: "Workflow run session not found"
-                };
-            }
-            await markWorkflowSessionAborted(run.session_id);
-        }
-
-        res.json({ success: true });
-    }));
-
-    return router;
-}
+export default workflowApiRouter;
