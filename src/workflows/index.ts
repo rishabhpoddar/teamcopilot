@@ -397,6 +397,7 @@ router.post('/:slug/manual-run', apiHandler(async (req, res) => {
         callId: manualCallId,
         requirePermissionPrompt: false,
         runSource: "user",
+        secretResolutionMode: "user",
     });
 
     void startedRun.completion.catch(() => undefined);
@@ -446,6 +447,7 @@ router.post('/execute', apiHandler(async (req, res) => {
         callId,
         requirePermissionPrompt: true,
         runSource: "user",
+        secretResolutionMode: "user",
     });
 
     const executionId = randomUUID();

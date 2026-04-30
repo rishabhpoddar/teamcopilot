@@ -348,8 +348,8 @@ export async function startWorkflowRunViaBackend(options: {
     messageId: string;
     callId: string;
     requirePermissionPrompt: boolean;
-    secretResolutionMode?: "user" | "global";
-    runSource?: "user" | "api";
+    secretResolutionMode: "user" | "global";
+    runSource: "user" | "api";
     workflowApiKeyId?: string | null;
 }): Promise<{ runId: string; timeoutSeconds: number; completion: Promise<{ status: string; output: string }> }> {
     if (!SLUG_REGEX.test(options.slug)) {
@@ -391,7 +391,7 @@ export async function startWorkflowRunViaBackend(options: {
         throw new Error(`Input validation failed: ${JSON.stringify(validation.errors)}`);
     }
 
-    const secretResolutionMode = options.secretResolutionMode ?? "user";
+    const secretResolutionMode = options.secretResolutionMode;
     if (secretResolutionMode === "user" && !options.authUserId) {
         throw new Error("authUserId is required for user secret resolution.");
     }
@@ -418,7 +418,7 @@ export async function startWorkflowRunViaBackend(options: {
             args: JSON.stringify(options.inputs),
             session_id: options.sessionId,
             message_id: options.messageId,
-            run_source: options.runSource ?? "user",
+            run_source: options.runSource,
             workflow_api_key_id: options.workflowApiKeyId ?? null,
         }
     });
