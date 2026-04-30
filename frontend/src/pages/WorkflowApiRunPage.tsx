@@ -73,16 +73,20 @@ function buildRunCurl(apiBaseUrl: string, apiKey: string, workflowSlug: string, 
 function buildStatusCurl(apiBaseUrl: string, apiKey: string): string {
     return [
         `RUN_HANDLE='paste-run-handle-here'`,
-        `curl -sS -X GET ${shellDoubleQuote(`${apiBaseUrl}/runs/$RUN_HANDLE`)}`,
-        `  -H ${shellSingleQuote(`Authorization: Bearer ${apiKey}`)}`,
+        [
+            `curl -sS -X GET ${shellDoubleQuote(`${apiBaseUrl}/runs/$RUN_HANDLE`)}`,
+            `  -H ${shellSingleQuote(`Authorization: Bearer ${apiKey}`)}`,
+        ].join(' \\\n'),
     ].join('\n');
 }
 
 function buildStopCurl(apiBaseUrl: string, apiKey: string): string {
     return [
         `RUN_HANDLE='paste-run-handle-here'`,
-        `curl -sS -X POST ${shellDoubleQuote(`${apiBaseUrl}/runs/$RUN_HANDLE/stop`)}`,
-        `  -H ${shellSingleQuote(`Authorization: Bearer ${apiKey}`)}`,
+        [
+            `curl -sS -X POST ${shellDoubleQuote(`${apiBaseUrl}/runs/$RUN_HANDLE/stop`)}`,
+            `  -H ${shellSingleQuote(`Authorization: Bearer ${apiKey}`)}`,
+        ].join(' \\\n'),
     ].join('\n');
 }
 
