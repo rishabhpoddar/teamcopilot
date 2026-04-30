@@ -1,14 +1,14 @@
-import { assertCondition, parseIntStrict } from "./assert";
+import { assertCondition, parseIntStrict, assertEnv } from './assert';
 
 export function getWorkflowApiHost(): string {
-    return process.env.WORKFLOW_API_HOST || process.env.TEAMCOPILOT_HOST || "0.0.0.0";
+    return process.env.WORKFLOW_API_HOST ?? assertEnv('TEAMCOPILOT_HOST');
 }
 
 export function getWorkflowApiPort(): number {
     if (process.env.WORKFLOW_API_PORT) {
         return parseIntStrict(process.env.WORKFLOW_API_PORT, "WORKFLOW_API_PORT");
     }
-    const teamcopilotPort = parseIntStrict(process.env.TEAMCOPILOT_PORT || "5124", "TEAMCOPILOT_PORT");
+    const teamcopilotPort = parseIntStrict(assertEnv('TEAMCOPILOT_PORT'), "TEAMCOPILOT_PORT");
     return teamcopilotPort + 1;
 }
 

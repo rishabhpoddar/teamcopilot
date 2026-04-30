@@ -445,7 +445,7 @@ router.post('/execute', apiHandler(async (req, res) => {
         messageId,
         callId,
         requirePermissionPrompt: true,
-        runSource: "agent",
+        runSource: "user",
     });
 
     const executionId = randomUUID();

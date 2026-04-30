@@ -349,7 +349,7 @@ export async function startWorkflowRunViaBackend(options: {
     callId: string;
     requirePermissionPrompt: boolean;
     secretResolutionMode?: "user" | "global";
-    runSource?: "user" | "agent" | "api";
+    runSource?: "user" | "api";
     workflowApiKeyId?: string | null;
 }): Promise<{ runId: string; timeoutSeconds: number; completion: Promise<{ status: string; output: string }> }> {
     if (!SLUG_REGEX.test(options.slug)) {

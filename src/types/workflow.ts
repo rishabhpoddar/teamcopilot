@@ -65,7 +65,7 @@ export interface WorkflowRun {
     args: string | null;
     error_message: string | null;
     output: string | null;
-    run_source: "user" | "agent" | "api";
+    run_source: "user" | "api";
     workflow_api_key_id: string | null;
     user: {
         name: string;
