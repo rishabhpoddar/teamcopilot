@@ -53,7 +53,11 @@ function shellSingleQuote(value: string): string {
     return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
-function buildCurl(apiBaseUrl: string, apiKey: string, workflowSlug: string, inputs: Record<string, WorkflowInput>): string {
+function shellDoubleQuote(value: string): string {
+    return `"${value.replace(/(["\\`])/g, '\\$1')}"`;
+}
+
+function buildRunCurl(apiBaseUrl: string, apiKey: string, workflowSlug: string, inputs: Record<string, WorkflowInput>): string {
     const body = {
         workflow_slug: workflowSlug,
         inputs: buildExampleInputs(inputs),
@@ -64,6 +68,22 @@ function buildCurl(apiBaseUrl: string, apiKey: string, workflowSlug: string, inp
         `  -H ${shellSingleQuote('Content-Type: application/json')}`,
         `  -d ${shellSingleQuote(JSON.stringify(body, null, 2))}`,
     ].join(' \\\n');
+}
+
+function buildStatusCurl(apiBaseUrl: string, apiKey: string): string {
+    return [
+        `RUN_HANDLE='paste-run-handle-here'`,
+        `curl -sS -X GET ${shellDoubleQuote(`${apiBaseUrl}/runs/$RUN_HANDLE`)}`,
+        `  -H ${shellSingleQuote(`Authorization: Bearer ${apiKey}`)}`,
+    ].join('\n');
+}
+
+function buildStopCurl(apiBaseUrl: string, apiKey: string): string {
+    return [
+        `RUN_HANDLE='paste-run-handle-here'`,
+        `curl -sS -X POST ${shellDoubleQuote(`${apiBaseUrl}/runs/$RUN_HANDLE/stop`)}`,
+        `  -H ${shellSingleQuote(`Authorization: Bearer ${apiKey}`)}`,
+    ].join('\n');
 }
 
 export default function WorkflowApiRunPage() {
@@ -148,7 +168,9 @@ export default function WorkflowApiRunPage() {
 
     const primaryKey = apiKeys[0]?.api_key ?? '';
     const inputs = workflow?.manifest.inputs ?? {};
-    const curl = workflow && primaryKey ? buildCurl(apiBaseUrl, primaryKey, workflow.slug, inputs) : '';
+    const runCurl = workflow && primaryKey ? buildRunCurl(apiBaseUrl, primaryKey, workflow.slug, inputs) : '';
+    const statusCurl = primaryKey ? buildStatusCurl(apiBaseUrl, primaryKey) : '';
+    const stopCurl = primaryKey ? buildStopCurl(apiBaseUrl, primaryKey) : '';
     const schemaJson = JSON.stringify(inputs, null, 2);
 
     return (
@@ -172,7 +194,17 @@ export default function WorkflowApiRunPage() {
 
                     <section className="workflow-api-card">
                         <h3>Run Command</h3>
-                        <pre>{curl}</pre>
+                        <pre>{runCurl}</pre>
+                    </section>
+
+                    <section className="workflow-api-card">
+                        <h3>Status Command</h3>
+                        <pre>{statusCurl}</pre>
+                    </section>
+
+                    <section className="workflow-api-card">
+                        <h3>Stop Command</h3>
+                        <pre>{stopCurl}</pre>
                     </section>
 
                     <section className="workflow-api-card">
