@@ -184,12 +184,11 @@ workflowApiRouter.get("/runs/:runHandle", workflowApiHandler(async (req, res) =>
     const run = await assertApiKeyCanAccessRun(req, runHandle);
     const logs = await readWorkflowRunLogs(run);
     const inputs = parseRunInputs(run.args);
-    const success = run.status === "running" ? null : run.status === "success";
 
     res.json({
         run_handle: run.id,
         workflow_slug: run.workflow_slug,
-        success,
+        status: run.status,
         logs,
         error_message: run.error_message,
         started_at: run.started_at,
