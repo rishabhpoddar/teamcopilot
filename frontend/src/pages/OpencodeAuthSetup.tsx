@@ -52,26 +52,55 @@ function isVisibleAuthMethod(method: ProviderAuthMethod, providerId: string): bo
     return !method.label.toLowerCase().includes('browser');
 }
 
-function getManagedEnvExamples(model: string): ManagedEnvExample[] {
-    const deployment = model.split('/').slice(1).join('/');
+function getManagedEnvExamples(providerId: string, model: string): ManagedEnvExample[] {
+    const modelSuffix = model.split('/').slice(1).join('/');
 
-    return [
-        {
-            key: 'AZURE_API_KEY',
-            value: 'abc123xyz',
-            help: 'API key for the Azure OpenAI resource.',
-        },
-        {
-            key: 'AZURE_OPENAI_ENDPOINT',
-            value: 'https://my-resource.openai.azure.com/',
-            help: 'Base endpoint for the Azure OpenAI resource.',
-        },
-        {
-            key: 'OPENCODE_MODEL',
-            value: `azure-openai/${deployment}`,
-            help: 'Provider id plus the Azure deployment name.',
-        },
-    ];
+    if (providerId === 'azure-openai') {
+        return [
+            {
+                key: 'AZURE_API_KEY',
+                value: 'abc123xyz',
+                help: 'API key for the Azure OpenAI resource.',
+            },
+            {
+                key: 'AZURE_OPENAI_ENDPOINT',
+                value: 'https://my-resource.openai.azure.com/',
+                help: 'Base endpoint for the Azure OpenAI resource.',
+            },
+            {
+                key: 'OPENCODE_MODEL',
+                value: `azure-openai/${modelSuffix}`,
+                help: 'Provider id plus the Azure deployment name.',
+            },
+        ];
+    }
+
+    if (providerId === 'google-vertex-anthropic') {
+        return [
+            {
+                key: 'GOOGLE_CLOUD_PROJECT',
+                value: 'my-gcp-project-id',
+                help: 'Google Cloud project ID. You may use GOOGLE_CLOUD_PROJECT, GCP_PROJECT, or GCLOUD_PROJECT.',
+            },
+            {
+                key: 'GOOGLE_APPLICATION_CREDENTIALS',
+                value: '/path/to/service-account.json',
+                help: 'Path to a service account JSON key (optional if using gcloud application-default login or GCE metadata).',
+            },
+            {
+                key: 'VERTEX_LOCATION',
+                value: 'global',
+                help: 'Vertex region (optional; OpenCode defaults to global).',
+            },
+            {
+                key: 'OPENCODE_MODEL',
+                value: `google-vertex-anthropic/${modelSuffix}`,
+                help: 'Provider id plus the Vertex Claude model ID (see OpenCode / Vertex model garden).',
+            },
+        ];
+    }
+
+    return [];
 }
 
 export default function OpencodeAuthSetup() {
@@ -114,8 +143,9 @@ export default function OpencodeAuthSetup() {
     const isManualCodeStep = oauthAuthorization?.method === 'code';
     const isAutoCodeStep = oauthAuthorization?.method === 'auto';
     const deviceCode = oauthAuthorization ? extractDeviceCode(oauthAuthorization.instructions) : '';
-    const isManagedProviderNotice = !isManualCodeStep && status?.provider_id === 'azure-openai';
-    const managedEnvExamples = status ? getManagedEnvExamples(status.model) : [];
+    const isManagedProviderNotice = !isManualCodeStep
+        && (status?.provider_id === 'azure-openai' || status?.provider_id === 'google-vertex-anthropic');
+    const managedEnvExamples = status ? getManagedEnvExamples(status.provider_id, status.model) : [];
 
     function resetOauthFlowState() {
         if (autoOauthRequestRef.current) {
@@ -378,13 +408,26 @@ export default function OpencodeAuthSetup() {
                                 </div>
                                 <div className="opencode-auth-managed-layout">
                                     <p className="opencode-auth-managed-intro">
-                                        Azure OpenAI is configured through service environment variables. To update this model,
-                                        ask the service administrator to change the values below and restart TeamCopilot.
+                                        {status.provider_id === 'azure-openai' ? (
+                                            <>
+                                                Azure OpenAI is configured through service environment variables. To update this model,
+                                                ask the service administrator to change the values below and restart TeamCopilot.
+                                            </>
+                                        ) : (
+                                            <>
+                                                Google Vertex (Claude) uses Application Default Credentials or a service account key.
+                                                To update this model, ask the service administrator to change the values below and restart TeamCopilot.
+                                            </>
+                                        )}
                                     </p>
                                     <div className="opencode-auth-managed-example-block">
                                         <div className="opencode-auth-managed-example-header">
                                             <h4>Required Values</h4>
-                                            <p>Use your Azure deployment name in <code>OPENCODE_MODEL</code></p>
+                                            <p>
+                                                {status.provider_id === 'azure-openai'
+                                                    ? 'Use your Azure deployment name in OPENCODE_MODEL'
+                                                    : 'Use your Vertex Claude model ID in OPENCODE_MODEL'}
+                                            </p>
                                         </div>
                                         <div className="opencode-auth-managed-example-list">
                                             {managedEnvExamples.map((example) => (

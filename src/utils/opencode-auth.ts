@@ -1,7 +1,10 @@
 import fs from "fs/promises";
+import { constants as fsConstants } from "fs";
 import path from "path";
 import { assertEnv } from "./assert";
 import { getWorkspaceDirFromEnv } from "./workspace-sync";
+
+const VERTEX_ANTHROPIC_PROVIDER_ID = "google-vertex-anthropic";
 
 type ProviderAuthInfo =
     | {
@@ -195,8 +198,12 @@ function isAzureCustomProvider(providerId: string): boolean {
     return normalizeProviderId(providerId).toLowerCase() === "azure-openai";
 }
 
+function isGoogleVertexAnthropicManagedProvider(providerId: string): boolean {
+    return normalizeProviderId(providerId).toLowerCase() === VERTEX_ANTHROPIC_PROVIDER_ID;
+}
+
 export function isServiceManagedProvider(providerId: string): boolean {
-    return isAzureCustomProvider(providerId);
+    return isAzureCustomProvider(providerId) || isGoogleVertexAnthropicManagedProvider(providerId);
 }
 
 function normalizeAzureEndpoint(endpoint: string): string {
@@ -206,6 +213,47 @@ function normalizeAzureEndpoint(endpoint: string): string {
 function hasRequiredAzureEnvironment(): boolean {
     return isNonEmptyString(process.env.AZURE_API_KEY)
         && isNonEmptyString(process.env.AZURE_OPENAI_ENDPOINT);
+}
+
+function getGoogleCloudProjectFromEnv(): string | undefined {
+    const trimmed
+        = (process.env.GOOGLE_CLOUD_PROJECT ?? process.env.GCP_PROJECT ?? process.env.GCLOUD_PROJECT ?? "").trim();
+    return isNonEmptyString(trimmed) ? trimmed : undefined;
+}
+
+function hasRequiredVertexAnthropicProject(): boolean {
+    return getGoogleCloudProjectFromEnv() !== undefined;
+}
+
+async function hasReadableGoogleApplicationCredentialsPath(): Promise<boolean> {
+    const credPathRaw = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    if (credPathRaw === undefined || credPathRaw.trim().length === 0) {
+        return true;
+    }
+
+    try {
+        await fs.access(credPathRaw.trim(), fsConstants.R_OK);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+async function hasVertexAnthropicManagedRuntimeReady(providerId: string): Promise<boolean> {
+    if (!isGoogleVertexAnthropicManagedProvider(providerId)) {
+        return false;
+    }
+
+    if (!hasRequiredVertexAnthropicProject()) {
+        return false;
+    }
+
+    const modelTail = getConfiguredModelId().trim();
+    if (!modelTail) {
+        return false;
+    }
+
+    return await hasReadableGoogleApplicationCredentialsPath();
 }
 
 async function hasAzureProviderConfiguration(providerId: string): Promise<boolean> {
@@ -230,6 +278,10 @@ export async function hasRuntimeProviderCredentials(providerId: string): Promise
         return hasRequiredAzureEnvironment() && await hasAzureProviderConfiguration(providerId);
     }
 
+    if (isGoogleVertexAnthropicManagedProvider(providerId)) {
+        return await hasVertexAnthropicManagedRuntimeReady(providerId);
+    }
+
     return Boolean(await getRuntimeProviderAuth(providerId));
 }
 
@@ -248,6 +300,11 @@ export async function setRuntimeProviderAuth(providerId: string, info: ProviderA
 }
 
 export async function syncManagedProviderConfiguration(): Promise<void> {
+    const projectFallback = process.env.GCP_PROJECT?.trim() ?? process.env.GCLOUD_PROJECT?.trim();
+    if (!isNonEmptyString(process.env.GOOGLE_CLOUD_PROJECT?.trim()) && isNonEmptyString(projectFallback)) {
+        process.env.GOOGLE_CLOUD_PROJECT = projectFallback;
+    }
+
     const providerId = getConfiguredModelProviderId();
     if (!isAzureCustomProvider(providerId) || !hasRequiredAzureEnvironment()) {
         return;
