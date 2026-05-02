@@ -256,11 +256,11 @@ async function initializeWorkspaceNodeDependencies(workspaceDir: string): Promis
         ...(existingPackageJson.dependencies ?? {}),
         "opencode-ai": "1.3.7",
     };
-    const opencodeModelPrefix = `${assertEnv("OPENCODE_MODEL").split("/")[0]}/`;
-    if (opencodeModelPrefix === "azure-openai/") {
+    const opencodeModelProvider = (assertEnv("OPENCODE_MODEL").split("/")[0] ?? "").toLowerCase();
+    if (opencodeModelProvider === "azure-openai") {
         dependencies["@ai-sdk/azure"] = WORKSPACE_AZURE_PROVIDER_VERSION;
     }
-    if (opencodeModelPrefix === "google-vertex-anthropic/") {
+    if (opencodeModelProvider === "google-vertex" || opencodeModelProvider.startsWith("google-vertex-")) {
         dependencies["@ai-sdk/google-vertex"] = WORKSPACE_GOOGLE_VERTEX_PROVIDER_VERSION;
     }
     const workspacePackageJson = {

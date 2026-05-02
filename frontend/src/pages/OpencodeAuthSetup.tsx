@@ -42,6 +42,11 @@ function extractDeviceCode(instructions: string): string {
     return match[1].trim();
 }
 
+function isManagedGoogleVertexProvider(providerId: string): boolean {
+    const id = providerId.toLowerCase();
+    return id === 'google-vertex' || id.startsWith('google-vertex-');
+}
+
 function isVisibleAuthMethod(method: ProviderAuthMethod, providerId: string): boolean {
     if (providerId === 'anthropic' && method.type === 'oauth') {
         return false;
@@ -75,7 +80,7 @@ function getManagedEnvExamples(providerId: string, model: string): ManagedEnvExa
         ];
     }
 
-    if (providerId === 'google-vertex-anthropic') {
+    if (isManagedGoogleVertexProvider(providerId)) {
         return [
             {
                 key: 'GOOGLE_CLOUD_PROJECT',
@@ -94,8 +99,8 @@ function getManagedEnvExamples(providerId: string, model: string): ManagedEnvExa
             },
             {
                 key: 'OPENCODE_MODEL',
-                value: `google-vertex-anthropic/${modelSuffix}`,
-                help: 'Provider id plus the Vertex Claude model ID (see OpenCode / Vertex model garden).',
+                value: model,
+                help: 'OpenCode Vertex provider prefix plus model id (for example google-vertex/... or google-vertex-anthropic/...).',
             },
         ];
     }
@@ -144,7 +149,7 @@ export default function OpencodeAuthSetup() {
     const isAutoCodeStep = oauthAuthorization?.method === 'auto';
     const deviceCode = oauthAuthorization ? extractDeviceCode(oauthAuthorization.instructions) : '';
     const isManagedProviderNotice = !isManualCodeStep
-        && (status?.provider_id === 'azure-openai' || status?.provider_id === 'google-vertex-anthropic');
+        && Boolean(status && (status.provider_id === 'azure-openai' || isManagedGoogleVertexProvider(status.provider_id)));
     const managedEnvExamples = status ? getManagedEnvExamples(status.provider_id, status.model) : [];
 
     function resetOauthFlowState() {
@@ -415,7 +420,7 @@ export default function OpencodeAuthSetup() {
                                             </>
                                         ) : (
                                             <>
-                                                Google Vertex (Claude) requires GOOGLE_CLOUD_PROJECT, GOOGLE_APPLICATION_CREDENTIALS,
+                                                Google Vertex requires GOOGLE_CLOUD_PROJECT, GOOGLE_APPLICATION_CREDENTIALS,
                                                 VERTEX_LOCATION, and OPENCODE_MODEL set in server environment variables. Ask the administrator
                                                 to update the values below and restart TeamCopilot.
                                             </>
@@ -427,7 +432,7 @@ export default function OpencodeAuthSetup() {
                                             <p>
                                                 {status.provider_id === 'azure-openai'
                                                     ? 'Use your Azure deployment name in OPENCODE_MODEL'
-                                                    : 'Use your Vertex Claude model ID in OPENCODE_MODEL'}
+                                                    : 'Use your OpenCode Vertex model id in OPENCODE_MODEL'}
                                             </p>
                                         </div>
                                         <div className="opencode-auth-managed-example-list">

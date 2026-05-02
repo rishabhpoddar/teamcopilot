@@ -4,7 +4,10 @@ import path from "path";
 import { assertEnv } from "./assert";
 import { getWorkspaceDirFromEnv } from "./workspace-sync";
 
-const VERTEX_ANTHROPIC_PROVIDER_ID = "google-vertex-anthropic";
+function isGoogleVertexManagedProvider(providerId: string): boolean {
+    const id = normalizeProviderId(providerId).toLowerCase();
+    return id === "google-vertex" || id.startsWith("google-vertex-");
+}
 
 type ProviderAuthInfo =
     | {
@@ -198,12 +201,8 @@ function isAzureCustomProvider(providerId: string): boolean {
     return normalizeProviderId(providerId).toLowerCase() === "azure-openai";
 }
 
-function isGoogleVertexAnthropicManagedProvider(providerId: string): boolean {
-    return normalizeProviderId(providerId).toLowerCase() === VERTEX_ANTHROPIC_PROVIDER_ID;
-}
-
 export function isServiceManagedProvider(providerId: string): boolean {
-    return isAzureCustomProvider(providerId) || isGoogleVertexAnthropicManagedProvider(providerId);
+    return isAzureCustomProvider(providerId) || isGoogleVertexManagedProvider(providerId);
 }
 
 function normalizeAzureEndpoint(endpoint: string): string {
@@ -221,7 +220,7 @@ function getGoogleCloudProjectFromEnv(): string | undefined {
     return isNonEmptyString(trimmed) ? trimmed : undefined;
 }
 
-function hasRequiredVertexAnthropicProject(): boolean {
+function hasRequiredVertexManagedProject(): boolean {
     return getGoogleCloudProjectFromEnv() !== undefined;
 }
 
@@ -243,12 +242,12 @@ async function googleApplicationCredentialsConfigured(): Promise<boolean> {
     }
 }
 
-async function hasVertexAnthropicManagedRuntimeReady(providerId: string): Promise<boolean> {
-    if (!isGoogleVertexAnthropicManagedProvider(providerId)) {
+async function hasVertexManagedRuntimeReady(providerId: string): Promise<boolean> {
+    if (!isGoogleVertexManagedProvider(providerId)) {
         return false;
     }
 
-    if (!hasRequiredVertexAnthropicProject()) {
+    if (!hasRequiredVertexManagedProject()) {
         return false;
     }
 
@@ -286,8 +285,8 @@ export async function hasRuntimeProviderCredentials(providerId: string): Promise
         return hasRequiredAzureEnvironment() && await hasAzureProviderConfiguration(providerId);
     }
 
-    if (isGoogleVertexAnthropicManagedProvider(providerId)) {
-        return await hasVertexAnthropicManagedRuntimeReady(providerId);
+    if (isGoogleVertexManagedProvider(providerId)) {
+        return await hasVertexManagedRuntimeReady(providerId);
     }
 
     return Boolean(await getRuntimeProviderAuth(providerId));
