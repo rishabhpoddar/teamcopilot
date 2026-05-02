@@ -18,6 +18,7 @@ const WORKSPACE_DB_FILENAME = "data.db";
 const HONEYTOKEN_UUID = "1f9f0b72-5f9f-4c9b-aef1-2fb2e0f6d8c4";
 const HONEYTOKEN_FILE_NAME = `honeytoken-${HONEYTOKEN_UUID}.txt`;
 const WORKSPACE_AZURE_PROVIDER_VERSION = "3.0.48";
+const WORKSPACE_GOOGLE_VERTEX_PROVIDER_VERSION = "4.0.114";
 const WORKSPACE_INSTALL_STATE_RELATIVE_PATH = path.join(".opencode", "install-state.json");
 const WORKSPACE_OPENCODE_DIRECTORY = ".opencode";
 const WORKSPACE_OPENCODE_PACKAGE_JSON = path.join(WORKSPACE_OPENCODE_DIRECTORY, "package.json");
@@ -255,8 +256,12 @@ async function initializeWorkspaceNodeDependencies(workspaceDir: string): Promis
         ...(existingPackageJson.dependencies ?? {}),
         "opencode-ai": "1.3.7",
     };
-    if (assertEnv("OPENCODE_MODEL").startsWith("azure-openai/")) {
+    const opencodeModelProvider = (assertEnv("OPENCODE_MODEL").split("/")[0] ?? "").toLowerCase();
+    if (opencodeModelProvider === "azure-openai") {
         dependencies["@ai-sdk/azure"] = WORKSPACE_AZURE_PROVIDER_VERSION;
+    }
+    if (opencodeModelProvider === "google-vertex" || opencodeModelProvider.startsWith("google-vertex-")) {
+        dependencies["@ai-sdk/google-vertex"] = WORKSPACE_GOOGLE_VERTEX_PROVIDER_VERSION;
     }
     const workspacePackageJson = {
         ...existingPackageJson,

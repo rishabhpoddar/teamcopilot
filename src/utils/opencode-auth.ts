@@ -1,7 +1,13 @@
 import fs from "fs/promises";
+import { constants as fsConstants } from "fs";
 import path from "path";
 import { assertEnv } from "./assert";
 import { getWorkspaceDirFromEnv } from "./workspace-sync";
+
+function isGoogleVertexManagedProvider(providerId: string): boolean {
+    const id = normalizeProviderId(providerId).toLowerCase();
+    return id === "google-vertex" || id.startsWith("google-vertex-");
+}
 
 type ProviderAuthInfo =
     | {
@@ -114,7 +120,7 @@ async function writeAuthRecord(filepath: string, data: AuthRecord): Promise<void
         mode: 0o600,
     });
     await fs.rename(tempPath, filepath);
-    await fs.chmod(filepath, 0o600).catch(() => {});
+    await fs.chmod(filepath, 0o600).catch(() => { });
 }
 
 async function readOpencodeConfig(filepath: string): Promise<OpencodeConfigRecord> {
@@ -144,7 +150,7 @@ async function writeOpencodeConfig(filepath: string, data: OpencodeConfigRecord)
         mode: 0o600,
     });
     await fs.rename(tempPath, filepath);
-    await fs.chmod(filepath, 0o600).catch(() => {});
+    await fs.chmod(filepath, 0o600).catch(() => { });
 }
 
 export function getConfiguredModelProviderId(): string {
@@ -195,8 +201,9 @@ function isAzureCustomProvider(providerId: string): boolean {
     return normalizeProviderId(providerId).toLowerCase() === "azure-openai";
 }
 
+/** Service-level credentials (TeamCopilot env, not per-user auth UI) — keep in sync with isManagedServiceLevelProvider in OpencodeAuthSetup.tsx */
 export function isServiceManagedProvider(providerId: string): boolean {
-    return isAzureCustomProvider(providerId);
+    return isAzureCustomProvider(providerId) || isGoogleVertexManagedProvider(providerId);
 }
 
 function normalizeAzureEndpoint(endpoint: string): string {
@@ -206,6 +213,50 @@ function normalizeAzureEndpoint(endpoint: string): string {
 function hasRequiredAzureEnvironment(): boolean {
     return isNonEmptyString(process.env.AZURE_API_KEY)
         && isNonEmptyString(process.env.AZURE_OPENAI_ENDPOINT);
+}
+
+function getGoogleCloudProjectFromEnv(): string | undefined {
+    const trimmed = (process.env.GOOGLE_CLOUD_PROJECT ?? "").trim();
+    return isNonEmptyString(trimmed) ? trimmed : undefined;
+}
+
+async function hasRequiredVertexManagedProject(): Promise<boolean> {
+    return getGoogleCloudProjectFromEnv() !== undefined && hasVertexLocationConfigured() && await googleApplicationCredentialsConfigured();
+}
+
+function hasVertexLocationConfigured(): boolean {
+    return isNonEmptyString(process.env.VERTEX_LOCATION?.trim());
+}
+
+async function googleApplicationCredentialsConfigured(): Promise<boolean> {
+    const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS?.trim();
+    if (!credPath) {
+        return false;
+    }
+
+    try {
+        await fs.access(credPath, fsConstants.R_OK);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+async function hasVertexManagedRuntimeReady(providerId: string): Promise<boolean> {
+    if (!isGoogleVertexManagedProvider(providerId)) {
+        return false;
+    }
+
+    if (!(await hasRequiredVertexManagedProject())) {
+        return false;
+    }
+
+    const modelTail = getConfiguredModelId().trim();
+    if (!modelTail) {
+        return false;
+    }
+
+    return true;
 }
 
 async function hasAzureProviderConfiguration(providerId: string): Promise<boolean> {
@@ -230,6 +281,10 @@ export async function hasRuntimeProviderCredentials(providerId: string): Promise
         return hasRequiredAzureEnvironment() && await hasAzureProviderConfiguration(providerId);
     }
 
+    if (isGoogleVertexManagedProvider(providerId)) {
+        return await hasVertexManagedRuntimeReady(providerId);
+    }
+
     return Boolean(await getRuntimeProviderAuth(providerId));
 }
 
@@ -248,6 +303,9 @@ export async function setRuntimeProviderAuth(providerId: string, info: ProviderA
 }
 
 export async function syncManagedProviderConfiguration(): Promise<void> {
+    // Azure OpenAI: workspace opencode.json must list the deployment, base URL, and @ai-sdk/azure options.
+    // Google Vertex providers are built into OpenCode; project/region/credentials come from process env only — no stanza needed here.
+
     const providerId = getConfiguredModelProviderId();
     if (!isAzureCustomProvider(providerId) || !hasRequiredAzureEnvironment()) {
         return;
