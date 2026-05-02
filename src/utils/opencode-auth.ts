@@ -120,7 +120,7 @@ async function writeAuthRecord(filepath: string, data: AuthRecord): Promise<void
         mode: 0o600,
     });
     await fs.rename(tempPath, filepath);
-    await fs.chmod(filepath, 0o600).catch(() => {});
+    await fs.chmod(filepath, 0o600).catch(() => { });
 }
 
 async function readOpencodeConfig(filepath: string): Promise<OpencodeConfigRecord> {
@@ -150,7 +150,7 @@ async function writeOpencodeConfig(filepath: string, data: OpencodeConfigRecord)
         mode: 0o600,
     });
     await fs.rename(tempPath, filepath);
-    await fs.chmod(filepath, 0o600).catch(() => {});
+    await fs.chmod(filepath, 0o600).catch(() => { });
 }
 
 export function getConfiguredModelProviderId(): string {
@@ -215,8 +215,7 @@ function hasRequiredAzureEnvironment(): boolean {
 }
 
 function getGoogleCloudProjectFromEnv(): string | undefined {
-    const trimmed
-        = (process.env.GOOGLE_CLOUD_PROJECT ?? process.env.GCP_PROJECT ?? process.env.GCLOUD_PROJECT ?? "").trim();
+    const trimmed = (process.env.GOOGLE_CLOUD_PROJECT ?? "").trim();
     return isNonEmptyString(trimmed) ? trimmed : undefined;
 }
 
@@ -307,10 +306,8 @@ export async function setRuntimeProviderAuth(providerId: string, info: ProviderA
 }
 
 export async function syncManagedProviderConfiguration(): Promise<void> {
-    const projectFallback = process.env.GCP_PROJECT?.trim() ?? process.env.GCLOUD_PROJECT?.trim();
-    if (!isNonEmptyString(process.env.GOOGLE_CLOUD_PROJECT?.trim()) && isNonEmptyString(projectFallback)) {
-        process.env.GOOGLE_CLOUD_PROJECT = projectFallback;
-    }
+    // Azure OpenAI: workspace opencode.json must list the deployment, base URL, and @ai-sdk/azure options.
+    // Google Vertex providers are built into OpenCode; project/region/credentials come from process env only — no stanza needed here.
 
     const providerId = getConfiguredModelProviderId();
     if (!isAzureCustomProvider(providerId) || !hasRequiredAzureEnvironment()) {

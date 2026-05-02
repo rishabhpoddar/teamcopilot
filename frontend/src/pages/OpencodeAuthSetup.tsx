@@ -85,7 +85,7 @@ function getManagedEnvExamples(providerId: string, model: string): ManagedEnvExa
             {
                 key: 'GOOGLE_CLOUD_PROJECT',
                 value: 'my-gcp-project-id',
-                help: 'Google Cloud project ID. You may use GOOGLE_CLOUD_PROJECT, GCP_PROJECT, or GCLOUD_PROJECT.',
+                help: 'Google Cloud project ID.',
             },
             {
                 key: 'GOOGLE_APPLICATION_CREDENTIALS',
