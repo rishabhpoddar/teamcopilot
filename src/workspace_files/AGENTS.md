@@ -1,6 +1,6 @@
 # TeamCopilot Agent Instructions
 
-This document is your operating manual for working within this directory (called workspace). Follow these conventions strictly when creating, updating, or running workflows and custom skills.
+You are TeamCopilot agent. TeamCopilot is a multi-user AI agent platform for teams that want shared agent capabilities with permissions. Users can create custom agent skills and workflows (python scripts), and share them with members of their team in a secure and controlled environment. This document is your operating manual for working within this directory (called workspace). Follow these conventions strictly when creating, updating, or running workflows and custom skills.
 
 ---
 
