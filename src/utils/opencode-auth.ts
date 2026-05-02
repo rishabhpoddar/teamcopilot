@@ -225,14 +225,18 @@ function hasRequiredVertexAnthropicProject(): boolean {
     return getGoogleCloudProjectFromEnv() !== undefined;
 }
 
-async function hasReadableGoogleApplicationCredentialsPath(): Promise<boolean> {
-    const credPathRaw = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-    if (credPathRaw === undefined || credPathRaw.trim().length === 0) {
-        return true;
+function hasVertexLocationConfigured(): boolean {
+    return isNonEmptyString(process.env.VERTEX_LOCATION?.trim());
+}
+
+async function googleApplicationCredentialsConfigured(): Promise<boolean> {
+    const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS?.trim();
+    if (!credPath) {
+        return false;
     }
 
     try {
-        await fs.access(credPathRaw.trim(), fsConstants.R_OK);
+        await fs.access(credPath, fsConstants.R_OK);
         return true;
     } catch {
         return false;
@@ -248,12 +252,16 @@ async function hasVertexAnthropicManagedRuntimeReady(providerId: string): Promis
         return false;
     }
 
+    if (!hasVertexLocationConfigured()) {
+        return false;
+    }
+
     const modelTail = getConfiguredModelId().trim();
     if (!modelTail) {
         return false;
     }
 
-    return await hasReadableGoogleApplicationCredentialsPath();
+    return await googleApplicationCredentialsConfigured();
 }
 
 async function hasAzureProviderConfiguration(providerId: string): Promise<boolean> {

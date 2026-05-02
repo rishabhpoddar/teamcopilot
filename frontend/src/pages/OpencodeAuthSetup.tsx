@@ -85,12 +85,12 @@ function getManagedEnvExamples(providerId: string, model: string): ManagedEnvExa
             {
                 key: 'GOOGLE_APPLICATION_CREDENTIALS',
                 value: '/path/to/service-account.json',
-                help: 'Path to a service account JSON key (optional if using gcloud application-default login or GCE metadata).',
+                help: 'Path to a Google Cloud service account JSON key file (readable by this process).',
             },
             {
                 key: 'VERTEX_LOCATION',
                 value: 'global',
-                help: 'Vertex region (optional; OpenCode defaults to global).',
+                help: 'Vertex AI region or endpoint (for example global or us-central1). Must be set explicitly.',
             },
             {
                 key: 'OPENCODE_MODEL',
@@ -415,8 +415,9 @@ export default function OpencodeAuthSetup() {
                                             </>
                                         ) : (
                                             <>
-                                                Google Vertex (Claude) uses Application Default Credentials or a service account key.
-                                                To update this model, ask the service administrator to change the values below and restart TeamCopilot.
+                                                Google Vertex (Claude) requires GOOGLE_CLOUD_PROJECT, GOOGLE_APPLICATION_CREDENTIALS,
+                                                VERTEX_LOCATION, and OPENCODE_MODEL set in server environment variables. Ask the administrator
+                                                to update the values below and restart TeamCopilot.
                                             </>
                                         )}
                                     </p>
