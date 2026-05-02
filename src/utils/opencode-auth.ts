@@ -201,6 +201,7 @@ function isAzureCustomProvider(providerId: string): boolean {
     return normalizeProviderId(providerId).toLowerCase() === "azure-openai";
 }
 
+/** Service-level credentials (TeamCopilot env, not per-user auth UI) — keep in sync with isManagedServiceLevelProvider in OpencodeAuthSetup.tsx */
 export function isServiceManagedProvider(providerId: string): boolean {
     return isAzureCustomProvider(providerId) || isGoogleVertexManagedProvider(providerId);
 }
@@ -219,8 +220,8 @@ function getGoogleCloudProjectFromEnv(): string | undefined {
     return isNonEmptyString(trimmed) ? trimmed : undefined;
 }
 
-function hasRequiredVertexManagedProject(): boolean {
-    return getGoogleCloudProjectFromEnv() !== undefined;
+async function hasRequiredVertexManagedProject(): Promise<boolean> {
+    return getGoogleCloudProjectFromEnv() !== undefined && hasVertexLocationConfigured() && await googleApplicationCredentialsConfigured();
 }
 
 function hasVertexLocationConfigured(): boolean {
@@ -246,11 +247,7 @@ async function hasVertexManagedRuntimeReady(providerId: string): Promise<boolean
         return false;
     }
 
-    if (!hasRequiredVertexManagedProject()) {
-        return false;
-    }
-
-    if (!hasVertexLocationConfigured()) {
+    if (!(await hasRequiredVertexManagedProject())) {
         return false;
     }
 
@@ -259,7 +256,7 @@ async function hasVertexManagedRuntimeReady(providerId: string): Promise<boolean
         return false;
     }
 
-    return await googleApplicationCredentialsConfigured();
+    return true;
 }
 
 async function hasAzureProviderConfiguration(providerId: string): Promise<boolean> {

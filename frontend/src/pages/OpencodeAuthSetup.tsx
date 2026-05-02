@@ -47,6 +47,11 @@ function isManagedGoogleVertexProvider(providerId: string): boolean {
     return id === 'google-vertex' || id.startsWith('google-vertex-');
 }
 
+/** Service-level (read-only) OpenCode providers — keep in sync with isServiceManagedProvider in src/utils/opencode-auth.ts */
+function isManagedServiceLevelProvider(providerId: string): boolean {
+    return providerId === 'azure-openai' || isManagedGoogleVertexProvider(providerId);
+}
+
 function isVisibleAuthMethod(method: ProviderAuthMethod, providerId: string): boolean {
     if (providerId === 'anthropic' && method.type === 'oauth') {
         return false;
@@ -149,7 +154,7 @@ export default function OpencodeAuthSetup() {
     const isAutoCodeStep = oauthAuthorization?.method === 'auto';
     const deviceCode = oauthAuthorization ? extractDeviceCode(oauthAuthorization.instructions) : '';
     const isManagedProviderNotice = !isManualCodeStep
-        && Boolean(status && (status.provider_id === 'azure-openai' || isManagedGoogleVertexProvider(status.provider_id)));
+        && Boolean(status && isManagedServiceLevelProvider(status.provider_id));
     const managedEnvExamples = status ? getManagedEnvExamples(status.provider_id, status.model) : [];
 
     function resetOauthFlowState() {
@@ -418,11 +423,17 @@ export default function OpencodeAuthSetup() {
                                                 Azure OpenAI is configured through service environment variables. To update this model,
                                                 ask the service administrator to change the values below and restart TeamCopilot.
                                             </>
-                                        ) : (
+                                        ) : isManagedGoogleVertexProvider(status.provider_id) ? (
                                             <>
                                                 Google Vertex requires GOOGLE_CLOUD_PROJECT, GOOGLE_APPLICATION_CREDENTIALS,
                                                 VERTEX_LOCATION, and OPENCODE_MODEL set in server environment variables. Ask the administrator
                                                 to update the values below and restart TeamCopilot.
+                                            </>
+                                        ) : (
+                                            <>
+                                                This provider is managed through service environment variables.
+                                                Ask the administrator which values to configure for{' '}
+                                                <code>{status.provider_id}</code> and restart TeamCopilot after they update the deployment.
                                             </>
                                         )}
                                     </p>
@@ -432,18 +443,26 @@ export default function OpencodeAuthSetup() {
                                             <p>
                                                 {status.provider_id === 'azure-openai'
                                                     ? 'Use your Azure deployment name in OPENCODE_MODEL'
-                                                    : 'Use your OpenCode Vertex model id in OPENCODE_MODEL'}
+                                                    : isManagedGoogleVertexProvider(status.provider_id)
+                                                        ? 'Use your OpenCode Vertex model id in OPENCODE_MODEL'
+                                                        : `Set OPENCODE_MODEL for provider ${status.provider_id} plus any required service env vars.`}
                                             </p>
                                         </div>
                                         <div className="opencode-auth-managed-example-list">
-                                            {managedEnvExamples.map((example) => (
-                                                <div key={example.key} className="opencode-auth-managed-example-row">
-                                                    <div className="opencode-auth-managed-example-copy">
-                                                        <code>{example.key}={example.value}</code>
+                                            {managedEnvExamples.length === 0 ? (
+                                                <p className="opencode-auth-help">
+                                                    No env examples are shown for this provider. Ask your administrator which variables apply.
+                                                </p>
+                                            ) : (
+                                                managedEnvExamples.map((example) => (
+                                                    <div key={example.key} className="opencode-auth-managed-example-row">
+                                                        <div className="opencode-auth-managed-example-copy">
+                                                            <code>{example.key}={example.value}</code>
+                                                        </div>
+                                                        <p>{example.help}</p>
                                                     </div>
-                                                    <p>{example.help}</p>
-                                                </div>
-                                            ))}
+                                                ))
+                                            )}
                                         </div>
                                     </div>
                                 </div>
