@@ -219,6 +219,43 @@
   color: #888;
 }
 
+.cronjob-workflow-target,
+.cronjob-workflow-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.cronjob-workflow-inputs {
+  margin-top: 0.2rem;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 0.85rem;
+  background: #141414;
+}
+
+.cronjob-workflow-inputs p,
+.cronjob-muted-copy {
+  margin: 0;
+  color: #888;
+  font-size: 0.82rem;
+}
+
+.cronjob-inline-error {
+  margin: 0.25rem 0 0;
+  color: #ff6b6b;
+  font-size: 0.85rem;
+}
+
+.cronjob-policy-note {
+  border: 1px solid #333;
+  border-radius: 8px;
+  margin-top: 0.75rem;
+  padding: 0.9rem;
+  background: #141414;
+  color: #aaa;
+}
+
 .cronjob-day-picker {
   display: flex;
   flex-wrap: wrap;

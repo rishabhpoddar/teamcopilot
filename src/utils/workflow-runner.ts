@@ -72,7 +72,7 @@ function coerceNumber(value: unknown): number | null {
     return Number.isFinite(n) ? n : null;
 }
 
-function validateInputs(providedInputs: Record<string, unknown>, schema: Record<string, any>) {
+export function validateInputs(providedInputs: Record<string, unknown>, schema: Record<string, any>) {
     const errors: string[] = [];
     const processedInputs: Record<string, string | number | boolean> = {};
 
@@ -349,7 +349,7 @@ export async function startWorkflowRunViaBackend(options: {
     callId: string;
     requirePermissionPrompt: boolean;
     secretResolutionMode: "user" | "global";
-    runSource: "user" | "api";
+    runSource: "user" | "api" | "cronjob";
     workflowApiKeyId?: string | null;
 }): Promise<{ runId: string; timeoutSeconds: number; completion: Promise<{ status: string; output: string }> }> {
     if (!SLUG_REGEX.test(options.slug)) {

@@ -15,6 +15,11 @@ interface CronjobRun {
     status: string;
     started_at: number;
     completed_at: number | null;
+    target_type_snapshot: string;
+    prompt_snapshot: string | null;
+    workflow_slug_snapshot: string | null;
+    workflow_input_snapshot: Record<string, unknown> | null;
+    workflow_run_id: string | null;
     summary: string | null;
     session_id: string | null;
     opencode_session_id: string | null;
@@ -136,9 +141,13 @@ export default function CronjobRunPage() {
 
             <section className="cronjob-run-header">
                 <div>
-                    <p className="cronjobs-eyebrow">Cronjob transcript</p>
+                    <p className="cronjobs-eyebrow">{run.target_type_snapshot === 'workflow' ? 'Workflow cronjob run' : 'Cronjob transcript'}</p>
                     <h1>Run {run.id.slice(0, 8)}</h1>
-                    <p>Watch live agent messages while running, or review the same transcript after completion.</p>
+                    <p>
+                        {run.target_type_snapshot === 'workflow'
+                            ? 'This scheduled workflow run executes directly with the saved inputs.'
+                            : 'Watch live agent messages while running, or review the same transcript after completion.'}
+                    </p>
                 </div>
                 <div className="cronjob-run-status-card">
                     <span>Status</span>
@@ -152,6 +161,20 @@ export default function CronjobRunPage() {
             </section>
 
             <section className="cronjob-run-meta">
+                <div>
+                    <span>Target</span>
+                    <strong>
+                        {run.target_type_snapshot === 'workflow'
+                            ? `Workflow: ${run.workflow_slug_snapshot}`
+                            : 'Prompt'}
+                    </strong>
+                </div>
+                {run.workflow_run_id && (
+                    <div>
+                        <span>Workflow run</span>
+                        <strong>{run.workflow_run_id.slice(0, 8)}</strong>
+                    </div>
+                )}
                 <div>
                     <span>Started</span>
                     <strong>{formatTimestamp(run.started_at)}</strong>
@@ -190,7 +213,9 @@ export default function CronjobRunPage() {
                 />
             ) : (
                 <div className="cronjob-run-state">
-                    This run does not have an agent session transcript.
+                    {run.target_type_snapshot === 'workflow'
+                        ? 'This workflow cronjob does not have an agent chat transcript. Open the linked workflow run from workflow history for detailed logs.'
+                        : 'This run does not have an agent session transcript.'}
                 </div>
             )}
         </main>

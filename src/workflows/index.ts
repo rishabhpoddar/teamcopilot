@@ -41,7 +41,7 @@ import {
 } from "../utils/workflow-approval-snapshot";
 import { getWorkspaceDirFromEnv } from "../utils/workspace-sync";
 import { startWorkflowRunViaBackend } from "../utils/workflow-runner";
-import { isWorkflowSessionInterrupted, markWorkflowSessionAborted } from "../utils/workflow-interruption";
+import { isWorkflowSessionInterrupted, markWorkflowSessionAborted, usesWorkflowDatabaseAbortMarker } from "../utils/workflow-interruption";
 import { abortOpencodeSession } from "../utils/session-abort";
 import { registerResourceFileRoutes } from "../utils/resource-file-routes";
 import { getResourceAccessSummary } from "../utils/resource-access";
@@ -360,8 +360,7 @@ router.post('/runs/:id/stop', apiHandler(async (req, res) => {
             message: 'Workflow run session not found'
         };
     }
-    const isManualSession = run.session_id.startsWith("manual-");
-    if (isManualSession) {
+    if (usesWorkflowDatabaseAbortMarker(run.session_id)) {
         await markWorkflowSessionAborted(run.session_id);
     } else {
         await abortOpencodeSession(run.session_id);

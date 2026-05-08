@@ -1,9 +1,12 @@
 import { CronJob, CronTime } from "cron";
+import { randomUUID } from "crypto";
 import prisma from "../prisma/client";
 import { getOpencodeClient } from "../utils/opencode-client";
 import { getResourceAccessSummary } from "../utils/resource-access";
 import { listSkillSlugs, readSkillManifestAndEnsurePermissions } from "../utils/skill";
 import { listResolvedSecretsForUser } from "../utils/secrets";
+import { getWorkspaceDirFromEnv } from "../utils/workspace-sync";
+import { startWorkflowRunViaBackend } from "../utils/workflow-runner";
 import {
     getSessionStatusTypeForSession,
     type SessionStatusMap,
@@ -32,6 +35,14 @@ type CronjobSchedule = {
     week_interval: number | null;
     anchor_date: string | null;
     day_of_month: number | null;
+};
+
+type CronjobTarget = {
+    target_type: string;
+    prompt: string | null;
+    prompt_allow_workflow_runs_without_permission: boolean | null;
+    workflow_slug: string | null;
+    workflow_input_json: string | null;
 };
 
 const scheduledJobs = new Map<string, CronJob>();
@@ -376,6 +387,56 @@ async function buildCronjobPrompt(args: {
     return sections.join("\n");
 }
 
+function getCronjobTarget(cronjob: {
+    prompt: string;
+    allow_workflow_runs_without_permission: boolean;
+    target: CronjobTarget | null;
+}): CronjobTarget {
+    return cronjob.target ?? {
+        target_type: "prompt",
+        prompt: cronjob.prompt,
+        prompt_allow_workflow_runs_without_permission: cronjob.allow_workflow_runs_without_permission,
+        workflow_slug: null,
+        workflow_input_json: null,
+    };
+}
+
+function parseWorkflowInputJson(value: string | null): Record<string, unknown> {
+    if (value === null || value.trim().length === 0) return {};
+    const parsed = JSON.parse(value);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error("Workflow input JSON must be an object");
+    }
+    return parsed as Record<string, unknown>;
+}
+
+async function finishWorkflowCronjobRun(
+    cronjobRunId: string,
+    completion: Promise<{ status: string; output: string }>
+): Promise<void> {
+    try {
+        const result = await completion;
+        await prisma.cronjob_runs.updateMany({
+            where: { id: cronjobRunId, status: "running" },
+            data: {
+                status: result.status === "success" ? "success" : "failed",
+                completed_at: nowMs(),
+                summary: result.status === "success" ? "Workflow completed successfully." : null,
+                error_message: result.status === "success" ? null : result.output.slice(-1000),
+            },
+        });
+    } catch (err) {
+        await prisma.cronjob_runs.updateMany({
+            where: { id: cronjobRunId, status: "running" },
+            data: {
+                status: "failed",
+                completed_at: nowMs(),
+                error_message: err instanceof Error ? err.message : "Workflow cronjob failed.",
+            },
+        });
+    }
+}
+
 async function revealRunForUserInput(runId: string, reason: string): Promise<void> {
     const completedAt = nowMs();
     const run = await prisma.cronjob_runs.update({
@@ -447,7 +508,7 @@ function monitorCronjobRun(runId: string, opencodeSessionId: string): void {
 export async function dispatchCronjobRun(cronjobId: string, options: { allowDisabled?: boolean; skipIfActive?: boolean } = {}): Promise<string> {
     const cronjob = await prisma.cronjobs.findUnique({
         where: { id: cronjobId },
-        include: { user: true },
+        include: { user: true, target: true },
     });
     if (!cronjob || (!cronjob.enabled && options.allowDisabled !== true)) {
         throw new Error("Cronjob not found or disabled");
@@ -461,6 +522,7 @@ export async function dispatchCronjobRun(cronjobId: string, options: { allowDisa
         select: { id: true }
     });
     if (activeRun) {
+        const target = getCronjobTarget(cronjob);
         if (options.skipIfActive === false) {
             throw {
                 status: 409,
@@ -474,11 +536,68 @@ export async function dispatchCronjobRun(cronjobId: string, options: { allowDisa
                 status: "skipped",
                 started_at: now,
                 completed_at: now,
-                prompt_snapshot: cronjob.prompt,
+                target_type_snapshot: target.target_type,
+                prompt_snapshot: target.prompt,
+                workflow_slug_snapshot: target.workflow_slug,
+                workflow_input_snapshot_json: target.workflow_input_json,
                 error_message: "Previous run is still active.",
             },
         });
         return skipped.id;
+    }
+
+    const target = getCronjobTarget(cronjob);
+    if (target.target_type === "workflow") {
+        if (!target.workflow_slug) {
+            throw new Error("Workflow cronjob target is missing workflow_slug");
+        }
+        const workflowInputJson = target.workflow_input_json ?? "{}";
+        const now = nowMs();
+        const run = await prisma.cronjob_runs.create({
+            data: {
+                cronjob_id: cronjob.id,
+                status: "running",
+                started_at: now,
+                target_type_snapshot: "workflow",
+                workflow_slug_snapshot: target.workflow_slug,
+                workflow_input_snapshot_json: workflowInputJson,
+            },
+        });
+        try {
+            const startedRun = await startWorkflowRunViaBackend({
+                workspaceDir: getWorkspaceDirFromEnv(),
+                slug: target.workflow_slug,
+                inputs: parseWorkflowInputJson(workflowInputJson),
+                authUserId: cronjob.user_id,
+                sessionId: `cronjob-${run.id}`,
+                messageId: `cronjob-message-${randomUUID()}`,
+                callId: `cronjob-call-${randomUUID()}`,
+                requirePermissionPrompt: false,
+                secretResolutionMode: "user",
+                runSource: "cronjob",
+            });
+            await prisma.cronjob_runs.update({
+                where: { id: run.id },
+                data: { workflow_run_id: startedRun.runId },
+            });
+            void finishWorkflowCronjobRun(run.id, startedRun.completion);
+            return run.id;
+        } catch (err) {
+            await prisma.cronjob_runs.update({
+                where: { id: run.id },
+                data: {
+                    status: "failed",
+                    completed_at: nowMs(),
+                    error_message: err instanceof Error ? err.message : "Failed to start workflow cronjob.",
+                },
+            });
+            return run.id;
+        }
+    }
+
+    const userPrompt = target.prompt;
+    if (!userPrompt) {
+        throw new Error("Prompt cronjob target is missing prompt");
     }
 
     const client = await getOpencodeClient();
@@ -493,7 +612,8 @@ export async function dispatchCronjobRun(cronjobId: string, options: { allowDisa
             cronjob_id: cronjob.id,
             status: "running",
             started_at: now,
-            prompt_snapshot: cronjob.prompt,
+            target_type_snapshot: "prompt",
+            prompt_snapshot: userPrompt,
             opencode_session_id: sessionResult.data.id,
         },
     });
@@ -513,16 +633,16 @@ export async function dispatchCronjobRun(cronjobId: string, options: { allowDisa
         data: { session_id: chatSession.id },
     });
 
-    const prompt = await buildCronjobPrompt({
+    const runtimePrompt = await buildCronjobPrompt({
         cronjobName: cronjob.name,
-        cronjobPrompt: cronjob.prompt,
-        allowWorkflowRunsWithoutPermission: cronjob.allow_workflow_runs_without_permission,
+        cronjobPrompt: userPrompt,
+        allowWorkflowRunsWithoutPermission: target.prompt_allow_workflow_runs_without_permission ?? true,
         userId: cronjob.user_id,
     });
     const promptResult = await client.session.promptAsync({
         path: { id: sessionResult.data.id },
         body: {
-            parts: [{ type: "text", text: prompt }],
+            parts: [{ type: "text", text: runtimePrompt }],
         },
     });
     if (promptResult.error) {

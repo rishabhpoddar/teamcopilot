@@ -43,6 +43,7 @@ model workflow_runs {
   workflow_api_key_id String?
   user           users?  @relation(fields: [ran_by_user_id], references: [id], onDelete: SetNull)
   workflowApiKey workflow_api_keys? @relation(fields: [workflow_api_key_id], references: [id], onDelete: SetNull)
+  cronjobRuns    cronjob_runs[]
 
   @@index([started_at])
   @@index([session_id, message_id])
@@ -126,11 +127,27 @@ model cronjobs {
   updated_at                              BigInt
   user                                    users              @relation(fields: [user_id], references: [id], onDelete: Cascade)
   schedule                                cronjob_schedules?
+  target                                  cronjob_targets?
   runs                                    cronjob_runs[]
 
   @@unique([user_id, name])
   @@index([user_id])
   @@index([enabled])
+}
+
+model cronjob_targets {
+  cronjob_id                                      String   @id
+  target_type                                     String   // "prompt" | "workflow"
+  prompt                                          String?
+  prompt_allow_workflow_runs_without_permission   Boolean?
+  workflow_slug                                   String?
+  workflow_input_json                             String?
+  created_at                                      BigInt
+  updated_at                                      BigInt
+  cronjob                                         cronjobs @relation(fields: [cronjob_id], references: [id], onDelete: Cascade)
+
+  @@index([target_type])
+  @@index([workflow_slug])
 }
 
 model cronjob_schedules {
@@ -155,7 +172,11 @@ model cronjob_runs {
   status                     String // "running" | "success" | "failed" | "skipped" | "needs_user_input"
   started_at                 BigInt
   completed_at               BigInt?
-  prompt_snapshot            String
+  target_type_snapshot       String         @default("prompt")
+  prompt_snapshot            String?
+  workflow_slug_snapshot     String?
+  workflow_input_snapshot_json String?
+  workflow_run_id            String?
   summary                    String?
   session_id                 String?
   opencode_session_id        String?
@@ -163,9 +184,11 @@ model cronjob_runs {
   error_message              String?
   cronjob                    cronjobs       @relation(fields: [cronjob_id], references: [id], onDelete: Cascade)
   session                    chat_sessions? @relation(fields: [session_id], references: [id], onDelete: SetNull)
+  workflowRun                workflow_runs? @relation(fields: [workflow_run_id], references: [id], onDelete: SetNull)
 
   @@index([cronjob_id, started_at])
   @@index([cronjob_id, status])
+  @@index([workflow_run_id])
 }
 
 model chat_session_usage {

@@ -19,12 +19,16 @@ interface CronjobRunPreview {
     status: string;
     started_at: number;
     completed_at: number | null;
+    target_type_snapshot: string;
+    workflow_run_id: string | null;
 }
 
 interface CronjobRun {
     id: string;
     status: string;
     started_at: number;
+    target_type_snapshot: string;
+    workflow_run_id: string | null;
     summary: string | null;
     needs_user_input_reason: string | null;
     error_message: string | null;
@@ -36,6 +40,13 @@ interface Cronjob {
     prompt: string;
     enabled: boolean;
     allow_workflow_runs_without_permission: boolean;
+    target: {
+        target_type: 'prompt' | 'workflow';
+        prompt: string | null;
+        prompt_allow_workflow_runs_without_permission: boolean | null;
+        workflow_slug: string | null;
+        workflow_inputs: Record<string, unknown> | null;
+    };
     schedule: CronjobSchedule;
     next_run_at: number | null;
     is_running: boolean;
@@ -73,6 +84,13 @@ function scheduleLabel(cronjob: Cronjob): string {
     return cronjob.schedule.cron_expression ?? cronjob.schedule.effective_cron_expression;
 }
 
+function targetLabel(cronjob: Cronjob): string {
+    if (cronjob.target.target_type === 'workflow') {
+        return `Workflow: ${cronjob.target.workflow_slug}`;
+    }
+    return 'Prompt';
+}
+
 function statusLabel(status: string): string {
     return status.replaceAll('_', ' ');
 }
@@ -83,6 +101,16 @@ function getRunStatusClass(status: string): string {
     if (status === 'needs_user_input') return 'attention';
     if (status === 'failed') return 'failed';
     return 'muted';
+}
+
+function runDetailsPath(run: { id: string; target_type_snapshot: string; workflow_run_id: string | null }): string {
+    return run.target_type_snapshot === 'workflow' && run.workflow_run_id
+        ? `/runs/${run.workflow_run_id}`
+        : `/cronjobs/runs/${run.id}`;
+}
+
+function runDetailsLabel(run: { target_type_snapshot: string; workflow_run_id: string | null }): string {
+    return run.target_type_snapshot === 'workflow' && run.workflow_run_id ? 'View logs' : 'View messages';
 }
 
 export default function CronjobsSection() {
@@ -139,7 +167,9 @@ export default function CronjobsSection() {
             });
             toast.success('Cronjob run started');
             await fetchCronjobs();
-            navigate(`/cronjobs/runs/${response.data.run_id}`);
+            const runId = String(response.data.run_id);
+            const workflowRunId = response.data.workflow_run_id ? String(response.data.workflow_run_id) : null;
+            navigate(workflowRunId ? `/runs/${workflowRunId}` : `/cronjobs/runs/${runId}`);
         } catch (err: unknown) {
             toast.error(getErrorMessage(err, 'Failed to start cronjob'));
         } finally {
@@ -241,10 +271,14 @@ export default function CronjobsSection() {
 
                             <div className="cronjob-card-header">
                                 <h3>{cronjob.name}</h3>
-                                <p>{cronjob.prompt}</p>
+                                <p>{cronjob.target.target_type === 'workflow' ? targetLabel(cronjob) : cronjob.prompt}</p>
                             </div>
 
                             <div className="cronjob-metrics">
+                                <div>
+                                    <span>Target</span>
+                                    <strong>{targetLabel(cronjob)}</strong>
+                                </div>
                                 <div>
                                     <span>Schedule</span>
                                     <strong>{scheduleLabel(cronjob)}</strong>
@@ -271,9 +305,15 @@ export default function CronjobsSection() {
                                 </div>
                             </div>
 
-                            <p className="cronjob-permission-copy">
-                                Workflows: {cronjob.allow_workflow_runs_without_permission ? 'run without extra user approval' : 'ask before running'}
-                            </p>
+                            {cronjob.target.target_type === 'prompt' ? (
+                                <p className="cronjob-permission-copy">
+                                    Workflows: {cronjob.allow_workflow_runs_without_permission ? 'run without extra user approval' : 'ask before running'}
+                                </p>
+                            ) : (
+                                <p className="cronjob-permission-copy">
+                                    Workflow cronjob: runs directly with saved inputs.
+                                </p>
+                            )}
 
                             <div className="cronjob-actions">
                                 <button
@@ -298,8 +338,8 @@ export default function CronjobsSection() {
                                     </>
                                 )}
                                 {!cronjob.current_run_id && cronjob.latest_run && (
-                                    <button onClick={() => navigate(`/cronjobs/runs/${cronjob.latest_run!.id}`)}>
-                                        View messages
+                                    <button onClick={() => navigate(runDetailsPath(cronjob.latest_run!))}>
+                                        {runDetailsLabel(cronjob.latest_run)}
                                     </button>
                                 )}
                                 <button onClick={() => toggleEnabled(cronjob)}>
@@ -330,8 +370,8 @@ export default function CronjobsSection() {
                                                 {run.summary && <p>{run.summary}</p>}
                                                 {run.needs_user_input_reason && <p>{run.needs_user_input_reason}</p>}
                                                 {run.error_message && <p>{run.error_message}</p>}
-                                                <button onClick={() => navigate(`/cronjobs/runs/${run.id}`)}>
-                                                    View messages
+                                                <button onClick={() => navigate(runDetailsPath(run))}>
+                                                    {runDetailsLabel(run)}
                                                 </button>
                                             </div>
                                         ))
