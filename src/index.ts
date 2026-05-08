@@ -31,6 +31,7 @@ import opencodeAuthRouter from "./opencode-auth";
 import { loadJwtSecret } from "./utils/jwt-secret";
 import { getFrontendDistDirectory } from "./utils/runtime-paths";
 import workflowApiRouter from "./workflow-api";
+import { reconcileRunningWorkflowRunsOnStartup } from "./utils/workflow-run-recovery";
 export function createApp(): express.Express {
     const app = express();
     const frontendDistDirectory = getFrontendDistDirectory();
@@ -173,6 +174,7 @@ async function bootstrap() {
     await ensureWorkspaceDatabase();
     await loadJwtSecret();
     await startOpencodeServer();
+    await reconcileRunningWorkflowRunsOnStartup();
     startCronJobs();
 
     const TEAMCOPILOT_HOST = assertEnv("TEAMCOPILOT_HOST");
