@@ -572,3 +572,7 @@ Integration checks:
 - The same `/cronjobs/runs/:runId` page handles live monitoring and historical transcript review.
 - Users can stop active runs midway.
 - `last_run_at`, `next_run_at`, `scheduled_for`, `schedule_type`, and run-level `user_id` are not stored.
+
+## Pending todos:
+- Allow workflows to be scheduled as well in crons
+- Allow AI agent to schedule / edit / delete cronjobs so users dont need to always create crons via the UI
