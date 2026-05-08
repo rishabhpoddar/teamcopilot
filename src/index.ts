@@ -23,7 +23,7 @@ import { startOpencodeServer, stopOpencodeServer } from "./opencode-server";
 import path from 'path';
 import { Server } from "http";
 import { assertEnv, parseIntStrict } from "./utils/assert";
-import { apiHandler } from "./utils";
+import { apiHandler, reconcileRunningCronsAndWorkflowRunsOnStartup } from "./utils";
 import { sanitizeForClient, sanitizeStringContent } from "./utils/redact";
 import { ensureWorkspaceDatabase, getWorkspaceDirFromEnv, initializeWorkspaceDirectory } from "./utils/workspace-sync";
 import { initializeOpencodeAuthStorage } from "./utils/opencode-auth";
@@ -31,7 +31,6 @@ import opencodeAuthRouter from "./opencode-auth";
 import { loadJwtSecret } from "./utils/jwt-secret";
 import { getFrontendDistDirectory } from "./utils/runtime-paths";
 import workflowApiRouter from "./workflow-api";
-import { reconcileRunningWorkflowRunsOnStartup } from "./utils/workflow-run-recovery";
 export function createApp(): express.Express {
     const app = express();
     const frontendDistDirectory = getFrontendDistDirectory();
@@ -174,7 +173,7 @@ async function bootstrap() {
     await ensureWorkspaceDatabase();
     await loadJwtSecret();
     await startOpencodeServer();
-    await reconcileRunningWorkflowRunsOnStartup();
+    await reconcileRunningCronsAndWorkflowRunsOnStartup();
     startCronJobs();
 
     const TEAMCOPILOT_HOST = assertEnv("TEAMCOPILOT_HOST");

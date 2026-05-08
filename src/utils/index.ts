@@ -14,6 +14,34 @@ type CustomRequest = express.Request & {
     mustChangePassword?: boolean;
 }
 
+function nowMs(): bigint {
+    return BigInt(Date.now());
+}
+
+export async function reconcileRunningCronsAndWorkflowRunsOnStartup(): Promise<void> {
+    const completedAt = nowMs();
+    const workflowError = "Workflow run was interrupted because the backend restarted.";
+    const cronjobError = "Cronjob run was interrupted because the backend restarted.";
+
+    await prisma.workflow_runs.updateMany({
+        where: { status: "running" },
+        data: {
+            status: "failed",
+            completed_at: completedAt,
+            error_message: workflowError,
+        },
+    });
+
+    await prisma.cronjob_runs.updateMany({
+        where: { status: "running" },
+        data: {
+            status: "failed",
+            completed_at: completedAt,
+            error_message: cronjobError,
+        },
+    });
+}
+
 export function apiHandler(
     handler: (req: CustomRequest, res: express.Response, next: express.NextFunction) => Promise<void>,
     requireAuth: boolean
