@@ -229,8 +229,10 @@
 .cronjob-day-picker button {
   border: 1px solid #444;
   border-radius: 8px;
-  background: #141414;
+  background: #232323;
   color: #aaa;
+  font: inherit;
+  font-weight: 500;
   padding: 0.55rem 0.75rem;
 }
 
@@ -262,15 +264,27 @@
 }
 
 .cronjobs-primary-btn {
-  border: 1px solid currentColor;
-  background: transparent;
+  border: 1px solid #555;
+  background: #232323;
   color: #e5e7eb;
   border-radius: 8px;
-  padding: 0.45em 0.95em;
+  padding: 0.6rem 1rem;
+  font: inherit;
   font-weight: 500;
 }
 
-.cronjobs-primary-btn:disabled {
+.cronjob-builder-actions button {
+  border: 1px solid #555;
+  background: #232323;
+  color: #e5e7eb;
+  border-radius: 8px;
+  padding: 0.6rem 1rem;
+  font: inherit;
+  font-weight: 500;
+}
+
+.cronjobs-primary-btn:disabled,
+.cronjob-builder-actions button:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }

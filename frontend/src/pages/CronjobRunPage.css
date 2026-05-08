@@ -12,12 +12,20 @@
 
 .cronjob-run-topbar button,
 .cronjob-run-stop-btn {
-  border: 1px solid #4a5568;
-  background: #374151;
+  border: 1px solid #555;
+  background: #232323;
   color: #e5e7eb;
   border-radius: 8px;
-  padding: 6px 10px;
+  padding: 0.6rem 1rem;
+  font: inherit;
+  font-weight: 500;
   cursor: pointer;
+}
+
+.cronjob-run-stop-btn {
+  background: #3b0d12;
+  color: #fecaca;
+  border-color: #7f1d1d;
 }
 
 .cronjob-run-header,

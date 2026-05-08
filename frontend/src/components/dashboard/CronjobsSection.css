@@ -43,16 +43,18 @@
 .cronjobs-primary-btn,
 .cronjob-actions button,
 .cronjob-back-btn {
-  border: 1px solid currentColor;
-  background: transparent;
+  border: 1px solid #555;
+  background: #232323;
   color: #e5e7eb;
   border-radius: 8px;
-  padding: 0.45em 0.95em;
+  padding: 0.6rem 1rem;
+  font: inherit;
+  font-weight: 500;
   cursor: pointer;
 }
 
 .cronjobs-primary-btn.compact {
-  padding: 0.35em 0.8em;
+  padding: 0.45rem 0.8rem;
 }
 
 .cronjobs-primary-btn:disabled,
@@ -222,6 +224,12 @@
 
 .cronjob-actions button {
   font-size: 0.88rem;
+}
+
+.cronjob-actions .cronjob-danger-btn {
+  background: #3b0d12;
+  color: #fecaca;
+  border-color: #7f1d1d;
 }
 
 .cronjob-runs {
