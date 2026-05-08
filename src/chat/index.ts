@@ -531,7 +531,10 @@ function getSessionState(args: {
 // GET /api/chat/sessions - List user's sessions
 router.get('/sessions', apiHandler(async (req, res) => {
     const sessions = await prisma.chat_sessions.findMany({
-        where: { user_id: req.userId! },
+        where: {
+            user_id: req.userId!,
+            visible_to_user: true,
+        },
         orderBy: { updated_at: 'desc' }
     });
 
@@ -556,7 +559,8 @@ router.get('/sessions', apiHandler(async (req, res) => {
         await prisma.chat_sessions.deleteMany({
             where: {
                 id: { in: staleSessionIds },
-                user_id: req.userId!
+                user_id: req.userId!,
+                visible_to_user: true,
             }
         });
     }

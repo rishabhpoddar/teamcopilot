@@ -20,6 +20,7 @@ model users {
   reset_token_expires_at     BigInt?
   workflowRuns               workflow_runs[]
   chatSessions               chat_sessions[]
+  cronjobs                   cronjobs[]
   resourcePermissionUsers    resource_permission_users[]
   createdResourceMetadata    resource_metadata[]             @relation("ResourceCreatedBy")
   approvedResourceMetadata   resource_metadata[]             @relation("ResourceApprovedBy")
@@ -102,11 +103,63 @@ model chat_sessions {
   opencode_session_id String @unique
   title               String
   last_seen_assistant_message_id String?
+  source              String @default("user") // "user" | "cronjob"
+  visible_to_user     Boolean @default(true)
   created_at          BigInt
   updated_at          BigInt
   trackedFiles        chat_session_tracked_files[]
   usage               chat_session_usage?
+  cronjobRuns         cronjob_runs[]
   user                users                      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([source, visible_to_user])
+}
+
+model cronjobs {
+  id                                      String             @id @default(uuid())
+  user_id                                 String
+  name                                    String
+  prompt                                  String
+  enabled                                 Boolean
+  allow_workflow_runs_without_permission  Boolean
+  created_at                              BigInt
+  updated_at                              BigInt
+  user                                    users              @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  schedule                                cronjob_schedules?
+  runs                                    cronjob_runs[]
+
+  @@unique([user_id, name])
+  @@index([user_id])
+  @@index([enabled])
+}
+
+model cronjob_schedules {
+  cronjob_id      String   @id
+  preset_key      String?
+  cron_expression String?
+  timezone        String
+  created_at      BigInt
+  updated_at      BigInt
+  cronjob         cronjobs @relation(fields: [cronjob_id], references: [id], onDelete: Cascade)
+}
+
+model cronjob_runs {
+  id                         String         @id @default(uuid())
+  cronjob_id                 String
+  status                     String // "running" | "success" | "failed" | "skipped" | "needs_user_input"
+  started_at                 BigInt
+  completed_at               BigInt?
+  prompt_snapshot            String
+  summary                    String?
+  session_id                 String?
+  opencode_session_id        String?
+  needs_user_input_reason    String?
+  error_message              String?
+  cronjob                    cronjobs       @relation(fields: [cronjob_id], references: [id], onDelete: Cascade)
+  session                    chat_sessions? @relation(fields: [session_id], references: [id], onDelete: SetNull)
+
+  @@index([cronjob_id, started_at])
+  @@index([cronjob_id, status])
 }
 
 model chat_session_usage {
