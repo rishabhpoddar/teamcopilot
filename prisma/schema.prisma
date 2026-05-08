@@ -138,6 +138,12 @@ model cronjob_schedules {
   preset_key      String?
   cron_expression String?
   timezone        String
+  schedule_type   String   @default("cron") // "cron" | "structured"
+  time_minutes    Int?
+  days_of_week    String?  // comma-separated 0-6 values, Sunday=0
+  week_interval   Int?
+  anchor_date     String?  // YYYY-MM-DD local date used for interval schedules
+  day_of_month    Int?
   created_at      BigInt
   updated_at      BigInt
   cronjob         cronjobs @relation(fields: [cronjob_id], references: [id], onDelete: Cascade)

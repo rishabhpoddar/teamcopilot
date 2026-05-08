@@ -43,6 +43,12 @@ function serializeCronjob(cronjob: {
         preset_key: string | null;
         cron_expression: string | null;
         timezone: string;
+        schedule_type: string;
+        time_minutes: number | null;
+        days_of_week: string | null;
+        week_interval: number | null;
+        anchor_date: string | null;
+        day_of_month: number | null;
     } | null;
     is_running?: boolean;
     current_run_id?: string | null;
@@ -66,6 +72,12 @@ function serializeCronjob(cronjob: {
             preset_key: schedule.preset_key,
             cron_expression: schedule.cron_expression,
             timezone: schedule.timezone,
+            schedule_type: schedule.schedule_type,
+            time_minutes: schedule.time_minutes,
+            days_of_week: schedule.days_of_week ? schedule.days_of_week.split(",").map(Number) : null,
+            week_interval: schedule.week_interval,
+            anchor_date: schedule.anchor_date,
+            day_of_month: schedule.day_of_month,
             effective_cron_expression: getCronjobEffectiveExpression(schedule),
         } : null,
         next_run_at: cronjob.enabled && schedule ? getNextRunAt(schedule) : null,
@@ -144,6 +156,12 @@ router.post("/", apiHandler(async (req, res) => {
         preset_key: req.body?.preset_key,
         cron_expression: req.body?.cron_expression,
         timezone: req.body?.timezone,
+        schedule_type: req.body?.schedule_type,
+        time_minutes: req.body?.time_minutes,
+        days_of_week: req.body?.days_of_week,
+        week_interval: req.body?.week_interval,
+        anchor_date: req.body?.anchor_date,
+        day_of_month: req.body?.day_of_month,
     });
     const now = nowMs();
     const allowWorkflowRunsWithoutPermission = req.body?.allow_workflow_runs_without_permission !== false;
@@ -163,6 +181,12 @@ router.post("/", apiHandler(async (req, res) => {
                     preset_key: schedule.presetKey,
                     cron_expression: schedule.cronExpression,
                     timezone: schedule.timezone,
+                    schedule_type: schedule.scheduleType,
+                    time_minutes: schedule.timeMinutes,
+                    days_of_week: schedule.daysOfWeek,
+                    week_interval: schedule.weekInterval,
+                    anchor_date: schedule.anchorDate,
+                    day_of_month: schedule.dayOfMonth,
                     created_at: now,
                     updated_at: now,
                 },
@@ -226,6 +250,12 @@ router.patch("/:id", apiHandler(async (req, res) => {
         preset_key: hasRequestField(req.body, "preset_key") ? req.body.preset_key : existing.schedule?.preset_key ?? undefined,
         cron_expression: hasRequestField(req.body, "cron_expression") ? req.body.cron_expression : existing.schedule?.cron_expression ?? undefined,
         timezone: hasRequestField(req.body, "timezone") ? req.body.timezone : existing.schedule?.timezone ?? undefined,
+        schedule_type: hasRequestField(req.body, "schedule_type") ? req.body.schedule_type : existing.schedule?.schedule_type ?? undefined,
+        time_minutes: hasRequestField(req.body, "time_minutes") ? req.body.time_minutes : existing.schedule?.time_minutes ?? undefined,
+        days_of_week: hasRequestField(req.body, "days_of_week") ? req.body.days_of_week : existing.schedule?.days_of_week?.split(",").map(Number) ?? undefined,
+        week_interval: hasRequestField(req.body, "week_interval") ? req.body.week_interval : existing.schedule?.week_interval ?? undefined,
+        anchor_date: hasRequestField(req.body, "anchor_date") ? req.body.anchor_date : existing.schedule?.anchor_date ?? undefined,
+        day_of_month: hasRequestField(req.body, "day_of_month") ? req.body.day_of_month : existing.schedule?.day_of_month ?? undefined,
     });
     const now = nowMs();
 
@@ -243,6 +273,12 @@ router.patch("/:id", apiHandler(async (req, res) => {
                         preset_key: schedule.presetKey,
                         cron_expression: schedule.cronExpression,
                         timezone: schedule.timezone,
+                        schedule_type: schedule.scheduleType,
+                        time_minutes: schedule.timeMinutes,
+                        days_of_week: schedule.daysOfWeek,
+                        week_interval: schedule.weekInterval,
+                        anchor_date: schedule.anchorDate,
+                        day_of_month: schedule.dayOfMonth,
                         created_at: now,
                         updated_at: now,
                     },
@@ -250,6 +286,12 @@ router.patch("/:id", apiHandler(async (req, res) => {
                         preset_key: schedule.presetKey,
                         cron_expression: schedule.cronExpression,
                         timezone: schedule.timezone,
+                        schedule_type: schedule.scheduleType,
+                        time_minutes: schedule.timeMinutes,
+                        days_of_week: schedule.daysOfWeek,
+                        week_interval: schedule.weekInterval,
+                        anchor_date: schedule.anchorDate,
+                        day_of_month: schedule.dayOfMonth,
                         updated_at: now,
                     },
                 },

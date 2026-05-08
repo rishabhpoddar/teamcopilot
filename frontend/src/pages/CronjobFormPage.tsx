@@ -8,12 +8,19 @@ import { useAuth } from '../lib/auth';
 import { usePageTitle } from '../lib/usePageTitle';
 import './CronjobFormPage.css';
 
-type ScheduleMode = 'preset' | 'cron';
+type ScheduleMode = 'builder' | 'cron';
+type BuilderFrequency = 'daily' | 'weekly' | 'monthly';
 
 interface CronjobSchedule {
     preset_key: string | null;
     cron_expression: string | null;
     timezone: string;
+    schedule_type: string;
+    time_minutes: number | null;
+    days_of_week: number[] | null;
+    week_interval: number | null;
+    anchor_date: string | null;
+    day_of_month: number | null;
     effective_cron_expression: string;
 }
 
@@ -32,20 +39,53 @@ interface CronjobFormState {
     enabled: boolean;
     allow_workflow_runs_without_permission: boolean;
     scheduleMode: ScheduleMode;
-    preset_key: string;
     cron_expression: string;
     timezone: string;
+    builderFrequency: BuilderFrequency;
+    time: string;
+    days_of_week: number[];
+    week_interval: number;
+    anchor_date: string;
+    day_of_month: number;
 }
 
-const PRESETS: Array<{ key: string; label: string; description: string }> = [
-    { key: 'hourly', label: 'Hourly', description: 'At the top of every hour' },
-    { key: 'daily', label: 'Daily', description: 'Every day at 9:00' },
-    { key: 'weekdays', label: 'Weekdays', description: 'Monday to Friday at 9:00' },
-    { key: 'weekly', label: 'Weekly', description: 'Every Monday at 9:00' },
+const DAYS_OF_WEEK = [
+    { value: 1, label: 'Mon' },
+    { value: 2, label: 'Tue' },
+    { value: 3, label: 'Wed' },
+    { value: 4, label: 'Thu' },
+    { value: 5, label: 'Fri' },
+    { value: 6, label: 'Sat' },
+    { value: 0, label: 'Sun' },
 ];
+
+const FALLBACK_TIMEZONES = ['UTC', 'Asia/Calcutta', 'America/Los_Angeles', 'America/New_York', 'Europe/London', 'Europe/Berlin', 'Asia/Singapore', 'Asia/Tokyo', 'Australia/Sydney'];
 
 function getLocalTimezone(): string {
     return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+}
+
+function getTimezoneOptions(): string[] {
+    const supportedValuesOf = Intl.supportedValuesOf as ((key: 'timeZone') => string[]) | undefined;
+    const timezones = supportedValuesOf ? supportedValuesOf('timeZone') : FALLBACK_TIMEZONES;
+    const localTimezone = getLocalTimezone();
+    return Array.from(new Set([localTimezone, ...timezones])).sort();
+}
+
+function getTodayDate(): string {
+    return new Date().toISOString().slice(0, 10);
+}
+
+function timeToMinutes(time: string): number {
+    const [hours, minutes] = time.split(':').map(Number);
+    return hours * 60 + minutes;
+}
+
+function minutesToTime(minutes: number | null): string {
+    const value = minutes ?? 540;
+    const hours = Math.floor(value / 60).toString().padStart(2, '0');
+    const mins = (value % 60).toString().padStart(2, '0');
+    return `${hours}:${mins}`;
 }
 
 function emptyForm(): CronjobFormState {
@@ -54,10 +94,15 @@ function emptyForm(): CronjobFormState {
         prompt: '',
         enabled: true,
         allow_workflow_runs_without_permission: true,
-        scheduleMode: 'preset',
-        preset_key: 'daily',
+        scheduleMode: 'builder',
         cron_expression: '0 9 * * *',
         timezone: getLocalTimezone(),
+        builderFrequency: 'daily',
+        time: '09:00',
+        days_of_week: [1, 2, 3, 4, 5],
+        week_interval: 1,
+        anchor_date: getTodayDate(),
+        day_of_month: 1,
     };
 }
 
@@ -72,15 +117,27 @@ function getErrorMessage(err: unknown, fallback: string): string {
 }
 
 function formFromCronjob(cronjob: Cronjob): CronjobFormState {
+    const scheduleMode: ScheduleMode = cronjob.schedule.schedule_type === 'structured' ? 'builder' : 'cron';
+    const selectedDays = cronjob.schedule.days_of_week ?? [1, 2, 3, 4, 5];
+    const builderFrequency: BuilderFrequency = cronjob.schedule.day_of_month !== null
+        ? 'monthly'
+        : cronjob.schedule.days_of_week === null || selectedDays.length === 7
+            ? 'daily'
+            : 'weekly';
     return {
         name: cronjob.name,
         prompt: cronjob.prompt,
         enabled: cronjob.enabled,
         allow_workflow_runs_without_permission: cronjob.allow_workflow_runs_without_permission,
-        scheduleMode: cronjob.schedule.preset_key ? 'preset' : 'cron',
-        preset_key: cronjob.schedule.preset_key ?? 'daily',
+        scheduleMode,
         cron_expression: cronjob.schedule.cron_expression ?? cronjob.schedule.effective_cron_expression,
         timezone: cronjob.schedule.timezone,
+        builderFrequency,
+        time: minutesToTime(cronjob.schedule.time_minutes),
+        days_of_week: selectedDays.length === 7 ? [1, 2, 3, 4, 5] : selectedDays,
+        week_interval: cronjob.schedule.week_interval ?? 1,
+        anchor_date: cronjob.schedule.anchor_date ?? getTodayDate(),
+        day_of_month: cronjob.schedule.day_of_month ?? 1,
     };
 }
 
@@ -121,15 +178,48 @@ export default function CronjobFormPage() {
 
     if (auth.loading) return null;
 
-    const buildPayload = () => ({
-        name: form.name,
-        prompt: form.prompt,
-        enabled: form.enabled,
-        allow_workflow_runs_without_permission: form.allow_workflow_runs_without_permission,
-        timezone: form.timezone,
-        preset_key: form.scheduleMode === 'preset' ? form.preset_key : null,
-        cron_expression: form.scheduleMode === 'cron' ? form.cron_expression : null,
-    });
+    const buildPayload = () => {
+        const basePayload = {
+            name: form.name,
+            prompt: form.prompt,
+            enabled: form.enabled,
+            allow_workflow_runs_without_permission: form.allow_workflow_runs_without_permission,
+            timezone: form.timezone,
+        };
+        if (form.scheduleMode === 'cron') {
+            return {
+                ...basePayload,
+                schedule_type: 'cron',
+                preset_key: null,
+                cron_expression: form.cron_expression,
+                time_minutes: null,
+                days_of_week: null,
+                week_interval: null,
+                anchor_date: null,
+                day_of_month: null,
+            };
+        }
+        return {
+            ...basePayload,
+            schedule_type: 'structured',
+            preset_key: null,
+            cron_expression: null,
+            time_minutes: timeToMinutes(form.time),
+            days_of_week: form.builderFrequency === 'monthly' ? null : form.builderFrequency === 'daily' ? [0, 1, 2, 3, 4, 5, 6] : form.days_of_week,
+            week_interval: form.builderFrequency === 'weekly' ? form.week_interval : 1,
+            anchor_date: form.anchor_date,
+            day_of_month: form.builderFrequency === 'monthly' ? form.day_of_month : null,
+        };
+    };
+
+    const toggleDay = (day: number) => {
+        setForm((prev) => {
+            const nextDays = prev.days_of_week.includes(day)
+                ? prev.days_of_week.filter((candidate) => candidate !== day)
+                : [...prev.days_of_week, day].sort((a, b) => a - b);
+            return { ...prev, days_of_week: nextDays.length === 0 ? prev.days_of_week : nextDays };
+        });
+    };
 
     const saveCronjob = async (event: FormEvent) => {
         event.preventDefault();
@@ -163,7 +253,7 @@ export default function CronjobFormPage() {
         return <div className="cronjob-page-state error">{error}</div>;
     }
 
-    const selectedPreset = PRESETS.find((preset) => preset.key === form.preset_key) ?? PRESETS[1];
+    const timezoneOptions = getTimezoneOptions();
 
     return (
         <main className="cronjob-form-page">
@@ -226,22 +316,22 @@ export default function CronjobFormPage() {
                                         value={form.scheduleMode}
                                         onChange={(event) => setForm((prev) => ({ ...prev, scheduleMode: event.target.value as ScheduleMode }))}
                                     >
-                                        <option value="preset">Preset</option>
+                                        <option value="builder">Schedule builder</option>
                                         <option value="cron">Cron expression</option>
                                     </select>
                                 </div>
                             </label>
-                            {form.scheduleMode === 'preset' ? (
+                            {form.scheduleMode === 'builder' ? (
                                 <label className="cronjob-field">
-                                    <span>Preset</span>
+                                    <span>Timezone</span>
                                     <div className="cronjob-select-wrap">
                                         <select
-                                            value={form.preset_key}
-                                            onChange={(event) => setForm((prev) => ({ ...prev, preset_key: event.target.value }))}
+                                            value={form.timezone}
+                                            onChange={(event) => setForm((prev) => ({ ...prev, timezone: event.target.value }))}
                                         >
-                                            {PRESETS.map((preset) => (
-                                                <option key={preset.key} value={preset.key}>
-                                                    {preset.label} - {preset.description}
+                                            {timezoneOptions.map((timezone) => (
+                                                <option key={timezone} value={timezone}>
+                                                    {timezone}
                                                 </option>
                                             ))}
                                         </select>
@@ -260,25 +350,106 @@ export default function CronjobFormPage() {
                             )}
                         </div>
 
-                        <div className="cronjob-form-grid">
+                        {form.scheduleMode === 'builder' ? (
+                            <>
+                                <div className="cronjob-form-grid">
+                                    <label className="cronjob-field">
+                                        <span>Frequency</span>
+                                        <div className="cronjob-select-wrap">
+                                            <select
+                                                value={form.builderFrequency}
+                                                onChange={(event) => setForm((prev) => ({ ...prev, builderFrequency: event.target.value as BuilderFrequency }))}
+                                            >
+                                                <option value="daily">Every day</option>
+                                                <option value="weekly">Specific weekdays</option>
+                                                <option value="monthly">Specific day of month</option>
+                                            </select>
+                                        </div>
+                                    </label>
+                                    <label className="cronjob-field">
+                                        <span>Time of day</span>
+                                        <input
+                                            type="time"
+                                            value={form.time}
+                                            onChange={(event) => setForm((prev) => ({ ...prev, time: event.target.value }))}
+                                            required
+                                        />
+                                    </label>
+                                </div>
+
+                                {form.builderFrequency === 'weekly' ? (
+                                    <>
+                                        <div className="cronjob-day-picker" aria-label="Days of week">
+                                            {DAYS_OF_WEEK.map((day) => (
+                                                <button
+                                                    key={day.value}
+                                                    type="button"
+                                                    className={form.days_of_week.includes(day.value) ? 'active' : ''}
+                                                    onClick={() => toggleDay(day.value)}
+                                                >
+                                                    {day.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                        <div className="cronjob-form-grid">
+                                            <label className="cronjob-field">
+                                                <span>Repeat every</span>
+                                                <div className="cronjob-inline-field">
+                                                    <input
+                                                        type="number"
+                                                        min={1}
+                                                        max={52}
+                                                        value={form.week_interval}
+                                                        onChange={(event) => setForm((prev) => ({ ...prev, week_interval: Number(event.target.value) }))}
+                                                        required
+                                                    />
+                                                    <small>week(s)</small>
+                                                </div>
+                                            </label>
+                                            <label className="cronjob-field">
+                                                <span>Starting week</span>
+                                                <input
+                                                    type="date"
+                                                    value={form.anchor_date}
+                                                    onChange={(event) => setForm((prev) => ({ ...prev, anchor_date: event.target.value }))}
+                                                    required
+                                                />
+                                            </label>
+                                        </div>
+                                    </>
+                                ) : null}
+
+                                {form.builderFrequency === 'monthly' ? (
+                                    <label className="cronjob-field cronjob-short-field">
+                                        <span>Day of month</span>
+                                        <input
+                                            type="number"
+                                            min={1}
+                                            max={31}
+                                            value={form.day_of_month}
+                                            onChange={(event) => setForm((prev) => ({ ...prev, day_of_month: Number(event.target.value) }))}
+                                            required
+                                        />
+                                    </label>
+                                ) : null}
+                            </>
+                        ) : (
                             <label className="cronjob-field">
                                 <span>Timezone</span>
-                                <input
-                                    value={form.timezone}
-                                    onChange={(event) => setForm((prev) => ({ ...prev, timezone: event.target.value }))}
-                                    placeholder="UTC"
-                                    required
-                                />
+                                <div className="cronjob-select-wrap">
+                                    <select
+                                        value={form.timezone}
+                                        onChange={(event) => setForm((prev) => ({ ...prev, timezone: event.target.value }))}
+                                    >
+                                        {timezoneOptions.map((timezone) => (
+                                            <option key={timezone} value={timezone}>
+                                                {timezone}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
                             </label>
-                            <div className="cronjob-schedule-preview">
-                                <span>Schedule preview</span>
-                                <strong>
-                                    {form.scheduleMode === 'preset'
-                                        ? `${selectedPreset.label}: ${selectedPreset.description}`
-                                        : form.cron_expression}
-                                </strong>
-                            </div>
-                        </div>
+                        )}
                     </section>
 
                     <section className="cronjob-form-panel">
