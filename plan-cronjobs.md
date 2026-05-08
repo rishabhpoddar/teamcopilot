@@ -6,7 +6,7 @@ Add user-owned cronjobs that launch an autonomous agent session on a schedule.
 Each cronjob belongs to a single user, stores its schedule in the database, and runs with that user's identity and secret context.
 
 The default behavior should strongly bias the agent toward completing the task without bothering the user.
-If the agent hits a hard permission boundary or another true blocker, the run should escalate into a regular chat session for that same user so the conversation can continue normally.
+If the agent hits a hard permission boundary or another true blocker, the run should become visible as a regular chat session for that same user so the conversation can continue normally.
 
 This document is the source of truth for the feature before implementation.
 
@@ -21,7 +21,7 @@ This document is the source of truth for the feature before implementation.
   - perform other agentic actions available in a normal session
 - Make the default run path autonomous and low-friction (when the cronjob is created, users have to choose if workflows can run without user permission).
 - Only ask the user when the agent truly cannot proceed without approval or permission.
-- If a cronjob run escalates, preserve the same user context and continue as a normal chat session.
+- If a cronjob run needs user input, preserve the same user context and continue as a normal chat session.
 
 ## Non-Goals
 
@@ -77,12 +77,9 @@ On each due trigger:
 4. Start an autonomous agent session as the cronjob owner.
 5. Seed the session with the cronjob prompt and strong instructions to avoid asking the user for help unless it is unavoidable + available secrets and skills (similar to a normal chat session)
 6. Let the agent proceed with normal platform tools.
-7. If a permission gate cannot be avoided:
-   - create a regular chat session for the same user
-   - attach the cronjob run to that chat session
-   - mark the cronjob run as needing user input
-   - surface the chat session to the user as an attention item
-   - continue from there as a standard chat conversation
+7. Keep the run `running` while the opencode session is busy or retrying.
+8. If the agent calls `markCronjobCompleted`, mark the run `success`.
+9. If the opencode session becomes idle without `markCronjobCompleted`, mark the run `needs_user_input`, reveal the linked chat session, and continue from there as a standard chat conversation.
 
 ### Permission Policy
 
@@ -96,13 +93,13 @@ If true:
 
 If false:
 
-- workflow execution should behave conservatively and escalate when permission would otherwise be needed.
+- workflow execution should behave conservatively; if permission is needed, the opencode loop stops, the run becomes `needs_user_input`, and the linked chat session is revealed.
 
 This policy is intentionally narrower than "agent can do anything". It only controls whether workflow runs are allowed to skip the user prompt path.
 
-### Escalation
+### User Handoff
 
-Escalation should happen when the autonomous run hits a real boundary that cannot be safely bypassed.
+User handoff should happen when the autonomous run hits a real boundary that cannot be safely bypassed.
 
 Examples:
 
@@ -110,12 +107,13 @@ Examples:
 - the agent encounters another platform-level approval or permission gate
 - a resource access boundary cannot be resolved automatically
 
-Escalation behavior:
+User handoff behavior:
 
-- create a standard `chat_sessions` row for the cronjob owner
+- create a hidden cronjob `chat_sessions` row for the cronjob owner at run start
 - link the cronjob run to that chat session
-- keep the session visible in the normal chat UI
-- mark the session as needing attention so the user can see that the cronjob is waiting on them
+- keep the session hidden from the normal chat UI while the run is active and autonomous
+- when the session is revealed, make it appear as needing attention so the user can see that the cronjob is waiting on them
+- reveal the session in the normal chat UI only when the run becomes `needs_user_input`
 - from that point on, the user handles it like any other session
 
 The cronjob runtime should not invent a separate "approval session" type if the existing chat session model can already carry the conversation forward.
@@ -154,7 +152,7 @@ When a run fails:
 When a run needs user input:
 
 - store the run as `needs_user_input`
-- create or reveal the linked chat session
+- reveal the linked chat session
 - set the chat session state so it appears in the AI chat list as needing attention
 - show clear cronjob context in the chat header or first visible message, including the cronjob name and prompt snapshot
 - keep the cronjob run linked to that chat session for audit history
@@ -166,6 +164,7 @@ The runtime classification rule is:
 - if `markCronjobCompleted` is called, mark the run `success`
 - if the loop stops and `markCronjobCompleted` was not called, mark the run `needs_user_input` and reveal the linked chat session
 - if the runtime fails independently of agent control flow, mark the run `failed`
+- set `completed_at` whenever a run leaves `running`, including `success`, `failed`, `skipped`, and `needs_user_input`
 
 ## Database Plan
 
@@ -194,8 +193,7 @@ Optional columns if needed later:
 
 Suggested columns:
 
-- `cronjob_id` - unique foreign key to `cronjobs`
-- `schedule_type` - `preset` or `cron`
+- `cronjob_id` - primary key and foreign key to `cronjobs`
 - `preset_key` - nullable preset identifier
 - `cron_expression` - nullable normalized cron expression
 - `timezone` - IANA timezone string
@@ -205,8 +203,9 @@ Suggested columns:
 Normalization rule:
 
 - exactly one of `preset_key` or `cron_expression` must be set
-- if `schedule_type` is `preset`, `preset_key` is required and `cron_expression` is derived from the preset
-- if `schedule_type` is `cron`, `cron_expression` is required and `preset_key` is null
+- if `preset_key` is set, derive the cron expression from the server-side preset registry
+- if `cron_expression` is set, use it directly
+- do not store `schedule_type`; derive the UI mode from which schedule field is set
 
 #### `cronjob_runs`
 
@@ -219,7 +218,7 @@ Suggested columns:
 - `completed_at`
 - `prompt_snapshot` - prompt copy used for the run
 - `summary` - nullable short summary supplied by the cronjob completion tool
-- `session_id` - linked chat session id if any
+- `session_id` - linked chat session id
 - `opencode_session_id` - runtime session id
 - `needs_user_input_reason` - nullable string inferred by the runtime when the tool loop stops without completion
 - `error_message` - nullable string
@@ -236,17 +235,36 @@ Normalization notes:
 - do not store full output; the agent trace should come from the linked opencode/chat session
 - keep `summary` because the run list needs a compact outcome without reading the full session trace
 - keep `prompt_snapshot` because editing the cronjob prompt later would otherwise change the historical meaning of past runs
+- require `session_id` for all non-skipped runs because the opencode/chat session is the source of truth for the trace
+- for `skipped` runs, `started_at` is the time the scheduler made the skip decision and `completed_at` should be the same value
+
+#### `chat_sessions` additions
+
+Cronjob runs need hidden sessions that can later become regular chat sessions.
+
+Suggested additions to `chat_sessions`:
+
+- `source` - `user` or `cronjob`
+- `visible_to_user` - boolean
+
+Behavior:
+
+- normal user-created chats use `source = user` and `visible_to_user = true`
+- cronjob-created sessions use `source = cronjob` and `visible_to_user = false` while the run is autonomous
+- when a cronjob run becomes `needs_user_input`, update the linked session to `visible_to_user = true`
+- chat session list APIs should exclude invisible sessions by default
+- use `cronjob_runs.session_id` as the only database link between a run and its chat session
 
 ### Indexes and Constraints
 
 Recommended:
 
-- unique cronjob ownership/name pair if names should be unique per user
-- index on `user_id`
-- index on `enabled`
-- index on `cronjob_id`
-- index on `cronjob_id, started_at`
-- index on `cronjob_id, status`
+- `cronjobs`: unique `user_id, name` if names should be unique per user
+- `cronjobs`: index on `user_id`
+- `cronjobs`: index on `enabled`
+- `cronjob_runs`: index on `cronjob_id, started_at`
+- `cronjob_runs`: index on `cronjob_id, status`
+- `chat_sessions`: index on `source, visible_to_user`
 
 ### Migration Notes
 
@@ -270,7 +288,7 @@ At startup:
 At runtime:
 
 - when a timer fires, dispatch the cronjob run
-- after completion, recompute the next run from the schedule row and recent run history
+- after completion, recompute the next run from the schedule row and the current time
 
 ### Overlap Policy
 
@@ -281,6 +299,8 @@ If a cronjob fires while the previous run is still active:
 - continue to the next scheduled time
 
 This avoids duplicate work and reduces the chance of multiple user-attention sessions for the same cronjob.
+Only `running` runs block overlap.
+A previous `needs_user_input` run is already handed off to the user and should not block future scheduled runs.
 
 ### Downtime Policy
 
@@ -301,7 +321,8 @@ The UI should default the timezone from the creator's browser timezone or a proj
 
 For each cronjob run:
 
-- create or reuse an opencode session as the cronjob owner
+- create a new opencode session as the cronjob owner
+- create a hidden linked `chat_sessions` row for that opencode session
 - seed the session with:
   - a cronjob runtime instruction block
   - the cronjob prompt
@@ -332,7 +353,7 @@ The session preamble should explicitly tell the agent to:
 - prefer taking action over asking for clarification
 - use available workflows and skills when they fit the task
 - make reasonable assumptions when the prompt is underspecified
-- only escalate when blocked by an actual permission or safety boundary
+- stop without calling the completion tool only when blocked by an actual permission or safety boundary
 - avoid asking the user to "confirm" routine decisions
 - call the cronjob completion tool exactly once after the requested work is complete
 - understand that stopping without calling the completion tool will reveal the session to the user as needing attention
@@ -350,14 +371,12 @@ If the cronjob prompt causes a workflow to run:
 - honor current workflow approval and permission rules
 - consult `allow_workflow_runs_without_permission` before asking the user
 
-### Escalation to Chat
+### Handoff to Chat
 
-If escalation is needed:
+If the opencode loop stops without `markCronjobCompleted`:
 
-- create a standard chat session row owned by the same user
-- attach the run to that session
 - mark the cronjob run as `needs_user_input`
-- surface the session in the regular chat experience
+- reveal the already-linked chat session in the regular chat experience
 - make the session appear as an attention item, not as a background/completed cronjob run
 - continue using the existing chat permission-response and tool-answer mechanisms
 
@@ -379,7 +398,7 @@ Suggested input:
 Behavior:
 
 - calling the tool updates the run to `success`, sets `completed_at`, stores `summary`, and keeps the session hidden from the normal chat list
-- if the opencode tool loop stops before this tool is called, the runtime updates the run to `needs_user_input`, creates or reveals the linked chat session, infers `needs_user_input_reason`, and marks the session as needing attention
+- if the opencode tool loop stops before this tool is called, the runtime updates the run to `needs_user_input`, reveals the linked chat session, infers `needs_user_input_reason`, and marks the session as needing attention
 - duplicate calls should fail because each run can have only one terminal state
 - the tool should fail if platform-level pending permission or pending question state still exists for the session
 
@@ -490,7 +509,7 @@ Integration checks should cover:
 - The scheduler runs inside the main backend process.
 - The database is the source of truth for cronjob definitions, schedule definitions, and run state.
 - Missed runs are skipped, not backfilled.
-- Escalation should prefer reusing the existing chat session model over introducing a new approval session model.
+- User handoff should prefer reusing the existing chat session model over introducing a new approval session model.
 - Timezones use IANA names.
 - The `allow_workflow_runs_without_permission` flag only governs workflow permission behavior, not every possible platform action.
 
