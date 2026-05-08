@@ -12,8 +12,21 @@
 
 .cronjob-run-topbar button,
 .cronjob-run-stop-btn {
-  border-radius: 999px;
-  padding: 0.55rem 0.85rem;
+  border: 1px solid #4a5568;
+  background: #374151;
+  color: #e5e7eb;
+  border-radius: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.cronjob-run-header,
+.cronjob-run-meta,
+.cronjob-run-state,
+.cronjob-run-status-card {
+  border: 1px solid #333;
+  border-radius: 12px;
+  background: #1a1a1a;
 }
 
 .cronjob-run-header {
@@ -22,18 +35,12 @@
   gap: 1rem;
   align-items: stretch;
   margin-bottom: 1rem;
-  border: 1px solid #2f3a32;
-  border-radius: 24px;
-  padding: 1.25rem;
-  background:
-    radial-gradient(circle at 92% 10%, rgba(251, 191, 36, 0.18), transparent 30%),
-    linear-gradient(135deg, #121a14, #141414 70%);
+  padding: 1rem 1.1rem;
 }
 
 .cronjob-run-header h1 {
   margin: 0;
-  font-size: clamp(2rem, 4vw, 3rem);
-  letter-spacing: -0.04em;
+  font-size: 1.5rem;
 }
 
 .cronjob-run-header p {
@@ -46,31 +53,29 @@
   display: flex;
   flex-direction: column;
   gap: 0.55rem;
-  border: 1px solid #36513d;
-  border-radius: 18px;
   padding: 1rem;
-  background: rgba(0, 0, 0, 0.25);
+  background: #141414;
 }
 
 .cronjob-run-status-card span,
 .cronjob-run-meta span,
 .cronjobs-eyebrow {
-  color: #86efac;
+  color: #888;
   font-size: 0.72rem;
-  font-weight: 800;
-  letter-spacing: 0.14em;
+  font-weight: 700;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .cronjob-run-status-card strong {
-  font-size: 1.15rem;
+  font-size: 1.05rem;
   text-transform: capitalize;
 }
 
-.cronjob-run-stop-btn {
-  border-color: #7f1d1d;
-  color: #fecaca;
-  background: rgba(127, 29, 29, 0.55);
+.cronjob-run-stop-btn:disabled,
+.cronjob-run-topbar button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .cronjob-run-meta {
@@ -78,13 +83,14 @@
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
   gap: 0.75rem;
   margin-bottom: 1rem;
+  padding: 1rem;
 }
 
 .cronjob-run-meta div {
-  border: 1px solid #2c2c2c;
-  border-radius: 16px;
+  border: 1px solid #333;
+  border-radius: 8px;
   padding: 0.85rem;
-  background: #121212;
+  background: #141414;
 }
 
 .cronjob-run-meta strong {
@@ -99,6 +105,7 @@
   margin: 4rem auto;
   text-align: center;
   color: #888;
+  padding: 1.5rem 1rem;
 }
 
 .cronjob-run-state.error {

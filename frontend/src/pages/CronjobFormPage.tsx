@@ -176,14 +176,8 @@ export default function CronjobFormPage() {
                     <p className="cronjobs-eyebrow">Scheduled agent</p>
                     <h1>{isEditing ? 'Edit cronjob' : 'Create a cronjob'}</h1>
                     <p>
-                        Define a prompt that should complete without user input. If the agent gets blocked,
-                        TeamCopilot reveals the hidden session as a normal chat.
+                        Define a prompt that should run on a schedule. Prompts can invoke workflows or other skills.
                     </p>
-                    <div className="cronjob-builder-card">
-                        <span>Completion model</span>
-                        <strong>Tool-call required</strong>
-                        <p>The agent must call <code>markCronjobCompleted</code>. If it stops without that call, the run escalates.</p>
-                    </div>
                 </aside>
 
                 <form className="cronjob-builder-form" onSubmit={saveCronjob}>
@@ -224,48 +218,47 @@ export default function CronjobFormPage() {
                             </div>
                         </div>
 
-                        <div className="cronjob-schedule-toggle" role="tablist" aria-label="Schedule type">
-                            <button
-                                type="button"
-                                className={form.scheduleMode === 'preset' ? 'active' : ''}
-                                onClick={() => setForm((prev) => ({ ...prev, scheduleMode: 'preset' }))}
-                            >
-                                Preset
-                            </button>
-                            <button
-                                type="button"
-                                className={form.scheduleMode === 'cron' ? 'active' : ''}
-                                onClick={() => setForm((prev) => ({ ...prev, scheduleMode: 'cron' }))}
-                            >
-                                Cron expression
-                            </button>
-                        </div>
-
-                        {form.scheduleMode === 'preset' ? (
-                            <div className="cronjob-preset-grid">
-                                {PRESETS.map((preset) => (
-                                    <button
-                                        type="button"
-                                        key={preset.key}
-                                        className={form.preset_key === preset.key ? 'active' : ''}
-                                        onClick={() => setForm((prev) => ({ ...prev, preset_key: preset.key }))}
-                                    >
-                                        <strong>{preset.label}</strong>
-                                        <span>{preset.description}</span>
-                                    </button>
-                                ))}
-                            </div>
-                        ) : (
+                        <div className="cronjob-form-grid">
                             <label className="cronjob-field">
-                                <span>Cron expression</span>
-                                <input
-                                    value={form.cron_expression}
-                                    onChange={(event) => setForm((prev) => ({ ...prev, cron_expression: event.target.value }))}
-                                    placeholder="0 9 * * *"
-                                    required
-                                />
+                                <span>Schedule type</span>
+                                <div className="cronjob-select-wrap">
+                                    <select
+                                        value={form.scheduleMode}
+                                        onChange={(event) => setForm((prev) => ({ ...prev, scheduleMode: event.target.value as ScheduleMode }))}
+                                    >
+                                        <option value="preset">Preset</option>
+                                        <option value="cron">Cron expression</option>
+                                    </select>
+                                </div>
                             </label>
-                        )}
+                            {form.scheduleMode === 'preset' ? (
+                                <label className="cronjob-field">
+                                    <span>Preset</span>
+                                    <div className="cronjob-select-wrap">
+                                        <select
+                                            value={form.preset_key}
+                                            onChange={(event) => setForm((prev) => ({ ...prev, preset_key: event.target.value }))}
+                                        >
+                                            {PRESETS.map((preset) => (
+                                                <option key={preset.key} value={preset.key}>
+                                                    {preset.label} - {preset.description}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </label>
+                            ) : (
+                                <label className="cronjob-field">
+                                    <span>Cron expression</span>
+                                    <input
+                                        value={form.cron_expression}
+                                        onChange={(event) => setForm((prev) => ({ ...prev, cron_expression: event.target.value }))}
+                                        placeholder="0 9 * * *"
+                                        required
+                                    />
+                                </label>
+                            )}
+                        </div>
 
                         <div className="cronjob-form-grid">
                             <label className="cronjob-field">
