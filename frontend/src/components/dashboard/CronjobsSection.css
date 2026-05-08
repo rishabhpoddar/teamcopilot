@@ -1,83 +1,162 @@
 .cronjobs-section-content {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 1.25rem;
 }
 
-.cronjob-form {
-  margin-bottom: 0.25rem;
-}
-
-.cronjob-form-header {
+.cronjobs-hero {
+  position: relative;
+  overflow: hidden;
   display: flex;
   justify-content: space-between;
-  gap: 1rem;
-  align-items: flex-start;
+  gap: 1.25rem;
+  align-items: center;
+  border: 1px solid #2f3a32;
+  border-radius: 22px;
+  padding: 1.35rem;
+  background:
+    radial-gradient(circle at 88% 18%, rgba(74, 222, 128, 0.18), transparent 30%),
+    linear-gradient(135deg, #121a14 0%, #151515 55%, #101010 100%);
 }
 
-.cronjob-form-header h3 {
+.cronjobs-eyebrow {
   margin: 0 0 0.35rem;
+  color: #86efac;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
 
-.cronjob-form-header p {
+.cronjobs-hero h2 {
   margin: 0;
+  font-size: clamp(1.6rem, 3vw, 2.35rem);
+}
+
+.cronjobs-hero p {
+  max-width: 680px;
+  margin: 0.45rem 0 0;
+  color: #b7b7b7;
+}
+
+.cronjobs-primary-btn {
+  border: 1px solid #86efac;
+  background: #86efac;
+  color: #07130a;
+  border-radius: 999px;
+  padding: 0.75rem 1rem;
+  font-weight: 800;
+  white-space: nowrap;
+  box-shadow: 0 12px 28px rgba(74, 222, 128, 0.16);
+}
+
+.cronjobs-primary-btn:hover:not(:disabled) {
+  border-color: #bbf7d0;
+  background: #bbf7d0;
+}
+
+.cronjobs-primary-btn.compact {
+  padding: 0.55rem 0.85rem;
+  box-shadow: none;
+}
+
+.cronjobs-primary-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.cronjobs-empty-state {
+  position: relative;
+  overflow: hidden;
+  text-align: center;
+  padding: 4rem 1rem;
+  border: 1px dashed #36513d;
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 50% -10%, rgba(134, 239, 172, 0.16), transparent 34%),
+    #111;
+}
+
+.cronjobs-empty-orb {
+  width: 4.5rem;
+  height: 4.5rem;
+  margin: 0 auto 1rem;
+  border-radius: 50%;
+  background: conic-gradient(from 140deg, #86efac, #0f1d12, #86efac);
+  box-shadow: 0 0 42px rgba(134, 239, 172, 0.22);
+}
+
+.cronjobs-empty-state h3 {
+  margin: 0;
+  font-size: 1.35rem;
+}
+
+.cronjobs-empty-state p {
+  max-width: 520px;
+  margin: 0.55rem auto 1.2rem;
   color: #aaa;
-  font-size: 0.9rem;
 }
 
-.cronjob-form-grid {
+.cronjobs-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.85rem;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 1rem;
 }
 
-.cronjob-field {
+.cronjob-card {
+  position: relative;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
-}
-
-.cronjob-field span {
-  color: #888;
-  font-size: 0.8rem;
-  font-weight: 500;
-}
-
-.cronjob-field input,
-.cronjob-field select,
-.cronjob-field textarea {
-  width: 100%;
-  box-sizing: border-box;
-  background: #111;
-  color: inherit;
-  border: 1px solid #444;
-  border-radius: 6px;
-  padding: 0.75rem 1rem;
-  font: inherit;
-}
-
-.cronjob-field textarea {
-  resize: vertical;
-  min-height: 8rem;
-}
-
-.cronjob-checkbox-row {
-  display: flex;
-  flex-wrap: wrap;
   gap: 1rem;
+  border: 1px solid #2b342e;
+  border-radius: 18px;
+  padding: 1.1rem;
+  background:
+    linear-gradient(180deg, rgba(134, 239, 172, 0.05), transparent 36%),
+    #171717;
+}
+
+.cronjob-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: linear-gradient(90deg, #86efac, transparent);
+}
+
+.cronjob-card-topline,
+.cronjob-card-header,
+.cronjob-actions,
+.cronjob-run-summary {
+  position: relative;
+}
+
+.cronjob-card-topline {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.cronjob-card-header h3 {
+  margin: 0;
+  font-size: 1.12rem;
+}
+
+.cronjob-card-header p {
+  max-height: 7.2rem;
+  overflow: auto;
+  margin: 0.5rem 0 0;
   color: #aaa;
   font-size: 0.9rem;
+  white-space: pre-wrap;
 }
 
-.cronjob-checkbox-row label {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-.cronjob-status-badge {
-  font-size: 0.75rem;
-  padding: 0.2rem 0.45rem;
+.cronjob-status-badge,
+.cronjob-live-pill {
+  font-size: 0.72rem;
+  padding: 0.25rem 0.55rem;
   border-radius: 999px;
   border: 1px solid #444;
   white-space: nowrap;
@@ -95,11 +174,96 @@
   background: rgba(75, 85, 99, 0.25);
 }
 
-.cronjob-prompt {
-  white-space: pre-wrap;
-  max-height: 9rem;
-  overflow: auto;
-  padding-right: 0.25rem;
+.cronjob-live-pill {
+  color: #fef3c7;
+  border-color: #92400e;
+  background: rgba(146, 64, 14, 0.25);
+}
+
+.cronjob-metrics {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.55rem;
+}
+
+.cronjob-metrics div,
+.cronjob-run-summary {
+  border: 1px solid #2c2c2c;
+  border-radius: 12px;
+  padding: 0.7rem;
+  background: #111;
+}
+
+.cronjob-metrics span,
+.cronjob-run-summary span,
+.cronjob-permission-copy {
+  color: #888;
+  font-size: 0.78rem;
+}
+
+.cronjob-metrics strong,
+.cronjob-run-summary strong {
+  display: block;
+  margin-top: 0.2rem;
+  color: #e5e5e5;
+  font-size: 0.88rem;
+}
+
+.cronjob-run-summary {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.65rem;
+  align-items: center;
+}
+
+.cronjob-run-dot {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+  background: #666;
+}
+
+.cronjob-run-dot.success {
+  background: #86efac;
+}
+
+.cronjob-run-dot.running {
+  background: #fbbf24;
+  box-shadow: 0 0 18px rgba(251, 191, 36, 0.45);
+}
+
+.cronjob-run-dot.attention {
+  background: #fb923c;
+}
+
+.cronjob-run-dot.failed {
+  background: #f87171;
+}
+
+.cronjob-run-dot.muted {
+  background: #4b5563;
+}
+
+.cronjob-permission-copy {
+  margin: 0;
+}
+
+.cronjob-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.cronjob-actions button {
+  border-radius: 999px;
+  padding: 0.55rem 0.8rem;
+  font-size: 0.88rem;
+}
+
+.cronjob-danger-btn {
+  border-color: #7f1d1d;
+  color: #fecaca;
+  background: rgba(127, 29, 29, 0.45);
 }
 
 .cronjob-runs {
@@ -112,7 +276,7 @@
 
 .cronjob-run-row {
   border: 1px solid #333;
-  border-radius: 6px;
+  border-radius: 10px;
   padding: 0.65rem;
   background: #111;
 }
@@ -135,12 +299,13 @@
   margin: 0.45rem 0 0;
 }
 
-@media (max-width: 800px) {
-  .cronjob-form-grid {
-    grid-template-columns: 1fr;
+@media (max-width: 760px) {
+  .cronjobs-hero {
+    align-items: stretch;
+    flex-direction: column;
   }
 
-  .cronjob-form-header {
-    flex-direction: column;
+  .cronjobs-grid {
+    grid-template-columns: 1fr;
   }
 }

@@ -257,7 +257,7 @@ function monitorCronjobRun(runId: string, opencodeSessionId: string): void {
     runningMonitors.set(runId, interval);
 }
 
-export async function dispatchCronjobRun(cronjobId: string, options: { allowDisabled?: boolean } = {}): Promise<string> {
+export async function dispatchCronjobRun(cronjobId: string, options: { allowDisabled?: boolean; skipIfActive?: boolean } = {}): Promise<string> {
     const cronjob = await prisma.cronjobs.findUnique({
         where: { id: cronjobId },
         include: { user: true },
@@ -274,6 +274,12 @@ export async function dispatchCronjobRun(cronjobId: string, options: { allowDisa
         select: { id: true }
     });
     if (activeRun) {
+        if (options.skipIfActive === false) {
+            throw {
+                status: 409,
+                message: "Cronjob is already running"
+            };
+        }
         const now = nowMs();
         const skipped = await prisma.cronjob_runs.create({
             data: {

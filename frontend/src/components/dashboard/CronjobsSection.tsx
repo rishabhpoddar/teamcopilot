@@ -1,13 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { FormEvent } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { AxiosError } from 'axios';
 import { toast } from 'react-toastify';
 import { axiosInstance } from '../../utils';
 import { useAuth } from '../../lib/auth';
 import './WorkflowsSection.css';
 import './CronjobsSection.css';
-
-type ScheduleMode = 'preset' | 'cron';
 
 interface CronjobSchedule {
     preset_key: string | null;
@@ -16,16 +14,18 @@ interface CronjobSchedule {
     effective_cron_expression: string;
 }
 
-interface CronjobRun {
+interface CronjobRunPreview {
     id: string;
-    cronjob_id: string;
     status: string;
     started_at: number;
     completed_at: number | null;
-    prompt_snapshot: string;
+}
+
+interface CronjobRun {
+    id: string;
+    status: string;
+    started_at: number;
     summary: string | null;
-    session_id: string | null;
-    opencode_session_id: string | null;
     needs_user_input_reason: string | null;
     error_message: string | null;
 }
@@ -36,23 +36,11 @@ interface Cronjob {
     prompt: string;
     enabled: boolean;
     allow_workflow_runs_without_permission: boolean;
-    created_at: number;
-    updated_at: number;
     schedule: CronjobSchedule;
     next_run_at: number | null;
-    latest_run: Pick<CronjobRun, 'id' | 'status' | 'started_at' | 'completed_at'> | null;
-}
-
-interface CronjobFormState {
-    id: string | null;
-    name: string;
-    prompt: string;
-    enabled: boolean;
-    allow_workflow_runs_without_permission: boolean;
-    scheduleMode: ScheduleMode;
-    preset_key: string;
-    cron_expression: string;
-    timezone: string;
+    is_running: boolean;
+    current_run_id: string | null;
+    latest_run: CronjobRunPreview | null;
 }
 
 const PRESETS: Array<{ key: string; label: string }> = [
@@ -61,24 +49,6 @@ const PRESETS: Array<{ key: string; label: string }> = [
     { key: 'weekdays', label: 'Weekdays at 9:00' },
     { key: 'weekly', label: 'Weekly on Monday at 9:00' },
 ];
-
-function getLocalTimezone(): string {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-}
-
-function emptyForm(): CronjobFormState {
-    return {
-        id: null,
-        name: '',
-        prompt: '',
-        enabled: true,
-        allow_workflow_runs_without_permission: true,
-        scheduleMode: 'preset',
-        preset_key: 'daily',
-        cron_expression: '0 9 * * *',
-        timezone: getLocalTimezone(),
-    };
-}
 
 function getErrorMessage(err: unknown, fallback: string): string {
     if (err instanceof AxiosError) {
@@ -107,16 +77,25 @@ function statusLabel(status: string): string {
     return status.replaceAll('_', ' ');
 }
 
+function getRunStatusClass(status: string): string {
+    if (status === 'success') return 'success';
+    if (status === 'running') return 'running';
+    if (status === 'needs_user_input') return 'attention';
+    if (status === 'failed') return 'failed';
+    return 'muted';
+}
+
 export default function CronjobsSection() {
     const auth = useAuth();
+    const navigate = useNavigate();
     const token = auth.loading ? null : auth.token;
     const [cronjobs, setCronjobs] = useState<Cronjob[]>([]);
     const [loading, setLoading] = useState(true);
-    const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [form, setForm] = useState<CronjobFormState>(() => emptyForm());
     const [runsByCronjob, setRunsByCronjob] = useState<Record<string, CronjobRun[]>>({});
     const [expandedCronjobId, setExpandedCronjobId] = useState<string | null>(null);
+    const [startingCronjobId, setStartingCronjobId] = useState<string | null>(null);
+    const [stoppingRunId, setStoppingRunId] = useState<string | null>(null);
 
     const fetchCronjobs = useCallback(async () => {
         if (!token) return;
@@ -139,61 +118,6 @@ export default function CronjobsSection() {
 
     if (auth.loading) return null;
 
-    const startEdit = (cronjob: Cronjob) => {
-        setForm({
-            id: cronjob.id,
-            name: cronjob.name,
-            prompt: cronjob.prompt,
-            enabled: cronjob.enabled,
-            allow_workflow_runs_without_permission: cronjob.allow_workflow_runs_without_permission,
-            scheduleMode: cronjob.schedule.preset_key ? 'preset' : 'cron',
-            preset_key: cronjob.schedule.preset_key ?? 'daily',
-            cron_expression: cronjob.schedule.cron_expression ?? cronjob.schedule.effective_cron_expression,
-            timezone: cronjob.schedule.timezone,
-        });
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    };
-
-    const resetForm = () => {
-        setForm(emptyForm());
-    };
-
-    const buildPayload = () => ({
-        name: form.name,
-        prompt: form.prompt,
-        enabled: form.enabled,
-        allow_workflow_runs_without_permission: form.allow_workflow_runs_without_permission,
-        timezone: form.timezone,
-        preset_key: form.scheduleMode === 'preset' ? form.preset_key : null,
-        cron_expression: form.scheduleMode === 'cron' ? form.cron_expression : null,
-    });
-
-    const handleSubmit = async (event: FormEvent) => {
-        event.preventDefault();
-        if (!token) return;
-        setSaving(true);
-        try {
-            const payload = buildPayload();
-            if (form.id) {
-                await axiosInstance.patch(`/api/cronjobs/${form.id}`, payload, {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
-                toast.success('Cronjob updated');
-            } else {
-                await axiosInstance.post('/api/cronjobs', payload, {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
-                toast.success('Cronjob created');
-            }
-            resetForm();
-            await fetchCronjobs();
-        } catch (err: unknown) {
-            toast.error(getErrorMessage(err, 'Failed to save cronjob'));
-        } finally {
-            setSaving(false);
-        }
-    };
-
     const toggleEnabled = async (cronjob: Cronjob) => {
         if (!token) return;
         try {
@@ -207,15 +131,35 @@ export default function CronjobsSection() {
     };
 
     const runNow = async (cronjob: Cronjob) => {
-        if (!token) return;
+        if (!token || cronjob.is_running || startingCronjobId) return;
+        setStartingCronjobId(cronjob.id);
         try {
-            await axiosInstance.post(`/api/cronjobs/${cronjob.id}/run-now`, {}, {
+            const response = await axiosInstance.post(`/api/cronjobs/${cronjob.id}/run-now`, {}, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             toast.success('Cronjob run started');
             await fetchCronjobs();
+            navigate(`/cronjobs/runs/${response.data.run_id}`);
         } catch (err: unknown) {
             toast.error(getErrorMessage(err, 'Failed to start cronjob'));
+        } finally {
+            setStartingCronjobId(null);
+        }
+    };
+
+    const stopRun = async (runId: string) => {
+        if (!token || stoppingRunId) return;
+        setStoppingRunId(runId);
+        try {
+            await axiosInstance.post(`/api/cronjobs/runs/${runId}/stop`, {}, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            toast.success('Cronjob run stopped');
+            await fetchCronjobs();
+        } catch (err: unknown) {
+            toast.error(getErrorMessage(err, 'Failed to stop cronjob run'));
+        } finally {
+            setStoppingRunId(null);
         }
     };
 
@@ -261,150 +205,113 @@ export default function CronjobsSection() {
 
     return (
         <div className="cronjobs-section-content">
-            <form className="cronjob-form workflow-card" onSubmit={handleSubmit}>
-                <div className="cronjob-form-header">
-                    <div>
-                        <h3>{form.id ? 'Edit Cronjob' : 'Create Cronjob'}</h3>
-                        <p>Scheduled prompts run in hidden agent sessions and only surface when the run needs user input.</p>
-                    </div>
-                    {form.id && (
-                        <button type="button" onClick={resetForm}>
-                            Cancel edit
-                        </button>
-                    )}
+            <section className="cronjobs-hero">
+                <div>
+                    <p className="cronjobs-eyebrow">Scheduled agents</p>
+                    <h2>Cronjobs</h2>
+                    <p>
+                        Run recurring prompts in hidden sessions. A cronjob only appears in chat when the
+                        agent stops without calling the completion tool.
+                    </p>
                 </div>
-
-                <label className="cronjob-field">
-                    <span>Name</span>
-                    <input
-                        value={form.name}
-                        onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
-                        placeholder="Morning repo check"
-                        required
-                    />
-                </label>
-
-                <label className="cronjob-field">
-                    <span>Prompt</span>
-                    <textarea
-                        value={form.prompt}
-                        onChange={(event) => setForm((prev) => ({ ...prev, prompt: event.target.value }))}
-                        placeholder="Check the repo health, run the relevant workflow, and mark the cronjob completed with a summary."
-                        required
-                        rows={5}
-                    />
-                </label>
-
-                <div className="cronjob-form-grid">
-                    <label className="cronjob-field">
-                        <span>Schedule type</span>
-                        <select
-                            value={form.scheduleMode}
-                            onChange={(event) => setForm((prev) => ({ ...prev, scheduleMode: event.target.value as ScheduleMode }))}
-                        >
-                            <option value="preset">Preset</option>
-                            <option value="cron">Cron expression</option>
-                        </select>
-                    </label>
-
-                    {form.scheduleMode === 'preset' ? (
-                        <label className="cronjob-field">
-                            <span>Preset</span>
-                            <select
-                                value={form.preset_key}
-                                onChange={(event) => setForm((prev) => ({ ...prev, preset_key: event.target.value }))}
-                            >
-                                {PRESETS.map((preset) => (
-                                    <option key={preset.key} value={preset.key}>{preset.label}</option>
-                                ))}
-                            </select>
-                        </label>
-                    ) : (
-                        <label className="cronjob-field">
-                            <span>Cron expression</span>
-                            <input
-                                value={form.cron_expression}
-                                onChange={(event) => setForm((prev) => ({ ...prev, cron_expression: event.target.value }))}
-                                placeholder="0 9 * * *"
-                                required
-                            />
-                        </label>
-                    )}
-
-                    <label className="cronjob-field">
-                        <span>Timezone</span>
-                        <input
-                            value={form.timezone}
-                            onChange={(event) => setForm((prev) => ({ ...prev, timezone: event.target.value }))}
-                            placeholder="UTC"
-                            required
-                        />
-                    </label>
-                </div>
-
-                <div className="cronjob-checkbox-row">
-                    <label>
-                        <input
-                            type="checkbox"
-                            checked={form.enabled}
-                            onChange={(event) => setForm((prev) => ({ ...prev, enabled: event.target.checked }))}
-                        />
-                        Enabled
-                    </label>
-                    <label>
-                        <input
-                            type="checkbox"
-                            checked={form.allow_workflow_runs_without_permission}
-                            onChange={(event) => setForm((prev) => ({ ...prev, allow_workflow_runs_without_permission: event.target.checked }))}
-                        />
-                        Allow workflow runs without user permission
-                    </label>
-                </div>
-
-                <button className="workflow-card-run-btn" type="submit" disabled={saving}>
-                    {saving ? 'Saving...' : form.id ? 'Save Cronjob' : 'Create Cronjob'}
+                <button className="cronjobs-primary-btn" onClick={() => navigate('/cronjobs/new')}>
+                    Create Cronjob
                 </button>
-            </form>
+            </section>
 
             {cronjobs.length === 0 ? (
-                <div className="section-empty">
+                <div className="cronjobs-empty-state">
+                    <div className="cronjobs-empty-orb" />
                     <h3>No Cronjobs Yet</h3>
-                    <p>Create one above to run an agent prompt on a schedule.</p>
+                    <p>Create a scheduled agent prompt for checks, reports, workflow runs, or recurring cleanup.</p>
+                    <button className="cronjobs-primary-btn" onClick={() => navigate('/cronjobs/new')}>
+                        Create your first cronjob
+                    </button>
                 </div>
             ) : (
-                <div className="workflows-grid">
+                <div className="cronjobs-grid">
                     {cronjobs.map((cronjob) => (
-                        <div className="workflow-card cronjob-card" key={cronjob.id}>
-                            <div className="workflow-card-header">
-                                <h3 className="workflow-card-title">{cronjob.name}</h3>
+                        <article className="cronjob-card" key={cronjob.id}>
+                            <div className="cronjob-card-topline">
                                 <span className={`cronjob-status-badge ${cronjob.enabled ? 'enabled' : 'disabled'}`}>
                                     {cronjob.enabled ? 'Enabled' : 'Disabled'}
                                 </span>
+                                {cronjob.is_running && <span className="cronjob-live-pill">Running now</span>}
                             </div>
-                            <p className="workflow-card-description cronjob-prompt">{cronjob.prompt}</p>
-                            <p className="workflow-card-meta">Schedule: {scheduleLabel(cronjob)} in {cronjob.schedule.timezone}</p>
-                            <p className="workflow-card-meta">Next run: {formatTimestamp(cronjob.next_run_at)}</p>
-                            <p className="workflow-card-meta">
-                                Latest run: {cronjob.latest_run ? `${statusLabel(cronjob.latest_run.status)} at ${formatTimestamp(cronjob.latest_run.started_at)}` : 'Never run'}
-                            </p>
-                            <p className="workflow-card-meta">
-                                Workflow permission: {cronjob.allow_workflow_runs_without_permission ? 'Allowed without prompting' : 'Ask user first'}
+
+                            <div className="cronjob-card-header">
+                                <h3>{cronjob.name}</h3>
+                                <p>{cronjob.prompt}</p>
+                            </div>
+
+                            <div className="cronjob-metrics">
+                                <div>
+                                    <span>Schedule</span>
+                                    <strong>{scheduleLabel(cronjob)}</strong>
+                                </div>
+                                <div>
+                                    <span>Timezone</span>
+                                    <strong>{cronjob.schedule.timezone}</strong>
+                                </div>
+                                <div>
+                                    <span>Next run</span>
+                                    <strong>{formatTimestamp(cronjob.next_run_at)}</strong>
+                                </div>
+                            </div>
+
+                            <div className="cronjob-run-summary">
+                                <span className={`cronjob-run-dot ${cronjob.latest_run ? getRunStatusClass(cronjob.latest_run.status) : 'muted'}`} />
+                                <div>
+                                    <span>Latest run</span>
+                                    <strong>
+                                        {cronjob.latest_run
+                                            ? `${statusLabel(cronjob.latest_run.status)} at ${formatTimestamp(cronjob.latest_run.started_at)}`
+                                            : 'Never run'}
+                                    </strong>
+                                </div>
+                            </div>
+
+                            <p className="cronjob-permission-copy">
+                                Workflows: {cronjob.allow_workflow_runs_without_permission ? 'run without extra user approval' : 'ask before running'}
                             </p>
 
-                            <div className="workflow-card-actions">
-                                <button className="workflow-card-run-btn" onClick={() => runNow(cronjob)}>
-                                    Run now
+                            <div className="cronjob-actions">
+                                <button
+                                    className="cronjobs-primary-btn compact"
+                                    disabled={cronjob.is_running || startingCronjobId !== null}
+                                    onClick={() => runNow(cronjob)}
+                                >
+                                    {startingCronjobId === cronjob.id ? 'Starting...' : cronjob.is_running ? 'Already running' : 'Run now'}
                                 </button>
-                                <button className="workflow-card-run-btn" onClick={() => toggleEnabled(cronjob)}>
+                                {cronjob.current_run_id && (
+                                    <>
+                                        <button onClick={() => navigate(`/cronjobs/runs/${cronjob.current_run_id}`)}>
+                                            Monitor
+                                        </button>
+                                        <button
+                                            className="cronjob-danger-btn"
+                                            disabled={stoppingRunId !== null}
+                                            onClick={() => stopRun(cronjob.current_run_id!)}
+                                        >
+                                            {stoppingRunId === cronjob.current_run_id ? 'Stopping...' : 'Stop'}
+                                        </button>
+                                    </>
+                                )}
+                                {!cronjob.current_run_id && cronjob.latest_run && (
+                                    <button onClick={() => navigate(`/cronjobs/runs/${cronjob.latest_run!.id}`)}>
+                                        View messages
+                                    </button>
+                                )}
+                                <button onClick={() => toggleEnabled(cronjob)}>
                                     {cronjob.enabled ? 'Disable' : 'Enable'}
                                 </button>
-                                <button className="workflow-card-run-btn" onClick={() => startEdit(cronjob)}>
+                                <button onClick={() => navigate(`/cronjobs/${cronjob.id}/edit`)}>
                                     Edit
                                 </button>
-                                <button className="workflow-card-run-btn" onClick={() => loadRuns(cronjob)}>
+                                <button onClick={() => loadRuns(cronjob)}>
                                     {expandedCronjobId === cronjob.id ? 'Hide runs' : 'Runs'}
                                 </button>
-                                <button className="workflow-card-delete-btn" onClick={() => deleteCronjob(cronjob)}>
+                                <button className="cronjob-danger-btn" onClick={() => deleteCronjob(cronjob)}>
                                     Delete
                                 </button>
                             </div>
@@ -423,12 +330,15 @@ export default function CronjobsSection() {
                                                 {run.summary && <p>{run.summary}</p>}
                                                 {run.needs_user_input_reason && <p>{run.needs_user_input_reason}</p>}
                                                 {run.error_message && <p>{run.error_message}</p>}
+                                                <button onClick={() => navigate(`/cronjobs/runs/${run.id}`)}>
+                                                    View messages
+                                                </button>
                                             </div>
                                         ))
                                     )}
                                 </div>
                             )}
-                        </div>
+                        </article>
                     ))}
                 </div>
             )}

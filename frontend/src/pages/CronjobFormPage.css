@@ -1,0 +1,312 @@
+.cronjob-form-page {
+  max-width: 1180px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.cronjob-back-btn {
+  margin-bottom: 1rem;
+  border-radius: 999px;
+  padding: 0.55rem 0.85rem;
+}
+
+.cronjob-builder-shell {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.82fr) minmax(0, 1.45fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.cronjob-builder-aside {
+  position: sticky;
+  top: 1rem;
+  overflow: hidden;
+  border: 1px solid #2f3a32;
+  border-radius: 26px;
+  padding: 1.4rem;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(134, 239, 172, 0.18), transparent 32%),
+    linear-gradient(155deg, #121a14, #111 72%);
+}
+
+.cronjob-builder-aside h1 {
+  margin: 0;
+  font-size: clamp(2rem, 4vw, 3.35rem);
+  line-height: 0.95;
+  letter-spacing: -0.04em;
+}
+
+.cronjob-builder-aside > p {
+  margin: 0.85rem 0 1.2rem;
+  color: #b7b7b7;
+}
+
+.cronjob-builder-card {
+  border: 1px solid #36513d;
+  border-radius: 18px;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.cronjob-builder-card span,
+.cronjobs-eyebrow {
+  color: #86efac;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.cronjob-builder-card strong {
+  display: block;
+  margin-top: 0.35rem;
+  color: #f5f5f5;
+}
+
+.cronjob-builder-card p {
+  margin: 0.5rem 0 0;
+  color: #aaa;
+  font-size: 0.88rem;
+}
+
+.cronjob-builder-card code {
+  color: #bbf7d0;
+}
+
+.cronjob-builder-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.cronjob-form-panel {
+  border: 1px solid #2b342e;
+  border-radius: 22px;
+  padding: 1.1rem;
+  background: #171717;
+}
+
+.cronjob-panel-heading {
+  display: flex;
+  gap: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+.cronjob-panel-heading > span {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  border: 1px solid #36513d;
+  border-radius: 50%;
+  color: #86efac;
+  background: #101510;
+  font-weight: 800;
+}
+
+.cronjob-panel-heading h2 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.cronjob-panel-heading p {
+  margin: 0.25rem 0 0;
+  color: #999;
+  font-size: 0.9rem;
+}
+
+.cronjob-form-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.85rem;
+}
+
+.cronjob-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.85rem;
+}
+
+.cronjob-field span {
+  color: #aaa;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.cronjob-field input,
+.cronjob-field textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #3a3a3a;
+  border-radius: 14px;
+  background: #101010;
+  color: inherit;
+  font: inherit;
+  padding: 0.85rem 1rem;
+}
+
+.cronjob-field textarea {
+  min-height: 13rem;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.cronjob-field input:focus,
+.cronjob-field textarea:focus {
+  outline: none;
+  border-color: #86efac;
+  box-shadow: 0 0 0 3px rgba(134, 239, 172, 0.12);
+}
+
+.cronjob-schedule-toggle {
+  display: inline-flex;
+  gap: 0.35rem;
+  padding: 0.35rem;
+  border: 1px solid #333;
+  border-radius: 999px;
+  background: #101010;
+}
+
+.cronjob-schedule-toggle button,
+.cronjob-preset-grid button {
+  border: 1px solid transparent;
+  background: transparent;
+}
+
+.cronjob-schedule-toggle button {
+  border-radius: 999px;
+  padding: 0.55rem 0.85rem;
+}
+
+.cronjob-schedule-toggle button.active {
+  border-color: #86efac;
+  background: rgba(134, 239, 172, 0.14);
+  color: #bbf7d0;
+}
+
+.cronjob-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.cronjob-preset-grid button {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  align-items: flex-start;
+  min-height: 5.2rem;
+  border-color: #333;
+  border-radius: 16px;
+  padding: 0.85rem;
+  text-align: left;
+  background: #101010;
+}
+
+.cronjob-preset-grid button.active {
+  border-color: #86efac;
+  background: linear-gradient(145deg, rgba(134, 239, 172, 0.16), rgba(134, 239, 172, 0.04));
+}
+
+.cronjob-preset-grid span,
+.cronjob-schedule-preview span {
+  color: #888;
+  font-size: 0.8rem;
+}
+
+.cronjob-schedule-preview {
+  align-self: end;
+  border: 1px solid #36513d;
+  border-radius: 16px;
+  padding: 0.85rem;
+  background: #101510;
+}
+
+.cronjob-schedule-preview strong {
+  display: block;
+  margin-top: 0.25rem;
+}
+
+.cronjob-switch-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.75rem;
+  align-items: start;
+  border: 1px solid #333;
+  border-radius: 16px;
+  padding: 0.9rem;
+  background: #101010;
+}
+
+.cronjob-switch-row + .cronjob-switch-row {
+  margin-top: 0.75rem;
+}
+
+.cronjob-switch-row input {
+  margin-top: 0.25rem;
+}
+
+.cronjob-switch-row strong,
+.cronjob-switch-row small {
+  display: block;
+}
+
+.cronjob-switch-row small {
+  margin-top: 0.2rem;
+  color: #888;
+}
+
+.cronjob-builder-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.cronjobs-primary-btn {
+  border: 1px solid #86efac;
+  background: #86efac;
+  color: #07130a;
+  border-radius: 999px;
+  padding: 0.75rem 1rem;
+  font-weight: 800;
+}
+
+.cronjobs-primary-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.cronjob-page-state {
+  max-width: 900px;
+  margin: 4rem auto;
+  text-align: center;
+  color: #888;
+}
+
+.cronjob-page-state.error {
+  color: #ff6b6b;
+}
+
+@media (max-width: 900px) {
+  .cronjob-builder-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .cronjob-builder-aside {
+    position: static;
+  }
+}
+
+@media (max-width: 620px) {
+  .cronjob-form-grid,
+  .cronjob-preset-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cronjob-builder-actions {
+    flex-direction: column-reverse;
+  }
+}

@@ -1,0 +1,113 @@
+.cronjob-run-page {
+  max-width: 1180px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.cronjob-run-topbar {
+  display: flex;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+
+.cronjob-run-topbar button,
+.cronjob-run-stop-btn {
+  border-radius: 999px;
+  padding: 0.55rem 0.85rem;
+}
+
+.cronjob-run-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: stretch;
+  margin-bottom: 1rem;
+  border: 1px solid #2f3a32;
+  border-radius: 24px;
+  padding: 1.25rem;
+  background:
+    radial-gradient(circle at 92% 10%, rgba(251, 191, 36, 0.18), transparent 30%),
+    linear-gradient(135deg, #121a14, #141414 70%);
+}
+
+.cronjob-run-header h1 {
+  margin: 0;
+  font-size: clamp(2rem, 4vw, 3rem);
+  letter-spacing: -0.04em;
+}
+
+.cronjob-run-header p {
+  margin: 0.45rem 0 0;
+  color: #aaa;
+}
+
+.cronjob-run-status-card {
+  min-width: 190px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  border: 1px solid #36513d;
+  border-radius: 18px;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.cronjob-run-status-card span,
+.cronjob-run-meta span,
+.cronjobs-eyebrow {
+  color: #86efac;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.cronjob-run-status-card strong {
+  font-size: 1.15rem;
+  text-transform: capitalize;
+}
+
+.cronjob-run-stop-btn {
+  border-color: #7f1d1d;
+  color: #fecaca;
+  background: rgba(127, 29, 29, 0.55);
+}
+
+.cronjob-run-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.cronjob-run-meta div {
+  border: 1px solid #2c2c2c;
+  border-radius: 16px;
+  padding: 0.85rem;
+  background: #121212;
+}
+
+.cronjob-run-meta strong {
+  display: block;
+  margin-top: 0.3rem;
+  color: #e5e5e5;
+  font-size: 0.9rem;
+}
+
+.cronjob-run-state {
+  max-width: 900px;
+  margin: 4rem auto;
+  text-align: center;
+  color: #888;
+}
+
+.cronjob-run-state.error {
+  color: #ff6b6b;
+}
+
+@media (max-width: 720px) {
+  .cronjob-run-header,
+  .cronjob-run-topbar {
+    flex-direction: column;
+  }
+}

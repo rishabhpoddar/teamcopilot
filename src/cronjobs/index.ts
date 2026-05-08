@@ -44,6 +44,8 @@ function serializeCronjob(cronjob: {
         cron_expression: string | null;
         timezone: string;
     } | null;
+    is_running?: boolean;
+    current_run_id?: string | null;
     runs?: Array<{
         id: string;
         status: string;
@@ -67,6 +69,8 @@ function serializeCronjob(cronjob: {
             effective_cron_expression: getCronjobEffectiveExpression(schedule),
         } : null,
         next_run_at: cronjob.enabled && schedule ? getNextRunAt(schedule) : null,
+        is_running: cronjob.is_running === true,
+        current_run_id: cronjob.current_run_id ?? null,
         latest_run: cronjob.runs?.[0] ?? null,
     };
 }
@@ -117,7 +121,20 @@ router.get("/", apiHandler(async (req, res) => {
             },
         },
     });
-    res.json({ cronjobs: cronjobs.map(serializeCronjob) });
+    const activeRuns = await prisma.cronjob_runs.findMany({
+        where: {
+            cronjob_id: { in: cronjobs.map((cronjob) => cronjob.id) },
+            status: "running",
+        },
+        select: { id: true, cronjob_id: true },
+    });
+    const activeCronjobIds = new Set(activeRuns.map((run) => run.cronjob_id));
+    const activeRunIdByCronjobId = new Map(activeRuns.map((run) => [run.cronjob_id, run.id]));
+    res.json({ cronjobs: cronjobs.map((cronjob) => serializeCronjob({
+        ...cronjob,
+        is_running: activeCronjobIds.has(cronjob.id),
+        current_run_id: activeRunIdByCronjobId.get(cronjob.id) ?? null,
+    })) });
 }, true));
 
 router.post("/", apiHandler(async (req, res) => {
@@ -154,7 +171,11 @@ router.post("/", apiHandler(async (req, res) => {
         include: { schedule: true },
     });
     await rescheduleCronjob(cronjob.id);
-    res.json({ cronjob: serializeCronjob(cronjob) });
+    const activeRun = await prisma.cronjob_runs.findFirst({
+        where: { cronjob_id: cronjob.id, status: "running" },
+        select: { id: true },
+    });
+    res.json({ cronjob: serializeCronjob({ ...cronjob, is_running: activeRun !== null }) });
 }, true));
 
 router.get("/:id", apiHandler(async (req, res) => {
@@ -178,7 +199,11 @@ router.get("/:id", apiHandler(async (req, res) => {
     if (!cronjob) {
         throw { status: 404, message: "Cronjob not found" };
     }
-    res.json({ cronjob: serializeCronjob(cronjob) });
+    const activeRun = await prisma.cronjob_runs.findFirst({
+        where: { cronjob_id: cronjob.id, status: "running" },
+        select: { id: true },
+    });
+    res.json({ cronjob: serializeCronjob({ ...cronjob, is_running: activeRun !== null }) });
 }, true));
 
 router.patch("/:id", apiHandler(async (req, res) => {
@@ -312,7 +337,7 @@ router.post("/:id/run-now", apiHandler(async (req, res) => {
     if (!cronjob) {
         throw { status: 404, message: "Cronjob not found" };
     }
-    const runId = await dispatchCronjobRun(id, { allowDisabled: true });
+    const runId = await dispatchCronjobRun(id, { allowDisabled: true, skipIfActive: false });
     res.json({ run_id: runId });
 }, true));
 
