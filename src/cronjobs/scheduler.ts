@@ -477,13 +477,18 @@ export async function completeCurrentCronjobRun(opencodeSessionId: string, summa
     const run = await prisma.cronjob_runs.findFirst({
         where: {
             opencode_session_id: opencodeSessionId,
-            status: "running",
         },
     });
     if (!run) {
         throw {
             status: 404,
-            message: "No running cronjob found for this session"
+            message: "This is not a cronjob session. If this was called via the markCronjobCompleted tool, then do not use this tool again."
+        };
+    }
+    if (run.status !== "running") {
+        throw {
+            status: 404,
+            message: `Cronjob is not in running state. Current state is: ${run.status}`
         };
     }
 
