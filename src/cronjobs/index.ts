@@ -130,15 +130,8 @@ function serializeCronjob(cronjob: {
     prompt_allow_workflow_runs_without_permission: boolean | null;
     workflow_slug: string | null;
     workflow_input_json: string | null;
-    preset_key: string | null;
-    cron_expression: string | null;
+    cron_expression: string;
     timezone: string;
-    schedule_type: string;
-    time_minutes: number | null;
-    days_of_week: string | null;
-    week_interval: number | null;
-    anchor_date: string | null;
-    day_of_month: number | null;
     created_at: bigint;
     updated_at: bigint;
     is_running?: boolean;
@@ -152,15 +145,8 @@ function serializeCronjob(cronjob: {
     }>;
 }) {
     const schedule = {
-        preset_key: cronjob.preset_key,
         cron_expression: cronjob.cron_expression,
         timezone: cronjob.timezone,
-        schedule_type: cronjob.schedule_type,
-        time_minutes: cronjob.time_minutes,
-        days_of_week: cronjob.days_of_week,
-        week_interval: cronjob.week_interval,
-        anchor_date: cronjob.anchor_date,
-        day_of_month: cronjob.day_of_month,
     };
     return {
         id: cronjob.id,
@@ -178,15 +164,8 @@ function serializeCronjob(cronjob: {
         created_at: cronjob.created_at,
         updated_at: cronjob.updated_at,
         schedule: {
-            preset_key: schedule.preset_key,
             cron_expression: schedule.cron_expression,
             timezone: schedule.timezone,
-            schedule_type: schedule.schedule_type,
-            time_minutes: schedule.time_minutes,
-            days_of_week: schedule.days_of_week ? schedule.days_of_week.split(",").map(Number) : null,
-            week_interval: schedule.week_interval,
-            anchor_date: schedule.anchor_date,
-            day_of_month: schedule.day_of_month,
             effective_cron_expression: getCronjobEffectiveExpression(schedule),
         },
         next_run_at: cronjob.enabled ? getNextRunAt(schedule) : null,
@@ -288,15 +267,8 @@ router.post("/", apiHandler(async (req, res) => {
         workflow_inputs: req.body?.workflow_inputs,
     }, req.userId!);
     const schedule = validateCronjobSchedule({
-        preset_key: req.body?.preset_key,
         cron_expression: req.body?.cron_expression,
         timezone: req.body?.timezone,
-        schedule_type: req.body?.schedule_type,
-        time_minutes: req.body?.time_minutes,
-        days_of_week: req.body?.days_of_week,
-        week_interval: req.body?.week_interval,
-        anchor_date: req.body?.anchor_date,
-        day_of_month: req.body?.day_of_month,
     });
     const now = nowMs();
     const enabled = req.body?.enabled !== false;
@@ -311,15 +283,8 @@ router.post("/", apiHandler(async (req, res) => {
             prompt_allow_workflow_runs_without_permission: target.promptAllowWorkflowRunsWithoutPermission,
             workflow_slug: target.workflowSlug,
             workflow_input_json: target.workflowInputJson,
-            preset_key: schedule.presetKey,
             cron_expression: schedule.cronExpression,
             timezone: schedule.timezone,
-            schedule_type: schedule.scheduleType,
-            time_minutes: schedule.timeMinutes,
-            days_of_week: schedule.daysOfWeek,
-            week_interval: schedule.weekInterval,
-            anchor_date: schedule.anchorDate,
-            day_of_month: schedule.dayOfMonth,
             created_at: now,
             updated_at: now,
         },
@@ -392,15 +357,8 @@ router.patch("/:id", apiHandler(async (req, res) => {
                 : undefined,
     }, req.userId!);
     const schedule = validateCronjobSchedule({
-        preset_key: hasRequestField(req.body, "preset_key") ? req.body.preset_key : existing.preset_key ?? undefined,
-        cron_expression: hasRequestField(req.body, "cron_expression") ? req.body.cron_expression : existing.cron_expression ?? undefined,
+        cron_expression: hasRequestField(req.body, "cron_expression") ? req.body.cron_expression : existing.cron_expression,
         timezone: hasRequestField(req.body, "timezone") ? req.body.timezone : existing.timezone,
-        schedule_type: hasRequestField(req.body, "schedule_type") ? req.body.schedule_type : existing.schedule_type,
-        time_minutes: hasRequestField(req.body, "time_minutes") ? req.body.time_minutes : existing.time_minutes ?? undefined,
-        days_of_week: hasRequestField(req.body, "days_of_week") ? req.body.days_of_week : existing.days_of_week?.split(",").map(Number) ?? undefined,
-        week_interval: hasRequestField(req.body, "week_interval") ? req.body.week_interval : existing.week_interval ?? undefined,
-        anchor_date: hasRequestField(req.body, "anchor_date") ? req.body.anchor_date : existing.anchor_date ?? undefined,
-        day_of_month: hasRequestField(req.body, "day_of_month") ? req.body.day_of_month : existing.day_of_month ?? undefined,
     });
     const now = nowMs();
 
@@ -414,15 +372,8 @@ router.patch("/:id", apiHandler(async (req, res) => {
             prompt_allow_workflow_runs_without_permission: target.promptAllowWorkflowRunsWithoutPermission,
             workflow_slug: target.workflowSlug,
             workflow_input_json: target.workflowInputJson,
-            preset_key: schedule.presetKey,
             cron_expression: schedule.cronExpression,
             timezone: schedule.timezone,
-            schedule_type: schedule.scheduleType,
-            time_minutes: schedule.timeMinutes,
-            days_of_week: schedule.daysOfWeek,
-            week_interval: schedule.weekInterval,
-            anchor_date: schedule.anchorDate,
-            day_of_month: schedule.dayOfMonth,
             updated_at: now,
         },
     });

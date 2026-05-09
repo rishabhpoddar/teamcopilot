@@ -15,15 +15,8 @@ type TargetMode = 'prompt' | 'workflow';
 type WorkflowFormValue = string | boolean;
 
 interface CronjobSchedule {
-    preset_key: string | null;
-    cron_expression: string | null;
+    cron_expression: string;
     timezone: string;
-    schedule_type: string;
-    time_minutes: number | null;
-    days_of_week: number[] | null;
-    week_interval: number | null;
-    anchor_date: string | null;
-    day_of_month: number | null;
     effective_cron_expression: string;
 }
 
@@ -76,8 +69,6 @@ interface CronjobFormState {
     builderFrequency: BuilderFrequency;
     time: string;
     days_of_week: number[];
-    week_interval: number;
-    anchor_date: string;
     day_of_month: number;
 }
 
@@ -104,10 +95,6 @@ function getTimezoneOptions(): string[] {
     return Array.from(new Set([localTimezone, ...timezones])).sort();
 }
 
-function getTodayDate(): string {
-    return new Date().toISOString().slice(0, 10);
-}
-
 function timeToMinutes(time: string): number {
     const [hours, minutes] = time.split(':').map(Number);
     return hours * 60 + minutes;
@@ -118,6 +105,19 @@ function minutesToTime(minutes: number | null): string {
     const hours = Math.floor(value / 60).toString().padStart(2, '0');
     const mins = (value % 60).toString().padStart(2, '0');
     return `${hours}:${mins}`;
+}
+
+function buildCronExpressionFromBuilder(form: CronjobFormState): string {
+    const timeMinutes = timeToMinutes(form.time);
+    const minute = timeMinutes % 60;
+    const hour = Math.floor(timeMinutes / 60);
+    if (form.builderFrequency === 'monthly') {
+        return `${minute} ${hour} ${form.day_of_month} * *`;
+    }
+    if (form.builderFrequency === 'weekly') {
+        return `${minute} ${hour} * * ${form.days_of_week.join(',')}`;
+    }
+    return `${minute} ${hour} * * *`;
 }
 
 function emptyForm(): CronjobFormState {
@@ -135,8 +135,6 @@ function emptyForm(): CronjobFormState {
         builderFrequency: 'daily',
         time: '09:00',
         days_of_week: [1, 2, 3, 4, 5],
-        week_interval: 1,
-        anchor_date: getTodayDate(),
         day_of_month: 1,
     };
 }
@@ -203,13 +201,6 @@ function getErrorMessage(err: unknown, fallback: string): string {
 }
 
 function formFromCronjob(cronjob: Cronjob): CronjobFormState {
-    const scheduleMode: ScheduleMode = cronjob.schedule.schedule_type === 'structured' ? 'builder' : 'cron';
-    const selectedDays = cronjob.schedule.days_of_week ?? [1, 2, 3, 4, 5];
-    const builderFrequency: BuilderFrequency = cronjob.schedule.day_of_month !== null
-        ? 'monthly'
-        : cronjob.schedule.days_of_week === null || selectedDays.length === 7
-            ? 'daily'
-            : 'weekly';
     return {
         name: cronjob.name,
         targetMode: cronjob.target?.target_type ?? 'prompt',
@@ -218,15 +209,13 @@ function formFromCronjob(cronjob: Cronjob): CronjobFormState {
         allow_workflow_runs_without_permission: cronjob.allow_workflow_runs_without_permission,
         workflow_slug: cronjob.target?.workflow_slug ?? '',
         workflow_inputs: {},
-        scheduleMode,
-        cron_expression: cronjob.schedule.cron_expression ?? cronjob.schedule.effective_cron_expression,
+        scheduleMode: 'cron',
+        cron_expression: cronjob.schedule.cron_expression,
         timezone: cronjob.schedule.timezone,
-        builderFrequency,
-        time: minutesToTime(cronjob.schedule.time_minutes),
-        days_of_week: selectedDays.length === 7 ? [1, 2, 3, 4, 5] : selectedDays,
-        week_interval: cronjob.schedule.week_interval ?? 1,
-        anchor_date: cronjob.schedule.anchor_date ?? getTodayDate(),
-        day_of_month: cronjob.schedule.day_of_month ?? 1,
+        builderFrequency: 'daily',
+        time: minutesToTime(null),
+        days_of_week: [1, 2, 3, 4, 5],
+        day_of_month: 1,
     };
 }
 
@@ -347,29 +336,9 @@ export default function CronjobFormPage() {
             allow_workflow_runs_without_permission: form.targetMode === 'prompt' ? form.allow_workflow_runs_without_permission : null,
             timezone: form.timezone,
         };
-        if (form.scheduleMode === 'cron') {
-            return {
-                ...basePayload,
-                schedule_type: 'cron',
-                preset_key: null,
-                cron_expression: form.cron_expression,
-                time_minutes: null,
-                days_of_week: null,
-                week_interval: null,
-                anchor_date: null,
-                day_of_month: null,
-            };
-        }
         return {
             ...basePayload,
-            schedule_type: 'structured',
-            preset_key: null,
-            cron_expression: null,
-            time_minutes: timeToMinutes(form.time),
-            days_of_week: form.builderFrequency === 'monthly' ? null : form.builderFrequency === 'daily' ? [0, 1, 2, 3, 4, 5, 6] : form.days_of_week,
-            week_interval: form.builderFrequency === 'weekly' ? form.week_interval : 1,
-            anchor_date: form.anchor_date,
-            day_of_month: form.builderFrequency === 'monthly' ? form.day_of_month : null,
+            cron_expression: form.scheduleMode === 'cron' ? form.cron_expression : buildCronExpressionFromBuilder(form),
         };
     };
 
@@ -569,7 +538,7 @@ export default function CronjobFormPage() {
                             <span>02</span>
                             <div>
                                 <h2>When should it run?</h2>
-                                <p>Use a preset for common schedules or a cron expression for full control.</p>
+                                <p>Use the schedule builder for common schedules or enter raw cron for full control.</p>
                             </div>
                         </div>
 
@@ -655,31 +624,6 @@ export default function CronjobFormPage() {
                                                     {day.label}
                                                 </button>
                                             ))}
-                                        </div>
-                                        <div className="cronjob-form-grid">
-                                            <label className="cronjob-field">
-                                                <span>Repeat every</span>
-                                                <div className="cronjob-inline-field">
-                                                    <input
-                                                        type="number"
-                                                        min={1}
-                                                        max={52}
-                                                        value={form.week_interval}
-                                                        onChange={(event) => setForm((prev) => ({ ...prev, week_interval: Number(event.target.value) }))}
-                                                        required
-                                                    />
-                                                    <small>week(s)</small>
-                                                </div>
-                                            </label>
-                                            <label className="cronjob-field">
-                                                <span>Starting week</span>
-                                                <input
-                                                    type="date"
-                                                    value={form.anchor_date}
-                                                    onChange={(event) => setForm((prev) => ({ ...prev, anchor_date: event.target.value }))}
-                                                    required
-                                                />
-                                            </label>
                                         </div>
                                     </>
                                 ) : null}

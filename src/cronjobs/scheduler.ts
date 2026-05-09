@@ -18,23 +18,9 @@ import {
 
 const CRONJOB_MONITOR_INTERVAL_MS = 5000;
 
-const PRESET_CRON_EXPRESSIONS: Record<string, string> = {
-    hourly: "0 * * * *",
-    daily: "0 9 * * *",
-    weekdays: "0 9 * * 1-5",
-    weekly: "0 9 * * 1",
-};
-
 type CronjobSchedule = {
-    preset_key: string | null;
-    cron_expression: string | null;
+    cron_expression: string;
     timezone: string;
-    schedule_type: string;
-    time_minutes: number | null;
-    days_of_week: string | null;
-    week_interval: number | null;
-    anchor_date: string | null;
-    day_of_month: number | null;
 };
 
 type CronjobTarget = {
@@ -89,57 +75,12 @@ function assertCronExpression(cronExpression: string, timezone: string): void {
     new CronTime(expression, timezone);
 }
 
-function assertIntegerInRange(value: unknown, label: string, min: number, max: number): number {
-    if (typeof value !== "number" || !Number.isInteger(value) || value < min || value > max) {
-        throw {
-            status: 400,
-            message: `${label} must be an integer between ${min} and ${max}`
-        };
-    }
-    return value;
-}
-
-function assertDateString(value: unknown, label: string): string {
-    if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-        throw {
-            status: 400,
-            message: `${label} must be a YYYY-MM-DD date`
-        };
-    }
-    return value;
-}
-
-function parseDaysOfWeek(value: unknown): number[] {
-    if (!Array.isArray(value) || value.length === 0) {
-        throw {
-            status: 400,
-            message: "days_of_week must include at least one day"
-        };
-    }
-    const days = value.map((day) => assertIntegerInRange(day, "days_of_week", 0, 6));
-    return Array.from(new Set(days)).sort((a, b) => a - b);
-}
-
 export function validateCronjobSchedule(input: {
-    preset_key?: unknown;
     cron_expression?: unknown;
     timezone?: unknown;
-    schedule_type?: unknown;
-    time_minutes?: unknown;
-    days_of_week?: unknown;
-    week_interval?: unknown;
-    anchor_date?: unknown;
-    day_of_month?: unknown;
 }): {
-    presetKey: string | null;
-    cronExpression: string | null;
+    cronExpression: string;
     timezone: string;
-    scheduleType: string;
-    timeMinutes: number | null;
-    daysOfWeek: string | null;
-    weekInterval: number | null;
-    anchorDate: string | null;
-    dayOfMonth: number | null;
 } {
     if (typeof input.timezone !== "string" || input.timezone.trim().length === 0) {
         throw {
@@ -150,188 +91,31 @@ export function validateCronjobSchedule(input: {
     const timezone = input.timezone.trim();
     assertTimezone(timezone);
 
-    const scheduleType = typeof input.schedule_type === "string" && input.schedule_type.trim().length > 0
-        ? input.schedule_type.trim()
-        : "cron";
-
-    if (scheduleType === "structured") {
-        const timeMinutes = assertIntegerInRange(input.time_minutes, "time_minutes", 0, 1439);
-        const weekInterval = assertIntegerInRange(input.week_interval, "week_interval", 1, 52);
-        const anchorDate = assertDateString(input.anchor_date, "anchor_date");
-        const dayOfMonth = input.day_of_month === null || input.day_of_month === undefined
-            ? null
-            : assertIntegerInRange(input.day_of_month, "day_of_month", 1, 31);
-        const daysOfWeek = dayOfMonth === null ? parseDaysOfWeek(input.days_of_week).join(",") : null;
-        const cronExpression = buildStructuredCronExpression({
-            time_minutes: timeMinutes,
-            days_of_week: daysOfWeek,
-            day_of_month: dayOfMonth,
-        });
-        assertCronExpression(cronExpression, timezone);
-        return {
-            presetKey: null,
-            cronExpression: null,
-            timezone,
-            scheduleType,
-            timeMinutes,
-            daysOfWeek,
-            weekInterval,
-            anchorDate,
-            dayOfMonth,
-        };
-    }
-    if (scheduleType !== "cron") {
+    if (typeof input.cron_expression !== "string" || input.cron_expression.trim().length === 0) {
         throw {
             status: 400,
-            message: "schedule_type must be cron or structured"
+            message: "cron_expression is required"
         };
     }
 
-    const rawPresetKey = typeof input.preset_key === "string" && input.preset_key.trim().length > 0
-        ? input.preset_key.trim()
-        : null;
-    const rawCronExpression = typeof input.cron_expression === "string" && input.cron_expression.trim().length > 0
-        ? input.cron_expression.trim()
-        : null;
-
-    if ((rawPresetKey === null && rawCronExpression === null) || (rawPresetKey !== null && rawCronExpression !== null)) {
-        throw {
-            status: 400,
-            message: "Provide exactly one of preset_key or cron_expression"
-        };
-    }
-
-    if (rawPresetKey !== null) {
-        const expression = PRESET_CRON_EXPRESSIONS[rawPresetKey];
-        if (!expression) {
-            throw {
-                status: 400,
-                message: `Unsupported preset_key: ${rawPresetKey}`
-            };
-        }
-        assertCronExpression(expression, timezone);
-        return {
-            presetKey: rawPresetKey,
-            cronExpression: null,
-            timezone,
-            scheduleType,
-            timeMinutes: null,
-            daysOfWeek: null,
-            weekInterval: null,
-            anchorDate: null,
-            dayOfMonth: null,
-        };
-    }
-
-    assertCronExpression(rawCronExpression!, timezone);
+    const cronExpression = input.cron_expression.trim();
+    assertCronExpression(cronExpression, timezone);
     return {
-        presetKey: null,
-        cronExpression: rawCronExpression!,
+        cronExpression,
         timezone,
-        scheduleType,
-        timeMinutes: null,
-        daysOfWeek: null,
-        weekInterval: null,
-        anchorDate: null,
-        dayOfMonth: null,
     };
 }
 
-function buildStructuredCronExpression(schedule: {
-    time_minutes: number | null;
-    days_of_week: string | null;
-    day_of_month: number | null;
-}): string {
-    if (schedule.time_minutes === null) {
-        throw new Error("Structured cronjob schedule is missing time_minutes");
-    }
-    const minute = schedule.time_minutes % 60;
-    const hour = Math.floor(schedule.time_minutes / 60);
-    if (schedule.day_of_month !== null) {
-        return `${minute} ${hour} ${schedule.day_of_month} * *`;
-    }
-    return `${minute} ${hour} * * ${schedule.days_of_week || "*"}`;
-}
-
 export function getCronjobEffectiveExpression(schedule: {
-    preset_key: string | null;
-    cron_expression: string | null;
-    schedule_type?: string;
-    time_minutes?: number | null;
-    days_of_week?: string | null;
-    day_of_month?: number | null;
+    cron_expression: string;
 }): string {
-    if (schedule.schedule_type === "structured") {
-        return buildStructuredCronExpression({
-            time_minutes: schedule.time_minutes ?? null,
-            days_of_week: schedule.days_of_week ?? null,
-            day_of_month: schedule.day_of_month ?? null,
-        });
-    }
-    if (schedule.preset_key) {
-        const expression = PRESET_CRON_EXPRESSIONS[schedule.preset_key];
-        if (!expression) {
-            throw new Error(`Unsupported preset_key: ${schedule.preset_key}`);
-        }
-        return expression;
-    }
-    if (!schedule.cron_expression) {
-        throw new Error("Cronjob schedule is missing cron_expression");
-    }
     return schedule.cron_expression;
-}
-
-function parseLocalDate(date: string): Date {
-    const [year, month, day] = date.split("-").map(Number);
-    return new Date(Date.UTC(year, month - 1, day));
-}
-
-function startOfUtcWeek(date: Date): Date {
-    const day = date.getUTCDay();
-    const diffToMonday = day === 0 ? -6 : 1 - day;
-    const result = new Date(date);
-    result.setUTCDate(date.getUTCDate() + diffToMonday);
-    result.setUTCHours(0, 0, 0, 0);
-    return result;
-}
-
-function weeksBetween(anchorDate: string, candidateDate: string): number {
-    const anchorWeek = startOfUtcWeek(parseLocalDate(anchorDate));
-    const candidateWeek = startOfUtcWeek(parseLocalDate(candidateDate));
-    return Math.floor((candidateWeek.getTime() - anchorWeek.getTime()) / (7 * 24 * 60 * 60 * 1000));
-}
-
-function getLocalDateString(date: Date, timezone: string): string {
-    const parts = new Intl.DateTimeFormat("en-CA", {
-        timeZone: timezone,
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-    }).formatToParts(date);
-    const year = parts.find((part) => part.type === "year")!.value;
-    const month = parts.find((part) => part.type === "month")!.value;
-    const day = parts.find((part) => part.type === "day")!.value;
-    return `${year}-${month}-${day}`;
-}
-
-function isStructuredScheduleDue(schedule: CronjobSchedule, date: Date): boolean {
-    if (schedule.schedule_type !== "structured") return true;
-    if (schedule.week_interval === null || schedule.week_interval <= 1 || schedule.anchor_date === null) return true;
-    if (schedule.day_of_month !== null) return true;
-    const localDate = getLocalDateString(date, schedule.timezone);
-    const weekOffset = weeksBetween(schedule.anchor_date, localDate);
-    return weekOffset >= 0 && weekOffset % schedule.week_interval === 0;
 }
 
 export function getNextRunAt(schedule: CronjobSchedule): number {
     const expression = toCronPackageExpression(getCronjobEffectiveExpression(schedule));
     const cronTime = new CronTime(expression, schedule.timezone);
-    if (schedule.schedule_type !== "structured" || schedule.week_interval === null || schedule.week_interval <= 1 || schedule.day_of_month !== null) {
-        return cronTime.sendAt().toMillis();
-    }
-    const candidates = cronTime.sendAt(370);
-    const nextCandidate = candidates.find((candidate) => isStructuredScheduleDue(schedule, candidate.toJSDate()));
-    return (nextCandidate ?? candidates[candidates.length - 1]).toMillis();
+    return cronTime.sendAt().toMillis();
 }
 
 async function buildAvailableSkillsPrompt(userId: string): Promise<string | null> {
@@ -638,15 +422,8 @@ export async function dispatchCronjobRun(cronjobId: string, options: { allowDisa
 
 function scheduleOneCronjob(cronjob: {
     id: string;
-    preset_key: string | null;
-    cron_expression: string | null;
+    cron_expression: string;
     timezone: string;
-    schedule_type: string;
-    time_minutes: number | null;
-    days_of_week: string | null;
-    week_interval: number | null;
-    anchor_date: string | null;
-    day_of_month: number | null;
 }): void {
     const existing = scheduledJobs.get(cronjob.id);
     if (existing) {
@@ -656,7 +433,6 @@ function scheduleOneCronjob(cronjob: {
     const schedule: CronjobSchedule = cronjob;
     const expression = toCronPackageExpression(getCronjobEffectiveExpression(schedule));
     const job = new CronJob(expression, () => {
-        if (!isStructuredScheduleDue(schedule, new Date())) return;
         void dispatchCronjobRun(cronjob.id).catch((err) => {
             console.error(`Failed to dispatch cronjob ${cronjob.id}:`, err);
         });
@@ -671,15 +447,8 @@ export async function rescheduleCronjob(cronjobId: string): Promise<void> {
         select: {
             id: true,
             enabled: true,
-            preset_key: true,
             cron_expression: true,
             timezone: true,
-            schedule_type: true,
-            time_minutes: true,
-            days_of_week: true,
-            week_interval: true,
-            anchor_date: true,
-            day_of_month: true,
         }
     });
     const existing = scheduledJobs.get(cronjobId);
@@ -696,15 +465,8 @@ export async function startUserCronjobScheduler(): Promise<void> {
         where: { enabled: true },
         select: {
             id: true,
-            preset_key: true,
             cron_expression: true,
             timezone: true,
-            schedule_type: true,
-            time_minutes: true,
-            days_of_week: true,
-            week_interval: true,
-            anchor_date: true,
-            day_of_month: true,
         }
     });
     for (const cronjob of cronjobs) {

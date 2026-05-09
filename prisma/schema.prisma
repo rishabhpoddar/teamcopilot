@@ -126,15 +126,8 @@ model cronjobs {
   prompt_allow_workflow_runs_without_permission Boolean?
   workflow_slug                                String?
   workflow_input_json                          String?
-  preset_key                                   String?
-  cron_expression                              String?
+  cron_expression                              String
   timezone                                     String
-  schedule_type                                String        @default("cron") // "cron" | "structured"
-  time_minutes                                 Int?
-  days_of_week                                 String?       // comma-separated 0-6 values, Sunday=0
-  week_interval                                Int?
-  anchor_date                                  String?       // YYYY-MM-DD local date used for interval schedules
-  day_of_month                                 Int?
   created_at                                   BigInt
   updated_at                                   BigInt
   user                                         users         @relation(fields: [user_id], references: [id], onDelete: Cascade)

@@ -8,8 +8,7 @@ import './WorkflowsSection.css';
 import './CronjobsSection.css';
 
 interface CronjobSchedule {
-    preset_key: string | null;
-    cron_expression: string | null;
+    cron_expression: string;
     timezone: string;
     effective_cron_expression: string;
 }
@@ -54,13 +53,6 @@ interface Cronjob {
     latest_run: CronjobRunPreview | null;
 }
 
-const PRESETS: Array<{ key: string; label: string }> = [
-    { key: 'hourly', label: 'Hourly' },
-    { key: 'daily', label: 'Daily at 9:00' },
-    { key: 'weekdays', label: 'Weekdays at 9:00' },
-    { key: 'weekly', label: 'Weekly on Monday at 9:00' },
-];
-
 function getErrorMessage(err: unknown, fallback: string): string {
     if (err instanceof AxiosError) {
         const responseData = err.response?.data;
@@ -77,11 +69,7 @@ function formatTimestamp(value: number | null): string {
 }
 
 function scheduleLabel(cronjob: Cronjob): string {
-    if (cronjob.schedule.preset_key) {
-        const preset = PRESETS.find((candidate) => candidate.key === cronjob.schedule.preset_key);
-        return preset ? preset.label : cronjob.schedule.preset_key;
-    }
-    return cronjob.schedule.cron_expression ?? cronjob.schedule.effective_cron_expression;
+    return cronjob.schedule.cron_expression;
 }
 
 function targetLabel(cronjob: Cronjob): string {
@@ -98,7 +86,6 @@ function statusLabel(status: string): string {
 function getRunStatusClass(status: string): string {
     if (status === 'success') return 'success';
     if (status === 'running') return 'running';
-    if (status === 'needs_user_input') return 'attention';
     if (status === 'failed') return 'failed';
     return 'muted';
 }

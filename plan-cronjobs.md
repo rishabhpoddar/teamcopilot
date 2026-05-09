@@ -82,11 +82,11 @@ This is intentionally the same path for both live monitoring and finished-run re
 
 The schedule editor supports:
 
-- structured schedules such as daily, selected weekdays, monthly, and alternate-week patterns
+- structured schedules such as daily, selected weekdays, and monthly patterns
 - advanced raw cron expression
 - explicit IANA timezone
 
-The UI stores `schedule_type` to distinguish raw cron schedules from structured schedules whose fields are edited individually.
+The database stores only the raw cron expression and timezone. The UI schedule builder converts selected timing fields into a cron expression before saving.
 
 ## Behavior Model
 
@@ -213,15 +213,8 @@ Columns:
 - `prompt_allow_workflow_runs_without_permission` - nullable boolean for prompt cronjobs
 - `workflow_slug` - nullable workflow slug for workflow cronjobs
 - `workflow_input_json` - nullable validated workflow inputs JSON for workflow cronjobs
-- `preset_key` - nullable preset identifier
-- `cron_expression` - nullable raw cron expression
+- `cron_expression` - raw cron expression
 - `timezone` - IANA timezone string
-- `schedule_type` - `cron` or `structured`
-- `time_minutes` - nullable minute-of-day for structured schedules
-- `days_of_week` - nullable comma-separated day list for structured weekly schedules
-- `week_interval` - nullable interval for alternate-week structured schedules
-- `anchor_date` - nullable YYYY-MM-DD anchor for alternate-week schedules
-- `day_of_month` - nullable day-of-month for structured monthly schedules
 - `created_at` - bigint timestamp
 - `updated_at` - bigint timestamp
 
@@ -240,9 +233,8 @@ Constraints/indexes:
 
 Normalization rule:
 
-- exactly one of `preset_key` or `cron_expression` must be set
-- if `preset_key` is set, derive the effective cron expression from the server-side preset registry
-- if `cron_expression` is set, use it directly
+- `cron_expression` is the only persisted schedule expression
+- UI-generated schedules are converted to raw cron before they are sent to the backend
 - do not store `next_run_at`; compute it from schedule and current time
 - target and schedule columns live on `cronjobs` because each cronjob has exactly one target and exactly one schedule
 
@@ -451,7 +443,7 @@ The overview supports:
 The form supports:
 
 - guided prompt authoring
-- schedule presets
+- schedule builder that emits raw cron
 - raw cron expression
 - timezone
 - enabled toggle
