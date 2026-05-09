@@ -388,16 +388,18 @@ async function buildCronjobPrompt(args: {
 }
 
 function getCronjobTarget(cronjob: {
-    prompt: string;
-    allow_workflow_runs_without_permission: boolean;
-    target: CronjobTarget | null;
+    target_type: string;
+    prompt: string | null;
+    prompt_allow_workflow_runs_without_permission: boolean | null;
+    workflow_slug: string | null;
+    workflow_input_json: string | null;
 }): CronjobTarget {
-    return cronjob.target ?? {
-        target_type: "prompt",
+    return {
+        target_type: cronjob.target_type,
         prompt: cronjob.prompt,
-        prompt_allow_workflow_runs_without_permission: cronjob.allow_workflow_runs_without_permission,
-        workflow_slug: null,
-        workflow_input_json: null,
+        prompt_allow_workflow_runs_without_permission: cronjob.prompt_allow_workflow_runs_without_permission,
+        workflow_slug: cronjob.workflow_slug,
+        workflow_input_json: cronjob.workflow_input_json,
     };
 }
 
@@ -437,37 +439,20 @@ async function finishWorkflowCronjobRun(
     }
 }
 
-async function revealRunForUserInput(runId: string, reason: string): Promise<void> {
-    const completedAt = nowMs();
-    const run = await prisma.cronjob_runs.update({
+async function revealRunForUserInput(runId: string): Promise<void> {
+    const updatedAt = Number(nowMs());
+    const run = await prisma.cronjob_runs.findUnique({
         where: { id: runId },
+        select: { session_id: true },
+    });
+    if (!run?.session_id) return;
+    await prisma.chat_sessions.update({
+        where: { id: run.session_id },
         data: {
-            status: "needs_user_input",
-            completed_at: completedAt,
-            needs_user_input_reason: reason,
+            visible_to_user: true,
+            updated_at: updatedAt,
         },
     });
-    if (run.session_id) {
-        await prisma.chat_sessions.update({
-            where: { id: run.session_id },
-            data: {
-                visible_to_user: true,
-                updated_at: Number(completedAt),
-            },
-        });
-    }
-}
-
-async function inferNeedsUserInputReason(opencodeSessionId: string): Promise<string> {
-    const pendingQuestion = await getPendingQuestionForSession(opencodeSessionId);
-    if (pendingQuestion) {
-        return "Cronjob is waiting for a tool answer.";
-    }
-    const pendingPermissions = await listPendingPermissionsForSession(opencodeSessionId);
-    if (pendingPermissions.length > 0) {
-        return "Cronjob is waiting for a permission response.";
-    }
-    return "Cronjob stopped before marking itself complete.";
 }
 
 function monitorCronjobRun(runId: string, opencodeSessionId: string): void {
@@ -494,8 +479,7 @@ function monitorCronjobRun(runId: string, opencodeSessionId: string): void {
             );
             if (sessionStatusType !== "idle") return;
 
-            const reason = await inferNeedsUserInputReason(opencodeSessionId);
-            await revealRunForUserInput(runId, reason);
+            await revealRunForUserInput(runId);
             clearInterval(interval);
             runningMonitors.delete(runId);
         } catch (err) {
@@ -508,7 +492,7 @@ function monitorCronjobRun(runId: string, opencodeSessionId: string): void {
 export async function dispatchCronjobRun(cronjobId: string, options: { allowDisabled?: boolean; skipIfActive?: boolean } = {}): Promise<string> {
     const cronjob = await prisma.cronjobs.findUnique({
         where: { id: cronjobId },
-        include: { user: true, target: true },
+        include: { user: true },
     });
     if (!cronjob || (!cronjob.enabled && options.allowDisabled !== true)) {
         throw new Error("Cronjob not found or disabled");
@@ -522,7 +506,6 @@ export async function dispatchCronjobRun(cronjobId: string, options: { allowDisa
         select: { id: true }
     });
     if (activeRun) {
-        const target = getCronjobTarget(cronjob);
         if (options.skipIfActive === false) {
             throw {
                 status: 409,
@@ -536,10 +519,6 @@ export async function dispatchCronjobRun(cronjobId: string, options: { allowDisa
                 status: "skipped",
                 started_at: now,
                 completed_at: now,
-                target_type_snapshot: target.target_type,
-                prompt_snapshot: target.prompt,
-                workflow_slug_snapshot: target.workflow_slug,
-                workflow_input_snapshot_json: target.workflow_input_json,
                 error_message: "Previous run is still active.",
             },
         });
@@ -558,9 +537,6 @@ export async function dispatchCronjobRun(cronjobId: string, options: { allowDisa
                 cronjob_id: cronjob.id,
                 status: "running",
                 started_at: now,
-                target_type_snapshot: "workflow",
-                workflow_slug_snapshot: target.workflow_slug,
-                workflow_input_snapshot_json: workflowInputJson,
             },
         });
         try {
@@ -612,8 +588,6 @@ export async function dispatchCronjobRun(cronjobId: string, options: { allowDisa
             cronjob_id: cronjob.id,
             status: "running",
             started_at: now,
-            target_type_snapshot: "prompt",
-            prompt_snapshot: userPrompt,
             opencode_session_id: sessionResult.data.id,
         },
     });
@@ -664,22 +638,29 @@ export async function dispatchCronjobRun(cronjobId: string, options: { allowDisa
 
 function scheduleOneCronjob(cronjob: {
     id: string;
-    schedule: CronjobSchedule | null;
+    preset_key: string | null;
+    cron_expression: string | null;
+    timezone: string;
+    schedule_type: string;
+    time_minutes: number | null;
+    days_of_week: string | null;
+    week_interval: number | null;
+    anchor_date: string | null;
+    day_of_month: number | null;
 }): void {
     const existing = scheduledJobs.get(cronjob.id);
     if (existing) {
         void existing.stop();
         scheduledJobs.delete(cronjob.id);
     }
-    if (!cronjob.schedule) return;
-
-    const expression = toCronPackageExpression(getCronjobEffectiveExpression(cronjob.schedule));
+    const schedule: CronjobSchedule = cronjob;
+    const expression = toCronPackageExpression(getCronjobEffectiveExpression(schedule));
     const job = new CronJob(expression, () => {
-        if (!isStructuredScheduleDue(cronjob.schedule!, new Date())) return;
+        if (!isStructuredScheduleDue(schedule, new Date())) return;
         void dispatchCronjobRun(cronjob.id).catch((err) => {
             console.error(`Failed to dispatch cronjob ${cronjob.id}:`, err);
         });
-    }, null, false, cronjob.schedule.timezone);
+    }, null, false, schedule.timezone);
     job.start();
     scheduledJobs.set(cronjob.id, job);
 }
@@ -690,19 +671,15 @@ export async function rescheduleCronjob(cronjobId: string): Promise<void> {
         select: {
             id: true,
             enabled: true,
-            schedule: {
-                select: {
-                    preset_key: true,
-                    cron_expression: true,
-                    timezone: true,
-                    schedule_type: true,
-                    time_minutes: true,
-                    days_of_week: true,
-                    week_interval: true,
-                    anchor_date: true,
-                    day_of_month: true,
-                }
-            }
+            preset_key: true,
+            cron_expression: true,
+            timezone: true,
+            schedule_type: true,
+            time_minutes: true,
+            days_of_week: true,
+            week_interval: true,
+            anchor_date: true,
+            day_of_month: true,
         }
     });
     const existing = scheduledJobs.get(cronjobId);
@@ -719,19 +696,15 @@ export async function startUserCronjobScheduler(): Promise<void> {
         where: { enabled: true },
         select: {
             id: true,
-            schedule: {
-                select: {
-                    preset_key: true,
-                    cron_expression: true,
-                    timezone: true,
-                    schedule_type: true,
-                    time_minutes: true,
-                    days_of_week: true,
-                    week_interval: true,
-                    anchor_date: true,
-                    day_of_month: true,
-                }
-            }
+            preset_key: true,
+            cron_expression: true,
+            timezone: true,
+            schedule_type: true,
+            time_minutes: true,
+            days_of_week: true,
+            week_interval: true,
+            anchor_date: true,
+            day_of_month: true,
         }
     });
     for (const cronjob of cronjobs) {

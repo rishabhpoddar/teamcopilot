@@ -82,20 +82,11 @@ This is intentionally the same path for both live monitoring and finished-run re
 
 The schedule editor supports:
 
-- preset schedules:
-  - hourly
-  - daily at 9:00
-  - weekdays at 9:00
-  - weekly on Monday at 9:00
+- structured schedules such as daily, selected weekdays, monthly, and alternate-week patterns
 - advanced raw cron expression
 - explicit IANA timezone
 
-The UI derives schedule mode from the stored schedule data:
-
-- if `preset_key` is set, show preset mode
-- if `cron_expression` is set, show cron mode
-
-There is no persisted `schedule_type`.
+The UI stores `schedule_type` to distinguish raw cron schedules from structured schedules whose fields are edited individually.
 
 ## Behavior Model
 
@@ -124,7 +115,7 @@ On each due trigger:
 7. Let the agent proceed through normal TeamCopilot tools.
 8. Keep the run `running` while the opencode session is busy or retrying.
 9. If the agent calls `markCronjobCompleted`, mark the run `success`.
-10. If the opencode session becomes idle without `markCronjobCompleted`, mark the run `needs_user_input`, set `completed_at`, infer a reason, and reveal the linked chat session.
+10. If the opencode session becomes idle without `markCronjobCompleted`, keep the run `running` and reveal the linked chat session.
 
 ### Manual Run
 
@@ -164,7 +155,7 @@ The run page uses the existing chat transcript and SSE event stream in fixed-ses
 - while the run is active, messages and tool updates stream in real time
 - after the run finishes, the same route shows the final transcript
 - the page does not expose the hidden session in the normal AI chat sidebar
-- if the run becomes `needs_user_input`, the session is also revealed in the normal chat list so the user can continue the conversation
+- if the run is `running` and the linked session is revealed, the UI treats it as needing user input and the user can continue the conversation
 
 This avoids creating separate monitoring and history surfaces.
 
@@ -172,7 +163,7 @@ This avoids creating separate monitoring and history surfaces.
 
 Cronjobs have one explicit policy flag:
 
-- `allow_workflow_runs_without_permission`
+- `prompt_allow_workflow_runs_without_permission`
 
 If true:
 
@@ -181,7 +172,7 @@ If true:
 If false:
 
 - workflow execution behaves conservatively
-- if a workflow permission prompt would normally be required, the opencode loop can stop and the cronjob becomes `needs_user_input`
+- if a workflow permission prompt would normally be required, the opencode loop can stop and the linked chat session is revealed
 
 This flag only controls workflow permission prompt behavior.
 It does not remove platform safety boundaries or grant arbitrary permissions.
@@ -198,9 +189,9 @@ Runtime classification:
 
 - while the opencode tool loop is active, the cronjob remains `running`
 - if `markCronjobCompleted` is called, mark the run `success`
-- if the loop stops and `markCronjobCompleted` was not called, mark the run `needs_user_input` and reveal the linked chat session
+- if the loop becomes idle and `markCronjobCompleted` was not called, keep the run `running` and reveal the linked chat session
 - if runtime startup fails or the user stops the run, mark the run `failed`
-- set `completed_at` whenever a run leaves `running`, including `success`, `failed`, `skipped`, and `needs_user_input`
+- set `completed_at` whenever a run leaves `running`, including `success`, `failed`, and `skipped`
 
 The agent is not asked to classify whether it needs user input.
 Only the runtime makes that classification.
@@ -216,16 +207,27 @@ Columns:
 - `id` - primary key
 - `user_id` - owner user id
 - `name` - display name
-- `prompt` - cron prompt text
 - `enabled` - boolean
-- `allow_workflow_runs_without_permission` - boolean
+- `target_type` - `prompt` or `workflow`
+- `prompt` - nullable cron prompt text for prompt cronjobs
+- `prompt_allow_workflow_runs_without_permission` - nullable boolean for prompt cronjobs
+- `workflow_slug` - nullable workflow slug for workflow cronjobs
+- `workflow_input_json` - nullable validated workflow inputs JSON for workflow cronjobs
+- `preset_key` - nullable preset identifier
+- `cron_expression` - nullable raw cron expression
+- `timezone` - IANA timezone string
+- `schedule_type` - `cron` or `structured`
+- `time_minutes` - nullable minute-of-day for structured schedules
+- `days_of_week` - nullable comma-separated day list for structured weekly schedules
+- `week_interval` - nullable interval for alternate-week structured schedules
+- `anchor_date` - nullable YYYY-MM-DD anchor for alternate-week schedules
+- `day_of_month` - nullable day-of-month for structured monthly schedules
 - `created_at` - bigint timestamp
 - `updated_at` - bigint timestamp
 
 Relations:
 
 - belongs to `users`
-- has one `cronjob_schedules`
 - has many `cronjob_runs`
 
 Constraints/indexes:
@@ -233,25 +235,16 @@ Constraints/indexes:
 - unique `(user_id, name)`
 - index `user_id`
 - index `enabled`
-
-### `cronjob_schedules`
-
-Columns:
-
-- `cronjob_id` - primary key and foreign key to `cronjobs`
-- `preset_key` - nullable preset identifier
-- `cron_expression` - nullable raw cron expression
-- `timezone` - IANA timezone string
-- `created_at` - bigint timestamp
-- `updated_at` - bigint timestamp
+- index `target_type`
+- index `workflow_slug`
 
 Normalization rule:
 
 - exactly one of `preset_key` or `cron_expression` must be set
 - if `preset_key` is set, derive the effective cron expression from the server-side preset registry
 - if `cron_expression` is set, use it directly
-- do not store `schedule_type`
 - do not store `next_run_at`; compute it from schedule and current time
+- target and schedule columns live on `cronjobs` because each cronjob has exactly one target and exactly one schedule
 
 ### `cronjob_runs`
 
@@ -259,20 +252,20 @@ Columns:
 
 - `id` - primary key
 - `cronjob_id` - foreign key to `cronjobs`
-- `status` - `running`, `success`, `failed`, `skipped`, `needs_user_input`
+- `status` - `running`, `success`, `failed`, `skipped`
 - `started_at` - bigint timestamp
 - `completed_at` - nullable bigint timestamp
-- `prompt_snapshot` - prompt copy used for the run
+- `workflow_run_id` - nullable linked workflow run id for workflow cronjobs
 - `summary` - nullable short summary supplied by `markCronjobCompleted`
 - `session_id` - nullable linked chat session id
 - `opencode_session_id` - nullable runtime session id
-- `needs_user_input_reason` - nullable inferred reason
 - `error_message` - nullable error text
 
 Indexes:
 
 - `(cronjob_id, started_at)`
 - `(cronjob_id, status)`
+- `workflow_run_id`
 
 Normalization notes:
 
@@ -280,10 +273,11 @@ Normalization notes:
 - do not store `scheduled_for`; a run record represents the trigger that was actually processed at `started_at`
 - do not store full output; the agent trace comes from the linked opencode/chat session
 - keep `summary` for compact run history
-- keep `prompt_snapshot` so past runs retain historical meaning after prompt edits
 - require `session_id` for all non-skipped runs
 - `skipped` runs have no session and should set `completed_at = started_at`
 - do not store `last_run_at`; derive it from latest `cronjob_runs`
+- do not store run target snapshots; prompt run history uses the linked chat transcript, and workflow run history links to the immutable workflow run logs
+- do not store a `needs_user_input` status; derive that state from `cronjob_runs.status = running` plus `chat_sessions.visible_to_user = true`
 
 ### `chat_sessions` Additions
 
@@ -298,7 +292,7 @@ Behavior:
 - cronjob sessions use `source = cronjob` and `visible_to_user = false` while autonomous
 - cronjob run pages can still load hidden sessions by run ownership
 - normal chat session list APIs exclude hidden sessions
-- when a run becomes `needs_user_input`, set `visible_to_user = true`
+- when a running prompt cronjob needs user input, set `visible_to_user = true`
 - `cronjob_runs.session_id` is the only DB link from a run to its chat session
 
 Index:
@@ -332,7 +326,7 @@ Overlap policy:
 - only `running` runs block overlap
 - scheduled overlap creates a `skipped` run
 - manual overlap returns `409`
-- previous `needs_user_input`, `failed`, `success`, and `skipped` runs do not block future scheduled runs
+- previous `failed`, `success`, and `skipped` runs do not block future scheduled runs
 
 ## Execution Plan
 
@@ -362,7 +356,7 @@ The first message tells the agent:
 - if the tool loop stops without `markCronjobCompleted`, TeamCopilot will reveal the session to the user as needing attention
 - call `markCronjobCompleted` only after the requested work is actually complete
 - the completion summary must be concise and suitable for run history
-- workflow runs may or may not bypass user permission prompts depending on `allow_workflow_runs_without_permission`
+- workflow runs may or may not bypass user permission prompts depending on `prompt_allow_workflow_runs_without_permission`
 
 ### Strong Autonomous Bias
 
@@ -501,7 +495,7 @@ Every run should make these facts inspectable:
 - Manual active overlap:
   - return `409 Cronjob is already running`
 - Permission boundary during execution:
-  - mark run `needs_user_input`, reveal linked chat session, show it as needing attention
+  - keep run `running`, reveal linked chat session, show it as needing attention
 - User stop:
   - abort opencode session, mark run `failed`, store stop message
 - User deleted:
@@ -522,7 +516,7 @@ Backend tests/checks should cover:
 - run record creation
 - run-now behavior
 - stop behavior
-- `needs_user_input` handoff
+- user-input handoff for a running revealed cronjob session
 - workflow permission policy handling
 - completion tool success path
 - completion tool rejection when pending permission/question exists
@@ -562,7 +556,7 @@ Integration checks:
 - Hidden cronjob sessions are not listed in normal chat until they need user input.
 - The cronjob run page can view hidden sessions because the run belongs to the current user.
 - Timezones use IANA names.
-- `allow_workflow_runs_without_permission` only governs workflow permission prompting.
+- `prompt_allow_workflow_runs_without_permission` only governs workflow permission prompting from prompt cronjobs.
 
 ## Settled Decisions
 
@@ -571,7 +565,7 @@ Integration checks:
 - Each non-skipped run creates a new chat session.
 - The same `/cronjobs/runs/:runId` page handles live monitoring and historical transcript review.
 - Users can stop active runs midway.
-- `last_run_at`, `next_run_at`, `scheduled_for`, `schedule_type`, and run-level `user_id` are not stored.
+- `last_run_at`, `next_run_at`, `scheduled_for`, run target snapshots, `needs_user_input`, and run-level `user_id` are not stored.
 
 ## Pending todos:
 - Allow workflows to be scheduled as well in crons

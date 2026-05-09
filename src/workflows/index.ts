@@ -444,13 +444,13 @@ router.post('/execute', apiHandler(async (req, res) => {
         include: {
             cronjob: {
                 select: {
-                    allow_workflow_runs_without_permission: true,
+                    prompt_allow_workflow_runs_without_permission: true,
                 },
             },
         },
     });
     const requirePermissionPrompt = cronjobRun
-        ? !cronjobRun.cronjob.allow_workflow_runs_without_permission
+        ? !cronjobRun.cronjob.prompt_allow_workflow_runs_without_permission
         : true;
     const startedRun = await startWorkflowRunViaBackend({
         workspaceDir,
