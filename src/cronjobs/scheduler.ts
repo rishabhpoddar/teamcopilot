@@ -263,6 +263,10 @@ function monitorCronjobRun(runId: string, opencodeSessionId: string): void {
             );
             if (sessionStatusType !== "idle") return;
 
+            // Cronjob completion is signaled only by markCronjobCompleted, which updates the
+            // run out of "running". If the opencode session falls idle while the run is still
+            // running, the agent stopped making tool calls without completing the cronjob, so
+            // reveal the linked chat session and let the user take over from there.
             await revealRunForUserInput(runId);
             clearInterval(interval);
             runningMonitors.delete(runId);
