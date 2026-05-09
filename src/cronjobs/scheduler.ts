@@ -380,7 +380,6 @@ export async function dispatchCronjobRun(cronjobId: string, options: { allowDisa
             user_id: cronjob.user_id,
             opencode_session_id: sessionResult.data.id,
             title: `Cronjob: ${cronjob.name}`,
-            source: "cronjob",
             visible_to_user: false,
             created_at: Number(now),
             updated_at: Number(now),

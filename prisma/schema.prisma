@@ -104,7 +104,6 @@ model chat_sessions {
   opencode_session_id String @unique
   title               String
   last_seen_assistant_message_id String?
-  source              String @default("user") // "user" | "cronjob"
   visible_to_user     Boolean @default(true)
   created_at          BigInt
   updated_at          BigInt
@@ -112,8 +111,7 @@ model chat_sessions {
   usage               chat_session_usage?
   cronjobRuns         cronjob_runs[]
   user                users                      @relation(fields: [user_id], references: [id], onDelete: Cascade)
-
-  @@index([source, visible_to_user])
+  @@index([visible_to_user])
 }
 
 model cronjobs {
@@ -158,6 +156,8 @@ model cronjob_runs {
   @@index([cronjob_id, started_at])
   @@index([cronjob_id, status])
   @@index([workflow_run_id])
+  @@index([session_id])
+  @@index([opencode_session_id, status])
 }
 
 model chat_session_usage {
