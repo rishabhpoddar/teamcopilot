@@ -150,8 +150,8 @@ model cronjob_runs {
   opencode_session_id        String?
   error_message              String?
   cronjob                    cronjobs       @relation(fields: [cronjob_id], references: [id], onDelete: Cascade)
-  session                    chat_sessions? @relation(fields: [session_id], references: [id], onDelete: SetNull)
-  workflowRun                workflow_runs? @relation(fields: [workflow_run_id], references: [id], onDelete: SetNull)
+  session                    chat_sessions? @relation(fields: [session_id], references: [id], onDelete: Cascade)
+  workflowRun                workflow_runs? @relation(fields: [workflow_run_id], references: [id], onDelete: Cascade)
 
   @@index([cronjob_id, started_at])
   @@index([cronjob_id, status])

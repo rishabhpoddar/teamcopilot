@@ -20,8 +20,8 @@ function nowMs(): bigint {
 
 export async function reconcileRunningCronsAndWorkflowRunsOnStartup(): Promise<void> {
     const completedAt = nowMs();
-    const workflowError = "Workflow run was interrupted because the backend restarted.";
-    const cronjobError = "Cronjob run was interrupted because the backend restarted.";
+    const workflowError = "Workflow run was interrupted because TeamCopilot restarted.";
+    const cronjobError = "Cronjob run was interrupted because TeamCopilot restarted.";
 
     await prisma.workflow_runs.updateMany({
         where: { status: "running" },

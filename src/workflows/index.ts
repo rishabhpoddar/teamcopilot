@@ -436,22 +436,6 @@ router.post('/execute', apiHandler(async (req, res) => {
     const callId = body.call_id;
     const workspaceDir = getWorkspaceDirFromEnv();
     await assertCurrentUserCanRunWorkflow(slug, req.userId!);
-    const cronjobRun = await prisma.cronjob_runs.findFirst({
-        where: {
-            opencode_session_id: req.opencode_session_id,
-            status: "running",
-        },
-        include: {
-            cronjob: {
-                select: {
-                    prompt_allow_workflow_runs_without_permission: true,
-                },
-            },
-        },
-    });
-    const requirePermissionPrompt = cronjobRun
-        ? !cronjobRun.cronjob.prompt_allow_workflow_runs_without_permission
-        : true;
     const startedRun = await startWorkflowRunViaBackend({
         workspaceDir,
         slug,
@@ -460,7 +444,7 @@ router.post('/execute', apiHandler(async (req, res) => {
         sessionId: req.opencode_session_id,
         messageId,
         callId,
-        requirePermissionPrompt,
+        requirePermissionPrompt: true,
         runSource: "user",
         secretResolutionMode: "user",
     });

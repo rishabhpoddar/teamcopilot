@@ -560,7 +560,6 @@ router.get('/sessions', apiHandler(async (req, res) => {
             where: {
                 id: { in: staleSessionIds },
                 user_id: req.userId!,
-                visible_to_user: true,
             }
         });
     }
