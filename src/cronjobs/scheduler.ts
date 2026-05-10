@@ -1,7 +1,11 @@
 import { CronJob, CronTime } from "cron";
 import { randomUUID } from "crypto";
 import prisma from "../prisma/client";
-import { getOpencodeClient } from "../utils/opencode-client";
+import {
+    getOpencodeClient,
+    listPendingPermissions,
+    listPendingQuestions,
+} from "../utils/opencode-client";
 import { getWorkspaceDirFromEnv } from "../utils/workspace-sync";
 import { startWorkflowRunViaBackend } from "../utils/workflow-runner";
 import {
@@ -280,6 +284,27 @@ async function revealRunForUserInput(runId: string): Promise<void> {
     });
 }
 
+async function cronjobSessionHasPendingUserInput(opencodeSessionId: string): Promise<boolean> {
+    const pendingQuestions = await listPendingQuestions();
+    if (pendingQuestions.some((question) => question.sessionID === opencodeSessionId)) {
+        return true;
+    }
+
+    const pendingPermissions = await listPendingPermissions();
+    if (pendingPermissions.some((permission) => permission.sessionID === opencodeSessionId)) {
+        return true;
+    }
+
+    const customPendingPermission = await prisma.tool_execution_permissions.findFirst({
+        where: {
+            opencode_session_id: opencodeSessionId,
+            status: "pending",
+        },
+        select: { id: true },
+    });
+    return customPendingPermission !== null;
+}
+
 function monitorCronjobRun(runId: string, opencodeSessionId: string): void {
     if (runningMonitors.has(runId)) return;
 
@@ -290,6 +315,13 @@ function monitorCronjobRun(runId: string, opencodeSessionId: string): void {
                 select: { status: true }
             });
             if (!run || run.status !== "running") {
+                clearInterval(interval);
+                runningMonitors.delete(runId);
+                return;
+            }
+
+            if (await cronjobSessionHasPendingUserInput(opencodeSessionId)) {
+                await revealRunForUserInput(runId);
                 clearInterval(interval);
                 runningMonitors.delete(runId);
                 return;

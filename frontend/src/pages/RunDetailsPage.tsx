@@ -45,6 +45,9 @@ function formatRunner(run: WorkflowRun): string {
     if (run.run_source === 'api') {
         return 'Workflow API';
     }
+    if (run.run_source === 'cronjob') {
+        return 'Cronjob';
+    }
     return 'Unknown';
 }
 

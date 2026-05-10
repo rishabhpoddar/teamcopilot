@@ -433,6 +433,7 @@ router.post('/execute', apiHandler(async (req, res) => {
     const requirePermissionPrompt = promptCronjobRun
         ? promptCronjobRun.cronjob.prompt_allow_workflow_runs_without_permission !== true
         : true;
+    const runSource = promptCronjobRun ? "cronjob" : "user";
     const startedRun = await startWorkflowRunViaBackend({
         workspaceDir,
         slug,
@@ -442,7 +443,7 @@ router.post('/execute', apiHandler(async (req, res) => {
         messageId,
         callId,
         requirePermissionPrompt,
-        runSource: "user",
+        runSource,
         secretResolutionMode: "user",
     });
 
