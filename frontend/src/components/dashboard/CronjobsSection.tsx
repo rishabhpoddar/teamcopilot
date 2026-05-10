@@ -50,6 +50,7 @@ interface Cronjob {
     next_run_at: number | null;
     is_running: boolean;
     current_run_id: string | null;
+    current_workflow_run_id: string | null;
     latest_run: CronjobRunPreview | null;
 }
 
@@ -98,6 +99,16 @@ function runDetailsPath(run: { id: string; target_type_snapshot: string; workflo
 
 function runDetailsLabel(run: { target_type_snapshot: string; workflow_run_id: string | null }): string {
     return run.target_type_snapshot === 'workflow' && run.workflow_run_id ? 'View logs' : 'View messages';
+}
+
+function activeRunPath(cronjob: Cronjob): string | null {
+    if (cronjob.current_workflow_run_id) {
+        return `/runs/${cronjob.current_workflow_run_id}`;
+    }
+    if (cronjob.current_run_id) {
+        return `/cronjobs/runs/${cronjob.current_run_id}`;
+    }
+    return null;
 }
 
 export default function CronjobsSection() {
@@ -312,7 +323,10 @@ export default function CronjobsSection() {
                                 </button>
                                 {cronjob.current_run_id && (
                                     <>
-                                        <button onClick={() => navigate(`/cronjobs/runs/${cronjob.current_run_id}`)}>
+                                        <button onClick={() => {
+                                            const path = activeRunPath(cronjob);
+                                            if (path) navigate(path);
+                                        }}>
                                             Monitor
                                         </button>
                                         <button

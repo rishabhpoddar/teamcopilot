@@ -1,5 +1,6 @@
 import express from "express";
 import prisma from "../prisma/client";
+import { Prisma } from "../../prisma/generated/client";
 import { apiHandler } from "../utils";
 import {
     completeCurrentCronjobRun,
@@ -42,6 +43,16 @@ function hasRequestField(body: unknown, field: string): boolean {
     return typeof body === "object" && body !== null && Object.prototype.hasOwnProperty.call(body, field);
 }
 
+function throwCronjobNameConflictIfNeeded(err: unknown): never {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+        throw {
+            status: 409,
+            message: "A cronjob with this name already exists."
+        };
+    }
+    throw err;
+}
+
 function serializeCronjob(cronjob: {
     id: string;
     name: string;
@@ -57,6 +68,7 @@ function serializeCronjob(cronjob: {
     updated_at: bigint;
     is_running?: boolean;
     current_run_id?: string | null;
+    current_workflow_run_id?: string | null;
     runs?: Array<{
         id: string;
         status: string;
@@ -92,6 +104,7 @@ function serializeCronjob(cronjob: {
         next_run_at: cronjob.enabled ? getNextRunAt(schedule) : null,
         is_running: cronjob.is_running === true,
         current_run_id: cronjob.current_run_id ?? null,
+        current_workflow_run_id: cronjob.current_workflow_run_id ?? null,
         latest_run: cronjob.runs?.[0]
             ? {
                 ...cronjob.runs[0],
@@ -167,14 +180,16 @@ router.get("/", apiHandler(async (req, res) => {
             cronjob_id: { in: cronjobs.map((cronjob) => cronjob.id) },
             status: "running",
         },
-        select: { id: true, cronjob_id: true },
+        select: { id: true, cronjob_id: true, workflow_run_id: true },
     });
     const activeCronjobIds = new Set(activeRuns.map((run) => run.cronjob_id));
     const activeRunIdByCronjobId = new Map(activeRuns.map((run) => [run.cronjob_id, run.id]));
+    const activeWorkflowRunIdByCronjobId = new Map(activeRuns.map((run) => [run.cronjob_id, run.workflow_run_id]));
     res.json({ cronjobs: cronjobs.map((cronjob) => serializeCronjob({
         ...cronjob,
         is_running: activeCronjobIds.has(cronjob.id),
         current_run_id: activeRunIdByCronjobId.get(cronjob.id) ?? null,
+        current_workflow_run_id: activeWorkflowRunIdByCronjobId.get(cronjob.id) ?? null,
     })) });
 }, true));
 
@@ -209,7 +224,7 @@ router.post("/", apiHandler(async (req, res) => {
             created_at: now,
             updated_at: now,
         },
-    });
+    }).catch(throwCronjobNameConflictIfNeeded);
     scheduleOneCronjob(cronjob);
     const activeRun = await prisma.cronjob_runs.findFirst({
         where: { cronjob_id: cronjob.id, status: "running" },
@@ -297,7 +312,7 @@ router.patch("/:id", apiHandler(async (req, res) => {
             timezone: schedule.timezone,
             updated_at: now,
         },
-    });
+    }).catch(throwCronjobNameConflictIfNeeded);
     scheduleOneCronjob(cronjob);
     res.json({ cronjob: serializeCronjob(cronjob) });
 }, true));
