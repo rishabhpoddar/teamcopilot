@@ -10,8 +10,7 @@ import {
     validateCronjobTarget,
     validateCronjobSchedule,
 } from "./scheduler";
-import { abortOpencodeSession } from "../utils/session-abort";
-import { markWorkflowSessionAborted } from "../utils/workflow-interruption";
+import { stopCronjobRun } from "../utils/cronjob-stop";
 
 const router = express.Router({ mergeParams: true });
 
@@ -438,26 +437,7 @@ router.post("/runs/:id/stop", apiHandler(async (req, res) => {
         res.json({ success: true });
         return;
     }
-    if (run.opencode_session_id) {
-        await abortOpencodeSession(run.opencode_session_id);
-    }
-    if (run.workflow_run_id) {
-        const workflowRun = await prisma.workflow_runs.findUnique({
-            where: { id: run.workflow_run_id },
-            select: { session_id: true },
-        });
-        if (workflowRun?.session_id) {
-            await markWorkflowSessionAborted(workflowRun.session_id);
-        }
-    }
-    await prisma.cronjob_runs.update({
-        where: { id },
-        data: {
-            status: "failed",
-            completed_at: nowMs(),
-            error_message: "Cronjob run was stopped by the user.",
-        },
-    });
+    await stopCronjobRun(run);
     res.json({ success: true });
 }, true));
 

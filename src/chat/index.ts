@@ -32,6 +32,7 @@ import {
     normalizeWorkspaceRelativePath,
 } from "../utils/chat-session-file-diff";
 import { syncChatSessionUsage } from "../utils/chat-usage";
+import { stopCronjobRun } from "../utils/cronjob-stop";
 import {
     ACTUAL_USER_MESSAGE_MARKER,
     buildAvailableSecretsPrompt,
@@ -1297,7 +1298,23 @@ router.post('/sessions/:id/abort', apiHandler(async (req, res) => {
         };
     }
 
-    await abortOpencodeSession(session.opencode_session_id);
+    const runningCronRun = await prisma.cronjob_runs.findFirst({
+        where: {
+            session_id: id,
+            status: "running",
+        },
+        select: {
+            id: true,
+            status: true,
+            opencode_session_id: true,
+            workflow_run_id: true,
+        },
+    });
+    if (runningCronRun) {
+        await stopCronjobRun(runningCronRun);
+    } else {
+        await abortOpencodeSession(session.opencode_session_id);
+    }
 
     res.json({
         success: true
