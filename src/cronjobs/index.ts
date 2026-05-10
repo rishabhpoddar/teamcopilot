@@ -124,7 +124,6 @@ function serializeRun(run: {
     session_id: string | null;
     opencode_session_id: string | null;
     error_message: string | null;
-    session?: { visible_to_user: boolean } | null;
     workflowRun?: { workflow_slug: string; args: string | null } | null;
     cronjob?: {
         target_type: string;
@@ -149,9 +148,6 @@ function serializeRun(run: {
         summary: run.summary,
         session_id: run.session_id,
         opencode_session_id: run.opencode_session_id,
-        needs_user_input_reason: run.status === "running" && run.session?.visible_to_user
-            ? "Cronjob stopped before marking itself complete."
-            : null,
         error_message: run.error_message,
     };
 }
@@ -411,7 +407,6 @@ router.get("/runs/:id", apiHandler(async (req, res) => {
             cronjob: { user_id: req.userId! },
         },
         include: {
-            session: { select: { visible_to_user: true } },
             workflowRun: { select: { workflow_slug: true, args: true } },
             cronjob: { select: { target_type: true, prompt: true, workflow_slug: true, workflow_input_json: true } },
         },

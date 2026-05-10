@@ -23,7 +23,6 @@ interface CronjobRun {
     summary: string | null;
     session_id: string | null;
     opencode_session_id: string | null;
-    needs_user_input_reason: string | null;
     error_message: string | null;
 }
 
@@ -187,12 +186,6 @@ export default function CronjobRunPage() {
                     <div>
                         <span>Summary</span>
                         <strong>{run.summary}</strong>
-                    </div>
-                )}
-                {run.needs_user_input_reason && (
-                    <div>
-                        <span>Needs input</span>
-                        <strong>{run.needs_user_input_reason}</strong>
                     </div>
                 )}
                 {run.error_message && (

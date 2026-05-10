@@ -29,7 +29,6 @@ interface CronjobRun {
     target_type_snapshot: string;
     workflow_run_id: string | null;
     summary: string | null;
-    needs_user_input_reason: string | null;
     error_message: string | null;
 }
 
@@ -383,7 +382,6 @@ export default function CronjobsSection() {
                                             <span>{formatTimestamp(run.started_at)}</span>
                                         </div>
                                         <p>{run.summary ?? 'Summary of result not available'}</p>
-                                        {run.needs_user_input_reason && <p>{run.needs_user_input_reason}</p>}
                                     </button>
                                 ))
                             )}
