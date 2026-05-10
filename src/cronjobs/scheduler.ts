@@ -93,22 +93,6 @@ function assertCronjobTargetType(value: unknown): CronjobTargetType {
     return value;
 }
 
-async function validateWorkflowCronjobTarget(input: {
-    workflow_slug: unknown;
-    workflow_inputs?: unknown;
-}, userId: string): Promise<{
-    workflowSlug: string;
-    workflowInputJson: string;
-}> {
-    const workflowSlug = assertNonEmptyString(input.workflow_slug, "workflow_slug");
-    const workflowInputs = input.workflow_inputs === undefined ? {} : assertObject(input.workflow_inputs, "workflow_inputs");
-    await assertUserCanRunWorkflow(workflowSlug, userId);
-    return {
-        workflowSlug,
-        workflowInputJson: JSON.stringify(workflowInputs),
-    };
-}
-
 async function validatePromptCronjobTarget(input: {
     prompt?: unknown;
     allow_workflow_runs_without_permission?: unknown;
@@ -147,16 +131,15 @@ export async function validateCronjobTarget(input: {
         };
     }
 
-    const workflowTarget = await validateWorkflowCronjobTarget({
-        workflow_slug: input.workflow_slug,
-        workflow_inputs: input.workflow_inputs,
-    }, userId);
+    const workflowSlug = assertNonEmptyString(input.workflow_slug, "workflow_slug");
+    const workflowInputs = input.workflow_inputs === undefined ? {} : assertObject(input.workflow_inputs, "workflow_inputs");
+    await assertUserCanRunWorkflow(workflowSlug, userId);
     return {
         targetType,
         prompt: null,
         promptAllowWorkflowRunsWithoutPermission: null,
-        workflowSlug: workflowTarget.workflowSlug,
-        workflowInputJson: workflowTarget.workflowInputJson,
+        workflowSlug,
+        workflowInputJson: JSON.stringify(workflowInputs),
     };
 }
 
@@ -372,14 +355,13 @@ export async function dispatchCronjobRun(cronjobId: string, mode: CronjobDispatc
             },
         });
         try {
-            const workflowTarget = await validateWorkflowCronjobTarget({
-                workflow_slug: cronjob.workflow_slug,
-                workflow_inputs: parseWorkflowInputJson(cronjob.workflow_input_json),
-            }, cronjob.user_id);
+            const workflowSlug = assertNonEmptyString(cronjob.workflow_slug, "workflow_slug");
+            const workflowInputs = parseWorkflowInputJson(cronjob.workflow_input_json);
+            await assertUserCanRunWorkflow(workflowSlug, cronjob.user_id);
             const startedRun = await startWorkflowRunViaBackend({
                 workspaceDir: getWorkspaceDirFromEnv(),
-                slug: workflowTarget.workflowSlug,
-                inputs: parseWorkflowInputJson(workflowTarget.workflowInputJson),
+                slug: workflowSlug,
+                inputs: workflowInputs,
                 authUserId: cronjob.user_id,
                 sessionId: `cronjob-${run.id}`,
                 messageId: `cronjob-message-${randomUUID()}`,
