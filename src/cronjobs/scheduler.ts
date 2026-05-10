@@ -184,6 +184,14 @@ export function getNextRunAt(schedule: CronjobSchedule): number {
     return cronTime.sendAt().toMillis();
 }
 
+function getCronjobTimeoutAt(schedule: CronjobSchedule, startedAtMs: number): number {
+    const expression = toCronPackageExpression(schedule.cron_expression);
+    const cronTime = new CronTime(expression, schedule.timezone);
+    const firstRun = cronTime.getNextDateFrom(new Date(startedAtMs), schedule.timezone);
+    const secondRun = cronTime.getNextDateFrom(firstRun.toJSDate(), schedule.timezone);
+    return startedAtMs + Math.ceil((secondRun.toMillis() - firstRun.toMillis()) * 1.5);
+}
+
 async function buildCronjobPrompt(args: {
     cronjobName: string;
     cronjobPrompt: string;
@@ -305,9 +313,10 @@ async function cronjobSessionHasPendingUserInput(opencodeSessionId: string): Pro
     return customPendingPermission !== null;
 }
 
-function monitorCronjobRun(runId: string, opencodeSessionId: string): void {
+function monitorCronjobRun(runId: string, opencodeSessionId: string, timeoutAtMs: number): void {
     if (runningMonitors.has(runId)) return;
 
+    let revealedForUserInput = false;
     const interval = setInterval(async () => {
         try {
             const run = await prisma.cronjob_runs.findUnique({
@@ -320,32 +329,48 @@ function monitorCronjobRun(runId: string, opencodeSessionId: string): void {
                 return;
             }
 
-            if (await cronjobSessionHasPendingUserInput(opencodeSessionId)) {
-                await revealRunForUserInput(runId);
+            if (Date.now() >= timeoutAtMs) {
+                await markCronjobRunFailed(runId, "Cronjob run timed out after 1.5x the configured interval.");
                 clearInterval(interval);
                 runningMonitors.delete(runId);
                 return;
             }
 
+            if (await cronjobSessionHasPendingUserInput(opencodeSessionId)) {
+                if (!revealedForUserInput) {
+                    await revealRunForUserInput(runId);
+                    revealedForUserInput = true;
+                }
+                return;
+            }
+
             const client = await getOpencodeClient();
             const statusResult = await client.session.status();
-            if (statusResult.error) return;
+            if (statusResult.error) {
+                await markCronjobRunFailed(runId, getErrorMessage(statusResult.error, "Failed to get cronjob session status."));
+                clearInterval(interval);
+                runningMonitors.delete(runId);
+                return;
+            }
             const sessionStatusType = getSessionStatusTypeForSession(
                 statusResult.data as SessionStatusMap,
                 opencodeSessionId
             );
             if (sessionStatusType !== "idle") return;
 
-            // Cronjob completion is signaled only by markCronjobCompleted, which updates the
-            // run out of "running". If the opencode session falls idle while the run is still
-            // running, the agent stopped making tool calls without completing the cronjob, so
-            // reveal the linked chat session and let the user take over from there.
-            await revealRunForUserInput(runId);
-            clearInterval(interval);
-            runningMonitors.delete(runId);
+            if (!revealedForUserInput) {
+                // Cronjob completion is signaled only by markCronjobCompleted, which updates the
+                // run out of "running". If the opencode session falls idle while the run is still
+                // running, the agent stopped making tool calls without completing the cronjob, so
+                // reveal the linked chat session and let the user take over from there.
+                await revealRunForUserInput(runId);
+                revealedForUserInput = true;
+            }
         } catch (err) {
             await markCronjobRunFailed(runId, getErrorMessage(err, "Failed to monitor cronjob run."));
             console.error("Failed to monitor cronjob run:", err);
+            clearInterval(interval);
+            runningMonitors.delete(runId);
         }
     }, CRONJOB_MONITOR_INTERVAL_MS);
     runningMonitors.set(runId, interval);
@@ -465,7 +490,10 @@ export async function dispatchCronjobRun(cronjobId: string, mode: CronjobDispatc
         throw new Error("Failed to send cronjob prompt to opencode");
     }
 
-    monitorCronjobRun(run.id, sessionResult.data.id);
+    monitorCronjobRun(run.id, sessionResult.data.id, getCronjobTimeoutAt({
+        cron_expression: cronjob.cron_expression,
+        timezone: cronjob.timezone,
+    }, Number(now)));
     return run.id;
 }
 
