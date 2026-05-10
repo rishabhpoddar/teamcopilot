@@ -4,16 +4,12 @@ import { apiHandler } from "../utils";
 import {
     completeCurrentCronjobRun,
     dispatchCronjobRun,
-    getCronjobEffectiveExpression,
     getNextRunAt,
-    rescheduleCronjob,
+    scheduleOneCronjob,
+    validateCronjobTarget,
     validateCronjobSchedule,
 } from "./scheduler";
 import { abortOpencodeSession } from "../utils/session-abort";
-import { readWorkflowManifestAndEnsurePermissions } from "../utils/workflow";
-import { getResourceAccessSummary } from "../utils/resource-access";
-import { resolveSecretsForUser } from "../utils/secrets";
-import { validateInputs } from "../utils/workflow-runner";
 import { markWorkflowSessionAborted } from "../utils/workflow-interruption";
 
 const router = express.Router({ mergeParams: true });
@@ -32,93 +28,18 @@ function assertNonEmptyString(value: unknown, label: string): string {
     return value.trim();
 }
 
+function assertBoolean(value: unknown, label: string): boolean {
+    if (typeof value !== "boolean") {
+        throw {
+            status: 400,
+            message: `${label} must be a boolean`
+        };
+    }
+    return value;
+}
+
 function hasRequestField(body: unknown, field: string): boolean {
     return typeof body === "object" && body !== null && Object.prototype.hasOwnProperty.call(body, field);
-}
-
-function assertObject(value: unknown, label: string): Record<string, unknown> {
-    if (!value || typeof value !== "object" || Array.isArray(value)) {
-        throw {
-            status: 400,
-            message: `${label} must be an object`
-        };
-    }
-    return value as Record<string, unknown>;
-}
-
-async function validateCronjobTarget(input: {
-    target_type?: unknown;
-    prompt?: unknown;
-    allow_workflow_runs_without_permission?: unknown;
-    workflow_slug?: unknown;
-    workflow_inputs?: unknown;
-}, userId: string): Promise<{
-    targetType: "prompt" | "workflow";
-    prompt: string | null;
-    promptAllowWorkflowRunsWithoutPermission: boolean | null;
-    workflowSlug: string | null;
-    workflowInputJson: string | null;
-}> {
-    const targetType = typeof input.target_type === "string" && input.target_type.trim().length > 0
-        ? input.target_type.trim()
-        : "prompt";
-
-    if (targetType === "prompt") {
-        return {
-            targetType,
-            prompt: assertNonEmptyString(input.prompt, "prompt"),
-            promptAllowWorkflowRunsWithoutPermission: input.allow_workflow_runs_without_permission !== false,
-            workflowSlug: null,
-            workflowInputJson: null,
-        };
-    }
-
-    if (targetType !== "workflow") {
-        throw {
-            status: 400,
-            message: "target_type must be prompt or workflow"
-        };
-    }
-
-    const workflowSlug = assertNonEmptyString(input.workflow_slug, "workflow_slug");
-    const workflowInputs = input.workflow_inputs === undefined ? {} : assertObject(input.workflow_inputs, "workflow_inputs");
-    const { manifest } = await readWorkflowManifestAndEnsurePermissions(workflowSlug);
-    const accessSummary = await getResourceAccessSummary("workflow", workflowSlug, userId);
-    if (!accessSummary.is_approved) {
-        throw {
-            status: 403,
-            message: "Workflow must be approved before it can be scheduled"
-        };
-    }
-    if (!accessSummary.can_edit) {
-        throw {
-            status: 403,
-            message: accessSummary.is_locked_due_to_missing_users
-                ? "Workflow cannot be scheduled because no allowed users remain"
-                : "You do not have permission to schedule this workflow"
-        };
-    }
-    const secretResolution = await resolveSecretsForUser(userId, manifest.required_secrets ?? []);
-    if (secretResolution.missingKeys.length > 0) {
-        throw {
-            status: 400,
-            message: `Missing required secrets for workflow: ${secretResolution.missingKeys.join(", ")}`
-        };
-    }
-    const validation = validateInputs(workflowInputs, manifest.inputs ?? {});
-    if (!validation.valid) {
-        throw {
-            status: 400,
-            message: `Workflow input validation failed: ${validation.errors.join("; ")}`
-        };
-    }
-    return {
-        targetType,
-        prompt: null,
-        promptAllowWorkflowRunsWithoutPermission: null,
-        workflowSlug,
-        workflowInputJson: JSON.stringify(validation.processedInputs),
-    };
 }
 
 function serializeCronjob(cronjob: {
@@ -166,7 +87,7 @@ function serializeCronjob(cronjob: {
         schedule: {
             cron_expression: schedule.cron_expression,
             timezone: schedule.timezone,
-            effective_cron_expression: getCronjobEffectiveExpression(schedule),
+            effective_cron_expression: schedule.cron_expression,
         },
         next_run_at: cronjob.enabled ? getNextRunAt(schedule) : null,
         is_running: cronjob.is_running === true,
@@ -271,7 +192,7 @@ router.post("/", apiHandler(async (req, res) => {
         timezone: req.body?.timezone,
     });
     const now = nowMs();
-    const enabled = req.body?.enabled !== false;
+    const enabled = assertBoolean(req.body?.enabled, "enabled");
 
     const cronjob = await prisma.cronjobs.create({
         data: {
@@ -289,7 +210,7 @@ router.post("/", apiHandler(async (req, res) => {
             updated_at: now,
         },
     });
-    await rescheduleCronjob(cronjob.id);
+    scheduleOneCronjob(cronjob);
     const activeRun = await prisma.cronjob_runs.findFirst({
         where: { cronjob_id: cronjob.id, status: "running" },
         select: { id: true },
@@ -335,7 +256,7 @@ router.patch("/:id", apiHandler(async (req, res) => {
     }
 
     const name = req.body?.name === undefined ? existing.name : assertNonEmptyString(req.body.name, "name");
-    const enabled = req.body?.enabled === undefined ? existing.enabled : Boolean(req.body.enabled);
+    const enabled = req.body?.enabled === undefined ? existing.enabled : assertBoolean(req.body.enabled, "enabled");
     const existingTarget = {
         target_type: existing.target_type,
         prompt: existing.prompt,
@@ -377,7 +298,7 @@ router.patch("/:id", apiHandler(async (req, res) => {
             updated_at: now,
         },
     });
-    await rescheduleCronjob(cronjob.id);
+    scheduleOneCronjob(cronjob);
     res.json({ cronjob: serializeCronjob(cronjob) });
 }, true));
 
@@ -385,13 +306,13 @@ router.delete("/:id", apiHandler(async (req, res) => {
     const id = req.params.id as string;
     const cronjob = await prisma.cronjobs.findFirst({
         where: { id, user_id: req.userId! },
-        select: { id: true }
+        select: { id: true, cron_expression: true, timezone: true, enabled: true }
     });
     if (!cronjob) {
         throw { status: 404, message: "Cronjob not found" };
     }
+    scheduleOneCronjob({ ...cronjob, enabled: false });
     await prisma.cronjobs.delete({ where: { id } });
-    await rescheduleCronjob(id);
     res.json({ success: true });
 }, true));
 
@@ -408,7 +329,7 @@ router.post("/:id/enable", apiHandler(async (req, res) => {
         where: { id },
         data: { enabled: true, updated_at: nowMs() },
     });
-    await rescheduleCronjob(id);
+    scheduleOneCronjob(cronjob);
     res.json({ cronjob: serializeCronjob(cronjob) });
 }, true));
 
@@ -425,7 +346,7 @@ router.post("/:id/disable", apiHandler(async (req, res) => {
         where: { id },
         data: { enabled: false, updated_at: nowMs() },
     });
-    await rescheduleCronjob(id);
+    scheduleOneCronjob(cronjob);
     res.json({ cronjob: serializeCronjob(cronjob) });
 }, true));
 
@@ -460,7 +381,7 @@ router.post("/:id/run-now", apiHandler(async (req, res) => {
     if (!cronjob) {
         throw { status: 404, message: "Cronjob not found" };
     }
-    const runId = await dispatchCronjobRun(id, { allowDisabled: true, skipIfActive: false });
+    const runId = await dispatchCronjobRun(id);
     const run = await prisma.cronjob_runs.findUnique({
         where: { id: runId },
         select: { workflow_run_id: true },
@@ -534,6 +455,39 @@ router.post("/runs/complete-current", apiHandler(async (req, res) => {
     }
     const summary = assertNonEmptyString(req.body?.summary, "summary");
     await completeCurrentCronjobRun(req.opencode_session_id, summary);
+    res.json({ success: true });
+}, true));
+
+router.post("/runs/fail-current", apiHandler(async (req, res) => {
+    if (!req.opencode_session_id) {
+        throw {
+            status: 400,
+            message: "This endpoint requires an opencode session token"
+        };
+    }
+    const summary = assertNonEmptyString(req.body?.summary, "summary");
+    const run = await prisma.cronjob_runs.findFirst({
+        where: {
+            opencode_session_id: req.opencode_session_id,
+            status: "running",
+        },
+        select: { id: true },
+    });
+    if (!run) {
+        throw {
+            status: 404,
+            message: "This is not an active cronjob session."
+        };
+    }
+    await prisma.cronjob_runs.update({
+        where: { id: run.id },
+        data: {
+            status: "failed",
+            completed_at: nowMs(),
+            summary,
+            error_message: summary,
+        },
+    });
     res.json({ success: true });
 }, true));
 
