@@ -19,6 +19,7 @@ import {
 import {
     getSessionStatusTypeForSession,
     normalizeStaleRunningTools,
+    sessionHasPendingInputForLatestAssistantMessage,
     type SessionMessageWire,
     type SessionStatusMap,
     type SessionStatusType
@@ -534,20 +535,13 @@ router.get('/sessions', apiHandler(async (req, res) => {
             client,
             session.opencode_session_id
         );
-        const hasPendingInput = latestAssistantMessageId !== null && (
-            pendingQuestions.some((question) =>
-                question.sessionID === session.opencode_session_id
-                && question.tool?.messageID === latestAssistantMessageId
-            )
-            || pendingPermissions.some((permission) =>
-                permission.sessionID === session.opencode_session_id
-                && permission.tool?.messageID === latestAssistantMessageId
-            )
-            || customPendingPermissions.some((permission) =>
-                permission.opencode_session_id === session.opencode_session_id
-                && permission.message_id === latestAssistantMessageId
-            )
-        );
+        const hasPendingInput = sessionHasPendingInputForLatestAssistantMessage({
+            opencodeSessionId: session.opencode_session_id,
+            latestAssistantMessageId,
+            pendingQuestions,
+            pendingPermissions,
+            customPendingPermissions
+        });
         const rawSessionStatus = getSessionStatusTypeForSession(sessionStatusMap, session.opencode_session_id);
         const sessionState = getSessionState({
             rawSessionStatus,
