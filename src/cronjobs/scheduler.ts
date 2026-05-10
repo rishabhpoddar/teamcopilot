@@ -324,8 +324,11 @@ export async function dispatchCronjobRun(cronjobId: string, mode: CronjobDispatc
         where: { id: cronjobId },
         include: { user: true },
     });
-    if (!cronjob || !cronjob.enabled) {
-        throw new Error("Cronjob not found or disabled");
+    if (!cronjob) {
+        throw new Error("Cronjob not found");
+    }
+    if (!cronjob.enabled && mode === "scheduled") {
+        throw new Error("Cronjob is disabled");
     }
 
     const activeRun = await prisma.cronjob_runs.findFirst({
