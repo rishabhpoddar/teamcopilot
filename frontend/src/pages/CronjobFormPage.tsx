@@ -696,7 +696,7 @@ export default function CronjobFormPage() {
                             </label>
                         ) : (
                             <div className="cronjob-policy-note">
-                                Workflow cronjobs do not request runtime permission. Access and approval are checked before saving; secrets and inputs are validated when each run starts.
+                                Workflow cronjobs do not request runtime permission.
                             </div>
                         )}
                     </section>
