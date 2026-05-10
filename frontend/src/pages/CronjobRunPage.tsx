@@ -209,7 +209,7 @@ export default function CronjobRunPage() {
                     forceNewChat={false}
                     onDraftHandled={() => {}}
                     fixedSession={fixedSession}
-                    readOnly={run.status !== 'running'}
+                    readOnly
                 />
             ) : (
                 <div className="cronjob-run-state">
