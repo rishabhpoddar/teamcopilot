@@ -14,7 +14,7 @@ import {
     buildAvailableSkillsPrompt,
 } from "../utils/chat-prompt-context";
 import type { CronjobSchedule, CronjobTargetType } from "../types/cronjob";
-import { validateUserWorkflowRunInputs } from "../utils/workflow-run-validation";
+import { assertUserCanRunWorkflow } from "../utils/workflow-run-validation";
 
 const CRONJOB_MONITOR_INTERVAL_MS = 5000;
 
@@ -102,14 +102,10 @@ async function validateWorkflowCronjobTarget(input: {
 }> {
     const workflowSlug = assertNonEmptyString(input.workflow_slug, "workflow_slug");
     const workflowInputs = input.workflow_inputs === undefined ? {} : assertObject(input.workflow_inputs, "workflow_inputs");
-    const validation = await validateUserWorkflowRunInputs({
-        slug: workflowSlug,
-        inputs: workflowInputs,
-        userId,
-    });
+    await assertUserCanRunWorkflow(workflowSlug, userId);
     return {
         workflowSlug,
-        workflowInputJson: JSON.stringify(validation.processedInputs),
+        workflowInputJson: JSON.stringify(workflowInputs),
     };
 }
 
@@ -448,15 +444,7 @@ export async function dispatchCronjobRun(cronjobId: string, mode: CronjobDispatc
         },
     });
     if (promptResult.error) {
-        const completedAt = nowMs();
-        await prisma.cronjob_runs.update({
-            where: { id: run.id },
-            data: {
-                status: "failed",
-                completed_at: completedAt,
-                error_message: "Failed to start cronjob opencode prompt.",
-            },
-        });
+        await markCronjobRunFailed(run.id, "Failed to start cronjob opencode prompt.");
         throw new Error("Failed to send cronjob prompt to opencode");
     }
 

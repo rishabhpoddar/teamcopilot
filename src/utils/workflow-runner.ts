@@ -72,7 +72,7 @@ function coerceNumber(value: unknown): number | null {
     return Number.isFinite(n) ? n : null;
 }
 
-export function validateInputs(providedInputs: Record<string, unknown>, schema: Record<string, any>) {
+function validateInputs(providedInputs: Record<string, unknown>, schema: Record<string, any>) {
     const errors: string[] = [];
     const processedInputs: Record<string, string | number | boolean> = {};
 
