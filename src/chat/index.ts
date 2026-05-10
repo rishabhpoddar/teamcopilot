@@ -537,7 +537,7 @@ router.get('/sessions', apiHandler(async (req, res) => {
         const hasPendingInput = latestAssistantMessageId !== null && (
             pendingQuestions.some((question) =>
                 question.sessionID === session.opencode_session_id
-                && question.messageID === latestAssistantMessageId
+                && question.tool?.messageID === latestAssistantMessageId
             )
             || pendingPermissions.some((permission) =>
                 permission.sessionID === session.opencode_session_id

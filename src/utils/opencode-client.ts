@@ -40,8 +40,11 @@ function getOpencodeBaseUrl(): string {
 interface PendingQuestion {
     id: string;
     sessionID: string;
-    messageID: string;
     questions: Array<unknown>;
+    tool?: {
+        messageID: string;
+        callID: string;
+    };
 }
 
 interface PendingPermission {
