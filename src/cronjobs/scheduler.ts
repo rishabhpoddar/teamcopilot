@@ -2,30 +2,25 @@ import { CronJob, CronTime } from "cron";
 import { randomUUID } from "crypto";
 import prisma from "../prisma/client";
 import { getOpencodeClient } from "../utils/opencode-client";
-import { readWorkflowManifestAndEnsurePermissions } from "../utils/workflow";
-import { getResourceAccessSummary } from "../utils/resource-access";
-import { resolveSecretsForUser } from "../utils/secrets";
 import { getWorkspaceDirFromEnv } from "../utils/workspace-sync";
-import { startWorkflowRunViaBackend, validateInputs } from "../utils/workflow-runner";
+import { startWorkflowRunViaBackend } from "../utils/workflow-runner";
 import {
     getSessionStatusTypeForSession,
     type SessionStatusMap,
 } from "../utils/chat-session";
-import {
-    getPendingQuestionForSession,
-    listPendingPermissionsForSession,
-} from "../utils/opencode-client";
 import {
     ACTUAL_USER_MESSAGE_MARKER,
     buildAvailableSecretsPrompt,
     buildAvailableSkillsPrompt,
 } from "../utils/chat-prompt-context";
 import type { CronjobSchedule, CronjobTargetType } from "../types/cronjob";
+import { validateUserWorkflowRunInputs } from "../utils/workflow-run-validation";
 
 const CRONJOB_MONITOR_INTERVAL_MS = 5000;
 
 const scheduledJobs = new Map<string, CronJob>();
 const runningMonitors = new Map<string, NodeJS.Timeout>();
+type CronjobDispatchMode = "scheduled" | "manual";
 
 function nowMs(): bigint {
     return BigInt(Date.now());
@@ -107,36 +102,11 @@ async function validateWorkflowCronjobTarget(input: {
 }> {
     const workflowSlug = assertNonEmptyString(input.workflow_slug, "workflow_slug");
     const workflowInputs = input.workflow_inputs === undefined ? {} : assertObject(input.workflow_inputs, "workflow_inputs");
-    const { manifest } = await readWorkflowManifestAndEnsurePermissions(workflowSlug);
-    const accessSummary = await getResourceAccessSummary("workflow", workflowSlug, userId);
-    if (!accessSummary.is_approved) {
-        throw {
-            status: 403,
-            message: "Workflow must be approved before it can be scheduled"
-        };
-    }
-    if (!accessSummary.can_edit) {
-        throw {
-            status: 403,
-            message: accessSummary.is_locked_due_to_missing_users
-                ? "Workflow cannot be scheduled because no allowed users remain"
-                : "You do not have permission to schedule this workflow"
-        };
-    }
-    const secretResolution = await resolveSecretsForUser(userId, manifest.required_secrets ?? []);
-    if (secretResolution.missingKeys.length > 0) {
-        throw {
-            status: 400,
-            message: `Missing required secrets for workflow: ${secretResolution.missingKeys.join(", ")}`
-        };
-    }
-    const validation = validateInputs(workflowInputs, manifest.inputs ?? {});
-    if (!validation.valid) {
-        throw {
-            status: 400,
-            message: `Workflow input validation failed: ${validation.errors.join("; ")}`
-        };
-    }
+    const validation = await validateUserWorkflowRunInputs({
+        slug: workflowSlug,
+        inputs: workflowInputs,
+        userId,
+    });
     return {
         workflowSlug,
         workflowInputJson: JSON.stringify(validation.processedInputs),
@@ -266,6 +236,35 @@ function parseWorkflowInputJson(value: string | null): Record<string, unknown> {
     return parsed as Record<string, unknown>;
 }
 
+function getErrorMessage(err: unknown, fallback: string): string {
+    return err instanceof Error ? err.message : fallback;
+}
+
+async function markCronjobRunFailed(runId: string, errorMessage: string): Promise<void> {
+    await prisma.cronjob_runs.updateMany({
+        where: { id: runId, status: "running" },
+        data: {
+            status: "failed",
+            completed_at: nowMs(),
+            error_message: errorMessage,
+        },
+    });
+}
+
+async function createSkippedCronjobRun(cronjobId: string): Promise<string> {
+    const now = nowMs();
+    const skipped = await prisma.cronjob_runs.create({
+        data: {
+            cronjob_id: cronjobId,
+            status: "skipped",
+            started_at: now,
+            completed_at: now,
+            error_message: "Previous run is still active.",
+        },
+    });
+    return skipped.id;
+}
+
 async function finishWorkflowCronjobRun(
     cronjobRunId: string,
     completion: Promise<{ status: string; output: string }>
@@ -282,14 +281,7 @@ async function finishWorkflowCronjobRun(
             },
         });
     } catch (err) {
-        await prisma.cronjob_runs.updateMany({
-            where: { id: cronjobRunId, status: "running" },
-            data: {
-                status: "failed",
-                completed_at: nowMs(),
-                error_message: err instanceof Error ? err.message : "Workflow cronjob failed.",
-            },
-        });
+        await markCronjobRunFailed(cronjobRunId, getErrorMessage(err, "Workflow cronjob failed."));
     }
 }
 
@@ -341,13 +333,14 @@ function monitorCronjobRun(runId: string, opencodeSessionId: string): void {
             clearInterval(interval);
             runningMonitors.delete(runId);
         } catch (err) {
+            await markCronjobRunFailed(runId, getErrorMessage(err, "Failed to monitor cronjob run."));
             console.error("Failed to monitor cronjob run:", err);
         }
     }, CRONJOB_MONITOR_INTERVAL_MS);
     runningMonitors.set(runId, interval);
 }
 
-export async function dispatchCronjobRun(cronjobId: string): Promise<string> {
+export async function dispatchCronjobRun(cronjobId: string, mode: CronjobDispatchMode = "scheduled"): Promise<string> {
     const cronjob = await prisma.cronjobs.findUnique({
         where: { id: cronjobId },
         include: { user: true },
@@ -364,6 +357,9 @@ export async function dispatchCronjobRun(cronjobId: string): Promise<string> {
         select: { id: true }
     });
     if (activeRun) {
+        if (mode === "scheduled") {
+            return await createSkippedCronjobRun(cronjob.id);
+        }
         throw {
             status: 409,
             message: "Cronjob is already running. Wait for the active run to finish, or stop it and run this cronjob again."
@@ -371,10 +367,6 @@ export async function dispatchCronjobRun(cronjobId: string): Promise<string> {
     }
 
     if (cronjob.target_type === "workflow") {
-        const workflowTarget = await validateWorkflowCronjobTarget({
-            workflow_slug: cronjob.workflow_slug,
-            workflow_inputs: parseWorkflowInputJson(cronjob.workflow_input_json),
-        }, cronjob.user_id);
         const now = nowMs();
         const run = await prisma.cronjob_runs.create({
             data: {
@@ -384,6 +376,10 @@ export async function dispatchCronjobRun(cronjobId: string): Promise<string> {
             },
         });
         try {
+            const workflowTarget = await validateWorkflowCronjobTarget({
+                workflow_slug: cronjob.workflow_slug,
+                workflow_inputs: parseWorkflowInputJson(cronjob.workflow_input_json),
+            }, cronjob.user_id);
             const startedRun = await startWorkflowRunViaBackend({
                 workspaceDir: getWorkspaceDirFromEnv(),
                 slug: workflowTarget.workflowSlug,
@@ -403,14 +399,7 @@ export async function dispatchCronjobRun(cronjobId: string): Promise<string> {
             void finishWorkflowCronjobRun(run.id, startedRun.completion);
             return run.id;
         } catch (err) {
-            await prisma.cronjob_runs.update({
-                where: { id: run.id },
-                data: {
-                    status: "failed",
-                    completed_at: nowMs(),
-                    error_message: err instanceof Error ? err.message : "Failed to start workflow cronjob.",
-                },
-            });
+            await markCronjobRunFailed(run.id, getErrorMessage(err, "Failed to start workflow cronjob."));
             return run.id;
         }
     }
@@ -490,7 +479,7 @@ export function scheduleOneCronjob(cronjob: {
     const schedule: CronjobSchedule = cronjob;
     const expression = toCronPackageExpression(schedule.cron_expression);
     const job = new CronJob(expression, () => {
-        void dispatchCronjobRun(cronjob.id).catch((err) => {
+        void dispatchCronjobRun(cronjob.id, "scheduled").catch((err) => {
             console.error(`Failed to dispatch cronjob ${cronjob.id}:`, err);
         });
     }, null, false, schedule.timezone);
@@ -529,15 +518,6 @@ export async function completeCurrentCronjobRun(opencodeSessionId: string, summa
         throw {
             status: 404,
             message: `Cronjob is not in running state. Current state is: ${run.status}`
-        };
-    }
-
-    const pendingQuestion = await getPendingQuestionForSession(opencodeSessionId);
-    const pendingPermissions = await listPendingPermissionsForSession(opencodeSessionId);
-    if (pendingQuestion || pendingPermissions.length > 0) {
-        throw {
-            status: 409,
-            message: "Cronjob cannot be marked complete while the session is waiting for input or permission"
         };
     }
 

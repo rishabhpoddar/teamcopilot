@@ -381,7 +381,7 @@ router.post("/:id/run-now", apiHandler(async (req, res) => {
     if (!cronjob) {
         throw { status: 404, message: "Cronjob not found" };
     }
-    const runId = await dispatchCronjobRun(id);
+    const runId = await dispatchCronjobRun(id, "manual");
     const run = await prisma.cronjob_runs.findUnique({
         where: { id: runId },
         select: { workflow_run_id: true },
@@ -469,14 +469,18 @@ router.post("/runs/fail-current", apiHandler(async (req, res) => {
     const run = await prisma.cronjob_runs.findFirst({
         where: {
             opencode_session_id: req.opencode_session_id,
-            status: "running",
         },
-        select: { id: true },
     });
     if (!run) {
         throw {
             status: 404,
-            message: "This is not an active cronjob session."
+            message: "This is not a cronjob session. If this was called via the markCronjobFailed tool, then do not use this tool again."
+        };
+    }
+    if (run.status !== "running") {
+        throw {
+            status: 404,
+            message: `Cronjob is not in running state. Current state is: ${run.status}`
         };
     }
     await prisma.cronjob_runs.update({
