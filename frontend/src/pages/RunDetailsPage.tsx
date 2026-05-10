@@ -6,6 +6,7 @@ import { useAuth } from '../lib/auth';
 import { usePageTitle } from '../lib/usePageTitle';
 import type { WorkflowRun } from '../types/workflow';
 import { axiosInstance } from '../utils';
+import { formatWorkflowRunRunner } from '../utils/run-format';
 import './RunDetailsPage.css';
 
 function getErrorMessage(err: unknown, fallback: string): string {
@@ -36,19 +37,6 @@ function parseArgs(args: string | null): string {
     } catch {
         return args;
     }
-}
-
-function formatRunner(run: WorkflowRun): string {
-    if (run.user) {
-        return `${run.user.name} (${run.user.email})`;
-    }
-    if (run.run_source === 'api') {
-        return 'Workflow API';
-    }
-    if (run.run_source === 'cronjob') {
-        return 'Cronjob';
-    }
-    return 'Unknown';
 }
 
 export default function RunDetailsPage() {
@@ -182,7 +170,7 @@ export default function RunDetailsPage() {
                         <div className="run-details-grid">
                             <div>
                                 <p className="run-details-label">Ran by</p>
-                                <p>{formatRunner(run)}</p>
+                                <p>{formatWorkflowRunRunner(run, { includeEmailForUserRuns: true })}</p>
                             </div>
                             <div>
                                 <p className="run-details-label">Started</p>

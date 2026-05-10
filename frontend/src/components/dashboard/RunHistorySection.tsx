@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { axiosInstance } from '../../utils';
 import { useAuth } from '../../lib/auth';
+import { formatWorkflowRunRunner } from '../../utils/run-format';
 import type { WorkflowRun, WorkflowRunStatus } from '../../types/workflow';
 import './RunHistorySection.css';
 import { AxiosError } from 'axios';
@@ -20,19 +21,6 @@ function formatDuration(startedAt: number, completedAt: number | null): string {
 
 function StatusBadge({ status }: { status: WorkflowRunStatus }) {
     return <span className={`status-badge status-${status}`}>{status}</span>;
-}
-
-function formatRunner(run: WorkflowRun): string {
-    if (run.user) {
-        return run.user.name;
-    }
-    if (run.run_source === 'api') {
-        return 'Workflow API';
-    }
-    if (run.run_source === 'cronjob') {
-        return 'Cronjob';
-    }
-    return 'Unknown';
 }
 
 export default function RunHistorySection() {
@@ -114,7 +102,7 @@ export default function RunHistorySection() {
                             <td><StatusBadge status={run.status} /></td>
                             <td>{formatDate(run.started_at)}</td>
                             <td>{formatDuration(run.started_at, run.completed_at)}</td>
-                            <td>{formatRunner(run)}</td>
+                            <td>{formatWorkflowRunRunner(run)}</td>
                         </tr>
                     ))}
                 </tbody>
