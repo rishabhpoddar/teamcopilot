@@ -2,11 +2,11 @@ import { CronJob, CronTime } from "cron";
 import { randomUUID } from "crypto";
 import prisma from "../prisma/client";
 import { getOpencodeClient } from "../utils/opencode-client";
+import { readWorkflowManifestAndEnsurePermissions } from "../utils/workflow";
 import { getResourceAccessSummary } from "../utils/resource-access";
-import { listSkillSlugs, readSkillManifestAndEnsurePermissions } from "../utils/skill";
-import { listResolvedSecretsForUser } from "../utils/secrets";
+import { resolveSecretsForUser } from "../utils/secrets";
 import { getWorkspaceDirFromEnv } from "../utils/workspace-sync";
-import { startWorkflowRunViaBackend } from "../utils/workflow-runner";
+import { startWorkflowRunViaBackend, validateInputs } from "../utils/workflow-runner";
 import {
     getSessionStatusTypeForSession,
     type SessionStatusMap,
@@ -15,21 +15,14 @@ import {
     getPendingQuestionForSession,
     listPendingPermissionsForSession,
 } from "../utils/opencode-client";
+import {
+    ACTUAL_USER_MESSAGE_MARKER,
+    buildAvailableSecretsPrompt,
+    buildAvailableSkillsPrompt,
+} from "../utils/chat-prompt-context";
+import type { CronjobSchedule, CronjobTargetType } from "../types/cronjob";
 
 const CRONJOB_MONITOR_INTERVAL_MS = 5000;
-
-type CronjobSchedule = {
-    cron_expression: string;
-    timezone: string;
-};
-
-type CronjobTarget = {
-    target_type: string;
-    prompt: string | null;
-    prompt_allow_workflow_runs_without_permission: boolean | null;
-    workflow_slug: string | null;
-    workflow_input_json: string | null;
-};
 
 const scheduledJobs = new Map<string, CronJob>();
 const runningMonitors = new Map<string, NodeJS.Timeout>();
@@ -75,6 +68,132 @@ function assertCronExpression(cronExpression: string, timezone: string): void {
     new CronTime(expression, timezone);
 }
 
+function assertNonEmptyString(value: unknown, label: string): string {
+    if (typeof value !== "string" || value.trim().length === 0) {
+        throw {
+            status: 400,
+            message: `${label} is required`
+        };
+    }
+    return value.trim();
+}
+
+function assertObject(value: unknown, label: string): Record<string, unknown> {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+        throw {
+            status: 400,
+            message: `${label} must be an object`
+        };
+    }
+    return value as Record<string, unknown>;
+}
+
+function assertCronjobTargetType(value: unknown): CronjobTargetType {
+    if (value !== "prompt" && value !== "workflow") {
+        throw {
+            status: 400,
+            message: "target_type must be prompt or workflow"
+        };
+    }
+    return value;
+}
+
+async function validateWorkflowCronjobTarget(input: {
+    workflow_slug: unknown;
+    workflow_inputs?: unknown;
+}, userId: string): Promise<{
+    workflowSlug: string;
+    workflowInputJson: string;
+}> {
+    const workflowSlug = assertNonEmptyString(input.workflow_slug, "workflow_slug");
+    const workflowInputs = input.workflow_inputs === undefined ? {} : assertObject(input.workflow_inputs, "workflow_inputs");
+    const { manifest } = await readWorkflowManifestAndEnsurePermissions(workflowSlug);
+    const accessSummary = await getResourceAccessSummary("workflow", workflowSlug, userId);
+    if (!accessSummary.is_approved) {
+        throw {
+            status: 403,
+            message: "Workflow must be approved before it can be scheduled"
+        };
+    }
+    if (!accessSummary.can_edit) {
+        throw {
+            status: 403,
+            message: accessSummary.is_locked_due_to_missing_users
+                ? "Workflow cannot be scheduled because no allowed users remain"
+                : "You do not have permission to schedule this workflow"
+        };
+    }
+    const secretResolution = await resolveSecretsForUser(userId, manifest.required_secrets ?? []);
+    if (secretResolution.missingKeys.length > 0) {
+        throw {
+            status: 400,
+            message: `Missing required secrets for workflow: ${secretResolution.missingKeys.join(", ")}`
+        };
+    }
+    const validation = validateInputs(workflowInputs, manifest.inputs ?? {});
+    if (!validation.valid) {
+        throw {
+            status: 400,
+            message: `Workflow input validation failed: ${validation.errors.join("; ")}`
+        };
+    }
+    return {
+        workflowSlug,
+        workflowInputJson: JSON.stringify(validation.processedInputs),
+    };
+}
+
+async function validatePromptCronjobTarget(input: {
+    prompt?: unknown;
+    allow_workflow_runs_without_permission?: unknown;
+}): Promise<{
+    prompt: string;
+    promptAllowWorkflowRunsWithoutPermission: boolean;
+}> {
+    return {
+        prompt: assertNonEmptyString(input.prompt, "prompt"),
+        promptAllowWorkflowRunsWithoutPermission: input.allow_workflow_runs_without_permission !== false,
+    };
+}
+
+export async function validateCronjobTarget(input: {
+    target_type: unknown;
+    prompt?: unknown;
+    allow_workflow_runs_without_permission?: unknown;
+    workflow_slug?: unknown;
+    workflow_inputs?: unknown;
+}, userId: string): Promise<{
+    targetType: "prompt" | "workflow";
+    prompt: string | null;
+    promptAllowWorkflowRunsWithoutPermission: boolean | null;
+    workflowSlug: string | null;
+    workflowInputJson: string | null;
+}> {
+    const targetType = assertCronjobTargetType(input.target_type);
+    if (targetType === "prompt") {
+        const promptTarget = await validatePromptCronjobTarget(input);
+        return {
+            targetType,
+            prompt: promptTarget.prompt,
+            promptAllowWorkflowRunsWithoutPermission: promptTarget.promptAllowWorkflowRunsWithoutPermission,
+            workflowSlug: null,
+            workflowInputJson: null,
+        };
+    }
+
+    const workflowTarget = await validateWorkflowCronjobTarget({
+        workflow_slug: input.workflow_slug,
+        workflow_inputs: input.workflow_inputs,
+    }, userId);
+    return {
+        targetType,
+        prompt: null,
+        promptAllowWorkflowRunsWithoutPermission: null,
+        workflowSlug: workflowTarget.workflowSlug,
+        workflowInputJson: workflowTarget.workflowInputJson,
+    };
+}
+
 export function validateCronjobSchedule(input: {
     cron_expression?: unknown;
     timezone?: unknown;
@@ -106,85 +225,36 @@ export function validateCronjobSchedule(input: {
     };
 }
 
-export function getCronjobEffectiveExpression(schedule: {
-    cron_expression: string;
-}): string {
-    return schedule.cron_expression;
-}
-
 export function getNextRunAt(schedule: CronjobSchedule): number {
-    const expression = toCronPackageExpression(getCronjobEffectiveExpression(schedule));
+    const expression = toCronPackageExpression(schedule.cron_expression);
     const cronTime = new CronTime(expression, schedule.timezone);
     return cronTime.sendAt().toMillis();
-}
-
-async function buildAvailableSkillsPrompt(userId: string): Promise<string | null> {
-    const slugs = listSkillSlugs();
-    if (slugs.length === 0) return null;
-
-    const availableSkills = (await Promise.all(slugs.map(async (slug) => {
-        const accessSummary = await getResourceAccessSummary("skill", slug, userId);
-        if (!accessSummary.can_view || !accessSummary.is_approved) return null;
-        const { manifest } = await readSkillManifestAndEnsurePermissions(slug);
-        return `${manifest.name} (${slug}) - ${manifest.description || "(no description provided)"}`;
-    }))).filter((line): line is string => line !== null);
-
-    if (availableSkills.length === 0) return null;
-    return `# Available custom skills\n\n${availableSkills.map((line, index) => `${index + 1}. ${line}`).join("\n")}`;
-}
-
-async function buildAvailableSecretsPrompt(userId: string): Promise<string | null> {
-    const secretMap = await listResolvedSecretsForUser(userId);
-    const keys = Object.keys(secretMap);
-    if (keys.length === 0) return null;
-    return [
-        "# Available secrets for this user",
-        "",
-        "Use proxy placeholders like {{SECRET:KEY}} when referring to secrets. Do not print or expose secret values.",
-        `Available secret keys: ${keys.join(", ")}`,
-    ].join("\n");
 }
 
 async function buildCronjobPrompt(args: {
     cronjobName: string;
     cronjobPrompt: string;
-    allowWorkflowRunsWithoutPermission: boolean;
     userId: string;
 }): Promise<string> {
     const sections = [
         "# Cronjob runtime instructions",
         "",
         "This is an unattended scheduled TeamCopilot cronjob run.",
+        "Treat the cronjob prompt below as the task to execute.",
         "Keep working until the requested cronjob task is complete or the tool loop is blocked by a real permission, tool question, or safety boundary.",
-        "Do not ask the user questions in normal prose. Make reasonable assumptions and continue when safe.",
-        "The only way to mark this cronjob finished is to call the markCronjobCompleted tool.",
-        "If the tool loop stops without markCronjobCompleted being called, TeamCopilot will reveal this session to the user as needing attention.",
+        "Do not ask the user questions in normal prose unless the task explicitly requires user approval or clarification that cannot be safely inferred.",
+        "If the task cannot be finished because of a non-recoverable issue, call markCronjobFailed with a concise reason instead of leaving the run hanging.",
+        "The only way to mark this cronjob finished successfully is to call the markCronjobCompleted tool.",
+        "If the tool loop stops without markCronjobCompleted or markCronjobFailed being called, TeamCopilot will reveal this session to the user as needing attention.",
         "Call markCronjobCompleted only after the requested work is actually complete.",
         "The completion summary must be concise and suitable for cronjob run history.",
-        `Workflow permission policy: ${args.allowWorkflowRunsWithoutPermission ? "workflow runs may proceed without an extra user permission prompt" : "workflow runs should require user permission when the workflow tool would normally ask"}.`,
     ];
     const availableSkillsPrompt = await buildAvailableSkillsPrompt(args.userId);
     const availableSecretsPrompt = await buildAvailableSecretsPrompt(args.userId);
     if (availableSkillsPrompt) sections.push("", availableSkillsPrompt);
     if (availableSecretsPrompt) sections.push("", availableSecretsPrompt);
-    sections.push("", "# Cronjob", "", `Name: ${args.cronjobName}`, "", args.cronjobPrompt);
+    sections.push("", ACTUAL_USER_MESSAGE_MARKER, "", "# Cronjob task", "", `Name: ${args.cronjobName}`, "", args.cronjobPrompt);
     return sections.join("\n");
-}
-
-function getCronjobTarget(cronjob: {
-    target_type: string;
-    prompt: string | null;
-    prompt_allow_workflow_runs_without_permission: boolean | null;
-    workflow_slug: string | null;
-    workflow_input_json: string | null;
-}): CronjobTarget {
-    return {
-        target_type: cronjob.target_type,
-        prompt: cronjob.prompt,
-        prompt_allow_workflow_runs_without_permission: cronjob.prompt_allow_workflow_runs_without_permission,
-        workflow_slug: cronjob.workflow_slug,
-        workflow_input_json: cronjob.workflow_input_json,
-    };
 }
 
 function parseWorkflowInputJson(value: string | null): Record<string, unknown> {
@@ -277,12 +347,12 @@ function monitorCronjobRun(runId: string, opencodeSessionId: string): void {
     runningMonitors.set(runId, interval);
 }
 
-export async function dispatchCronjobRun(cronjobId: string, options: { allowDisabled?: boolean; skipIfActive?: boolean } = {}): Promise<string> {
+export async function dispatchCronjobRun(cronjobId: string): Promise<string> {
     const cronjob = await prisma.cronjobs.findUnique({
         where: { id: cronjobId },
         include: { user: true },
     });
-    if (!cronjob || (!cronjob.enabled && options.allowDisabled !== true)) {
+    if (!cronjob || !cronjob.enabled) {
         throw new Error("Cronjob not found or disabled");
     }
 
@@ -294,31 +364,17 @@ export async function dispatchCronjobRun(cronjobId: string, options: { allowDisa
         select: { id: true }
     });
     if (activeRun) {
-        if (options.skipIfActive === false) {
-            throw {
-                status: 409,
-                message: "Cronjob is already running"
-            };
-        }
-        const now = nowMs();
-        const skipped = await prisma.cronjob_runs.create({
-            data: {
-                cronjob_id: cronjob.id,
-                status: "skipped",
-                started_at: now,
-                completed_at: now,
-                error_message: "Previous run is still active.",
-            },
-        });
-        return skipped.id;
+        throw {
+            status: 409,
+            message: "Cronjob is already running. Wait for the active run to finish, or stop it and run this cronjob again."
+        };
     }
 
-    const target = getCronjobTarget(cronjob);
-    if (target.target_type === "workflow") {
-        if (!target.workflow_slug) {
-            throw new Error("Workflow cronjob target is missing workflow_slug");
-        }
-        const workflowInputJson = target.workflow_input_json ?? "{}";
+    if (cronjob.target_type === "workflow") {
+        const workflowTarget = await validateWorkflowCronjobTarget({
+            workflow_slug: cronjob.workflow_slug,
+            workflow_inputs: parseWorkflowInputJson(cronjob.workflow_input_json),
+        }, cronjob.user_id);
         const now = nowMs();
         const run = await prisma.cronjob_runs.create({
             data: {
@@ -330,8 +386,8 @@ export async function dispatchCronjobRun(cronjobId: string, options: { allowDisa
         try {
             const startedRun = await startWorkflowRunViaBackend({
                 workspaceDir: getWorkspaceDirFromEnv(),
-                slug: target.workflow_slug,
-                inputs: parseWorkflowInputJson(workflowInputJson),
+                slug: workflowTarget.workflowSlug,
+                inputs: parseWorkflowInputJson(workflowTarget.workflowInputJson),
                 authUserId: cronjob.user_id,
                 sessionId: `cronjob-${run.id}`,
                 messageId: `cronjob-message-${randomUUID()}`,
@@ -359,7 +415,7 @@ export async function dispatchCronjobRun(cronjobId: string, options: { allowDisa
         }
     }
 
-    const userPrompt = target.prompt;
+    const userPrompt = cronjob.prompt;
     if (!userPrompt) {
         throw new Error("Prompt cronjob target is missing prompt");
     }
@@ -371,14 +427,6 @@ export async function dispatchCronjobRun(cronjobId: string, options: { allowDisa
     }
 
     const now = nowMs();
-    const run = await prisma.cronjob_runs.create({
-        data: {
-            cronjob_id: cronjob.id,
-            status: "running",
-            started_at: now,
-            opencode_session_id: sessionResult.data.id,
-        },
-    });
     const chatSession = await prisma.chat_sessions.create({
         data: {
             user_id: cronjob.user_id,
@@ -389,15 +437,19 @@ export async function dispatchCronjobRun(cronjobId: string, options: { allowDisa
             updated_at: Number(now),
         },
     });
-    await prisma.cronjob_runs.update({
-        where: { id: run.id },
-        data: { session_id: chatSession.id },
+    const run = await prisma.cronjob_runs.create({
+        data: {
+            cronjob_id: cronjob.id,
+            status: "running",
+            started_at: now,
+            opencode_session_id: sessionResult.data.id,
+            session_id: chatSession.id,
+        },
     });
 
     const runtimePrompt = await buildCronjobPrompt({
         cronjobName: cronjob.name,
         cronjobPrompt: userPrompt,
-        allowWorkflowRunsWithoutPermission: target.prompt_allow_workflow_runs_without_permission ?? true,
         userId: cronjob.user_id,
     });
     const promptResult = await client.session.promptAsync({
@@ -423,18 +475,20 @@ export async function dispatchCronjobRun(cronjobId: string, options: { allowDisa
     return run.id;
 }
 
-function scheduleOneCronjob(cronjob: {
+export function scheduleOneCronjob(cronjob: {
     id: string;
     cron_expression: string;
     timezone: string;
+    enabled: boolean;
 }): void {
     const existing = scheduledJobs.get(cronjob.id);
     if (existing) {
         void existing.stop();
         scheduledJobs.delete(cronjob.id);
     }
+    if (!cronjob.enabled) return;
     const schedule: CronjobSchedule = cronjob;
-    const expression = toCronPackageExpression(getCronjobEffectiveExpression(schedule));
+    const expression = toCronPackageExpression(schedule.cron_expression);
     const job = new CronJob(expression, () => {
         void dispatchCronjobRun(cronjob.id).catch((err) => {
             console.error(`Failed to dispatch cronjob ${cronjob.id}:`, err);
@@ -444,25 +498,6 @@ function scheduleOneCronjob(cronjob: {
     scheduledJobs.set(cronjob.id, job);
 }
 
-export async function rescheduleCronjob(cronjobId: string): Promise<void> {
-    const cronjob = await prisma.cronjobs.findUnique({
-        where: { id: cronjobId },
-        select: {
-            id: true,
-            enabled: true,
-            cron_expression: true,
-            timezone: true,
-        }
-    });
-    const existing = scheduledJobs.get(cronjobId);
-    if (existing) {
-        void existing.stop();
-        scheduledJobs.delete(cronjobId);
-    }
-    if (!cronjob || !cronjob.enabled) return;
-    scheduleOneCronjob(cronjob);
-}
-
 export async function startUserCronjobScheduler(): Promise<void> {
     const cronjobs = await prisma.cronjobs.findMany({
         where: { enabled: true },
@@ -470,6 +505,7 @@ export async function startUserCronjobScheduler(): Promise<void> {
             id: true,
             cron_expression: true,
             timezone: true,
+            enabled: true,
         }
     });
     for (const cronjob of cronjobs) {
