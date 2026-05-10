@@ -14,10 +14,15 @@
 
 .cronjobs-hero {
   display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  align-items: center;
+  flex-direction: column;
+  gap: 0.9rem;
+  align-items: flex-start;
   padding: 1rem 1.1rem;
+}
+
+.cronjobs-hero .cronjobs-primary-btn {
+  align-self: flex-start;
+  white-space: nowrap;
 }
 
 .cronjobs-eyebrow {
@@ -241,13 +246,17 @@
 }
 
 .cronjob-run-row {
+  display: block;
+  width: 100%;
+  text-align: left;
   border: 1px solid #333;
   border-radius: 8px;
   padding: 0.65rem;
   background: #141414;
+  cursor: pointer;
 }
 
-.cronjob-run-row div {
+.cronjob-run-row > div {
   display: flex;
   justify-content: space-between;
   gap: 0.75rem;
@@ -265,6 +274,93 @@
   margin: 0.45rem 0 0;
 }
 
+.cronjob-run-row:hover {
+  border-color: #555;
+  background: #171717;
+}
+
+.cronjob-runs-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  box-sizing: border-box;
+  background: rgba(0, 0, 0, 0.62);
+  backdrop-filter: blur(8px);
+}
+
+.cronjob-runs-modal {
+  position: relative;
+  width: min(840px, 100%);
+  max-width: 100%;
+  box-sizing: border-box;
+  max-height: min(78vh, 760px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  padding: 1rem;
+  border: 1px solid #333;
+  border-radius: 12px;
+  background: #1a1a1a;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+}
+
+.cronjob-runs-modal-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  padding-right: 2.25rem;
+}
+
+.cronjob-runs-modal-header h3 {
+  margin: 0.15rem 0 0;
+  font-size: 1.15rem;
+}
+
+.cronjob-runs-modal-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  overflow: auto;
+  padding-right: 0.2rem;
+}
+
+.cronjob-runs-modal-close {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid #444;
+  border-radius: 999px;
+  background: #232323;
+  cursor: pointer;
+}
+
+.cronjob-runs-modal-close::before,
+.cronjob-runs-modal-close::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0.9rem;
+  height: 2px;
+  border-radius: 999px;
+  background: #e5e7eb;
+}
+
+.cronjob-runs-modal-close::before {
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.cronjob-runs-modal-close::after {
+  transform: translate(-50%, -50%) rotate(-45deg);
+}
+
 @media (max-width: 760px) {
   .cronjobs-hero {
     align-items: stretch;
@@ -273,5 +369,13 @@
 
   .cronjobs-grid {
     grid-template-columns: 1fr;
+  }
+
+  .cronjob-runs-modal {
+    max-height: 85vh;
+  }
+
+  .cronjob-runs-modal-backdrop {
+    padding: 1rem;
   }
 }

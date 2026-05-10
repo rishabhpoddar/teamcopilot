@@ -398,7 +398,7 @@ export default function CronjobFormPage() {
                     <p className="cronjobs-eyebrow">Scheduled agent</p>
                     <h1>{isEditing ? 'Edit cronjob' : 'Create a cronjob'}</h1>
                     <p>
-                        Define a prompt that should run on a schedule. Prompts can invoke workflows or other skills.
+                        Define a prompt or workflow that should run on a schedule. Prompts can invoke workflows or other skills.
                     </p>
                 </aside>
 

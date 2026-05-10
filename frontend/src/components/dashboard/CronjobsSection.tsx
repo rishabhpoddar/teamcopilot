@@ -64,13 +64,24 @@ function getErrorMessage(err: unknown, fallback: string): string {
     return err instanceof Error ? err.message : fallback;
 }
 
-function formatTimestamp(value: number | null): string {
-    if (value === null) return 'Not scheduled';
-    return new Date(value).toLocaleString();
+function ordinalSuffix(day: number): string {
+    if (day >= 11 && day <= 13) {
+        return 'th';
+    }
+    const lastDigit = day % 10;
+    if (lastDigit === 1) return 'st';
+    if (lastDigit === 2) return 'nd';
+    if (lastDigit === 3) return 'rd';
+    return 'th';
 }
 
-function scheduleLabel(cronjob: Cronjob): string {
-    return cronjob.schedule.cron_expression;
+function formatTimestamp(value: number | null): string {
+    if (value === null) return 'Not scheduled';
+    const date = new Date(value);
+    const day = date.getDate();
+    const month = new Intl.DateTimeFormat('en-GB', { month: 'long' }).format(date);
+    const year = date.getFullYear();
+    return `${day}${ordinalSuffix(day)} ${month}, ${year}`;
 }
 
 function targetLabel(cronjob: Cronjob): string {
@@ -91,16 +102,6 @@ function getRunStatusClass(status: string): string {
     return 'muted';
 }
 
-function runDetailsPath(run: { id: string; target_type_snapshot: string; workflow_run_id: string | null }): string {
-    return run.target_type_snapshot === 'workflow' && run.workflow_run_id
-        ? `/runs/${run.workflow_run_id}`
-        : `/cronjobs/runs/${run.id}`;
-}
-
-function runDetailsLabel(run: { target_type_snapshot: string; workflow_run_id: string | null }): string {
-    return run.target_type_snapshot === 'workflow' && run.workflow_run_id ? 'View logs' : 'View messages';
-}
-
 function activeRunPath(cronjob: Cronjob): string | null {
     if (cronjob.current_workflow_run_id) {
         return `/runs/${cronjob.current_workflow_run_id}`;
@@ -111,6 +112,12 @@ function activeRunPath(cronjob: Cronjob): string | null {
     return null;
 }
 
+function pastRunPath(run: CronjobRun): string {
+    return run.target_type_snapshot === 'workflow' && run.workflow_run_id
+        ? `/runs/${run.workflow_run_id}`
+        : `/cronjobs/runs/${run.id}`;
+}
+
 export default function CronjobsSection() {
     const auth = useAuth();
     const navigate = useNavigate();
@@ -119,7 +126,7 @@ export default function CronjobsSection() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [runsByCronjob, setRunsByCronjob] = useState<Record<string, CronjobRun[]>>({});
-    const [expandedCronjobId, setExpandedCronjobId] = useState<string | null>(null);
+    const [activeRunsCronjob, setActiveRunsCronjob] = useState<Cronjob | null>(null);
     const [startingCronjobId, setStartingCronjobId] = useState<string | null>(null);
     const [stoppingRunId, setStoppingRunId] = useState<string | null>(null);
 
@@ -206,22 +213,24 @@ export default function CronjobsSection() {
         }
     };
 
-    const loadRuns = async (cronjob: Cronjob) => {
+    const openPastRuns = async (cronjob: Cronjob) => {
         if (!token) return;
-        if (expandedCronjobId === cronjob.id) {
-            setExpandedCronjobId(null);
-            return;
-        }
         try {
             const response = await axiosInstance.get(`/api/cronjobs/${cronjob.id}/runs`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             setRunsByCronjob((prev) => ({ ...prev, [cronjob.id]: response.data.runs }));
-            setExpandedCronjobId(cronjob.id);
+            setActiveRunsCronjob(cronjob);
         } catch (err: unknown) {
             toast.error(getErrorMessage(err, 'Failed to load cronjob runs'));
         }
     };
+
+    const closePastRuns = () => {
+        setActiveRunsCronjob(null);
+    };
+
+    const activeRuns = activeRunsCronjob ? (runsByCronjob[activeRunsCronjob.id] ?? []) : [];
 
     if (loading) {
         return <div className="section-loading">Loading cronjobs...</div>;
@@ -238,8 +247,7 @@ export default function CronjobsSection() {
                     <p className="cronjobs-eyebrow">Scheduled agents</p>
                     <h2>Cronjobs</h2>
                     <p>
-                        Run recurring prompts in hidden sessions. A cronjob only appears in chat when the
-                        agent stops without calling the completion tool.
+                        Run recurring jobs for background task completion.
                     </p>
                 </div>
                 <button className="cronjobs-primary-btn" onClick={() => navigate('/cronjobs/new')}>
@@ -251,7 +259,7 @@ export default function CronjobsSection() {
                 <div className="cronjobs-empty-state">
                     <div className="cronjobs-empty-orb" />
                     <h3>No Cronjobs Yet</h3>
-                    <p>Create a scheduled agent prompt for checks, reports, workflow runs, or recurring cleanup.</p>
+                    <p></p>
                     <button className="cronjobs-primary-btn" onClick={() => navigate('/cronjobs/new')}>
                         Create your first cronjob
                     </button>
@@ -273,18 +281,6 @@ export default function CronjobsSection() {
                             </div>
 
                             <div className="cronjob-metrics">
-                                <div>
-                                    <span>Target</span>
-                                    <strong>{targetLabel(cronjob)}</strong>
-                                </div>
-                                <div>
-                                    <span>Schedule</span>
-                                    <strong>{scheduleLabel(cronjob)}</strong>
-                                </div>
-                                <div>
-                                    <span>Timezone</span>
-                                    <strong>{cronjob.schedule.timezone}</strong>
-                                </div>
                                 <div>
                                     <span>Next run</span>
                                     <strong>{formatTimestamp(cronjob.next_run_at)}</strong>
@@ -338,49 +334,61 @@ export default function CronjobsSection() {
                                         </button>
                                     </>
                                 )}
-                                {!cronjob.current_run_id && cronjob.latest_run && (
-                                    <button onClick={() => navigate(runDetailsPath(cronjob.latest_run!))}>
-                                        {runDetailsLabel(cronjob.latest_run)}
-                                    </button>
-                                )}
                                 <button onClick={() => toggleEnabled(cronjob)}>
                                     {cronjob.enabled ? 'Disable' : 'Enable'}
                                 </button>
                                 <button onClick={() => navigate(`/cronjobs/${cronjob.id}/edit`)}>
                                     Edit
                                 </button>
-                                <button onClick={() => loadRuns(cronjob)}>
-                                    {expandedCronjobId === cronjob.id ? 'Hide runs' : 'Runs'}
+                                <button onClick={() => void openPastRuns(cronjob)}>
+                                    View past runs
                                 </button>
                                 <button className="cronjob-danger-btn" onClick={() => deleteCronjob(cronjob)}>
                                     Delete
                                 </button>
                             </div>
-
-                            {expandedCronjobId === cronjob.id && (
-                                <div className="cronjob-runs">
-                                    {(runsByCronjob[cronjob.id] ?? []).length === 0 ? (
-                                        <p className="workflow-card-meta">No runs yet.</p>
-                                    ) : (
-                                        (runsByCronjob[cronjob.id] ?? []).map((run) => (
-                                            <div className="cronjob-run-row" key={run.id}>
-                                                <div>
-                                                    <strong>{statusLabel(run.status)}</strong>
-                                                    <span>{formatTimestamp(run.started_at)}</span>
-                                                </div>
-                                                {run.summary && <p>{run.summary}</p>}
-                                                {run.needs_user_input_reason && <p>{run.needs_user_input_reason}</p>}
-                                                {run.error_message && <p>{run.error_message}</p>}
-                                                <button onClick={() => navigate(runDetailsPath(run))}>
-                                                    {runDetailsLabel(run)}
-                                                </button>
-                                            </div>
-                                        ))
-                                    )}
-                                </div>
-                            )}
                         </article>
                     ))}
+                </div>
+            )}
+
+            {activeRunsCronjob && (
+                <div className="cronjob-runs-modal-backdrop" onClick={closePastRuns}>
+                    <div className="cronjob-runs-modal" onClick={(event) => event.stopPropagation()}>
+                        <button
+                            type="button"
+                            className="cronjob-runs-modal-close"
+                            aria-label="Close"
+                            onClick={closePastRuns}
+                        />
+                        <div className="cronjob-runs-modal-header">
+                            <div>
+                                <p className="cronjobs-eyebrow">Past runs</p>
+                                <h3>{activeRunsCronjob.name}</h3>
+                            </div>
+                        </div>
+                        <div className="cronjob-runs-modal-list">
+                            {activeRuns.length === 0 ? (
+                                <p className="workflow-card-meta">No runs yet.</p>
+                            ) : (
+                                activeRuns.map((run) => (
+                                    <button
+                                        type="button"
+                                        className="cronjob-run-row"
+                                        key={run.id}
+                                        onClick={() => navigate(pastRunPath(run))}
+                                    >
+                                        <div>
+                                            <strong>{statusLabel(run.status)}</strong>
+                                            <span>{formatTimestamp(run.started_at)}</span>
+                                        </div>
+                                        <p>{run.summary ?? 'Summary of result not available'}</p>
+                                        {run.needs_user_input_reason && <p>{run.needs_user_input_reason}</p>}
+                                    </button>
+                                ))
+                            )}
+                        </div>
+                    </div>
                 </div>
             )}
         </div>
