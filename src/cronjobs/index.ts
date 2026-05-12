@@ -321,6 +321,19 @@ router.delete("/:id", apiHandler(async (req, res) => {
     if (!cronjob) {
         throw { status: 404, message: "Cronjob not found" };
     }
+    const activeRun = await prisma.cronjob_runs.findFirst({
+        where: {
+            cronjob_id: id,
+            status: "running",
+        },
+        select: { id: true },
+    });
+    if (activeRun) {
+        throw {
+            status: 409,
+            message: "Cronjob is currently running. Stop the running cronjob before deleting it."
+        };
+    }
     scheduleOneCronjob({ ...cronjob, enabled: false });
     await prisma.cronjobs.delete({ where: { id } });
     res.json({ success: true });
