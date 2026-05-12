@@ -4,6 +4,7 @@ import { AxiosError } from 'axios';
 import { toast } from 'react-toastify';
 import { axiosInstance } from '../../utils';
 import { useAuth } from '../../lib/auth';
+import { cronjobRunSummaryText } from '../../utils/cronjob-format';
 import './WorkflowsSection.css';
 import './CronjobsSection.css';
 
@@ -381,7 +382,7 @@ export default function CronjobsSection() {
                                             <strong>{statusLabel(run.status)}</strong>
                                             <span>{formatTimestamp(run.started_at)}</span>
                                         </div>
-                                        <p>{run.summary ?? 'Summary of result not available'}</p>
+                                        <p>{cronjobRunSummaryText(run.summary)}</p>
                                     </button>
                                 ))
                             )}

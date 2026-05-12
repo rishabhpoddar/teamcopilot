@@ -170,6 +170,39 @@ function main(): void {
     assert.equal(rejectedResult.error, "User denied permission to run this cronjob now.");
     assert.ok(!rejectedResult.fetches.includes("http://localhost:5124/api/cronjobs/cron-1/run-now POST"));
 
+    const createMissingPrompt = runPluginTool("createCronjob", {
+        name: "Missing prompt",
+        enabled: true,
+        target_type: "prompt",
+        cron_expression: "0 9 * * *",
+        timezone: "UTC",
+    });
+    assert.equal(createMissingPrompt.error, "prompt is required.");
+    assert.equal(createMissingPrompt.fetches.length, 0);
+
+    const createMissingWorkflowSlug = runPluginTool("createCronjob", {
+        name: "Missing workflow slug",
+        enabled: true,
+        target_type: "workflow",
+        workflow_inputs: {},
+        cron_expression: "0 9 * * *",
+        timezone: "UTC",
+    });
+    assert.equal(createMissingWorkflowSlug.error, "workflow_slug is required.");
+    assert.equal(createMissingWorkflowSlug.fetches.length, 0);
+
+    const editEmptyPatch = runPluginTool("editCronjob", {
+        id: "cron-1",
+    });
+    assert.equal(editEmptyPatch.error, "At least one cronjob field must be provided to edit.");
+    assert.equal(editEmptyPatch.fetches.length, 0);
+
+    const runNowMissingId = runPluginTool("runCronjobNow", {
+        id: "   ",
+    });
+    assert.equal(runNowMissingId.error, "id is required.");
+    assert.equal(runNowMissingId.fetches.length, 0);
+
     console.log("Manage cronjobs plugin tests passed");
 }
 
