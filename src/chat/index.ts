@@ -38,6 +38,7 @@ import {
     ACTUAL_USER_MESSAGE_MARKER,
     buildAvailableSecretsPrompt,
     buildAvailableSkillsPrompt,
+    buildCurrentTimePrompt,
 } from "../utils/chat-prompt-context";
 
 const router = express.Router({ mergeParams: true });
@@ -987,27 +988,25 @@ router.post('/sessions/:id/messages', apiHandler(async (req, res) => {
         const userInstructions = await readWorkspaceUserInstructions();
         const availableSkillsPrompt = await buildAvailableSkillsPrompt(req.userId!);
         const availableSecretsPrompt = await buildAvailableSecretsPrompt(req.userId!);
-        if (userInstructions || availableSkillsPrompt || availableSecretsPrompt) {
-            const preambleSections: string[] = [];
-            if (userInstructions) {
-                preambleSections.push(`# Custom user instructions (in case of conflicts, the instructions here take precedence over the contents of the AGENTS.md file)\n\n${userInstructions}`);
-            }
-            if (availableSkillsPrompt) {
-                preambleSections.push(availableSkillsPrompt);
-            }
-            if (availableSecretsPrompt) {
-                preambleSections.push(availableSecretsPrompt);
-            }
-
-            const wrappedUserInstructions = `${preambleSections.join("\n\n")}\n\n${ACTUAL_USER_MESSAGE_MARKER}\n\n`;
-            finalPromptParts = [
-                {
-                    type: "text",
-                    text: wrappedUserInstructions
-                },
-                ...promptParts
-            ];
+        const preambleSections: string[] = [buildCurrentTimePrompt()];
+        if (userInstructions) {
+            preambleSections.push(`# Custom user instructions (in case of conflicts, the instructions here take precedence over the contents of the AGENTS.md file)\n\n${userInstructions}`);
         }
+        if (availableSkillsPrompt) {
+            preambleSections.push(availableSkillsPrompt);
+        }
+        if (availableSecretsPrompt) {
+            preambleSections.push(availableSecretsPrompt);
+        }
+
+        const wrappedUserInstructions = `${preambleSections.join("\n\n")}\n\n${ACTUAL_USER_MESSAGE_MARKER}\n\n`;
+        finalPromptParts = [
+            {
+                type: "text",
+                text: wrappedUserInstructions
+            },
+            ...promptParts
+        ];
     }
 
     // Use promptAsync to send message and return immediately

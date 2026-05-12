@@ -4,6 +4,23 @@ import { listResolvedSecretsForUser } from "./secrets";
 
 export const ACTUAL_USER_MESSAGE_MARKER = "####### Actual user message below #######";
 
+export function buildCurrentTimePrompt(date: Date = new Date()): string {
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const localTime = new Intl.DateTimeFormat("en-US", {
+        dateStyle: "full",
+        timeStyle: "long",
+        timeZone: timezone,
+    }).format(date);
+
+    return [
+        "# Current time",
+        "",
+        `Current time: ${localTime}`,
+        `Current timezone: ${timezone}`,
+        `Current UTC time: ${date.toISOString()}`,
+    ].join("\n");
+}
+
 export async function buildAvailableSkillsPrompt(userId: string): Promise<string | null> {
     const slugs = listSkillSlugs();
     if (slugs.length === 0) {

@@ -16,6 +16,7 @@ import {
     ACTUAL_USER_MESSAGE_MARKER,
     buildAvailableSecretsPrompt,
     buildAvailableSkillsPrompt,
+    buildCurrentTimePrompt,
 } from "../utils/chat-prompt-context";
 import type { CronjobSchedule, CronjobTargetType } from "../types/cronjob";
 import { assertUserCanRunWorkflow } from "../utils/workflow-run-validation";
@@ -210,6 +211,7 @@ async function buildCronjobPrompt(args: {
         "Call markCronjobCompleted only after the requested work is actually complete.",
         "The completion summary must be concise and suitable for cronjob run history.",
     ];
+    sections.push("", buildCurrentTimePrompt());
     const availableSkillsPrompt = await buildAvailableSkillsPrompt(args.userId);
     const availableSecretsPrompt = await buildAvailableSecretsPrompt(args.userId);
     if (availableSkillsPrompt) sections.push("", availableSkillsPrompt);
