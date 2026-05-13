@@ -203,12 +203,17 @@ async function buildCronjobPrompt(args: {
         "",
         "This is an unattended scheduled TeamCopilot cronjob run.",
         "Treat the cronjob prompt below as the task to execute.",
-        "Keep working until the requested cronjob task is complete or the tool loop is blocked by a real permission, tool question, or safety boundary.",
-        "Do not ask the user questions in normal prose unless the task explicitly requires user approval or clarification that cannot be safely inferred.",
+        "Do not attempt to shortcut / automate the task to save time unless you are told to - it's OK if your agentic loop runs for several hours even.",
+        "First thing you must do is understand the task and call setCronjobTodos with a granular todo list. Do not start executing the task until TeamCopilot gives you the first current todo item.",
+        "After planning, TeamCopilot will give you exactly one current todo item at a time in this same session.",
+        "When working on a current todo item, work only on that item. If you discover more required work, call addCronjobTodos.",
+        "When the current todo item is complete, call finishCurrentCronjobTodo and then stop. TeamCopilot will give you the next todo item.",
+        "Keep working until every todo item needed for the requested cronjob task is complete or the loop is blocked by a real permission, tool question, or safety boundary.",
+        "Do not ask the user questions unless the task explicitly requires user approval or clarification that cannot be safely inferred.",
         "If the task cannot be finished because of a non-recoverable issue, call markCronjobFailed with a concise reason instead of leaving the run hanging.",
         "The only way to mark this cronjob finished successfully is to call the markCronjobCompleted tool.",
-        "If the tool loop stops without markCronjobCompleted or markCronjobFailed being called, TeamCopilot will reveal this session to the user as needing attention.",
-        "Call markCronjobCompleted only after the requested work is actually complete.",
+        "markCronjobCompleted will fail until all TeamCopilot cronjob todos have been finished.",
+        "Call markCronjobCompleted only after the requested work is 100% complete.",
         "The completion summary must be concise and suitable for cronjob run history.",
     ];
     sections.push("", buildCurrentTimePrompt());
@@ -315,11 +320,107 @@ async function cronjobSessionHasPendingUserInput(opencodeSessionId: string): Pro
     return customPendingPermission !== null;
 }
 
+type CronjobTodoForPrompt = {
+    id: string;
+    content: string;
+    position: number;
+};
+
+async function getCurrentCronjobTodo(runId: string): Promise<CronjobTodoForPrompt | null> {
+    return prisma.cronjob_run_todos.findFirst({
+        where: { run_id: runId, status: "in_progress" },
+        orderBy: { position: "asc" },
+        select: { id: true, content: true, position: true },
+    });
+}
+
+async function getNextPendingCronjobTodo(runId: string): Promise<CronjobTodoForPrompt | null> {
+    return prisma.cronjob_run_todos.findFirst({
+        where: { run_id: runId, status: "pending" },
+        orderBy: { position: "asc" },
+        select: { id: true, content: true, position: true },
+    });
+}
+
+async function getCronjobTodoCount(runId: string): Promise<number> {
+    return prisma.cronjob_run_todos.count({ where: { run_id: runId } });
+}
+
+async function startCronjobTodo(todoId: string): Promise<CronjobTodoForPrompt> {
+    return prisma.cronjob_run_todos.update({
+        where: { id: todoId },
+        data: { status: "in_progress" },
+        select: { id: true, content: true, position: true },
+    });
+}
+
+function buildCronjobPlanningReminderPrompt(): string {
+    return [
+        "# Cronjob planning required",
+        "",
+        "You must create the TeamCopilot cronjob todo list before doing any task work.",
+        "Call setCronjobTodos with granular todo items that cover the requested cronjob task.",
+        "Do not execute the task yet. TeamCopilot will give you the first current todo item after the todo list is saved."
+    ].join("\n");
+}
+
+function buildCronjobCurrentTodoPrompt(todo: CronjobTodoForPrompt): string {
+    return [
+        "# Current cronjob todo",
+        "",
+        `Todo ${todo.position + 1}: ${todo.content}`,
+        "",
+        "Work only on this todo item.",
+        "If you discover additional required work, call addCronjobTodos.",
+        "When this todo item is fully complete, call finishCurrentCronjobTodo with a concise summary, then stop.",
+        "Do not work on later todo items until TeamCopilot gives them to you.",
+        "Do not call markCronjobCompleted while a current todo item is active."
+    ].join("\n");
+}
+
+function buildCronjobCurrentTodoContinuationPrompt(todo: CronjobTodoForPrompt, iteration: number): string {
+    return [
+        "# Cronjob continuation",
+        "",
+        `The cronjob monitor found this session idle while the current todo is still active. This is continuation attempt ${iteration}.`,
+        "",
+        `Current todo: ${todo.content}`,
+        "",
+        "Continue this todo item only.",
+        "If this todo item is complete, call finishCurrentCronjobTodo with a concise summary, then stop.",
+        "If more work is required, take the next concrete step for this todo item.",
+        "If you discover additional required work, call addCronjobTodos.",
+        "If the task cannot continue, call markCronjobFailed.",
+        "If you truly need user input that cannot be safely inferred, use the existing question tool.",
+        "",
+        "Do not switch to another todo item."
+    ].join("\n");
+}
+
+function buildCronjobFinalReviewPrompt(): string {
+    return [
+        "# Cronjob final review",
+        "",
+        "All TeamCopilot cronjob todos are marked complete.",
+        "Review the original cronjob task and the work completed in this session.",
+        "If the requested task is 100% complete, call markCronjobCompleted with a concise run-history summary.",
+        "If required work is still missing, call addCronjobTodos with the missing todo items.",
+        "If the task cannot be completed, call markCronjobFailed with a concise reason.",
+        "If you truly need user input that cannot be safely inferred, use the existing question tool."
+    ].join("\n");
+}
+
 function monitorCronjobRun(runId: string, opencodeSessionId: string, timeoutAtMs: number): void {
     if (runningMonitors.has(runId)) return;
 
     let revealedForUserInput = false;
+    let isChecking = false;
+    let continuationCount = 0;
     const interval = setInterval(async () => {
+        if (isChecking) {
+            return;
+        }
+        isChecking = true;
         try {
             const run = await prisma.cronjob_runs.findUnique({
                 where: { id: runId },
@@ -360,19 +461,75 @@ function monitorCronjobRun(runId: string, opencodeSessionId: string, timeoutAtMs
             );
             if (sessionStatusType !== "idle") return;
 
-            if (!revealedForUserInput) {
-                // Cronjob completion is signaled only by markCronjobCompleted, which updates the
-                // run out of "running". If the opencode session falls idle while the run is still
-                // running, the agent stopped making tool calls without completing the cronjob, so
-                // reveal the linked chat session and let the user take over from there.
-                await revealRunForUserInput(runId);
-                revealedForUserInput = true;
+            const todoCount = await getCronjobTodoCount(runId);
+            if (todoCount === 0) {
+                const planningResult = await client.session.promptAsync({
+                    path: { id: opencodeSessionId },
+                    body: {
+                        parts: [{ type: "text", text: buildCronjobPlanningReminderPrompt() }],
+                    },
+                });
+                if (planningResult.error) {
+                    await markCronjobRunFailed(runId, getErrorMessage(planningResult.error, "Failed to prompt cronjob todo planning."));
+                    clearInterval(interval);
+                    runningMonitors.delete(runId);
+                }
+                return;
+            }
+
+            const currentTodo = await getCurrentCronjobTodo(runId);
+            if (currentTodo) {
+                continuationCount += 1;
+                const continueResult = await client.session.promptAsync({
+                    path: { id: opencodeSessionId },
+                    body: {
+                        parts: [{ type: "text", text: buildCronjobCurrentTodoContinuationPrompt(currentTodo, continuationCount) }],
+                    },
+                });
+                if (continueResult.error) {
+                    await markCronjobRunFailed(runId, getErrorMessage(continueResult.error, "Failed to continue idle cronjob todo."));
+                    clearInterval(interval);
+                    runningMonitors.delete(runId);
+                }
+                return;
+            }
+
+            const pendingTodo = await getNextPendingCronjobTodo(runId);
+            if (pendingTodo) {
+                continuationCount = 0;
+                const startedTodo = await startCronjobTodo(pendingTodo.id);
+                const todoResult = await client.session.promptAsync({
+                    path: { id: opencodeSessionId },
+                    body: {
+                        parts: [{ type: "text", text: buildCronjobCurrentTodoPrompt(startedTodo) }],
+                    },
+                });
+                if (todoResult.error) {
+                    await markCronjobRunFailed(runId, getErrorMessage(todoResult.error, "Failed to prompt next cronjob todo."));
+                    clearInterval(interval);
+                    runningMonitors.delete(runId);
+                }
+                return;
+            }
+
+            const continueResult = await client.session.promptAsync({
+                path: { id: opencodeSessionId },
+                body: {
+                    parts: [{ type: "text", text: buildCronjobFinalReviewPrompt() }],
+                },
+            });
+            if (continueResult.error) {
+                await markCronjobRunFailed(runId, getErrorMessage(continueResult.error, "Failed to prompt cronjob final review."));
+                clearInterval(interval);
+                runningMonitors.delete(runId);
             }
         } catch (err) {
             await markCronjobRunFailed(runId, getErrorMessage(err, "Failed to monitor cronjob run."));
             console.error("Failed to monitor cronjob run:", err);
             clearInterval(interval);
             runningMonitors.delete(runId);
+        } finally {
+            isChecking = false;
         }
     }, CRONJOB_MONITOR_INTERVAL_MS);
     runningMonitors.set(runId, interval);
@@ -553,6 +710,29 @@ export async function completeCurrentCronjobRun(opencodeSessionId: string, summa
         throw {
             status: 404,
             message: `Cronjob is not in running state. Current state is: ${run.status}`
+        };
+    }
+    const unfinishedTodo = await prisma.cronjob_run_todos.findFirst({
+        where: {
+            run_id: run.id,
+            status: { not: "completed" },
+        },
+        orderBy: { position: "asc" },
+        select: { content: true, status: true },
+    });
+    if (unfinishedTodo) {
+        throw {
+            status: 400,
+            message: `Cronjob still has an unfinished todo (${unfinishedTodo.status}): ${unfinishedTodo.content}`
+        };
+    }
+    const todoCount = await prisma.cronjob_run_todos.count({
+        where: { run_id: run.id },
+    });
+    if (todoCount === 0) {
+        throw {
+            status: 400,
+            message: "Cronjob cannot be marked complete before setCronjobTodos has created and finishCurrentCronjobTodo has completed the todo list."
         };
     }
 

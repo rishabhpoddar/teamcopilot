@@ -152,12 +152,28 @@ model cronjob_runs {
   cronjob                    cronjobs       @relation(fields: [cronjob_id], references: [id], onDelete: Cascade)
   session                    chat_sessions? @relation(fields: [session_id], references: [id], onDelete: Cascade)
   workflowRun                workflow_runs? @relation(fields: [workflow_run_id], references: [id], onDelete: Cascade)
+  todos                      cronjob_run_todos[]
 
   @@index([cronjob_id, started_at])
   @@index([cronjob_id, status])
   @@index([workflow_run_id])
   @@index([session_id])
   @@index([opencode_session_id, status])
+}
+
+model cronjob_run_todos {
+  id           String       @id @default(uuid())
+  run_id       String
+  content      String
+  status       String       // "pending" | "in_progress" | "completed"
+  position     Int
+  summary      String?
+  created_at   BigInt
+  completed_at BigInt?
+  run          cronjob_runs @relation(fields: [run_id], references: [id], onDelete: Cascade)
+
+  @@index([run_id, status, position])
+  @@index([run_id, position])
 }
 
 model chat_session_usage {

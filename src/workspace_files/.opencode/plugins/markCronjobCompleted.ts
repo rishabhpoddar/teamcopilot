@@ -65,7 +65,7 @@ export const MarkCronjobCompletedPlugin: Plugin = async ({ client }) => {
     tool: {
       markCronjobCompleted: tool({
         description:
-          "Mark the current TeamCopilot cronjob run as successfully completed. Use this exactly once, and only after all requested cronjob work is complete. If you do not call this tool before the tool loop stops, TeamCopilot will reveal the cronjob session to the user as needing attention.",
+          "Mark the current TeamCopilot cronjob run as successfully completed. Use this exactly once, only after all requested cronjob work is complete and all TeamCopilot cronjob todos have been finished. This tool fails while any cronjob todo is still pending or in progress.",
         args: {
           summary: tool.schema
             .string()
