@@ -34,6 +34,7 @@ import {
 } from "../utils/chat-session-file-diff";
 import { syncChatSessionUsage } from "../utils/chat-usage";
 import { stopCronjobRun } from "../utils/cronjob-stop";
+import { resumeCronjobRun } from "../cronjobs/scheduler";
 import {
     ACTUAL_USER_MESSAGE_MARKER,
     buildAvailableSecretsPrompt,
@@ -533,7 +534,6 @@ router.get('/sessions', apiHandler(async (req, res) => {
     const handoffCronjobRuns = await prisma.cronjob_runs.findMany({
         where: {
             session_id: { in: validSessions.map((session) => session.id) },
-            status: "running",
             user_handoff_state: { not: "none" },
         },
         select: {
@@ -1083,7 +1083,6 @@ router.post('/sessions/:id/resume-cronjob', apiHandler(async (req, res) => {
     const run = await prisma.cronjob_runs.findFirst({
         where: {
             session_id: id,
-            status: "running",
             user_handoff_state: { not: "none" },
         },
         select: { id: true },
@@ -1095,14 +1094,7 @@ router.post('/sessions/:id/resume-cronjob', apiHandler(async (req, res) => {
         };
     }
 
-    await prisma.cronjob_runs.update({
-        where: { id: run.id },
-        data: {
-            awaiting_user_response: false,
-            user_handoff_state: "none",
-        },
-    });
-
+    await resumeCronjobRun(run.id);
     await prisma.chat_sessions.update({
         where: { id },
         data: { updated_at: Date.now() },

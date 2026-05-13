@@ -227,7 +227,6 @@ router.post("/runs/ask-user-current", apiHandler(async (req, res) => {
         prisma.cronjob_runs.update({
             where: { id: run.id },
             data: {
-                awaiting_user_response: run.status === "running",
                 user_handoff_state: run.status === "running" ? "waiting" : "none",
             },
         }),
@@ -542,6 +541,7 @@ router.post("/runs/:id/reveal-chat", apiHandler(async (req, res) => {
         },
         include: {
             session: true,
+            cronjob: { select: { target_type: true } },
         },
     });
     if (!run) {
@@ -554,9 +554,31 @@ router.post("/runs/:id/reveal-chat", apiHandler(async (req, res) => {
         throw { status: 400, message: "Cronjob run does not have an AI chat session" };
     }
 
+    const now = Date.now();
+    if (run.cronjob.target_type === "prompt") {
+        const [session] = await prisma.$transaction([
+            prisma.chat_sessions.update({
+                where: { id: run.session.id },
+                data: {
+                    visible_to_user: true,
+                    updated_at: now,
+                },
+            }),
+            prisma.cronjob_runs.update({
+                where: { id: run.id },
+                data: { user_handoff_state: "waiting" },
+            }),
+        ]);
+        res.json({ session_id: session.id });
+        return;
+    }
+
     const session = await prisma.chat_sessions.update({
         where: { id: run.session.id },
-        data: { visible_to_user: true },
+        data: {
+            visible_to_user: true,
+            updated_at: now,
+        },
     });
     res.json({ session_id: session.id });
 }, true));

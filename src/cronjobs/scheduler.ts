@@ -548,6 +548,49 @@ function monitorCronjobRun(runId: string, opencodeSessionId: string, timeoutAtMs
     runningMonitors.set(runId, interval);
 }
 
+export async function resumeCronjobRun(runId: string): Promise<void> {
+    const run = await prisma.cronjob_runs.findUnique({
+        where: { id: runId },
+        include: {
+            cronjob: {
+                select: {
+                    target_type: true,
+                    cron_expression: true,
+                    timezone: true,
+                },
+            },
+        },
+    });
+    if (!run) {
+        throw {
+            status: 404,
+            message: "Cronjob run not found"
+        };
+    }
+    if (run.cronjob.target_type !== "prompt" || !run.opencode_session_id) {
+        throw {
+            status: 400,
+            message: "Only prompt cronjob chats can be resumed."
+        };
+    }
+
+    await prisma.cronjob_runs.update({
+        where: { id: run.id },
+        data: {
+            status: "running",
+            completed_at: null,
+            error_message: null,
+            summary: null,
+            user_handoff_state: "none",
+        },
+    });
+
+    monitorCronjobRun(run.id, run.opencode_session_id, getCronjobTimeoutAt({
+        cron_expression: run.cronjob.cron_expression,
+        timezone: run.cronjob.timezone,
+    }, Date.now()));
+}
+
 export async function dispatchCronjobRun(cronjobId: string, mode: CronjobDispatchMode = "scheduled"): Promise<string> {
     const cronjob = await prisma.cronjobs.findUnique({
         where: { id: cronjobId },

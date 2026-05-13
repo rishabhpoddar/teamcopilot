@@ -149,7 +149,6 @@ model cronjob_runs {
   session_id                 String?
   opencode_session_id        String?
   error_message              String?
-  awaiting_user_response     Boolean        @default(false)
   user_handoff_state         String         @default("none") // "none" | "waiting"
   cronjob                    cronjobs       @relation(fields: [cronjob_id], references: [id], onDelete: Cascade)
   session                    chat_sessions? @relation(fields: [session_id], references: [id], onDelete: Cascade)
