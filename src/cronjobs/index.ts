@@ -38,6 +38,36 @@ function assertBoolean(value: unknown, label: string): boolean {
     return value;
 }
 
+function assertStringArray(value: unknown, label: string): string[] {
+    if (!Array.isArray(value)) {
+        throw {
+            status: 400,
+            message: `${label} must be an array of non-empty strings`
+        };
+    }
+    const items = value.map((item) => assertNonEmptyString(item, label));
+    if (items.length === 0) {
+        throw {
+            status: 400,
+            message: `${label} must contain at least one item`
+        };
+    }
+    return items;
+}
+
+function assertOptionalInsertIndex(value: unknown): number | null {
+    if (value === undefined || value === null) {
+        return null;
+    }
+    if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+        throw {
+            status: 400,
+            message: "index must be a non-negative integer"
+        };
+    }
+    return value;
+}
+
 function hasRequestField(body: unknown, field: string): boolean {
     return typeof body === "object" && body !== null && Object.prototype.hasOwnProperty.call(body, field);
 }
@@ -150,6 +180,23 @@ function serializeRun(run: {
         opencode_session_id: run.opencode_session_id,
         error_message: run.error_message,
     };
+}
+
+async function getPromptCronjobRun(opencodeSessionId: string) {
+    const run = await prisma.cronjob_runs.findFirst({
+        where: {
+            opencode_session_id: opencodeSessionId,
+            cronjob: { target_type: "prompt" },
+        },
+        select: { id: true, status: true },
+    });
+    if (!run) {
+        throw {
+            status: 404,
+            message: "This is not a prompt cronjob session."
+        };
+    }
+    return run;
 }
 
 router.get("/", apiHandler(async (req, res) => {
@@ -475,6 +522,128 @@ router.post("/runs/:id/reveal-chat", apiHandler(async (req, res) => {
         data: { visible_to_user: true },
     });
     res.json({ session_id: session.id });
+}, true));
+
+router.post("/runs/todos/set-current", apiHandler(async (req, res) => {
+    if (!req.opencode_session_id) {
+        throw {
+            status: 400,
+            message: "This endpoint requires an opencode session token"
+        };
+    }
+    const items = assertStringArray(req.body?.items, "items");
+    const run = await getPromptCronjobRun(req.opencode_session_id);
+    const existingTodo = await prisma.cronjob_run_todos.findFirst({
+        where: { run_id: run.id },
+        select: { id: true },
+    });
+    if (existingTodo) {
+        throw {
+            status: 400,
+            message: "Cronjob todo list already exists. Use addCronjobTodos to add more items."
+        };
+    }
+    const now = nowMs();
+    await prisma.cronjob_run_todos.createMany({
+        data: items.map((content, index) => ({
+            run_id: run.id,
+            content,
+            status: "pending",
+            position: index,
+            created_at: now,
+        })),
+    });
+    res.json({ success: true, todo_count: items.length });
+}, true));
+
+router.post("/runs/todos/add-current", apiHandler(async (req, res) => {
+    if (!req.opencode_session_id) {
+        throw {
+            status: 400,
+            message: "This endpoint requires an opencode session token"
+        };
+    }
+    const items = assertStringArray(req.body?.items, "items");
+    const index = assertOptionalInsertIndex(req.body?.index);
+    const run = await getPromptCronjobRun(req.opencode_session_id);
+    const now = nowMs();
+
+    await prisma.$transaction(async (tx) => {
+        const existingTodos = await tx.cronjob_run_todos.findMany({
+            where: { run_id: run.id },
+            orderBy: { position: "asc" },
+            select: { id: true, status: true },
+        });
+        const pendingTodos = existingTodos.filter((todo) => todo.status === "pending");
+        let insertAt = existingTodos.length;
+        if (index !== null) {
+            const boundedIndex = Math.min(index, pendingTodos.length);
+            const beforePendingTodo = pendingTodos[boundedIndex];
+            insertAt = beforePendingTodo
+                ? existingTodos.findIndex((todo) => todo.id === beforePendingTodo.id)
+                : existingTodos.length;
+        }
+
+        const beforeTodos = existingTodos.slice(0, insertAt);
+        const afterTodos = existingTodos.slice(insertAt);
+        await Promise.all(beforeTodos.map((todo, position) => (
+            tx.cronjob_run_todos.update({
+                where: { id: todo.id },
+                data: { position },
+            })
+        )));
+        await tx.cronjob_run_todos.createMany({
+            data: items.map((content, offset) => ({
+                run_id: run.id,
+                content,
+                status: "pending",
+                position: insertAt + offset,
+                created_at: now,
+            })),
+        });
+        await Promise.all(afterTodos.map((todo, offset) => (
+            tx.cronjob_run_todos.update({
+                where: { id: todo.id },
+                data: { position: insertAt + items.length + offset },
+            })
+        )));
+    });
+
+    res.json({ success: true, added_count: items.length });
+}, true));
+
+router.post("/runs/todos/finish-current", apiHandler(async (req, res) => {
+    if (!req.opencode_session_id) {
+        throw {
+            status: 400,
+            message: "This endpoint requires an opencode session token"
+        };
+    }
+    const summary = assertNonEmptyString(req.body?.summary, "summary");
+    const run = await getPromptCronjobRun(req.opencode_session_id);
+    const currentTodo = await prisma.cronjob_run_todos.findFirst({
+        where: {
+            run_id: run.id,
+            status: "in_progress",
+        },
+        orderBy: { position: "asc" },
+        select: { id: true },
+    });
+    if (!currentTodo) {
+        throw {
+            status: 400,
+            message: "There is no current cronjob todo item to finish."
+        };
+    }
+    await prisma.cronjob_run_todos.update({
+        where: { id: currentTodo.id },
+        data: {
+            status: "completed",
+            completed_at: nowMs(),
+            summary,
+        },
+    });
+    res.json({ success: true });
 }, true));
 
 router.post("/runs/complete-current", apiHandler(async (req, res) => {

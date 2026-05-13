@@ -59,6 +59,7 @@ interface CronjobFormState {
     name: string;
     targetMode: TargetMode;
     prompt: string;
+    execution_steps: string[];
     enabled: boolean;
     allow_workflow_runs_without_permission: boolean;
     workflow_slug: string;
@@ -81,6 +82,8 @@ const DAYS_OF_WEEK = [
     { value: 6, label: 'Sat' },
     { value: 0, label: 'Sun' },
 ];
+
+const TODO_STEP_MARKER = 'Todo steps to follow:';
 
 const FALLBACK_TIMEZONES = ['UTC', 'Asia/Calcutta', 'America/Los_Angeles', 'America/New_York', 'Europe/London', 'Europe/Berlin', 'Asia/Singapore', 'Asia/Tokyo', 'Australia/Sydney'];
 
@@ -125,6 +128,7 @@ function emptyForm(): CronjobFormState {
         name: '',
         targetMode: 'prompt',
         prompt: '',
+        execution_steps: [],
         enabled: true,
         allow_workflow_runs_without_permission: true,
         workflow_slug: '',
@@ -190,6 +194,41 @@ function parseWorkflowInputsForPayload(inputs: Record<string, WorkflowInput>, va
     return parsedInputs;
 }
 
+function parsePromptAndExecutionSteps(prompt: string): { prompt: string; executionSteps: string[] } {
+    const markerIndex = prompt.indexOf(TODO_STEP_MARKER);
+    if (markerIndex === -1) {
+        return { prompt: prompt.trim(), executionSteps: [] };
+    }
+
+    const promptText = prompt.slice(0, markerIndex).trimEnd();
+    const rawSteps = prompt.slice(markerIndex + TODO_STEP_MARKER.length).trim();
+    if (rawSteps.length === 0) {
+        return { prompt: promptText, executionSteps: [] };
+    }
+
+    const executionSteps = rawSteps
+        .split('\n')
+        .map((line) => line.replace(/^- /, '').trim())
+        .filter((line) => line.length > 0);
+
+    return {
+        prompt: promptText,
+        executionSteps,
+    };
+}
+
+function buildPromptWithExecutionSteps(prompt: string, executionSteps: string[]): string {
+    const promptText = prompt.trim();
+    const steps = executionSteps.map((step) => step.trim()).filter((step) => step.length > 0);
+
+    if (steps.length === 0) {
+        return promptText;
+    }
+
+    const promptSuffix = /[.?!]$/.test(promptText) ? '' : '.';
+    return `${promptText}${promptSuffix} ${TODO_STEP_MARKER}\n- ${steps.join('\n- ')}`;
+}
+
 function getErrorMessage(err: unknown, fallback: string): string {
     if (err instanceof AxiosError) {
         const responseData = err.response?.data;
@@ -201,10 +240,12 @@ function getErrorMessage(err: unknown, fallback: string): string {
 }
 
 function formFromCronjob(cronjob: Cronjob): CronjobFormState {
+    const parsedPrompt = parsePromptAndExecutionSteps(cronjob.prompt);
     return {
         name: cronjob.name,
         targetMode: cronjob.target?.target_type ?? 'prompt',
-        prompt: cronjob.prompt,
+        prompt: parsedPrompt.prompt,
+        execution_steps: parsedPrompt.executionSteps,
         enabled: cronjob.enabled,
         allow_workflow_runs_without_permission: cronjob.allow_workflow_runs_without_permission,
         workflow_slug: cronjob.target?.workflow_slug ?? '',
@@ -329,7 +370,9 @@ export default function CronjobFormPage() {
         const basePayload = {
             name: form.name,
             target_type: form.targetMode,
-            prompt: form.targetMode === 'prompt' ? form.prompt : null,
+            prompt: form.targetMode === 'prompt'
+                ? buildPromptWithExecutionSteps(form.prompt, form.execution_steps)
+                : null,
             workflow_slug: form.targetMode === 'workflow' ? form.workflow_slug : null,
             workflow_inputs: form.targetMode === 'workflow' ? workflowInputs : null,
             enabled: form.enabled,
@@ -386,6 +429,7 @@ export default function CronjobFormPage() {
     }
 
     const timezoneOptions = getTimezoneOptions();
+    const executionSteps = form.execution_steps.map((step) => step.trim()).filter((step) => step.length > 0);
 
     return (
         <main className="cronjob-form-page">
@@ -435,15 +479,79 @@ export default function CronjobFormPage() {
                             </label>
                         </div>
                         {form.targetMode === 'prompt' ? (
-                            <label className="cronjob-field">
-                                <span>Prompt</span>
-                                <textarea
-                                    value={form.prompt}
-                                    onChange={(event) => setForm((prev) => ({ ...prev, prompt: event.target.value }))}
-                                    placeholder="Check the repo health, run the relevant workflow if needed, and mark the cronjob completed with a concise summary."
-                                    required
-                                />
-                            </label>
+                            <div className="cronjob-prompt-builder">
+                                <label className="cronjob-field">
+                                    <span>Prompt</span>
+                                    <textarea
+                                        value={form.prompt}
+                                        onChange={(event) => setForm((prev) => ({ ...prev, prompt: event.target.value }))}
+                                        placeholder="Check the repo health, run the relevant workflow if needed, and mark the cronjob completed with a concise summary."
+                                        required
+                                    />
+                                </label>
+
+                                <div className="cronjob-prompt-steps">
+                                    <div className="cronjob-prompt-steps-header">
+                                        <div>
+                                            <span>Execution steps</span>
+                                            <p>Optional. These get appended to the prompt as a todo list.</p>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            className="cronjob-step-add"
+                                            onClick={() => setForm((prev) => ({
+                                                ...prev,
+                                                execution_steps: [...prev.execution_steps, ''],
+                                            }))}
+                                        >
+                                            Add step
+                                        </button>
+                                    </div>
+
+                                    {form.execution_steps.length === 0 ? (
+                                        <div className="cronjob-prompt-steps-empty">
+                                            Add steps when you want the agent to follow a specific sequence.
+                                        </div>
+                                    ) : (
+                                        <div className="cronjob-step-list">
+                                            {form.execution_steps.map((step, index) => (
+                                                <div key={index} className="cronjob-step-row">
+                                                    <span className="cronjob-step-index">{index + 1}</span>
+                                                    <textarea
+                                                        value={step}
+                                                        onChange={(event) => setForm((prev) => ({
+                                                            ...prev,
+                                                            execution_steps: prev.execution_steps.map((item, itemIndex) => (
+                                                                itemIndex === index ? event.target.value : item
+                                                            )),
+                                                        }))}
+                                                        placeholder={`Step ${index + 1}`}
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        className="cronjob-step-remove"
+                                                        aria-label={`Remove step ${index + 1}`}
+                                                        title={`Remove step ${index + 1}`}
+                                                        onClick={() => setForm((prev) => ({
+                                                            ...prev,
+                                                            execution_steps: prev.execution_steps.filter((_, itemIndex) => itemIndex !== index),
+                                                        }))}
+                                                    >
+                                                        ×
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {executionSteps.length > 0 && (
+                                        <div className="cronjob-prompt-preview">
+                                            <span>Final prompt preview</span>
+                                            <pre>{buildPromptWithExecutionSteps(form.prompt, executionSteps)}</pre>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
                         ) : (
                             <div className="cronjob-workflow-target">
                                 <label className="cronjob-field">
