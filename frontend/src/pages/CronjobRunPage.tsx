@@ -105,7 +105,7 @@ export default function CronjobRunPage() {
             updated_at: run.completed_at ?? Date.now(),
             state: run.status === 'running' ? 'processing' : 'idle',
             latest_message_id: null,
-            cronjob_handoff: null,
+            cronjob_control: null,
         };
     }, [run]);
 

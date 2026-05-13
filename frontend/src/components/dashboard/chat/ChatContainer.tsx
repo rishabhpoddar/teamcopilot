@@ -1138,7 +1138,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
             );
             setSessions((prev) => prev.map((session) => (
                 session.id === activeSessionId
-                    ? { ...session, cronjob_handoff: null }
+                    ? { ...session, cronjob_control: null }
                     : session
             )));
             toast.success('Cronjob automation resumed');
@@ -1154,11 +1154,24 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
         if (!token || !activeSessionId || activeSessionId === PENDING_SESSION_ID) return;
 
         try {
-            await axiosInstance.post(
+            const response = await axiosInstance.post(
                 `/api/chat/sessions/${activeSessionId}/abort`,
                 {},
                 { headers: { Authorization: `Bearer ${token}` } }
             );
+            setSessions((prev) => prev.map((session) => (
+                session.id === activeSessionId && response.data.cronjob_run_id
+                    ? {
+                        ...session,
+                        cronjob_control: {
+                            run_id: response.data.cronjob_run_id,
+                            status: "failed",
+                            state: "none",
+                            can_resume: true,
+                        },
+                    }
+                    : session
+            )));
             setIsStreaming(false);
         } catch (err: unknown) {
             const errorMessage = err instanceof AxiosError
@@ -1328,13 +1341,15 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                         <strong>{activeSession?.title || (activeSessionId ? 'New Chat' : 'AI Assistant')}</strong>
                         <span>
                             {activeSessionId
-                                ? activeSession?.cronjob_handoff
-                                    ? 'Cronjob is in user handoff'
+                                ? activeSession?.cronjob_control
+                                    ? activeSession.cronjob_control.state === "waiting"
+                                        ? 'Cronjob is waiting in chat'
+                                        : 'Cronjob is stopped and can be resumed'
                                     : 'Fixed viewport with scrollable conversation'
                                 : 'Select a session or start a new chat'}
                         </span>
                     </div>
-                    {activeSession?.cronjob_handoff && !readOnly ? (
+                    {activeSession?.cronjob_control?.can_resume && !readOnly ? (
                         <button
                             type="button"
                             className="chat-resume-cronjob-btn"

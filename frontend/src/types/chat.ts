@@ -6,9 +6,11 @@ type ChatSessionBase = {
     title: string | null;
     created_at: number;
     updated_at: number;
-    cronjob_handoff: {
+    cronjob_control: {
         run_id: string;
-        state: "waiting";
+        status: "running" | "success" | "failed";
+        state: "none" | "waiting";
+        can_resume: boolean;
     } | null;
 };
 

@@ -531,21 +531,31 @@ router.get('/sessions', apiHandler(async (req, res) => {
             opencode_session_id: true
         }
     });
-    const handoffCronjobRuns = await prisma.cronjob_runs.findMany({
+    const controllableCronjobRuns = await prisma.cronjob_runs.findMany({
         where: {
             session_id: { in: validSessions.map((session) => session.id) },
-            user_handoff_state: { not: "none" },
+            cronjob: { target_type: "prompt" },
+            OR: [
+                { user_handoff_state: { not: "none" } },
+                { status: { not: "running" } },
+            ],
         },
+        orderBy: { started_at: "desc" },
         select: {
             id: true,
             session_id: true,
+            status: true,
             user_handoff_state: true,
         },
     });
-    const handoffRunBySessionId = new Map(handoffCronjobRuns.map((run) => [run.session_id, run]));
+    const controllableRunBySessionId = new Map<string, (typeof controllableCronjobRuns)[number]>();
+    for (const run of controllableCronjobRuns) {
+        if (!run.session_id || controllableRunBySessionId.has(run.session_id)) continue;
+        controllableRunBySessionId.set(run.session_id, run);
+    }
 
     const enrichedSessions = await Promise.all(validSessions.map(async (session) => {
-        const handoffRun = handoffRunBySessionId.get(session.id);
+        const controllableRun = controllableRunBySessionId.get(session.id);
         const latestAssistantMessageId = await loadLatestAssistantMessageIdForSession(
             client,
             session.opencode_session_id
@@ -573,10 +583,12 @@ router.get('/sessions', apiHandler(async (req, res) => {
             updated_at: session.updated_at,
             state: sessionState.state,
             latest_message_id: sessionState.latest_message_id,
-            cronjob_handoff: handoffRun
+            cronjob_control: controllableRun
                 ? {
-                    run_id: handoffRun.id,
-                    state: handoffRun.user_handoff_state,
+                    run_id: controllableRun.id,
+                    status: controllableRun.status,
+                    state: controllableRun.user_handoff_state,
+                    can_resume: true,
                 }
                 : null,
         };
@@ -1083,14 +1095,19 @@ router.post('/sessions/:id/resume-cronjob', apiHandler(async (req, res) => {
     const run = await prisma.cronjob_runs.findFirst({
         where: {
             session_id: id,
-            user_handoff_state: { not: "none" },
+            cronjob: { target_type: "prompt" },
+            OR: [
+                { user_handoff_state: { not: "none" } },
+                { status: { not: "running" } },
+            ],
         },
+        orderBy: { started_at: "desc" },
         select: { id: true },
     });
     if (!run) {
         throw {
             status: 409,
-            message: 'No paused cronjob handoff for this session'
+            message: 'No resumable cronjob for this session'
         };
     }
 
@@ -1370,7 +1387,8 @@ router.post('/sessions/:id/abort', apiHandler(async (req, res) => {
     }
 
     res.json({
-        success: true
+        success: true,
+        cronjob_run_id: runningCronRun?.id ?? null,
     });
 }, true));
 
