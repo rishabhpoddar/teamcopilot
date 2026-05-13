@@ -6,6 +6,10 @@ type ChatSessionBase = {
     title: string | null;
     created_at: number;
     updated_at: number;
+    cronjob_handoff: {
+        run_id: string;
+        state: "waiting" | "interactive";
+    } | null;
 };
 
 export type ChatSession =

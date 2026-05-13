@@ -1127,6 +1127,29 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
         }
     }, [token, activeSessionId]);
 
+    const resumeCronjob = useCallback(async () => {
+        if (!token || !activeSessionId || activeSessionId === PENDING_SESSION_ID) return;
+
+        try {
+            await axiosInstance.post(
+                `/api/chat/sessions/${activeSessionId}/resume-cronjob`,
+                {},
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+            setSessions((prev) => prev.map((session) => (
+                session.id === activeSessionId
+                    ? { ...session, cronjob_handoff: null }
+                    : session
+            )));
+            toast.success('Cronjob automation resumed');
+        } catch (err: unknown) {
+            const errorMessage = err instanceof AxiosError
+                ? err.response?.data?.message || err.response?.data || err.message
+                : 'Failed to resume cronjob';
+            toast.error(errorMessage);
+        }
+    }, [token, activeSessionId]);
+
     const abortResponse = useCallback(async () => {
         if (!token || !activeSessionId || activeSessionId === PENDING_SESSION_ID) return;
 
@@ -1305,10 +1328,21 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                         <strong>{activeSession?.title || (activeSessionId ? 'New Chat' : 'AI Assistant')}</strong>
                         <span>
                             {activeSessionId
-                                ? 'Fixed viewport with scrollable conversation'
+                                ? activeSession?.cronjob_handoff
+                                    ? 'Cronjob is in user handoff'
+                                    : 'Fixed viewport with scrollable conversation'
                                 : 'Select a session or start a new chat'}
                         </span>
                     </div>
+                    {activeSession?.cronjob_handoff && !readOnly ? (
+                        <button
+                            type="button"
+                            className="chat-resume-cronjob-btn"
+                            onClick={resumeCronjob}
+                        >
+                            Resume cronjob
+                        </button>
+                    ) : null}
                 </div>
                 {usageSyncWarning ? (
                     <div className="chat-usage-sync-warning" role="status">

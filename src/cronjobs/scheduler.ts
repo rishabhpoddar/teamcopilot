@@ -305,7 +305,7 @@ async function cronjobSessionHasPendingUserInput(opencodeSessionId: string): Pro
         where: {
             opencode_session_id: opencodeSessionId,
             status: "running",
-            awaiting_user_response: true,
+            user_handoff_state: { not: "none" },
         },
         select: { id: true },
     });

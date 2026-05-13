@@ -228,6 +228,7 @@ router.post("/runs/ask-user-current", apiHandler(async (req, res) => {
             where: { id: run.id },
             data: {
                 awaiting_user_response: run.status === "running",
+                user_handoff_state: run.status === "running" ? "waiting" : "none",
             },
         }),
     ]);

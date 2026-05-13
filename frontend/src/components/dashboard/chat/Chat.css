@@ -259,6 +259,7 @@
 }
 
 .chat-main-toolbar-meta {
+    flex: 1;
     min-width: 0;
     display: flex;
     flex-direction: column;
@@ -274,6 +275,24 @@
 .chat-main-toolbar-meta span {
     font-size: 0.78rem;
     color: #888;
+}
+
+.chat-resume-cronjob-btn {
+    flex: 0 0 auto;
+    border: 1px solid #4d5a4d;
+    border-radius: 7px;
+    background: #203020;
+    color: #d8f3d8;
+    font: inherit;
+    font-size: 0.88rem;
+    font-weight: 600;
+    padding: 0.48rem 0.75rem;
+    white-space: nowrap;
+}
+
+.chat-resume-cronjob-btn:hover {
+    border-color: #6d8a6d;
+    background: #263a26;
 }
 
 .chat-usage-sync-warning {
@@ -1547,6 +1566,10 @@
     }
 
     .chat-main-toolbar-toggle {
+        width: 100%;
+    }
+
+    .chat-resume-cronjob-btn {
         width: 100%;
     }
 

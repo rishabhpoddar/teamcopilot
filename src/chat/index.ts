@@ -530,8 +530,22 @@ router.get('/sessions', apiHandler(async (req, res) => {
             opencode_session_id: true
         }
     });
+    const handoffCronjobRuns = await prisma.cronjob_runs.findMany({
+        where: {
+            session_id: { in: validSessions.map((session) => session.id) },
+            status: "running",
+            user_handoff_state: { not: "none" },
+        },
+        select: {
+            id: true,
+            session_id: true,
+            user_handoff_state: true,
+        },
+    });
+    const handoffRunBySessionId = new Map(handoffCronjobRuns.map((run) => [run.session_id, run]));
 
     const enrichedSessions = await Promise.all(validSessions.map(async (session) => {
+        const handoffRun = handoffRunBySessionId.get(session.id);
         const latestAssistantMessageId = await loadLatestAssistantMessageIdForSession(
             client,
             session.opencode_session_id
@@ -558,7 +572,13 @@ router.get('/sessions', apiHandler(async (req, res) => {
             created_at: session.created_at,
             updated_at: session.updated_at,
             state: sessionState.state,
-            latest_message_id: sessionState.latest_message_id
+            latest_message_id: sessionState.latest_message_id,
+            cronjob_handoff: handoffRun
+                ? {
+                    run_id: handoffRun.id,
+                    state: handoffRun.user_handoff_state,
+                }
+                : null,
         };
     }));
 
@@ -1037,10 +1057,11 @@ router.post('/sessions/:id/messages', apiHandler(async (req, res) => {
         where: {
             session_id: id,
             status: "running",
-            awaiting_user_response: true,
+            user_handoff_state: "waiting",
         },
         data: {
             awaiting_user_response: false,
+            user_handoff_state: "interactive",
         },
     });
 
@@ -1052,6 +1073,54 @@ router.post('/sessions/:id/messages', apiHandler(async (req, res) => {
             updated_at: updatedSession.updated_at
         }
     });
+}, true));
+
+router.post('/sessions/:id/resume-cronjob', apiHandler(async (req, res) => {
+    const id = req.params.id as string;
+
+    const session = await prisma.chat_sessions.findFirst({
+        where: {
+            id,
+            user_id: req.userId!
+        }
+    });
+
+    if (!session) {
+        throw {
+            status: 404,
+            message: 'Session not found'
+        };
+    }
+
+    const run = await prisma.cronjob_runs.findFirst({
+        where: {
+            session_id: id,
+            status: "running",
+            user_handoff_state: { not: "none" },
+        },
+        select: { id: true },
+    });
+    if (!run) {
+        throw {
+            status: 409,
+            message: 'No paused cronjob handoff for this session'
+        };
+    }
+
+    await prisma.cronjob_runs.update({
+        where: { id: run.id },
+        data: {
+            awaiting_user_response: false,
+            user_handoff_state: "none",
+        },
+    });
+
+    await prisma.chat_sessions.update({
+        where: { id },
+        data: { updated_at: Date.now() },
+    });
+
+    res.json({ success: true });
 }, true));
 
 // GET /api/chat/sessions/:id/pending-permission - Get pending permission for session
