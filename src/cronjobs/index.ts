@@ -188,7 +188,7 @@ async function getPromptCronjobRun(opencodeSessionId: string) {
             opencode_session_id: opencodeSessionId,
             cronjob: { target_type: "prompt" },
         },
-        select: { id: true, status: true },
+        select: { id: true, status: true, session_id: true },
     });
     if (!run) {
         throw {
@@ -198,6 +198,42 @@ async function getPromptCronjobRun(opencodeSessionId: string) {
     }
     return run;
 }
+
+router.post("/runs/ask-user-current", apiHandler(async (req, res) => {
+    if (!req.opencode_session_id) {
+        throw {
+            status: 400,
+            message: "This endpoint requires an opencode session token"
+        };
+    }
+    const message = assertNonEmptyString(req.body?.message, "message");
+    const run = await getPromptCronjobRun(req.opencode_session_id);
+    if (!run.session_id) {
+        throw {
+            status: 400,
+            message: "Cronjob run does not have an AI chat session."
+        };
+    }
+
+    const now = Number(nowMs());
+    await prisma.$transaction([
+        prisma.chat_sessions.update({
+            where: { id: run.session_id },
+            data: {
+                visible_to_user: true,
+                updated_at: now,
+            },
+        }),
+        prisma.cronjob_runs.update({
+            where: { id: run.id },
+            data: {
+                awaiting_user_response: run.status === "running",
+            },
+        }),
+    ]);
+
+    res.json({ success: true, message });
+}, true));
 
 router.get("/", apiHandler(async (req, res) => {
     const cronjobs = await prisma.cronjobs.findMany({

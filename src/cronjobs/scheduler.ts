@@ -210,6 +210,7 @@ async function buildCronjobPrompt(args: {
         "When the current todo item is complete, call finishCurrentCronjobTodo and then stop. TeamCopilot will give you the next todo item.",
         "Keep working until every todo item needed for the requested cronjob task is complete or the loop is blocked by a real permission, tool question, or safety boundary.",
         "Do not ask the user questions unless the task explicitly requires user approval or clarification that cannot be safely inferred.",
+        "If you need to ask the user for input or notify them that the cronjob needs their attention, call askCronjobUser with the message. This reveals the hidden cronjob chat to the user and pauses the auto-continue loop until they respond.",
         "If the task cannot be finished because of a non-recoverable issue, call markCronjobFailed with a concise reason instead of leaving the run hanging.",
         "The only way to mark this cronjob finished successfully is to call the markCronjobCompleted tool.",
         "markCronjobCompleted will fail until all TeamCopilot cronjob todos have been finished.",
@@ -300,6 +301,18 @@ async function revealRunForUserInput(runId: string): Promise<void> {
 }
 
 async function cronjobSessionHasPendingUserInput(opencodeSessionId: string): Promise<boolean> {
+    const waitingCronjob = await prisma.cronjob_runs.findFirst({
+        where: {
+            opencode_session_id: opencodeSessionId,
+            status: "running",
+            awaiting_user_response: true,
+        },
+        select: { id: true },
+    });
+    if (waitingCronjob) {
+        return true;
+    }
+
     const pendingQuestions = await listPendingQuestions();
     if (pendingQuestions.some((question) => question.sessionID === opencodeSessionId)) {
         return true;
@@ -391,7 +404,7 @@ function buildCronjobCurrentTodoContinuationPrompt(todo: CronjobTodoForPrompt, i
         "If more work is required, take the next concrete step for this todo item.",
         "If you discover additional required work, call addCronjobTodos.",
         "If the task cannot continue, call markCronjobFailed.",
-        "If you truly need user input that cannot be safely inferred, use the existing question tool.",
+        "If you truly need user input that cannot be safely inferred, call askCronjobUser with the message for the user.",
         "",
         "Do not switch to another todo item."
     ].join("\n");
@@ -406,7 +419,7 @@ function buildCronjobFinalReviewPrompt(): string {
         "If the requested task is 100% complete, call markCronjobCompleted with a concise run-history summary.",
         "If required work is still missing, call addCronjobTodos with the missing todo items.",
         "If the task cannot be completed, call markCronjobFailed with a concise reason.",
-        "If you truly need user input that cannot be safely inferred, use the existing question tool."
+        "If you truly need user input that cannot be safely inferred, call askCronjobUser with the message for the user."
     ].join("\n");
 }
 

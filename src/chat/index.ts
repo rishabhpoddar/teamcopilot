@@ -1033,6 +1033,17 @@ router.post('/sessions/:id/messages', apiHandler(async (req, res) => {
         data
     });
 
+    await prisma.cronjob_runs.updateMany({
+        where: {
+            session_id: id,
+            status: "running",
+            awaiting_user_response: true,
+        },
+        data: {
+            awaiting_user_response: false,
+        },
+    });
+
     res.json({
         success: true,
         session: {
