@@ -27,6 +27,7 @@ export default function Home() {
     const activeTab: Tab = validTabs.includes(tabParam as Tab) ? (tabParam as Tab) : 'ai';
     const composeDraft = searchParams.get('draft');
     const composeNewChat = searchParams.get('newChat') === '1';
+    const selectedChatSessionId = searchParams.get('session');
 
     usePageTitle(tabTitles[activeTab]);
 
@@ -74,6 +75,7 @@ export default function Home() {
                         initialDraftMessage={composeDraft}
                         forceNewChat={composeNewChat}
                         onDraftHandled={clearComposeParams}
+                        selectedSessionId={selectedChatSessionId}
                     />
                 );
         }

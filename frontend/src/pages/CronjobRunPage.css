@@ -22,6 +22,17 @@
   cursor: pointer;
 }
 
+.cronjob-run-ai-btn {
+  border: 1px solid #355d4d;
+  background: rgba(20, 83, 45, 0.24);
+  color: #bbf7d0;
+  border-radius: 8px;
+  padding: 0.6rem 1rem;
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+
 .cronjob-run-stop-btn {
   background: #3b0d12;
   color: #fecaca;
@@ -81,7 +92,8 @@
 }
 
 .cronjob-run-stop-btn:disabled,
-.cronjob-run-topbar button:disabled {
+.cronjob-run-topbar button:disabled,
+.cronjob-run-ai-btn:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }

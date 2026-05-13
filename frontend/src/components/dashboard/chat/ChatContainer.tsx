@@ -27,6 +27,7 @@ interface ChatContainerProps {
     initialDraftMessage: string | null;
     forceNewChat: boolean;
     onDraftHandled: () => void;
+    selectedSessionId?: string | null;
     fixedSession?: ChatSession;
     readOnly?: boolean;
 }
@@ -138,7 +139,7 @@ function playNotificationSound() {
     });
 }
 
-export default function ChatContainer({ initialDraftMessage, forceNewChat, onDraftHandled, fixedSession, readOnly = false }: ChatContainerProps) {
+export default function ChatContainer({ initialDraftMessage, forceNewChat, onDraftHandled, selectedSessionId, fixedSession, readOnly = false }: ChatContainerProps) {
     const PENDING_SESSION_ID = 'pending';
     const PERMISSION_POLL_INTERVAL_MS = 1000;
     const SESSION_DIFF_POLL_INTERVAL_MS = 1000;
@@ -184,6 +185,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
     const lastEscapePressRef = useRef<number>(0);
     // const currentSessionInfoRef = useRef<{ id: string; isEmpty: boolean } | null>(null);
     const handledComposeKeyRef = useRef<string | null>(null);
+    const handledSelectedSessionIdRef = useRef<string | null>(null);
     const previousSessionsRef = useRef<Record<string, ChatSession>>({});
     const readingSessionIdsRef = useRef<Set<string>>(new Set());
     const messagesAbortControllerRef = useRef<AbortController | null>(null);
@@ -913,6 +915,20 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
         // Switch to pending mode - session will be created when first message is sent
         switchSession(PENDING_SESSION_ID);
     }, [activeSessionId, switchSession]);
+
+    useEffect(() => {
+        if (isFixedSessionMode || !selectedSessionId) {
+            return;
+        }
+        if (handledSelectedSessionIdRef.current === selectedSessionId) {
+            return;
+        }
+        if (!sessions.some((session) => session.id === selectedSessionId)) {
+            return;
+        }
+        handledSelectedSessionIdRef.current = selectedSessionId;
+        switchSession(selectedSessionId);
+    }, [isFixedSessionMode, selectedSessionId, sessions, switchSession]);
 
     useEffect(() => {
         if (isFixedSessionMode) {
