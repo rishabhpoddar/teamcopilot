@@ -106,6 +106,12 @@
   margin-top: 0.3rem;
   color: #e5e5e5;
   font-size: 0.9rem;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.cronjob-run-meta-wide {
+  grid-column: 1 / -1;
 }
 
 .cronjob-run-state {

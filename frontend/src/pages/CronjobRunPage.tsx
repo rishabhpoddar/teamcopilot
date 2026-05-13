@@ -183,13 +183,13 @@ export default function CronjobRunPage() {
                     <strong>{formatTimestamp(run.completed_at)}</strong>
                 </div>
                 {run.summary && (
-                    <div>
+                    <div className="cronjob-run-meta-wide">
                         <span>Summary</span>
                         <strong>{run.summary}</strong>
                     </div>
                 )}
                 {run.error_message && (
-                    <div>
+                    <div className="cronjob-run-meta-wide">
                         <span>Error</span>
                         <strong>{run.error_message}</strong>
                     </div>
