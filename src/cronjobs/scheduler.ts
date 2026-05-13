@@ -203,12 +203,13 @@ async function buildCronjobPrompt(args: {
         "",
         "This is an unattended scheduled TeamCopilot cronjob run.",
         "Treat the cronjob prompt below as the task to execute.",
-        "Keep working until the requested cronjob task is complete or the tool loop is blocked by a real permission, tool question, or safety boundary.",
-        "Do not ask the user questions in normal prose unless the task explicitly requires user approval or clarification that cannot be safely inferred.",
+        "Do not attempt to shortcut / automate the task to save time unless you are told to - it's OK if your agentic loop runs for several hours even.",
+        "First thing you must do is to understand the task and write a granular todo list (using the todo tool you have) for the work you need to do.",
+        "Keep working until every todo item needed for the requested cronjob task is complete or the tool loop is blocked by a real permission, tool question, or safety boundary.",
+        "Do not ask the user questions unless the task explicitly requires user approval or clarification that cannot be safely inferred.",
         "If the task cannot be finished because of a non-recoverable issue, call markCronjobFailed with a concise reason instead of leaving the run hanging.",
         "The only way to mark this cronjob finished successfully is to call the markCronjobCompleted tool.",
-        "If the tool loop stops without markCronjobCompleted or markCronjobFailed being called, TeamCopilot will reveal this session to the user as needing attention.",
-        "Call markCronjobCompleted only after the requested work is actually complete.",
+        "Call markCronjobCompleted only after the requested work is 100% complete.",
         "The completion summary must be concise and suitable for cronjob run history.",
     ];
     sections.push("", buildCurrentTimePrompt());
@@ -315,11 +316,37 @@ async function cronjobSessionHasPendingUserInput(opencodeSessionId: string): Pro
     return customPendingPermission !== null;
 }
 
+function buildCronjobContinuationPrompt(iteration: number): string {
+    return [
+        "# Cronjob continuation",
+        "",
+        `The cronjob monitor found this session idle while the cronjob is still marked running. This is continuation attempt ${iteration}.`,
+        "",
+        "Review the cronjob task, the conversation so far, and your todo list.",
+        "If the todo list is missing, recreate it now from the task and current progress.",
+        "",
+        "Choose exactly one next action:",
+        "",
+        "1. Continue working on the remaining todo items if the task can still progress.",
+        "2. Call markCronjobCompleted only if the requested cronjob task is 100% done.",
+        "3. Call markCronjobFailed with a concise reason if the task cannot continue or cannot be completed.",
+        "4. Use the existing question tool only if you truly need user input that cannot be safely inferred.",
+        "",
+        "Do not stop with only a status update. Either take the next concrete step, ask the required question, or mark the cronjob complete or failed."
+    ].join("\n");
+}
+
 function monitorCronjobRun(runId: string, opencodeSessionId: string, timeoutAtMs: number): void {
     if (runningMonitors.has(runId)) return;
 
     let revealedForUserInput = false;
+    let isChecking = false;
+    let continuationCount = 0;
     const interval = setInterval(async () => {
+        if (isChecking) {
+            return;
+        }
+        isChecking = true;
         try {
             const run = await prisma.cronjob_runs.findUnique({
                 where: { id: runId },
@@ -360,19 +387,25 @@ function monitorCronjobRun(runId: string, opencodeSessionId: string, timeoutAtMs
             );
             if (sessionStatusType !== "idle") return;
 
-            if (!revealedForUserInput) {
-                // Cronjob completion is signaled only by markCronjobCompleted, which updates the
-                // run out of "running". If the opencode session falls idle while the run is still
-                // running, the agent stopped making tool calls without completing the cronjob, so
-                // reveal the linked chat session and let the user take over from there.
-                await revealRunForUserInput(runId);
-                revealedForUserInput = true;
+            continuationCount += 1;
+            const continueResult = await client.session.promptAsync({
+                path: { id: opencodeSessionId },
+                body: {
+                    parts: [{ type: "text", text: buildCronjobContinuationPrompt(continuationCount) }],
+                },
+            });
+            if (continueResult.error) {
+                await markCronjobRunFailed(runId, getErrorMessage(continueResult.error, "Failed to continue idle cronjob session."));
+                clearInterval(interval);
+                runningMonitors.delete(runId);
             }
         } catch (err) {
             await markCronjobRunFailed(runId, getErrorMessage(err, "Failed to monitor cronjob run."));
             console.error("Failed to monitor cronjob run:", err);
             clearInterval(interval);
             runningMonitors.delete(runId);
+        } finally {
+            isChecking = false;
         }
     }, CRONJOB_MONITOR_INTERVAL_MS);
     runningMonitors.set(runId, interval);
