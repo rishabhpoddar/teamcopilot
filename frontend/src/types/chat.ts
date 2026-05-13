@@ -8,7 +8,7 @@ type ChatSessionBase = {
     updated_at: number;
     cronjob_handoff: {
         run_id: string;
-        state: "waiting" | "interactive";
+        state: "waiting";
     } | null;
 };
 
