@@ -38,7 +38,7 @@ function nowMs(): bigint {
 function throwCronjobAlreadyActive(): never {
     throw {
         status: 409,
-        message: "Cronjob already has an active run. Wait for it to finish, resume it, or terminate it first."
+        message: "Cronjob already has an active run. Wait for it to finish, or terminate it first."
     };
 }
 
