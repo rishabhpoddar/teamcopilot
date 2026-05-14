@@ -207,6 +207,14 @@ async function getPromptCronjobRun(opencodeSessionId: string) {
     return runs[0];
 }
 
+function assertActivePromptCronjobRun(run: { status: string }): void {
+    if (run.status === "running" || run.status === "paused") return;
+    throw {
+        status: 400,
+        message: `Cronjob session is already finished. Current state is: ${run.status}`
+    };
+}
+
 router.post("/runs/ask-user-current", apiHandler(async (req, res) => {
     if (!req.opencode_session_id) {
         throw {
@@ -216,6 +224,7 @@ router.post("/runs/ask-user-current", apiHandler(async (req, res) => {
     }
     const message = assertNonEmptyString(req.body?.message, "message");
     const run = await getPromptCronjobRun(req.opencode_session_id);
+    assertActivePromptCronjobRun(run);
     if (!run.session_id) {
         throw {
             status: 400,
@@ -619,6 +628,7 @@ router.post("/runs/todos/set-current", apiHandler(async (req, res) => {
     }
     const items = assertStringArray(req.body?.items, "items");
     const run = await getPromptCronjobRun(req.opencode_session_id);
+    assertActivePromptCronjobRun(run);
     const existingTodo = await prisma.cronjob_run_todos.findFirst({
         where: { run_id: run.id },
         select: { id: true },
@@ -652,6 +662,7 @@ router.post("/runs/todos/add-current", apiHandler(async (req, res) => {
     const items = assertStringArray(req.body?.items, "items");
     const index = assertOptionalInsertIndex(req.body?.index);
     const run = await getPromptCronjobRun(req.opencode_session_id);
+    assertActivePromptCronjobRun(run);
     const now = nowMs();
 
     await prisma.$transaction(async (tx) => {
@@ -707,6 +718,7 @@ router.post("/runs/todos/finish-current", apiHandler(async (req, res) => {
     }
     const summary = assertNonEmptyString(req.body?.summary, "summary");
     const run = await getPromptCronjobRun(req.opencode_session_id);
+    assertActivePromptCronjobRun(run);
     const currentTodo = await prisma.cronjob_run_todos.findFirst({
         where: {
             run_id: run.id,
@@ -777,8 +789,8 @@ router.post("/runs/fail-current", apiHandler(async (req, res) => {
             message: `Cronjob is not in running state. Current state is: ${run.status}`
         };
     }
-    await prisma.cronjob_runs.update({
-        where: { id: run.id },
+    const failedRun = await prisma.cronjob_runs.updateMany({
+        where: { id: run.id, status: "running" },
         data: {
             status: "failed",
             completed_at: nowMs(),
@@ -786,6 +798,12 @@ router.post("/runs/fail-current", apiHandler(async (req, res) => {
             error_message: summary,
         },
     });
+    if (failedRun.count !== 1) {
+        throw {
+            status: 409,
+            message: "Cronjob run is no longer running."
+        };
+    }
     res.json({ success: true });
 }, true));
 

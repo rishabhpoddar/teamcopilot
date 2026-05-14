@@ -135,7 +135,7 @@ async function main(): Promise<void> {
             () => dispatchCronjobRun(activeCronjob.id, "manual"),
             (err: unknown) => {
                 assert.equal((err as { status?: number }).status, 409);
-                assert.equal((err as { message?: string }).message, "Cronjob is already running. Wait for the active run to finish, or stop it and run this cronjob again.");
+                assert.equal((err as { message?: string }).message, "Cronjob already has an active run. Wait for it to finish, resume it, or terminate it first.");
                 return true;
             },
         );

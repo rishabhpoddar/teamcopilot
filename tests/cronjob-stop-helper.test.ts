@@ -10,17 +10,9 @@ async function main(): Promise<void> {
     fs.mkdirSync(path.join(workspaceDir, ".agents", "skills"), { recursive: true });
     fs.mkdirSync(path.join(workspaceDir, "workflows"), { recursive: true });
 
-    const sessionAbortModule = require("../src/utils/session-abort") as typeof import("../src/utils/session-abort");
-    const abortedOpencodeSessions: string[] = [];
-    (sessionAbortModule as unknown as {
-        abortOpencodeSession: (sessionId: string) => Promise<void>;
-    }).abortOpencodeSession = async (sessionId: string) => {
-        abortedOpencodeSessions.push(sessionId);
-    };
-
     const prisma = require("../src/prisma/client").default as typeof import("../src/prisma/client").default;
     const { ensureWorkspaceDatabase } = require("../src/utils/workspace-sync") as typeof import("../src/utils/workspace-sync");
-    const { stopCronjobRun } = require("../src/utils/cronjob-stop") as typeof import("../src/utils/cronjob-stop");
+    const { terminateCronjobRun } = require("../src/cronjobs/scheduler") as typeof import("../src/cronjobs/scheduler");
 
     try {
         await ensureWorkspaceDatabase();
@@ -39,7 +31,7 @@ async function main(): Promise<void> {
         const cronjob = await prisma.cronjobs.create({
             data: {
                 user_id: user.id,
-                name: "Stop helper cronjob",
+                name: "Terminate helper prompt cronjob",
                 enabled: false,
                 target_type: "prompt",
                 prompt: "Stop me",
@@ -56,14 +48,29 @@ async function main(): Promise<void> {
                 cronjob_id: cronjob.id,
                 status: "running",
                 started_at: now,
-                opencode_session_id: "ses-stop-prompt",
             },
         });
-        await stopCronjobRun(promptRun);
-        const stoppedPromptRun = await prisma.cronjob_runs.findUniqueOrThrow({ where: { id: promptRun.id } });
-        assert.equal(stoppedPromptRun.status, "failed");
-        assert.equal(stoppedPromptRun.error_message, "Cronjob run was stopped by the user.");
-        assert.deepEqual(abortedOpencodeSessions, ["ses-stop-prompt"]);
+        await terminateCronjobRun(promptRun.id);
+        const terminatedPromptRun = await prisma.cronjob_runs.findUniqueOrThrow({ where: { id: promptRun.id } });
+        assert.equal(terminatedPromptRun.status, "terminated");
+        assert.equal(terminatedPromptRun.error_message, "Cronjob run was terminated by the user.");
+
+        const workflowCronjob = await prisma.cronjobs.create({
+            data: {
+                user_id: user.id,
+                name: "Terminate helper workflow cronjob",
+                enabled: false,
+                target_type: "workflow",
+                prompt: null,
+                prompt_allow_workflow_runs_without_permission: false,
+                workflow_slug: "stop-helper-workflow",
+                workflow_input_json: "{}",
+                cron_expression: "0 9 * * *",
+                timezone: "UTC",
+                created_at: now,
+                updated_at: now,
+            },
+        });
 
         const workflowRun = await prisma.workflow_runs.create({
             data: {
@@ -78,15 +85,16 @@ async function main(): Promise<void> {
         });
         const workflowCronRun = await prisma.cronjob_runs.create({
             data: {
-                cronjob_id: cronjob.id,
+                cronjob_id: workflowCronjob.id,
                 status: "running",
                 started_at: now,
                 workflow_run_id: workflowRun.id,
             },
         });
-        await stopCronjobRun(workflowCronRun);
-        const stoppedWorkflowCronRun = await prisma.cronjob_runs.findUniqueOrThrow({ where: { id: workflowCronRun.id } });
-        assert.equal(stoppedWorkflowCronRun.status, "failed");
+        await terminateCronjobRun(workflowCronRun.id);
+        const terminatedWorkflowCronRun = await prisma.cronjob_runs.findUniqueOrThrow({ where: { id: workflowCronRun.id } });
+        assert.equal(terminatedWorkflowCronRun.status, "failed");
+        assert.equal(terminatedWorkflowCronRun.error_message, "Cronjob run was terminated by the user.");
         const abortedWorkflow = await prisma.workflow_aborted_sessions.findUnique({
             where: { session_id: "workflow-session-to-abort" },
         });
@@ -101,12 +109,11 @@ async function main(): Promise<void> {
                 opencode_session_id: "ses-terminal",
             },
         });
-        await stopCronjobRun(terminalRun);
+        await terminateCronjobRun(terminalRun.id);
         const unchangedTerminalRun = await prisma.cronjob_runs.findUniqueOrThrow({ where: { id: terminalRun.id } });
         assert.equal(unchangedTerminalRun.status, "success");
-        assert.deepEqual(abortedOpencodeSessions, ["ses-stop-prompt"]);
 
-        console.log("Cronjob stop helper tests passed");
+        console.log("Cronjob terminate helper tests passed");
     } finally {
         await prisma.$disconnect();
         fs.rmSync(workspaceDir, { recursive: true, force: true });

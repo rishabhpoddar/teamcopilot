@@ -170,7 +170,7 @@ async function main(): Promise<void> {
         await request(app).post(`/api/cronjobs/${missingId}/disable`).set(auth).expect(404);
         await request(app).post(`/api/cronjobs/${missingId}/run-now`).set(auth).expect(404);
         await request(app).get(`/api/cronjobs/${missingId}/runs`).set(auth).expect(404);
-        await request(app).post(`/api/cronjobs/runs/${missingId}/stop`).set(auth).expect(404);
+        await request(app).post(`/api/cronjobs/runs/${missingId}/terminate`).set(auth).expect(404);
 
         const runningRun = await prisma.cronjob_runs.create({
             data: {
@@ -198,25 +198,25 @@ async function main(): Promise<void> {
             .expect((response) => {
                 assert.equal(
                     response.body.message,
-                    "Cronjob is already running. Wait for the active run to finish, or stop it and run this cronjob again.",
+                    "Cronjob already has an active run. Wait for it to finish, resume it, or terminate it first.",
                 );
             });
 
         await request(app)
-            .post(`/api/cronjobs/runs/${runningRun.id}/stop`)
+            .post(`/api/cronjobs/runs/${runningRun.id}/terminate`)
             .set(auth)
             .expect(200)
             .expect((response) => {
                 assert.equal(response.body.success, true);
             });
 
-        const stoppedRun = await prisma.cronjob_runs.findUniqueOrThrow({ where: { id: runningRun.id } });
-        assert.equal(stoppedRun.status, "failed");
-        assert.equal(stoppedRun.error_message, "Cronjob run was stopped by the user.");
-        assert.notEqual(stoppedRun.completed_at, null);
+        const terminatedRun = await prisma.cronjob_runs.findUniqueOrThrow({ where: { id: runningRun.id } });
+        assert.equal(terminatedRun.status, "terminated");
+        assert.equal(terminatedRun.error_message, "Cronjob run was terminated by the user.");
+        assert.notEqual(terminatedRun.completed_at, null);
 
         await request(app)
-            .post(`/api/cronjobs/runs/${runningRun.id}/stop`)
+            .post(`/api/cronjobs/runs/${runningRun.id}/terminate`)
             .set(auth)
             .expect(200)
             .expect((response) => {
@@ -253,7 +253,7 @@ async function main(): Promise<void> {
             },
         });
         await request(app)
-            .post(`/api/cronjobs/runs/${otherRun.id}/stop`)
+            .post(`/api/cronjobs/runs/${otherRun.id}/terminate`)
             .set(auth)
             .expect(404);
 

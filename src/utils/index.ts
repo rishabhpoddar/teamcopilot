@@ -21,8 +21,6 @@ function nowMs(): bigint {
 export async function reconcileRunningCronsAndWorkflowRunsOnStartup(): Promise<void> {
     const completedAt = nowMs();
     const workflowError = "Workflow run was interrupted because TeamCopilot restarted.";
-    const cronjobError = "Cronjob run was interrupted because TeamCopilot restarted.";
-
     await prisma.workflow_runs.updateMany({
         where: { status: "running" },
         data: {
@@ -33,11 +31,14 @@ export async function reconcileRunningCronsAndWorkflowRunsOnStartup(): Promise<v
     });
 
     await prisma.cronjob_runs.updateMany({
-        where: { status: "running" },
+        where: {
+            status: "running",
+            cronjob: { target_type: "workflow" },
+        },
         data: {
             status: "failed",
             completed_at: completedAt,
-            error_message: cronjobError,
+            error_message: "Workflow cronjob run was interrupted because TeamCopilot restarted.",
         },
     });
 }

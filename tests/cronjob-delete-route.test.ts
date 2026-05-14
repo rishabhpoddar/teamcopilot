@@ -73,7 +73,7 @@ async function main(): Promise<void> {
 
         assert.equal(
             response.body.message,
-            "Cronjob is currently running. Stop the running cronjob before deleting it."
+            "Cronjob currently has an active run. Terminate the active run before deleting it."
         );
 
         const stillExists = await prisma.cronjobs.findUnique({
