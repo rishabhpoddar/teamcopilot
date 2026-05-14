@@ -65,7 +65,7 @@ export const AskCronjobUserPlugin: Plugin = async ({ client }) => {
     tool: {
       askCronjobUser: tool({
         description:
-          "Ask or notify the user when a TeamCopilot cronjob needs their input or attention. This reveals the hidden cronjob chat to the user and pauses cronjob auto-continue until the user replies.",
+          "Ask or notify the user when a TeamCopilot cronjob needs their input or attention. This reveals the hidden cronjob chat to the user and pauses cronjob auto-continue until the user explicitly resumes it.",
         args: {
           message: tool.schema
             .string()

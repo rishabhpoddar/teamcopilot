@@ -33,8 +33,11 @@ import {
     normalizeWorkspaceRelativePath,
 } from "../utils/chat-session-file-diff";
 import { syncChatSessionUsage } from "../utils/chat-usage";
-import { stopCronjobRun } from "../utils/cronjob-stop";
-import { resumeCronjobRun } from "../cronjobs/scheduler";
+import {
+    interruptCronjobRun,
+    resumeCronjobRun,
+    terminateCronjobRun,
+} from "../cronjobs/scheduler";
 import {
     ACTUAL_USER_MESSAGE_MARKER,
     buildAvailableSecretsPrompt,
@@ -535,17 +538,13 @@ router.get('/sessions', apiHandler(async (req, res) => {
         where: {
             session_id: { in: validSessions.map((session) => session.id) },
             cronjob: { target_type: "prompt" },
-            OR: [
-                { user_handoff_state: { not: "none" } },
-                { status: { not: "running" } },
-            ],
+            status: { in: ["running", "paused"] },
         },
         orderBy: { started_at: "desc" },
         select: {
             id: true,
             session_id: true,
             status: true,
-            user_handoff_state: true,
         },
     });
     const controllableRunBySessionId = new Map<string, (typeof controllableCronjobRuns)[number]>();
@@ -587,8 +586,9 @@ router.get('/sessions', apiHandler(async (req, res) => {
                 ? {
                     run_id: controllableRun.id,
                     status: controllableRun.status,
-                    state: controllableRun.user_handoff_state,
-                    can_resume: true,
+                    can_interrupt: controllableRun.status === "running",
+                    can_resume: controllableRun.status === "paused",
+                    can_terminate: true,
                 }
                 : null,
         };
@@ -1096,10 +1096,7 @@ router.post('/sessions/:id/resume-cronjob', apiHandler(async (req, res) => {
         where: {
             session_id: id,
             cronjob: { target_type: "prompt" },
-            OR: [
-                { user_handoff_state: { not: "none" } },
-                { status: { not: "running" } },
-            ],
+            status: "paused",
         },
         orderBy: { started_at: "desc" },
         select: { id: true },
@@ -1117,7 +1114,80 @@ router.post('/sessions/:id/resume-cronjob', apiHandler(async (req, res) => {
         data: { updated_at: Date.now() },
     });
 
-    res.json({ success: true });
+    res.json({ success: true, cronjob_run_id: run.id });
+}, true));
+
+router.post('/sessions/:id/interrupt-cronjob', apiHandler(async (req, res) => {
+    const id = req.params.id as string;
+
+    const session = await prisma.chat_sessions.findFirst({
+        where: {
+            id,
+            user_id: req.userId!
+        }
+    });
+
+    if (!session) {
+        throw {
+            status: 404,
+            message: 'Session not found'
+        };
+    }
+
+    const run = await prisma.cronjob_runs.findFirst({
+        where: {
+            session_id: id,
+            cronjob: { target_type: "prompt" },
+            status: "running",
+        },
+        orderBy: { started_at: "desc" },
+        select: { id: true },
+    });
+    if (!run) {
+        throw {
+            status: 409,
+            message: 'No running prompt cronjob for this session'
+        };
+    }
+
+    await interruptCronjobRun(run.id);
+    res.json({ success: true, cronjob_run_id: run.id });
+}, true));
+
+router.post('/sessions/:id/terminate-cronjob', apiHandler(async (req, res) => {
+    const id = req.params.id as string;
+
+    const session = await prisma.chat_sessions.findFirst({
+        where: {
+            id,
+            user_id: req.userId!
+        }
+    });
+
+    if (!session) {
+        throw {
+            status: 404,
+            message: 'Session not found'
+        };
+    }
+
+    const run = await prisma.cronjob_runs.findFirst({
+        where: {
+            session_id: id,
+            status: { in: ["running", "paused"] },
+        },
+        orderBy: { started_at: "desc" },
+        select: { id: true },
+    });
+    if (!run) {
+        throw {
+            status: 409,
+            message: 'No active cronjob for this session'
+        };
+    }
+
+    await terminateCronjobRun(run.id);
+    res.json({ success: true, cronjob_run_id: run.id });
 }, true));
 
 // GET /api/chat/sessions/:id/pending-permission - Get pending permission for session
@@ -1381,7 +1451,7 @@ router.post('/sessions/:id/abort', apiHandler(async (req, res) => {
         },
     });
     if (runningCronRun) {
-        await stopCronjobRun(runningCronRun);
+        await interruptCronjobRun(runningCronRun.id);
     } else {
         await abortOpencodeSession(session.opencode_session_id);
     }

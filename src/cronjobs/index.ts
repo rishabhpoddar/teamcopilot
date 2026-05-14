@@ -6,11 +6,13 @@ import {
     completeCurrentCronjobRun,
     dispatchCronjobRun,
     getNextRunAt,
+    interruptCronjobRun,
+    resumeCronjobRun,
     scheduleOneCronjob,
+    terminateCronjobRun,
     validateCronjobTarget,
     validateCronjobSchedule,
 } from "./scheduler";
-import { stopCronjobRun } from "../utils/cronjob-stop";
 
 const router = express.Router({ mergeParams: true });
 
@@ -183,20 +185,26 @@ function serializeRun(run: {
 }
 
 async function getPromptCronjobRun(opencodeSessionId: string) {
-    const run = await prisma.cronjob_runs.findFirst({
+    const runs = await prisma.cronjob_runs.findMany({
         where: {
             opencode_session_id: opencodeSessionId,
             cronjob: { target_type: "prompt" },
         },
         select: { id: true, status: true, session_id: true },
     });
-    if (!run) {
+    if (runs.length === 0) {
         throw {
             status: 404,
             message: "This is not a prompt cronjob session."
         };
     }
-    return run;
+    if (runs.length > 1) {
+        throw {
+            status: 500,
+            message: "Invariant violation: multiple prompt cronjob runs share one OpenCode session."
+        };
+    }
+    return runs[0];
 }
 
 router.post("/runs/ask-user-current", apiHandler(async (req, res) => {
@@ -216,21 +224,29 @@ router.post("/runs/ask-user-current", apiHandler(async (req, res) => {
     }
 
     const now = Number(nowMs());
-    await prisma.$transaction([
-        prisma.chat_sessions.update({
+    if (run.status === "running") {
+        await prisma.$transaction([
+            prisma.chat_sessions.update({
+                where: { id: run.session_id },
+                data: {
+                    visible_to_user: true,
+                    updated_at: now,
+                },
+            }),
+            prisma.cronjob_runs.update({
+                where: { id: run.id },
+                data: { status: "paused" },
+            }),
+        ]);
+    } else {
+        await prisma.chat_sessions.update({
             where: { id: run.session_id },
             data: {
                 visible_to_user: true,
                 updated_at: now,
             },
-        }),
-        prisma.cronjob_runs.update({
-            where: { id: run.id },
-            data: {
-                user_handoff_state: run.status === "running" ? "waiting" : "none",
-            },
-        }),
-    ]);
+        });
+    }
 
     res.json({ success: true, message });
 }, true));
@@ -256,7 +272,7 @@ router.get("/", apiHandler(async (req, res) => {
     const activeRuns = await prisma.cronjob_runs.findMany({
         where: {
             cronjob_id: { in: cronjobs.map((cronjob) => cronjob.id) },
-            status: "running",
+            status: { in: ["running", "paused"] },
         },
         select: { id: true, cronjob_id: true, workflow_run_id: true },
     });
@@ -305,7 +321,7 @@ router.post("/", apiHandler(async (req, res) => {
     }).catch(throwCronjobNameConflictIfNeeded);
     scheduleOneCronjob(cronjob);
     const activeRun = await prisma.cronjob_runs.findFirst({
-        where: { cronjob_id: cronjob.id, status: "running" },
+        where: { cronjob_id: cronjob.id, status: { in: ["running", "paused"] } },
         select: { id: true },
     });
     res.json({ cronjob: serializeCronjob({ ...cronjob, is_running: activeRun !== null }) });
@@ -333,7 +349,7 @@ router.get("/:id", apiHandler(async (req, res) => {
         throw { status: 404, message: "Cronjob not found" };
     }
     const activeRun = await prisma.cronjob_runs.findFirst({
-        where: { cronjob_id: cronjob.id, status: "running" },
+        where: { cronjob_id: cronjob.id, status: { in: ["running", "paused"] } },
         select: { id: true },
     });
     res.json({ cronjob: serializeCronjob({ ...cronjob, is_running: activeRun !== null }) });
@@ -407,14 +423,14 @@ router.delete("/:id", apiHandler(async (req, res) => {
     const activeRun = await prisma.cronjob_runs.findFirst({
         where: {
             cronjob_id: id,
-            status: "running",
+            status: { in: ["running", "paused"] },
         },
         select: { id: true },
     });
     if (activeRun) {
         throw {
             status: 409,
-            message: "Cronjob is currently running. Stop the running cronjob before deleting it."
+            message: "Cronjob currently has an active run. Terminate the active run before deleting it."
         };
     }
     scheduleOneCronjob({ ...cronjob, enabled: false });
@@ -524,11 +540,55 @@ router.post("/runs/:id/stop", apiHandler(async (req, res) => {
     if (!run) {
         throw { status: 404, message: "Cronjob run not found" };
     }
-    if (run.status !== "running") {
-        res.json({ success: true });
-        return;
+    await terminateCronjobRun(run.id);
+    res.json({ success: true });
+}, true));
+
+router.post("/runs/:id/interrupt", apiHandler(async (req, res) => {
+    const id = req.params.id as string;
+    const run = await prisma.cronjob_runs.findFirst({
+        where: {
+            id,
+            cronjob: { user_id: req.userId! },
+        },
+        select: { id: true },
+    });
+    if (!run) {
+        throw { status: 404, message: "Cronjob run not found" };
     }
-    await stopCronjobRun(run);
+    await interruptCronjobRun(run.id);
+    res.json({ success: true });
+}, true));
+
+router.post("/runs/:id/resume", apiHandler(async (req, res) => {
+    const id = req.params.id as string;
+    const run = await prisma.cronjob_runs.findFirst({
+        where: {
+            id,
+            cronjob: { user_id: req.userId! },
+        },
+        select: { id: true },
+    });
+    if (!run) {
+        throw { status: 404, message: "Cronjob run not found" };
+    }
+    await resumeCronjobRun(run.id);
+    res.json({ success: true });
+}, true));
+
+router.post("/runs/:id/terminate", apiHandler(async (req, res) => {
+    const id = req.params.id as string;
+    const run = await prisma.cronjob_runs.findFirst({
+        where: {
+            id,
+            cronjob: { user_id: req.userId! },
+        },
+        select: { id: true },
+    });
+    if (!run) {
+        throw { status: 404, message: "Cronjob run not found" };
+    }
+    await terminateCronjobRun(run.id);
     res.json({ success: true });
 }, true));
 
@@ -547,32 +607,11 @@ router.post("/runs/:id/reveal-chat", apiHandler(async (req, res) => {
     if (!run) {
         throw { status: 404, message: "Cronjob run not found" };
     }
-    if (run.status === "running") {
-        throw { status: 400, message: "Cronjob run is still running" };
-    }
     if (!run.session) {
         throw { status: 400, message: "Cronjob run does not have an AI chat session" };
     }
 
     const now = Date.now();
-    if (run.cronjob.target_type === "prompt") {
-        const [session] = await prisma.$transaction([
-            prisma.chat_sessions.update({
-                where: { id: run.session.id },
-                data: {
-                    visible_to_user: true,
-                    updated_at: now,
-                },
-            }),
-            prisma.cronjob_runs.update({
-                where: { id: run.id },
-                data: { user_handoff_state: "waiting" },
-            }),
-        ]);
-        res.json({ session_id: session.id });
-        return;
-    }
-
     const session = await prisma.chat_sessions.update({
         where: { id: run.session.id },
         data: {
@@ -725,17 +764,25 @@ router.post("/runs/fail-current", apiHandler(async (req, res) => {
         };
     }
     const summary = assertNonEmptyString(req.body?.summary, "summary");
-    const run = await prisma.cronjob_runs.findFirst({
+    const runs = await prisma.cronjob_runs.findMany({
         where: {
             opencode_session_id: req.opencode_session_id,
+            cronjob: { target_type: "prompt" },
         },
     });
-    if (!run) {
+    if (runs.length === 0) {
         throw {
             status: 404,
             message: "This is not a cronjob session. If this was called via the markCronjobFailed tool, then do not use this tool again."
         };
     }
+    if (runs.length > 1) {
+        throw {
+            status: 500,
+            message: "Invariant violation: multiple prompt cronjob runs share one OpenCode session."
+        };
+    }
+    const run = runs[0];
     if (run.status !== "running") {
         throw {
             status: 404,

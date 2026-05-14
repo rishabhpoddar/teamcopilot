@@ -8,9 +8,10 @@ type ChatSessionBase = {
     updated_at: number;
     cronjob_control: {
         run_id: string;
-        status: "running" | "success" | "failed";
-        state: "none" | "waiting";
+        status: "running" | "paused";
+        can_interrupt: boolean;
         can_resume: boolean;
+        can_terminate: boolean;
     } | null;
 };
 

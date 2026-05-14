@@ -182,17 +182,17 @@ export default function CronjobsSection() {
         }
     };
 
-    const stopRun = async (runId: string) => {
+    const terminateRun = async (runId: string) => {
         if (!token || stoppingRunId) return;
         setStoppingRunId(runId);
         try {
-            await axiosInstance.post(`/api/cronjobs/runs/${runId}/stop`, {}, {
+            await axiosInstance.post(`/api/cronjobs/runs/${runId}/terminate`, {}, {
                 headers: { Authorization: `Bearer ${token}` }
             });
-            toast.success('Cronjob run stopped');
+            toast.success('Cronjob run terminated');
             await fetchCronjobs();
         } catch (err: unknown) {
-            toast.error(getErrorMessage(err, 'Failed to stop cronjob run'));
+            toast.error(getErrorMessage(err, 'Failed to terminate cronjob run'));
         } finally {
             setStoppingRunId(null);
         }
@@ -315,7 +315,7 @@ export default function CronjobsSection() {
                                     disabled={cronjob.is_running || startingCronjobId !== null}
                                     onClick={() => runNow(cronjob)}
                                 >
-                                    {startingCronjobId === cronjob.id ? 'Starting...' : cronjob.is_running ? 'Already running' : 'Run now'}
+                                    {startingCronjobId === cronjob.id ? 'Starting...' : cronjob.is_running ? 'Already active' : 'Run now'}
                                 </button>
                                 {cronjob.current_run_id && (
                                     <>
@@ -328,9 +328,9 @@ export default function CronjobsSection() {
                                         <button
                                             className="cronjob-danger-btn"
                                             disabled={stoppingRunId !== null}
-                                            onClick={() => stopRun(cronjob.current_run_id!)}
+                                            onClick={() => terminateRun(cronjob.current_run_id!)}
                                         >
-                                            {stoppingRunId === cronjob.current_run_id ? 'Stopping...' : 'Stop'}
+                                            {stoppingRunId === cronjob.current_run_id ? 'Terminating...' : 'Terminate'}
                                         </button>
                                     </>
                                 )}

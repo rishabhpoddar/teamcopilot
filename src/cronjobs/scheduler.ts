@@ -20,6 +20,8 @@ import {
 } from "../utils/chat-prompt-context";
 import type { CronjobSchedule, CronjobTargetType } from "../types/cronjob";
 import { assertUserCanRunWorkflow } from "../utils/workflow-run-validation";
+import { abortOpencodeSession } from "../utils/session-abort";
+import { markWorkflowSessionAborted } from "../utils/workflow-interruption";
 
 const CRONJOB_MONITOR_INTERVAL_MS = 5000;
 
@@ -210,7 +212,7 @@ async function buildCronjobPrompt(args: {
         "When the current todo item is complete, call finishCurrentCronjobTodo and then stop. TeamCopilot will give you the next todo item.",
         "Keep working until every todo item needed for the requested cronjob task is complete or the loop is blocked by a real permission, tool question, or safety boundary.",
         "Do not ask the user questions unless the task explicitly requires user approval or clarification that cannot be safely inferred.",
-        "If you need to ask the user for input or notify them that the cronjob needs their attention, call askCronjobUser with the message. This reveals the hidden cronjob chat to the user and pauses the auto-continue loop until they respond.",
+        "If you need to ask the user for input or notify them that the cronjob needs their attention, call askCronjobUser with the message. This reveals the hidden cronjob chat to the user and pauses the auto-continue loop until the user explicitly resumes the cronjob.",
         "If the task cannot be finished because of a non-recoverable issue, call markCronjobFailed with a concise reason instead of leaving the run hanging.",
         "The only way to mark this cronjob finished successfully is to call the markCronjobCompleted tool.",
         "markCronjobCompleted will fail until all TeamCopilot cronjob todos have been finished.",
@@ -301,18 +303,6 @@ async function revealRunForUserInput(runId: string): Promise<void> {
 }
 
 async function cronjobSessionHasPendingUserInput(opencodeSessionId: string): Promise<boolean> {
-    const waitingCronjob = await prisma.cronjob_runs.findFirst({
-        where: {
-            opencode_session_id: opencodeSessionId,
-            status: "running",
-            user_handoff_state: { not: "none" },
-        },
-        select: { id: true },
-    });
-    if (waitingCronjob) {
-        return true;
-    }
-
     const pendingQuestions = await listPendingQuestions();
     if (pendingQuestions.some((question) => question.sessionID === opencodeSessionId)) {
         return true;
@@ -423,8 +413,14 @@ function buildCronjobFinalReviewPrompt(): string {
     ].join("\n");
 }
 
-function monitorCronjobRun(runId: string, opencodeSessionId: string, timeoutAtMs: number): void {
+async function monitorCronjobRun(runId: string, opencodeSessionId: string, timeoutAtMs: number): Promise<void> {
     if (runningMonitors.has(runId)) return;
+
+    const run = await prisma.cronjob_runs.findUnique({
+        where: { id: runId },
+        select: { status: true },
+    });
+    if (!run || run.status !== "running") return;
 
     let revealedForUserInput = false;
     let isChecking = false;
@@ -573,6 +569,26 @@ export async function resumeCronjobRun(runId: string): Promise<void> {
             message: "Only prompt cronjob chats can be resumed."
         };
     }
+    if (run.status !== "paused") {
+        throw {
+            status: 400,
+            message: `Only paused prompt cronjob runs can be resumed. Current status is: ${run.status}`
+        };
+    }
+    const activeRun = await prisma.cronjob_runs.findFirst({
+        where: {
+            cronjob_id: run.cronjob_id,
+            status: "running",
+            id: { not: run.id },
+        },
+        select: { id: true },
+    });
+    if (activeRun) {
+        throw {
+            status: 409,
+            message: "Another run for this cronjob is already running."
+        };
+    }
 
     await prisma.cronjob_runs.update({
         where: { id: run.id },
@@ -581,14 +597,103 @@ export async function resumeCronjobRun(runId: string): Promise<void> {
             completed_at: null,
             error_message: null,
             summary: null,
-            user_handoff_state: "none",
         },
     });
 
-    monitorCronjobRun(run.id, run.opencode_session_id, getCronjobTimeoutAt({
+    await monitorCronjobRun(run.id, run.opencode_session_id, getCronjobTimeoutAt({
         cron_expression: run.cronjob.cron_expression,
         timezone: run.cronjob.timezone,
     }, Date.now()));
+}
+
+async function recoverRunningPromptCronjobRun(runId: string): Promise<void> {
+    const run = await prisma.cronjob_runs.findUnique({
+        where: { id: runId },
+        include: {
+            cronjob: {
+                select: {
+                    target_type: true,
+                    cron_expression: true,
+                    timezone: true,
+                },
+            },
+        },
+    });
+    if (!run || run.status !== "running" || run.cronjob.target_type !== "prompt" || !run.opencode_session_id) return;
+    await monitorCronjobRun(run.id, run.opencode_session_id, getCronjobTimeoutAt({
+        cron_expression: run.cronjob.cron_expression,
+        timezone: run.cronjob.timezone,
+    }, Date.now()));
+}
+
+export async function interruptCronjobRun(runId: string): Promise<void> {
+    const run = await prisma.cronjob_runs.findUnique({
+        where: { id: runId },
+        include: {
+            cronjob: { select: { target_type: true } },
+        },
+    });
+    if (!run) {
+        throw { status: 404, message: "Cronjob run not found" };
+    }
+    if (run.cronjob.target_type !== "prompt" || !run.opencode_session_id || !run.session_id) {
+        throw { status: 400, message: "Only prompt cronjob runs can be interrupted." };
+    }
+    if (run.status !== "running") {
+        throw { status: 400, message: `Only running cronjob runs can be interrupted. Current status is: ${run.status}` };
+    }
+
+    await prisma.$transaction([
+        prisma.chat_sessions.update({
+            where: { id: run.session_id },
+            data: {
+                visible_to_user: true,
+                updated_at: Number(nowMs()),
+            },
+        }),
+        prisma.cronjob_runs.update({
+            where: { id: run.id },
+            data: { status: "paused" },
+        }),
+    ]);
+    await abortOpencodeSession(run.opencode_session_id);
+}
+
+export async function terminateCronjobRun(runId: string): Promise<void> {
+    const run = await prisma.cronjob_runs.findUnique({
+        where: { id: runId },
+        include: {
+            cronjob: { select: { target_type: true } },
+        },
+    });
+    if (!run) {
+        throw { status: 404, message: "Cronjob run not found" };
+    }
+    if (!["running", "paused"].includes(run.status)) {
+        return;
+    }
+
+    await prisma.cronjob_runs.update({
+        where: { id: run.id },
+        data: {
+            status: run.cronjob.target_type === "prompt" ? "terminated" : "failed",
+            completed_at: nowMs(),
+            error_message: "Cronjob run was terminated by the user.",
+        },
+    });
+
+    if (run.status === "running" && run.opencode_session_id) {
+        await abortOpencodeSession(run.opencode_session_id);
+    }
+    if (run.workflow_run_id) {
+        const workflowRun = await prisma.workflow_runs.findUnique({
+            where: { id: run.workflow_run_id },
+            select: { session_id: true },
+        });
+        if (workflowRun?.session_id) {
+            await markWorkflowSessionAborted(workflowRun.session_id);
+        }
+    }
 }
 
 export async function dispatchCronjobRun(cronjobId: string, mode: CronjobDispatchMode = "scheduled"): Promise<string> {
@@ -606,7 +711,7 @@ export async function dispatchCronjobRun(cronjobId: string, mode: CronjobDispatc
     const activeRun = await prisma.cronjob_runs.findFirst({
         where: {
             cronjob_id: cronjob.id,
-            status: "running",
+            status: { in: ["running", "paused"] },
         },
         select: { id: true }
     });
@@ -616,7 +721,7 @@ export async function dispatchCronjobRun(cronjobId: string, mode: CronjobDispatc
         }
         throw {
             status: 409,
-            message: "Cronjob is already running. Wait for the active run to finish, or stop it and run this cronjob again."
+            message: "Cronjob already has an active run. Wait for it to finish, resume it, or terminate it first."
         };
     }
 
@@ -705,7 +810,7 @@ export async function dispatchCronjobRun(cronjobId: string, mode: CronjobDispatc
         throw new Error("Failed to send cronjob prompt to opencode");
     }
 
-    monitorCronjobRun(run.id, sessionResult.data.id, getCronjobTimeoutAt({
+    await monitorCronjobRun(run.id, sessionResult.data.id, getCronjobTimeoutAt({
         cron_expression: cronjob.cron_expression,
         timezone: cronjob.timezone,
     }, Number(now)));
@@ -736,6 +841,38 @@ export function scheduleOneCronjob(cronjob: {
 }
 
 export async function startUserCronjobScheduler(): Promise<void> {
+    await prisma.workflow_runs.updateMany({
+        where: { status: "running" },
+        data: {
+            status: "failed",
+            completed_at: nowMs(),
+            error_message: "Workflow run was interrupted by backend restart.",
+        },
+    });
+    await prisma.cronjob_runs.updateMany({
+        where: {
+            status: "running",
+            cronjob: { target_type: "workflow" },
+        },
+        data: {
+            status: "failed",
+            completed_at: nowMs(),
+            error_message: "Workflow cronjob run was interrupted by backend restart.",
+        },
+    });
+
+    const recoverablePromptRuns = await prisma.cronjob_runs.findMany({
+        where: {
+            status: "running",
+            opencode_session_id: { not: null },
+            cronjob: { target_type: "prompt" },
+        },
+        select: { id: true },
+    });
+    for (const run of recoverablePromptRuns) {
+        await recoverRunningPromptCronjobRun(run.id);
+    }
+
     const cronjobs = await prisma.cronjobs.findMany({
         where: { enabled: true },
         select: {
@@ -751,17 +888,25 @@ export async function startUserCronjobScheduler(): Promise<void> {
 }
 
 export async function completeCurrentCronjobRun(opencodeSessionId: string, summary: string): Promise<void> {
-    const run = await prisma.cronjob_runs.findFirst({
+    const runs = await prisma.cronjob_runs.findMany({
         where: {
             opencode_session_id: opencodeSessionId,
+            cronjob: { target_type: "prompt" },
         },
     });
-    if (!run) {
+    if (runs.length === 0) {
         throw {
             status: 404,
             message: "This is not a cronjob session. If this was called via the markCronjobCompleted tool, then do not use this tool again."
         };
     }
+    if (runs.length > 1) {
+        throw {
+            status: 500,
+            message: "Invariant violation: multiple prompt cronjob runs share one OpenCode session."
+        };
+    }
+    const run = runs[0];
     if (run.status !== "running") {
         throw {
             status: 404,
