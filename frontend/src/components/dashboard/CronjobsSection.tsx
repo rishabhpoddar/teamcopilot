@@ -272,7 +272,7 @@ export default function CronjobsSection() {
                                 <span className={`cronjob-status-badge ${cronjob.enabled ? 'enabled' : 'disabled'}`}>
                                     {cronjob.enabled ? 'Enabled' : 'Disabled'}
                                 </span>
-                                {cronjob.is_running && <span className="cronjob-live-pill">Running now</span>}
+                                {cronjob.is_running && <span className="cronjob-live-pill">Active run</span>}
                             </div>
 
                             <div className="cronjob-card-header">

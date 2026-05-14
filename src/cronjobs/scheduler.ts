@@ -27,6 +27,7 @@ const CRONJOB_MONITOR_INTERVAL_MS = 5000;
 
 const scheduledJobs = new Map<string, CronJob>();
 const runningMonitors = new Map<string, NodeJS.Timeout>();
+const startingMonitors = new Set<string>();
 type CronjobDispatchMode = "scheduled" | "manual";
 
 function nowMs(): bigint {
@@ -414,13 +415,23 @@ function buildCronjobFinalReviewPrompt(): string {
 }
 
 async function monitorCronjobRun(runId: string, opencodeSessionId: string, timeoutAtMs: number): Promise<void> {
-    if (runningMonitors.has(runId)) return;
+    if (runningMonitors.has(runId) || startingMonitors.has(runId)) return;
+    startingMonitors.add(runId);
 
-    const run = await prisma.cronjob_runs.findUnique({
-        where: { id: runId },
-        select: { status: true },
-    });
-    if (!run || run.status !== "running") return;
+    let run: { status: string } | null;
+    try {
+        run = await prisma.cronjob_runs.findUnique({
+            where: { id: runId },
+            select: { status: true },
+        });
+    } catch (err) {
+        startingMonitors.delete(runId);
+        throw err;
+    }
+    if (!run || run.status !== "running") {
+        startingMonitors.delete(runId);
+        return;
+    }
 
     let revealedForUserInput = false;
     let isChecking = false;
@@ -542,6 +553,7 @@ async function monitorCronjobRun(runId: string, opencodeSessionId: string, timeo
         }
     }, CRONJOB_MONITOR_INTERVAL_MS);
     runningMonitors.set(runId, interval);
+    startingMonitors.delete(runId);
 }
 
 export async function resumeCronjobRun(runId: string): Promise<void> {

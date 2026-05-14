@@ -529,21 +529,6 @@ router.get("/runs/:id", apiHandler(async (req, res) => {
     res.json({ run: serializeRun(run) });
 }, true));
 
-router.post("/runs/:id/stop", apiHandler(async (req, res) => {
-    const id = req.params.id as string;
-    const run = await prisma.cronjob_runs.findFirst({
-        where: {
-            id,
-            cronjob: { user_id: req.userId! },
-        },
-    });
-    if (!run) {
-        throw { status: 404, message: "Cronjob run not found" };
-    }
-    await terminateCronjobRun(run.id);
-    res.json({ success: true });
-}, true));
-
 router.post("/runs/:id/interrupt", apiHandler(async (req, res) => {
     const id = req.params.id as string;
     const run = await prisma.cronjob_runs.findFirst({
@@ -606,6 +591,9 @@ router.post("/runs/:id/reveal-chat", apiHandler(async (req, res) => {
     });
     if (!run) {
         throw { status: 404, message: "Cronjob run not found" };
+    }
+    if (run.status === "running") {
+        throw { status: 400, message: "Interrupt the running cronjob before moving it to AI chat" };
     }
     if (!run.session) {
         throw { status: 400, message: "Cronjob run does not have an AI chat session" };
