@@ -12,7 +12,7 @@ async function main(): Promise<void> {
 
     const prisma = require("../src/prisma/client").default as typeof import("../src/prisma/client").default;
     const { ensureWorkspaceDatabase } = require("../src/utils/workspace-sync") as typeof import("../src/utils/workspace-sync");
-    const { terminateCronjobRun } = require("../src/cronjobs/scheduler") as typeof import("../src/cronjobs/scheduler");
+    const { resumeCronjobRun, terminateCronjobRun } = require("../src/cronjobs/scheduler") as typeof import("../src/cronjobs/scheduler");
 
     try {
         await ensureWorkspaceDatabase();
@@ -112,6 +112,45 @@ async function main(): Promise<void> {
         await terminateCronjobRun(terminalRun.id);
         const unchangedTerminalRun = await prisma.cronjob_runs.findUniqueOrThrow({ where: { id: terminalRun.id } });
         assert.equal(unchangedTerminalRun.status, "success");
+
+        const activeRun = await prisma.cronjob_runs.create({
+            data: {
+                cronjob_id: cronjob.id,
+                status: "running",
+                started_at: now + 1n,
+                opencode_session_id: "ses-active",
+            },
+        });
+        const pausedSession = await prisma.chat_sessions.create({
+            data: {
+                user_id: user.id,
+                opencode_session_id: "ses-paused",
+                title: "Paused cronjob",
+                created_at: now,
+                updated_at: now,
+            },
+        });
+        const pausedRun = await prisma.cronjob_runs.create({
+            data: {
+                cronjob_id: cronjob.id,
+                status: "paused",
+                started_at: now + 2n,
+                opencode_session_id: pausedSession.opencode_session_id,
+                session_id: pausedSession.id,
+            },
+        });
+        await assert.rejects(
+            () => resumeCronjobRun(pausedRun.id),
+            (err: unknown) => {
+                assert.equal((err as { status?: number }).status, 409);
+                assert.equal((err as { message?: string }).message, "Cronjob already has an active run. Wait for it to finish, resume it, or terminate it first.");
+                return true;
+            },
+        );
+        await prisma.cronjob_runs.update({
+            where: { id: activeRun.id },
+            data: { status: "terminated", completed_at: now },
+        });
 
         console.log("Cronjob terminate helper tests passed");
     } finally {

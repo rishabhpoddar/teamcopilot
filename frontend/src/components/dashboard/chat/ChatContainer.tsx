@@ -1129,10 +1129,12 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
 
     const resumeCronjob = useCallback(async () => {
         if (!token || !activeSessionId || activeSessionId === PENDING_SESSION_ID) return;
+        const runId = sessions.find((session) => session.id === activeSessionId)?.cronjob_control?.run_id;
+        if (!runId) return;
 
         try {
-            const response = await axiosInstance.post(
-                `/api/chat/sessions/${activeSessionId}/resume-cronjob`,
+            await axiosInstance.post(
+                `/api/cronjobs/runs/${runId}/resume`,
                 {},
                 { headers: { Authorization: `Bearer ${token}` } }
             );
@@ -1141,7 +1143,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                     ? {
                         ...session,
                         cronjob_control: {
-                            run_id: response.data.cronjob_run_id,
+                            run_id: runId,
                             status: "running",
                             can_interrupt: true,
                             can_resume: false,
@@ -1157,14 +1159,16 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                 : 'Failed to resume cronjob';
             toast.error(errorMessage);
         }
-    }, [token, activeSessionId]);
+    }, [token, activeSessionId, sessions]);
 
     const interruptCronjob = useCallback(async () => {
         if (!token || !activeSessionId || activeSessionId === PENDING_SESSION_ID) return;
+        const runId = sessions.find((session) => session.id === activeSessionId)?.cronjob_control?.run_id;
+        if (!runId) return;
 
         try {
-            const response = await axiosInstance.post(
-                `/api/chat/sessions/${activeSessionId}/interrupt-cronjob`,
+            await axiosInstance.post(
+                `/api/cronjobs/runs/${runId}/interrupt`,
                 {},
                 { headers: { Authorization: `Bearer ${token}` } }
             );
@@ -1173,7 +1177,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                     ? {
                         ...session,
                         cronjob_control: {
-                            run_id: response.data.cronjob_run_id,
+                            run_id: runId,
                             status: "paused",
                             can_interrupt: false,
                             can_resume: true,
@@ -1190,14 +1194,16 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                 : 'Failed to interrupt cronjob';
             toast.error(errorMessage);
         }
-    }, [token, activeSessionId]);
+    }, [token, activeSessionId, sessions]);
 
     const terminateCronjob = useCallback(async () => {
         if (!token || !activeSessionId || activeSessionId === PENDING_SESSION_ID) return;
+        const runId = sessions.find((session) => session.id === activeSessionId)?.cronjob_control?.run_id;
+        if (!runId) return;
 
         try {
             await axiosInstance.post(
-                `/api/chat/sessions/${activeSessionId}/terminate-cronjob`,
+                `/api/cronjobs/runs/${runId}/terminate`,
                 {},
                 { headers: { Authorization: `Bearer ${token}` } }
             );
@@ -1214,7 +1220,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                 : 'Failed to terminate cronjob';
             toast.error(errorMessage);
         }
-    }, [token, activeSessionId]);
+    }, [token, activeSessionId, sessions]);
 
     const abortResponse = useCallback(async () => {
         if (!token || !activeSessionId || activeSessionId === PENDING_SESSION_ID) return;

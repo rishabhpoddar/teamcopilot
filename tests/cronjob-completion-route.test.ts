@@ -109,7 +109,7 @@ async function main(): Promise<void> {
             .send({ summary: "Should not complete twice" })
             .expect(404)
             .expect((response) => {
-                assert.equal(response.body.message, "Cronjob is not in running state. Current state is: success");
+                assert.equal(response.body.message, "Cronjob is not active. Current state is: success");
             });
 
         const failSession = await prisma.chat_sessions.create({

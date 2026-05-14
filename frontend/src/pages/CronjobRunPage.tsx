@@ -54,7 +54,6 @@ export default function CronjobRunPage() {
     const [run, setRun] = useState<CronjobRun | null>(null);
     const [loading, setLoading] = useState(true);
     const [acting, setActing] = useState<string | null>(null);
-    const [revealingChat, setRevealingChat] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     usePageTitle('Cronjob Run');
@@ -138,22 +137,6 @@ export default function CronjobRunPage() {
         }
     };
 
-    const moveToAiChat = async () => {
-        if (!token || !run || run.status === 'running') return;
-        setRevealingChat(true);
-        try {
-            const response = await axiosInstance.post(`/api/cronjobs/runs/${run.id}/reveal-chat`, {}, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            const sessionId = String(response.data.session_id);
-            navigate(`/?tab=ai&session=${encodeURIComponent(sessionId)}`);
-        } catch (err: unknown) {
-            toast.error(getErrorMessage(err, 'Failed to move cronjob run to AI chat'));
-        } finally {
-            setRevealingChat(false);
-        }
-    };
-
     if (auth.loading || loading) {
         return <div className="cronjob-run-state">Loading cronjob run...</div>;
     }
@@ -195,15 +178,6 @@ export default function CronjobRunPage() {
                     {((run.target_type_snapshot === 'prompt' && ['running', 'paused'].includes(run.status)) || (run.target_type_snapshot === 'workflow' && run.status === 'running')) && (
                         <button className="cronjob-run-stop-btn" onClick={() => runAction('terminate')} disabled={acting !== null}>
                             {acting === 'terminate' ? 'Terminating...' : 'Terminate'}
-                        </button>
-                    )}
-                    {run.target_type_snapshot === 'prompt' && run.status !== 'running' && (
-                        <button
-                            className="cronjob-run-ai-btn"
-                            onClick={moveToAiChat}
-                            disabled={revealingChat}
-                        >
-                            {revealingChat ? 'Opening chat...' : 'Move to AI chat'}
                         </button>
                     )}
                 </div>

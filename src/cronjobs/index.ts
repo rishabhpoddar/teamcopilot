@@ -586,39 +586,6 @@ router.post("/runs/:id/terminate", apiHandler(async (req, res) => {
     res.json({ success: true });
 }, true));
 
-router.post("/runs/:id/reveal-chat", apiHandler(async (req, res) => {
-    const id = req.params.id as string;
-    const run = await prisma.cronjob_runs.findFirst({
-        where: {
-            id,
-            cronjob: { user_id: req.userId! },
-        },
-        include: {
-            session: true,
-            cronjob: { select: { target_type: true } },
-        },
-    });
-    if (!run) {
-        throw { status: 404, message: "Cronjob run not found" };
-    }
-    if (run.status === "running") {
-        throw { status: 400, message: "Interrupt the running cronjob before moving it to AI chat" };
-    }
-    if (!run.session) {
-        throw { status: 400, message: "Cronjob run does not have an AI chat session" };
-    }
-
-    const now = Date.now();
-    const session = await prisma.chat_sessions.update({
-        where: { id: run.session.id },
-        data: {
-            visible_to_user: true,
-            updated_at: now,
-        },
-    });
-    res.json({ session_id: session.id });
-}, true));
-
 router.post("/runs/todos/set-current", apiHandler(async (req, res) => {
     if (!req.opencode_session_id) {
         throw {
@@ -764,33 +731,10 @@ router.post("/runs/fail-current", apiHandler(async (req, res) => {
         };
     }
     const summary = assertNonEmptyString(req.body?.summary, "summary");
-    const runs = await prisma.cronjob_runs.findMany({
-        where: {
-            opencode_session_id: req.opencode_session_id,
-            cronjob: { target_type: "prompt" },
-        },
-    });
-    if (runs.length === 0) {
-        throw {
-            status: 404,
-            message: "This is not a cronjob session. If this was called via the markCronjobFailed tool, then do not use this tool again."
-        };
-    }
-    if (runs.length > 1) {
-        throw {
-            status: 500,
-            message: "Invariant violation: multiple prompt cronjob runs share one OpenCode session."
-        };
-    }
-    const run = runs[0];
-    if (run.status !== "running") {
-        throw {
-            status: 404,
-            message: `Cronjob is not in running state. Current state is: ${run.status}`
-        };
-    }
+    const run = await getPromptCronjobRun(req.opencode_session_id);
+    assertActivePromptCronjobRun(run);
     const failedRun = await prisma.cronjob_runs.updateMany({
-        where: { id: run.id, status: "running" },
+        where: { id: run.id, status: { in: ["running", "paused"] } },
         data: {
             status: "failed",
             completed_at: nowMs(),
@@ -801,7 +745,7 @@ router.post("/runs/fail-current", apiHandler(async (req, res) => {
     if (failedRun.count !== 1) {
         throw {
             status: 409,
-            message: "Cronjob run is no longer running."
+            message: "Cronjob run is no longer active."
         };
     }
     res.json({ success: true });

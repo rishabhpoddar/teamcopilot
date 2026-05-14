@@ -33,11 +33,7 @@ import {
     normalizeWorkspaceRelativePath,
 } from "../utils/chat-session-file-diff";
 import { syncChatSessionUsage } from "../utils/chat-usage";
-import {
-    interruptCronjobRun,
-    resumeCronjobRun,
-    terminateCronjobRun,
-} from "../cronjobs/scheduler";
+import { interruptCronjobRun } from "../cronjobs/scheduler";
 import {
     ACTUAL_USER_MESSAGE_MARKER,
     buildAvailableSecretsPrompt,
@@ -549,7 +545,8 @@ router.get('/sessions', apiHandler(async (req, res) => {
     });
     const controllableRunBySessionId = new Map<string, (typeof controllableCronjobRuns)[number]>();
     for (const run of controllableCronjobRuns) {
-        if (!run.session_id || controllableRunBySessionId.has(run.session_id)) continue;
+        assertCondition(run.session_id, "Controllable cronjob run is missing chat session id");
+        if (controllableRunBySessionId.has(run.session_id)) continue;
         controllableRunBySessionId.set(run.session_id, run);
     }
 
@@ -989,6 +986,22 @@ router.post('/sessions/:id/messages', apiHandler(async (req, res) => {
         };
     }
 
+    const terminalCronjobRun = await prisma.cronjob_runs.findFirst({
+        where: {
+            session_id: id,
+            cronjob: { target_type: "prompt" },
+            status: { in: ["success", "failed", "terminated", "skipped"] },
+        },
+        orderBy: { started_at: "desc" },
+        select: { status: true },
+    });
+    if (terminalCronjobRun) {
+        throw {
+            status: 409,
+            message: `This cronjob chat is closed because the run is ${terminalCronjobRun.status}. Start a new chat or rerun the cronjob.`
+        };
+    }
+
     const pendingQuestion = await getPendingQuestionForSession(session.opencode_session_id);
     if (pendingQuestion) {
         throw {
@@ -1073,121 +1086,6 @@ router.post('/sessions/:id/messages', apiHandler(async (req, res) => {
             updated_at: updatedSession.updated_at
         }
     });
-}, true));
-
-router.post('/sessions/:id/resume-cronjob', apiHandler(async (req, res) => {
-    const id = req.params.id as string;
-
-    const session = await prisma.chat_sessions.findFirst({
-        where: {
-            id,
-            user_id: req.userId!
-        }
-    });
-
-    if (!session) {
-        throw {
-            status: 404,
-            message: 'Session not found'
-        };
-    }
-
-    const run = await prisma.cronjob_runs.findFirst({
-        where: {
-            session_id: id,
-            cronjob: { target_type: "prompt" },
-            status: "paused",
-        },
-        orderBy: { started_at: "desc" },
-        select: { id: true },
-    });
-    if (!run) {
-        throw {
-            status: 409,
-            message: 'No resumable cronjob for this session'
-        };
-    }
-
-    await resumeCronjobRun(run.id);
-    await prisma.chat_sessions.update({
-        where: { id },
-        data: { updated_at: Date.now() },
-    });
-
-    res.json({ success: true, cronjob_run_id: run.id });
-}, true));
-
-router.post('/sessions/:id/interrupt-cronjob', apiHandler(async (req, res) => {
-    const id = req.params.id as string;
-
-    const session = await prisma.chat_sessions.findFirst({
-        where: {
-            id,
-            user_id: req.userId!
-        }
-    });
-
-    if (!session) {
-        throw {
-            status: 404,
-            message: 'Session not found'
-        };
-    }
-
-    const run = await prisma.cronjob_runs.findFirst({
-        where: {
-            session_id: id,
-            cronjob: { target_type: "prompt" },
-            status: "running",
-        },
-        orderBy: { started_at: "desc" },
-        select: { id: true },
-    });
-    if (!run) {
-        throw {
-            status: 409,
-            message: 'No running prompt cronjob for this session'
-        };
-    }
-
-    await interruptCronjobRun(run.id);
-    res.json({ success: true, cronjob_run_id: run.id });
-}, true));
-
-router.post('/sessions/:id/terminate-cronjob', apiHandler(async (req, res) => {
-    const id = req.params.id as string;
-
-    const session = await prisma.chat_sessions.findFirst({
-        where: {
-            id,
-            user_id: req.userId!
-        }
-    });
-
-    if (!session) {
-        throw {
-            status: 404,
-            message: 'Session not found'
-        };
-    }
-
-    const run = await prisma.cronjob_runs.findFirst({
-        where: {
-            session_id: id,
-            status: { in: ["running", "paused"] },
-        },
-        orderBy: { started_at: "desc" },
-        select: { id: true },
-    });
-    if (!run) {
-        throw {
-            status: 409,
-            message: 'No active cronjob for this session'
-        };
-    }
-
-    await terminateCronjobRun(run.id);
-    res.json({ success: true, cronjob_run_id: run.id });
 }, true));
 
 // GET /api/chat/sessions/:id/pending-permission - Get pending permission for session
