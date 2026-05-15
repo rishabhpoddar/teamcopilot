@@ -730,18 +730,19 @@ export async function terminateCronjobRun(runId: string): Promise<void> {
         return;
     }
 
-    if (run.status === "running" && run.opencode_session_id) {
-        await abortOpencodeSessionBestEffort(run.opencode_session_id);
-    }
-    if (run.workflow_run_id) {
-        // Workflow cronjobs do not have an OpenCode session to abort; the workflow runner polls this DB abort marker.
-        const workflowRun = await prisma.workflow_runs.findUnique({
-            where: { id: run.workflow_run_id },
-            select: { session_id: true },
-        });
-        if (workflowRun?.session_id) {
-            await markWorkflowSessionAbortedBestEffort(workflowRun.session_id);
+    if (run.cronjob.target_type === "prompt") {
+        if (run.status === "running") {
+            await abortOpencodeSessionBestEffort(run.opencode_session_id!);
         }
+        return;
+    }
+
+    const workflowRun = await prisma.workflow_runs.findUnique({
+        where: { id: run.workflow_run_id! },
+        select: { session_id: true },
+    });
+    if (workflowRun?.session_id) {
+        await markWorkflowSessionAbortedBestEffort(workflowRun.session_id);
     }
 }
 
