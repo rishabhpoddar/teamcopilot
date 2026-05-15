@@ -423,12 +423,12 @@ async function main(): Promise<void> {
             },
         });
         await request(app)
-            .post("/api/cronjobs/runs/todos/set-current")
+            .post("/api/cronjobs/runs/todos/add")
             .set("Authorization", `Bearer ${pausedTodoSession.opencode_session_id}`)
             .send({ items: ["First paused todo"] })
             .expect(200)
             .expect((response) => {
-                assert.equal(response.body.todo_count, 1);
+                assert.equal(response.body.added_count, 1);
             });
         await request(app)
             .post("/api/cronjobs/runs/todos/add-current")

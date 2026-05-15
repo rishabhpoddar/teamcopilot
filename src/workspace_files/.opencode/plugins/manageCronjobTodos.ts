@@ -59,6 +59,24 @@ async function postJson(path: string, authSessionID: string, body: unknown): Pro
   return response.json()
 }
 
+async function getJson(path: string, authSessionID: string): Promise<unknown> {
+  const response = await fetch(`${getApiBaseUrl()}${path}`, {
+    headers: {
+      Authorization: `Bearer ${authSessionID}`,
+    },
+  })
+
+  if (!response.ok) {
+    const errorMessage = await readErrorMessageFromResponse(
+      response,
+      `Cronjob todo tool failed (HTTP ${response.status})`
+    )
+    throw new Error(errorMessage)
+  }
+
+  return response.json()
+}
+
 export const ManageCronjobTodosPlugin: Plugin = async ({ client }) => {
   async function resolveRootSessionID(sessionID: string): Promise<string> {
     let currentSessionID = sessionID
@@ -84,25 +102,9 @@ export const ManageCronjobTodosPlugin: Plugin = async ({ client }) => {
 
   return {
     tool: {
-      setCronjobTodos: tool({
-        description:
-          "Create the initial TeamCopilot cronjob todo list. Use this before doing cronjob task work. After this succeeds, wait for TeamCopilot to give you the first current todo item.",
-        args: {
-          items: tool.schema
-            .array(tool.schema.string())
-            .describe("Granular todo items required to complete the cronjob task."),
-        },
-        async execute(args, context) {
-          const { sessionID } = context
-          const authSessionID = await resolveRootSessionID(sessionID)
-          return JSON.stringify(await postJson("/api/cronjobs/runs/todos/set-current", authSessionID, {
-            items: args.items,
-          }))
-        },
-      }),
       addCronjobTodos: tool({
         description:
-          "Add newly discovered todo items to the current TeamCopilot cronjob run. index 0 inserts the new items as the next pending todos after the current todo is finished. Omit index to append to the end.",
+          "Add new todo items to the active TeamCopilot cronjob todo list. Omit index to append to the end of the active list. Example: if the active list is [A, B, C], then addCronjobTodos({ items: [\"X\", \"Y\"], index: 1 }) produces [A, X, Y, B, C]. To make sure that you use the right index, always call getCronjobTodos right before calling this tool.",
         args: {
           items: tool.schema
             .array(tool.schema.string())
@@ -110,15 +112,50 @@ export const ManageCronjobTodosPlugin: Plugin = async ({ client }) => {
           index: tool.schema
             .number()
             .optional()
-            .describe("Optional insertion index among pending todos. Use 0 to make these the next pending todos."),
+            .describe("Optional insertion index in the active todo list. Use 0 to insert before the current todo."),
         },
         async execute(args, context) {
           const { sessionID } = context
           const authSessionID = await resolveRootSessionID(sessionID)
-          return JSON.stringify(await postJson("/api/cronjobs/runs/todos/add-current", authSessionID, {
+          return JSON.stringify(await postJson("/api/cronjobs/runs/todos/add", authSessionID, {
             items: args.items,
             index: args.index,
           }))
+        },
+      }),
+      clearCronjobTodos: tool({
+        description:
+          "Remove one or more todos from the active TeamCopilot cronjob todo list. Provide todo_ids only. Todo ids are the stable references returned by the todo tools.",
+        args: {
+          todo_ids: tool.schema
+            .array(tool.schema.string())
+            .optional()
+            .describe("Todo ids to remove from the active list."),
+        },
+        async execute(args, context) {
+          const { sessionID } = context
+          const authSessionID = await resolveRootSessionID(sessionID)
+          return JSON.stringify(await postJson("/api/cronjobs/runs/todos/clear", authSessionID, args))
+        },
+      }),
+      getCurrentCronjobTodo: tool({
+        description:
+          "Get the current TeamCopilot cronjob todo item, if one is active.",
+        args: {},
+        async execute(_args, context) {
+          const { sessionID } = context
+          const authSessionID = await resolveRootSessionID(sessionID)
+          return JSON.stringify(await getJson("/api/cronjobs/runs/todos/current", authSessionID))
+        },
+      }),
+      getCronjobTodos: tool({
+        description:
+          "Get all active TeamCopilot cronjob todos that are not completed yet, including the current todo and any pending todos.",
+        args: {},
+        async execute(_args, context) {
+          const { sessionID } = context
+          const authSessionID = await resolveRootSessionID(sessionID)
+          return JSON.stringify(await getJson("/api/cronjobs/runs/todos/not-completed", authSessionID))
         },
       }),
       finishCurrentCronjobTodo: tool({

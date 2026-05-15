@@ -240,9 +240,11 @@ async function buildCronjobPrompt(args: {
         "",
         "This is an unattended scheduled TeamCopilot cronjob run.",
         "Treat the cronjob prompt below as the task to execute.",
-        "First thing you must do is understand the task. If it refers to skills / workflows, read them first. Then, based on the instructions from task and the files you read call setCronjobTodos with a granular todo list. Do not start executing the task until TeamCopilot gives you the first current todo item.",
+        "First thing you must do is understand the task. If it refers to skills / workflows, read them first. Then, based on the instructions from the task and the files you read, call addCronjobTodos with a granular todo list. Do not start executing the task until TeamCopilot gives you the first current todo item.",
+        "The todo list is editable by you. Use getCurrentCronjobTodo to inspect the current todo (returns up to one item with its id) and getCronjobTodos to inspect the active todo list (returns all active todo ids and contents).",
+        "Use addCronjobTodos to insert new todo items anywhere in the active todo list. Use clearCronjobTodos to remove one or more active todo items from the list by todo id.",
         "After planning, TeamCopilot will give you exactly one current todo item at a time in this same session.",
-        "When working on a current todo item, work only on that item. If you discover more required work, call addCronjobTodos.",
+        "When working on a current todo item, work only on that item. If you discover more required work, call addCronjobTodos or clearCronjobTodos as needed. Refer to todos by id, not by position.",
         "When the current todo item is complete, call finishCurrentCronjobTodo and then stop. TeamCopilot will give you the next todo item.",
         "Keep working until every todo item needed for the requested cronjob task is complete or the loop is blocked by a real permission, tool question, or safety boundary.",
         "Do not ask the user questions unless the task explicitly requires user approval or clarification that cannot be safely inferred.",
@@ -396,7 +398,7 @@ function buildCronjobPlanningReminderPrompt(): string {
         "# Cronjob planning required",
         "",
         "You must create the TeamCopilot cronjob todo list before doing any task work.",
-        "Call setCronjobTodos with granular todo items that cover the requested cronjob task.",
+        "Call addCronjobTodos with granular todo items that cover the requested cronjob task.",
         "Do not execute the task yet. TeamCopilot will give you the first current todo item after the todo list is saved."
     ].join("\n");
 }
@@ -409,6 +411,7 @@ function buildCronjobCurrentTodoPrompt(todo: CronjobTodoForPrompt): string {
         "",
         "Work only on this todo item.",
         "If you discover additional required work, call addCronjobTodos.",
+        "If you want to inspect the current todo again, use getCurrentCronjobTodo.",
         "When this todo item is fully complete, call finishCurrentCronjobTodo with a concise summary, then stop.",
         "Do not work on later todo items until TeamCopilot gives them to you.",
         "Do not call markCronjobCompleted while a current todo item is active."
@@ -426,7 +429,7 @@ function buildCronjobCurrentTodoContinuationPrompt(todo: CronjobTodoForPrompt, i
         "Continue this todo item only.",
         "If this todo item is complete, call finishCurrentCronjobTodo with a concise summary, then stop.",
         "If more work is required, take the next concrete step for this todo item.",
-        "If you discover additional required work, call addCronjobTodos.",
+        "If you discover additional required work, call addCronjobTodos or clearCronjobTodos.",
         "If the task cannot continue, call markCronjobFailed.",
         "If you truly need user input that cannot be safely inferred, call askCronjobUser with the message for the user.",
         "",
@@ -441,7 +444,7 @@ function buildCronjobFinalReviewPrompt(): string {
         "All TeamCopilot cronjob todos are marked complete.",
         "Review the original cronjob task and the work completed in this session.",
         "If the requested task is 100% complete, call markCronjobCompleted with a concise run-history summary.",
-        "If required work is still missing, call addCronjobTodos with the missing todo items.",
+        "If required work is still missing, call addCronjobTodos with the new todo items.",
         "If the task cannot be completed, call markCronjobFailed with a concise reason.",
         "If you truly need user input that cannot be safely inferred, call askCronjobUser with the message for the user."
     ].join("\n");
@@ -980,7 +983,7 @@ export async function completeCurrentCronjobRun(opencodeSessionId: string, summa
     if (todoCount === 0) {
         throw {
             status: 400,
-            message: "Cronjob cannot be marked complete before setCronjobTodos has created and finishCurrentCronjobTodo has completed the todo list."
+            message: "Cronjob cannot be marked complete before addCronjobTodos has created and finishCurrentCronjobTodo has completed the todo list."
         };
     }
 
