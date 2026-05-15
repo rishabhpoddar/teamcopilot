@@ -152,6 +152,42 @@ async function main(): Promise<void> {
             data: { status: "terminated", completed_at: now },
         });
 
+        const pausedRunWithoutSession = await prisma.cronjob_runs.create({
+            data: {
+                cronjob_id: cronjob.id,
+                status: "paused",
+                started_at: now + 3n,
+                opencode_session_id: "ses-paused-without-chat-session",
+                session_id: null,
+            },
+        });
+        await assert.rejects(
+            () => resumeCronjobRun(pausedRunWithoutSession.id),
+            (err: unknown) => {
+                assert.equal((err as { status?: number }).status, 400);
+                assert.equal((err as { message?: string }).message, "Only prompt cronjob chats can be resumed.");
+                return true;
+            },
+        );
+
+        const workflowPausedRun = await prisma.cronjob_runs.create({
+            data: {
+                cronjob_id: workflowCronjob.id,
+                status: "paused",
+                started_at: now + 4n,
+                opencode_session_id: "ses-workflow-paused",
+                session_id: pausedSession.id,
+            },
+        });
+        await assert.rejects(
+            () => resumeCronjobRun(workflowPausedRun.id),
+            (err: unknown) => {
+                assert.equal((err as { status?: number }).status, 400);
+                assert.equal((err as { message?: string }).message, "Only prompt cronjob chats can be resumed.");
+                return true;
+            },
+        );
+
         console.log("Cronjob terminate helper tests passed");
     } finally {
         await prisma.$disconnect();

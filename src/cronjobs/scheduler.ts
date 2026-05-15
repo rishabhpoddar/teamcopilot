@@ -597,7 +597,7 @@ export async function resumeCronjobRun(runId: string): Promise<void> {
             message: "Cronjob run not found"
         };
     }
-    if (run.cronjob.target_type !== "prompt" || !run.opencode_session_id) {
+    if (run.cronjob.target_type !== "prompt" || !run.opencode_session_id || !run.session_id) {
         throw {
             status: 400,
             message: "Only prompt cronjob chats can be resumed."
@@ -609,6 +609,8 @@ export async function resumeCronjobRun(runId: string): Promise<void> {
             message: `Only paused prompt cronjob runs can be resumed. Current status is: ${run.status}`
         };
     }
+    const opencodeSessionId = run.opencode_session_id;
+    const sessionId = run.session_id;
     try {
         await prisma.$transaction(async (tx) => {
             const resumedRun = await tx.cronjob_runs.updateMany({
@@ -626,18 +628,16 @@ export async function resumeCronjobRun(runId: string): Promise<void> {
                     message: "Cronjob run is no longer paused."
                 };
             }
-            if (run.session_id) {
-                await tx.chat_sessions.update({
-                    where: { id: run.session_id },
-                    data: { updated_at: Number(nowMs()) },
-                });
-            }
+            await tx.chat_sessions.update({
+                where: { id: sessionId },
+                data: { updated_at: Number(nowMs()) },
+            });
         });
     } catch (err) {
         throwIfRunningRunUniquenessError(err);
     }
 
-    await monitorCronjobRun(run.id, run.opencode_session_id, getCronjobTimeoutAt({
+    await monitorCronjobRun(run.id, opencodeSessionId, getCronjobTimeoutAt({
         cron_expression: run.cronjob.cron_expression,
         timezone: run.cronjob.timezone,
     }, Number(run.started_at)));
