@@ -219,8 +219,7 @@ async function main(): Promise<void> {
             .send({ items: ["Should be rejected because snapshot is stale"], index: 1, todo_list_version: 0 })
             .expect(400)
             .expect((response) => {
-                assert.match(response.body.message, /^Call getCronjobTodos immediately before addCronjobTodos\./);
-                assert.match(response.body.message, /stale \(expected version 1, got 0\)/);
+                assert.match(response.body.message, /^Your todo list version is stale \(expected version 1, got 0\)\./);
                 assert.match(response.body.message, /Current todo list: \[/);
             });
 

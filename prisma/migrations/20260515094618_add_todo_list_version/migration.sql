@@ -25,5 +25,8 @@ CREATE INDEX "cronjob_runs_cronjob_id_status_idx" ON "cronjob_runs"("cronjob_id"
 CREATE INDEX "cronjob_runs_workflow_run_id_idx" ON "cronjob_runs"("workflow_run_id");
 CREATE INDEX "cronjob_runs_session_id_idx" ON "cronjob_runs"("session_id");
 CREATE INDEX "cronjob_runs_opencode_session_id_status_idx" ON "cronjob_runs"("opencode_session_id", "status");
+CREATE UNIQUE INDEX "cronjob_runs_one_running_per_cronjob"
+ON "cronjob_runs"("cronjob_id")
+WHERE "status" = 'running';
 PRAGMA foreign_keys=ON;
 PRAGMA defer_foreign_keys=OFF;

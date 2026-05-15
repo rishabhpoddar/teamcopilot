@@ -618,17 +618,6 @@ export async function resumeCronjobRun(runId: string): Promise<void> {
             message: `Only paused prompt cronjob runs can be resumed. Current status is: ${run.status}`
         };
     }
-    const otherActiveRun = await prisma.cronjob_runs.findFirst({
-        where: {
-            cronjob_id: run.cronjob_id,
-            status: "running",
-            id: { not: run.id },
-        },
-        select: { id: true },
-    });
-    if (otherActiveRun) {
-        throwCronjobAlreadyActive();
-    }
     const opencodeSessionId = run.opencode_session_id;
     const sessionId = run.session_id;
     try {
