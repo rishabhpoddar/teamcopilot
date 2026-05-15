@@ -1,6 +1,6 @@
 import express from "express";
 import prisma from "../prisma/client";
-import { Prisma } from "../../prisma/generated/client";
+import { Prisma, PrismaClient } from "../../prisma/generated/client";
 import { apiHandler } from "../utils";
 import {
     completeCurrentCronjobRun,
@@ -13,6 +13,7 @@ import {
     validateCronjobTarget,
     validateCronjobSchedule,
 } from "./scheduler";
+import { DefaultArgs } from "../../prisma/generated/client/runtime/library";
 
 const router = express.Router({ mergeParams: true });
 
@@ -191,21 +192,7 @@ function serializeRun(run: {
     };
 }
 
-type PromptCronjobRunRecord = {
-    id: string;
-    status: string;
-    session_id: string | null;
-    todo_list_version: number;
-};
-
-type PromptCronjobRunDb = {
-    cronjob_runs: {
-        findMany: typeof prisma.cronjob_runs.findMany;
-        update: typeof prisma.cronjob_runs.update;
-    };
-};
-
-async function getPromptCronjobRun(client: PromptCronjobRunDb, opencodeSessionId: string): Promise<PromptCronjobRunRecord> {
+async function getPromptCronjobRun(client: Omit<PrismaClient<Prisma.PrismaClientOptions, never, DefaultArgs>, "$connect" | "$disconnect" | "$on" | "$transaction" | "$extends">, opencodeSessionId: string) {
     const runs = await client.cronjob_runs.findMany({
         where: {
             opencode_session_id: opencodeSessionId,
