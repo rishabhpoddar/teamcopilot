@@ -123,11 +123,15 @@ export default function CronjobRunPage() {
             await axiosInstance.post(`/api/cronjobs/runs/${run.id}/${action}`, {}, {
                 headers: { Authorization: `Bearer ${token}` }
             });
-            const actionPastTense = action === 'resume'
-                ? 'resumed'
-                : action === 'interrupt'
-                    ? 'interrupted'
-                    : 'terminated';
+            if (action === 'interrupt') {
+                const searchParams = new URLSearchParams({ tab: 'ai' });
+                if (run.session_id) {
+                    searchParams.set('session', run.session_id);
+                }
+                navigate({ pathname: '/', search: searchParams.toString() });
+                return;
+            }
+            const actionPastTense = action === 'resume' ? 'resumed' : 'terminated';
             toast.success(`Cronjob run ${actionPastTense}`);
             await loadRun({ showLoading: false });
         } catch (err: unknown) {
