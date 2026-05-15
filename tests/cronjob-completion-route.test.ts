@@ -95,7 +95,7 @@ async function main(): Promise<void> {
         assert.notEqual(completedRun.completed_at, null);
 
         await request(app)
-            .post("/api/cronjobs/runs/todos/add-current")
+            .post("/api/cronjobs/runs/todos/add")
             .set("Authorization", `Bearer ${completeSession.opencode_session_id}`)
             .send({ items: ["Should not mutate completed runs"] })
             .expect(400)

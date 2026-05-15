@@ -31,20 +31,12 @@ globalThis.fetch = async (url, options = {}) => {
     body,
     authorization: options.headers?.Authorization || options.headers?.authorization || null,
   });
-  if (String(url).includes("/todos/current")) {
-    return {
-      ok: true,
-      status: 200,
-      json: async () => ({ todo: { id: "todo-current", content: "Current todo" } }),
-      text: async () => JSON.stringify({ todo: { id: "todo-current", content: "Current todo" } }),
-    };
-  }
   if (String(url).includes("/todos/not-completed")) {
     return {
       ok: true,
       status: 200,
-      json: async () => ({ todos: [{ id: "todo-current" }, { id: "todo-pending" }] }),
-      text: async () => JSON.stringify({ todos: [{ id: "todo-current" }, { id: "todo-pending" }] }),
+      json: async () => ({ todos: [{ id: "todo-current", content: "Current todo", status: "in_progress", completionSummary: null }, { id: "todo-pending", content: "Pending todo", status: "pending", completionSummary: null }] }),
+      text: async () => JSON.stringify({ todos: [{ id: "todo-current", content: "Current todo", status: "in_progress", completionSummary: null }, { id: "todo-pending", content: "Pending todo", status: "pending", completionSummary: null }] }),
     };
   }
   return {
@@ -99,7 +91,7 @@ async function run() {
     messageID: "msg-1",
     callID: "call-1",
   }));
-  outputs.finish = JSON.parse(await hooks.tool.finishCurrentCronjobTodo.execute({ summary: "Done" }, {
+  outputs.finish = JSON.parse(await hooks.tool.finishCurrentCronjobTodo.execute({ completionSummary: "Done" }, {
     directory: process.cwd(),
     sessionID: "child-session",
     messageID: "msg-1",
@@ -143,14 +135,14 @@ function main(): void {
     assert.equal(result.fetches.length, 5);
     assert.equal(result.fetches[0].url, "http://localhost:5124/api/cronjobs/runs/todos/add");
     assert.equal(result.fetches[1].url, "http://localhost:5124/api/cronjobs/runs/todos/clear");
-    assert.equal(result.fetches[2].url, "http://localhost:5124/api/cronjobs/runs/todos/current");
+    assert.equal(result.fetches[2].url, "http://localhost:5124/api/cronjobs/runs/todos/not-completed");
     assert.equal(result.fetches[3].url, "http://localhost:5124/api/cronjobs/runs/todos/not-completed");
     assert.equal(result.fetches[4].url, "http://localhost:5124/api/cronjobs/runs/todos/finish-current");
     assert.equal(result.fetches[0].authorization, "Bearer root-session");
     assert.deepEqual(result.fetches[0].body, { items: ["Inserted"], index: 1 });
     assert.deepEqual(result.fetches[1].body, { todo_ids: ["todo-pending"] });
-    assert.deepEqual(result.outputs.current, { todo: { id: "todo-current", content: "Current todo" } });
-    assert.deepEqual(result.outputs.list, { todos: [{ id: "todo-current" }, { id: "todo-pending" }] });
+    assert.deepEqual(result.outputs.current, { todo: { id: "todo-current", content: "Current todo", status: "in_progress", completionSummary: null } });
+    assert.deepEqual(result.outputs.list, { todos: [{ id: "todo-current", content: "Current todo", status: "in_progress", completionSummary: null }, { id: "todo-pending", content: "Pending todo", status: "pending", completionSummary: null }] });
 
     console.log("Manage cronjob todos plugin tests passed");
 }

@@ -245,7 +245,7 @@ async function buildCronjobPrompt(args: {
         "Use addCronjobTodos to insert new todo items anywhere in the active todo list. Use clearCronjobTodos to remove one or more active todo items from the list by todo id.",
         "After planning, TeamCopilot will give you exactly one current todo item at a time in this same session.",
         "When working on a current todo item, work only on that item. If you discover more required work, call addCronjobTodos or clearCronjobTodos as needed. Refer to todos by id, not by position.",
-        "When the current todo item is complete, call finishCurrentCronjobTodo and then stop. TeamCopilot will give you the next todo item.",
+        "When the current todo item is complete, call finishCurrentCronjobTodo with a concise completion summary and then stop. TeamCopilot will give you the next todo item.",
         "Keep working until every todo item needed for the requested cronjob task is complete or the loop is blocked by a real permission, tool question, or safety boundary.",
         "Do not ask the user questions unless the task explicitly requires user approval or clarification that cannot be safely inferred.",
         "If you need to ask the user for input or notify them that the cronjob needs their attention, call askCronjobUser with the message. This reveals the hidden cronjob chat to the user and pauses the auto-continue loop until the user explicitly resumes the cronjob.",
@@ -412,7 +412,7 @@ function buildCronjobCurrentTodoPrompt(todo: CronjobTodoForPrompt): string {
         "Work only on this todo item.",
         "If you discover additional required work, call addCronjobTodos.",
         "If you want to inspect the current todo again, use getCurrentCronjobTodo.",
-        "When this todo item is fully complete, call finishCurrentCronjobTodo with a concise summary, then stop.",
+        "When this todo item is fully complete, call finishCurrentCronjobTodo with a concise completion summary, then stop.",
         "Do not work on later todo items until TeamCopilot gives them to you.",
         "Do not call markCronjobCompleted while a current todo item is active."
     ].join("\n");
@@ -427,7 +427,7 @@ function buildCronjobCurrentTodoContinuationPrompt(todo: CronjobTodoForPrompt, i
         `Current todo: ${todo.content}`,
         "",
         "Continue this todo item only.",
-        "If this todo item is complete, call finishCurrentCronjobTodo with a concise summary, then stop.",
+        "If this todo item is complete, call finishCurrentCronjobTodo with a concise completion summary, then stop.",
         "If more work is required, take the next concrete step for this todo item.",
         "If you discover additional required work, call addCronjobTodos or clearCronjobTodos.",
         "If the task cannot continue, call markCronjobFailed.",

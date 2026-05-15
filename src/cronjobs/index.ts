@@ -239,7 +239,7 @@ function serializeCronjobTodo(todo: CronjobTodoRecord) {
         content: todo.content,
         status: todo.status,
         position: todo.position,
-        summary: todo.summary,
+        completionSummary: todo.summary,
         created_at: todo.created_at,
         completed_at: todo.completed_at,
     };
@@ -342,18 +342,6 @@ router.post("/runs/ask-user-current", apiHandler(async (req, res) => {
     }
 
     res.json({ success: true, message });
-}, true));
-
-router.get("/runs/todos/current", apiHandler(async (req, res) => {
-    if (!req.opencode_session_id) {
-        throw {
-            status: 400,
-            message: "This endpoint requires an opencode session token"
-        };
-    }
-    const run = await requireActivePromptCronjobRun(req.opencode_session_id);
-    const todo = await getCurrentCronjobTodoRecord(run.id);
-    res.json({ todo: todo ? serializeCronjobTodo(todo) : null });
 }, true));
 
 router.get("/runs/todos/not-completed", apiHandler(async (req, res) => {
@@ -772,10 +760,6 @@ router.post("/runs/todos/add", apiHandler(async (req, res) => {
     await addCronjobTodosHandler(req, res);
 }, true));
 
-router.post("/runs/todos/add-current", apiHandler(async (req, res) => {
-    await addCronjobTodosHandler(req, res);
-}, true));
-
 router.post("/runs/todos/clear", apiHandler(async (req, res) => {
     if (!req.opencode_session_id) {
         throw {
@@ -835,7 +819,7 @@ router.post("/runs/todos/finish-current", apiHandler(async (req, res) => {
             message: "This endpoint requires an opencode session token"
         };
     }
-    const summary = assertNonEmptyString(req.body?.summary, "summary");
+    const completionSummary = assertNonEmptyString(req.body?.completionSummary, "completionSummary");
     const run = await requireActivePromptCronjobRun(req.opencode_session_id);
     const currentTodo = await getCurrentCronjobTodoRecord(run.id);
     if (!currentTodo) {
@@ -849,7 +833,7 @@ router.post("/runs/todos/finish-current", apiHandler(async (req, res) => {
         data: {
             status: "completed",
             completed_at: nowMs(),
-            summary,
+            summary: completionSummary,
         },
     });
     res.json({ success: true });

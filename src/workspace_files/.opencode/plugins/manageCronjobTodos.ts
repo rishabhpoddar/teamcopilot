@@ -145,7 +145,9 @@ export const ManageCronjobTodosPlugin: Plugin = async ({ client }) => {
         async execute(_args, context) {
           const { sessionID } = context
           const authSessionID = await resolveRootSessionID(sessionID)
-          return JSON.stringify(await getJson("/api/cronjobs/runs/todos/current", authSessionID))
+          const response = await getJson("/api/cronjobs/runs/todos/not-completed", authSessionID) as { todos?: Array<{ status?: string }> }
+          const currentTodo = response.todos?.find((todo) => todo.status === "in_progress") ?? null
+          return JSON.stringify({ todo: currentTodo })
         },
       }),
       getCronjobTodos: tool({
@@ -162,19 +164,19 @@ export const ManageCronjobTodosPlugin: Plugin = async ({ client }) => {
         description:
           "Mark the current TeamCopilot cronjob todo item complete. Use this only after the current todo item is fully done, then stop and wait for TeamCopilot to give you the next todo.",
         args: {
-          summary: tool.schema
+          completionSummary: tool.schema
             .string()
-            .describe("Concise evidence summary for what was completed for the current todo item."),
+            .describe("Concise completion summary for what was completed for the current todo item."),
         },
         async execute(args, context) {
           const { sessionID } = context
           const authSessionID = await resolveRootSessionID(sessionID)
-          const summary = args.summary?.trim()
-          if (!summary) {
-            throw new Error("summary is required")
+          const completionSummary = args.completionSummary?.trim()
+          if (!completionSummary) {
+            throw new Error("completionSummary is required")
           }
           return JSON.stringify(await postJson("/api/cronjobs/runs/todos/finish-current", authSessionID, {
-            summary,
+            completionSummary,
           }))
         },
       }),

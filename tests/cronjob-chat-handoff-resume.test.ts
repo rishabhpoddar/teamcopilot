@@ -431,7 +431,7 @@ async function main(): Promise<void> {
                 assert.equal(response.body.added_count, 1);
             });
         await request(app)
-            .post("/api/cronjobs/runs/todos/add-current")
+            .post("/api/cronjobs/runs/todos/add")
             .set("Authorization", `Bearer ${pausedTodoSession.opencode_session_id}`)
             .send({ items: ["Inserted paused todo"], index: 0 })
             .expect(200)
@@ -450,7 +450,7 @@ async function main(): Promise<void> {
             data: { status: "failed", completed_at: now + 80n },
         });
         await request(app)
-            .post("/api/cronjobs/runs/todos/add-current")
+            .post("/api/cronjobs/runs/todos/add")
             .set("Authorization", `Bearer ${pausedTodoSession.opencode_session_id}`)
             .send({ items: ["Should be rejected"] })
             .expect(400)
@@ -489,7 +489,7 @@ async function main(): Promise<void> {
         await request(app)
             .post("/api/cronjobs/runs/todos/finish-current")
             .set("Authorization", `Bearer ${pausedFinishSession.opencode_session_id}`)
-            .send({ summary: "Finished during user handoff" })
+            .send({ completionSummary: "Finished during user handoff" })
             .expect(200)
             .expect((response) => {
                 assert.equal(response.body.success, true);

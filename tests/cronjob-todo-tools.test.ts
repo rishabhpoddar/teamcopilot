@@ -167,16 +167,6 @@ async function main(): Promise<void> {
         const app = createApp();
 
         await request(app)
-            .get("/api/cronjobs/runs/todos/current")
-            .set("Authorization", `Bearer ${runningSession.opencode_session_id}`)
-            .expect(200)
-            .expect((response) => {
-                assert.equal(response.body.todo.id, runningCurrentTodo.id);
-                assert.equal(response.body.todo.content, "Current running todo");
-                assert.equal(response.body.todo.status, "in_progress");
-            });
-
-        await request(app)
             .get("/api/cronjobs/runs/todos/not-completed")
             .set("Authorization", `Bearer ${runningSession.opencode_session_id}`)
             .expect(200)
@@ -203,6 +193,7 @@ async function main(): Promise<void> {
                 assert.match(response.body.message, new RegExp(runningPendingTodo.id));
                 assert.match(response.body.message, /"content":"Current running todo"/);
                 assert.match(response.body.message, /"content":"Pending running todo"/);
+                assert.match(response.body.message, /"completionSummary":null/);
             });
 
         await request(app)
@@ -256,14 +247,6 @@ async function main(): Promise<void> {
                 assert.deepEqual(response.body.todos.map((todo: { content: string }) => todo.content), [
                     "Pending running todo",
                 ]);
-            });
-
-        await request(app)
-            .get("/api/cronjobs/runs/todos/current")
-            .set("Authorization", `Bearer ${runningSession.opencode_session_id}`)
-            .expect(200)
-            .expect((response) => {
-                assert.equal(response.body.todo, null);
             });
 
         await request(app)
@@ -338,14 +321,6 @@ async function main(): Promise<void> {
             .expect((response) => {
                 assert.equal(response.body.cleared_count, 1);
                 assert.deepEqual(response.body.todos, []);
-            });
-
-        await request(app)
-            .get("/api/cronjobs/runs/todos/current")
-            .set("Authorization", `Bearer ${terminalSession.opencode_session_id}`)
-            .expect(400)
-            .expect((response) => {
-                assert.equal(response.body.message, "Cronjob session is already finished. Current state is: terminated");
             });
 
         await request(app)
