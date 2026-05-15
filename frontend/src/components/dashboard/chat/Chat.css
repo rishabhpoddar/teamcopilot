@@ -282,10 +282,12 @@
     align-items: center;
     gap: 0.45rem;
     flex: 0 0 auto;
+    min-width: 0;
 }
 
 .chat-cronjob-control-btn {
     flex: 0 0 auto;
+    min-width: 0;
     border: 1px solid #4a4a4a;
     border-radius: 7px;
     background: #242424;
@@ -1601,6 +1603,17 @@
     .chat-cronjob-controls,
     .chat-cronjob-control-btn {
         width: 100%;
+    }
+
+    .chat-cronjob-controls {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 0.5rem;
+    }
+
+    .chat-cronjob-control-btn {
+        justify-content: center;
+        text-align: center;
     }
 
     .chat-main-toolbar-meta strong,
