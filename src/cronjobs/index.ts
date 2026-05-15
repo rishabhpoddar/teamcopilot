@@ -722,7 +722,7 @@ async function addCronjobTodosHandler(req: { opencode_session_id?: string; body?
         if (todoListVersion !== run.todo_list_version) {
             throw {
                 status: 400,
-                message: `Call getCronjobTodos immediately before addCronjobTodos. Your todo list snapshot is stale (expected version ${run.todo_list_version}, got ${todoListVersion}). Current todo list: ${JSON.stringify(activeTodos.map(serializeCronjobTodo))}`
+                message: `Your todo list version is stale (expected version ${run.todo_list_version}, got ${todoListVersion}). Current todo list: ${JSON.stringify(activeTodos.map(serializeCronjobTodo))}`
             };
         }
         if (index > activeTodos.length) {
