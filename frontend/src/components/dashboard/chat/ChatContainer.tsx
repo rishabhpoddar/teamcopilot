@@ -1127,15 +1127,124 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
         }
     }, [token, activeSessionId]);
 
+    const resumeCronjob = useCallback(async () => {
+        if (!token || !activeSessionId || activeSessionId === PENDING_SESSION_ID) return;
+        const runId = sessions.find((session) => session.id === activeSessionId)?.cronjob_control?.run_id;
+        if (!runId) return;
+
+        try {
+            await axiosInstance.post(
+                `/api/cronjobs/runs/${runId}/resume`,
+                {},
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+            setSessions((prev) => prev.map((session) => (
+                session.id === activeSessionId
+                    ? {
+                        ...session,
+                        cronjob_control: {
+                            run_id: runId,
+                            status: "running",
+                            can_interrupt: true,
+                            can_resume: false,
+                            can_terminate: true,
+                        },
+                    }
+                    : session
+            )));
+            toast.success('Cronjob automation resumed');
+        } catch (err: unknown) {
+            const errorMessage = err instanceof AxiosError
+                ? err.response?.data?.message || err.response?.data || err.message
+                : 'Failed to resume cronjob';
+            toast.error(errorMessage);
+        }
+    }, [token, activeSessionId, sessions]);
+
+    const interruptCronjob = useCallback(async () => {
+        if (!token || !activeSessionId || activeSessionId === PENDING_SESSION_ID) return;
+        const runId = sessions.find((session) => session.id === activeSessionId)?.cronjob_control?.run_id;
+        if (!runId) return;
+
+        try {
+            await axiosInstance.post(
+                `/api/cronjobs/runs/${runId}/interrupt`,
+                {},
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+            setSessions((prev) => prev.map((session) => (
+                session.id === activeSessionId
+                    ? {
+                        ...session,
+                        cronjob_control: {
+                            run_id: runId,
+                            status: "paused",
+                            can_interrupt: false,
+                            can_resume: true,
+                            can_terminate: true,
+                        },
+                    }
+                    : session
+            )));
+            setIsStreaming(false);
+            toast.success('Cronjob automation interrupted');
+        } catch (err: unknown) {
+            const errorMessage = err instanceof AxiosError
+                ? err.response?.data?.message || err.response?.data || err.message
+                : 'Failed to interrupt cronjob';
+            toast.error(errorMessage);
+        }
+    }, [token, activeSessionId, sessions]);
+
+    const terminateCronjob = useCallback(async () => {
+        if (!token || !activeSessionId || activeSessionId === PENDING_SESSION_ID) return;
+        const runId = sessions.find((session) => session.id === activeSessionId)?.cronjob_control?.run_id;
+        if (!runId) return;
+
+        try {
+            await axiosInstance.post(
+                `/api/cronjobs/runs/${runId}/terminate`,
+                {},
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+            setSessions((prev) => prev.map((session) => (
+                session.id === activeSessionId
+                    ? { ...session, cronjob_control: null }
+                    : session
+            )));
+            setIsStreaming(false);
+            toast.success('Cronjob automation terminated');
+        } catch (err: unknown) {
+            const errorMessage = err instanceof AxiosError
+                ? err.response?.data?.message || err.response?.data || err.message
+                : 'Failed to terminate cronjob';
+            toast.error(errorMessage);
+        }
+    }, [token, activeSessionId, sessions]);
+
     const abortResponse = useCallback(async () => {
         if (!token || !activeSessionId || activeSessionId === PENDING_SESSION_ID) return;
 
         try {
-            await axiosInstance.post(
+            const response = await axiosInstance.post(
                 `/api/chat/sessions/${activeSessionId}/abort`,
                 {},
                 { headers: { Authorization: `Bearer ${token}` } }
             );
+            setSessions((prev) => prev.map((session) => (
+                session.id === activeSessionId && response.data.cronjob_run_id
+                    ? {
+                        ...session,
+                        cronjob_control: {
+                            run_id: response.data.cronjob_run_id,
+                            status: "paused",
+                            can_interrupt: false,
+                            can_resume: true,
+                            can_terminate: true,
+                        },
+                    }
+                    : session
+            )));
             setIsStreaming(false);
         } catch (err: unknown) {
             const errorMessage = err instanceof AxiosError
@@ -1305,10 +1414,45 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                         <strong>{activeSession?.title || (activeSessionId ? 'New Chat' : 'AI Assistant')}</strong>
                         <span>
                             {activeSessionId
-                                ? 'Fixed viewport with scrollable conversation'
+                                ? activeSession?.cronjob_control
+                                    ? activeSession.cronjob_control.status === "paused"
+                                        ? 'Cronjob is paused in chat'
+                                        : 'Cronjob automation is running'
+                                    : 'Fixed viewport with scrollable conversation'
                                 : 'Select a session or start a new chat'}
                         </span>
                     </div>
+                    {activeSession?.cronjob_control && !readOnly ? (
+                        <div className="chat-cronjob-controls">
+                            {activeSession.cronjob_control.can_interrupt ? (
+                                <button
+                                    type="button"
+                                    className="chat-cronjob-control-btn"
+                                    onClick={interruptCronjob}
+                                >
+                                    Interrupt
+                                </button>
+                            ) : null}
+                            {activeSession.cronjob_control.can_resume ? (
+                                <button
+                                    type="button"
+                                    className="chat-cronjob-control-btn resume"
+                                    onClick={resumeCronjob}
+                                >
+                                    Resume
+                                </button>
+                            ) : null}
+                            {activeSession.cronjob_control.can_terminate ? (
+                                <button
+                                    type="button"
+                                    className="chat-cronjob-control-btn danger"
+                                    onClick={terminateCronjob}
+                                >
+                                    Terminate
+                                </button>
+                            ) : null}
+                        </div>
+                    ) : null}
                 </div>
                 {usageSyncWarning ? (
                     <div className="chat-usage-sync-warning" role="status">

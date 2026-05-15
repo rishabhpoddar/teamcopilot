@@ -189,6 +189,17 @@ export default function MessagePart({
         if (part.tool === 'question') {
             return <QuestionToolDisplay part={part} onAnswer={onAnswer} />;
         }
+        if (part.tool === 'askCronjobUser') {
+            const message = typeof part.state.input?.message === 'string' ? part.state.input.message.trim() : '';
+            if (!message) return null;
+            return (
+                <div className="markdown-content">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {message}
+                    </ReactMarkdown>
+                </div>
+            );
+        }
         return (
             <ToolCallDisplay
                 part={part}

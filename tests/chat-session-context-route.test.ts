@@ -102,6 +102,39 @@ async function main(): Promise<void> {
         assert.equal(secondBody.body.parts[0].text, "Second message");
         assert.ok(!String(secondBody.body.parts[0].text).includes("# Current time"));
 
+        const cronjob = await prisma.cronjobs.create({
+            data: {
+                user_id: user.id,
+                name: "Closed prompt cronjob chat",
+                enabled: false,
+                target_type: "prompt",
+                prompt: "Closed cronjob",
+                prompt_allow_workflow_runs_without_permission: true,
+                cron_expression: "0 9 * * *",
+                timezone: "UTC",
+                created_at: now,
+                updated_at: now,
+            },
+        });
+        await prisma.cronjob_runs.create({
+            data: {
+                cronjob_id: cronjob.id,
+                status: "terminated",
+                started_at: now,
+                completed_at: now,
+                opencode_session_id: "ses-chat-context",
+                session_id: sessionId,
+            },
+        });
+        await request(app)
+            .post(`/api/chat/sessions/${sessionId}/messages`)
+            .set("Authorization", `Bearer ${authSession.opencode_session_id}`)
+            .send({ parts: [{ type: "text", text: "Can you keep going?" }] })
+            .expect(409)
+            .expect((response) => {
+                assert.equal(response.body.message, "This cronjob chat is closed because the run is terminated. Start a new chat or rerun the cronjob.");
+            });
+
         console.log("Chat session context route tests passed");
     } finally {
         globalThis.fetch = originalFetch;

@@ -141,7 +141,7 @@ model cronjobs {
 model cronjob_runs {
   id                         String         @id @default(uuid())
   cronjob_id                 String
-  status                     String // "running" | "success" | "failed" | "skipped"
+  status                     String // prompt: "running" | "paused" | "success" | "failed" | "skipped" | "terminated"; workflow: "running" | "success" | "failed" | "skipped"
   started_at                 BigInt
   completed_at               BigInt?
   workflow_run_id            String?
@@ -165,7 +165,7 @@ model cronjob_run_todos {
   id           String       @id @default(uuid())
   run_id       String
   content      String
-  status       String       // "pending" | "in_progress" | "completed"
+  status       String       // "pending" = not started yet; "in_progress" = current todo; "completed" = finished
   position     Int
   summary      String?
   created_at   BigInt

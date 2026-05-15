@@ -6,11 +6,13 @@ import {
     completeCurrentCronjobRun,
     dispatchCronjobRun,
     getNextRunAt,
+    interruptCronjobRun,
+    resumeCronjobRun,
     scheduleOneCronjob,
+    terminateCronjobRun,
     validateCronjobTarget,
     validateCronjobSchedule,
 } from "./scheduler";
-import { stopCronjobRun } from "../utils/cronjob-stop";
 
 const router = express.Router({ mergeParams: true });
 
@@ -55,14 +57,11 @@ function assertStringArray(value: unknown, label: string): string[] {
     return items;
 }
 
-function assertOptionalInsertIndex(value: unknown): number | null {
-    if (value === undefined || value === null) {
-        return null;
-    }
+function assertInsertIndex(value: unknown): number {
     if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
         throw {
             status: 400,
-            message: "index must be a non-negative integer"
+            message: "index is required and must be a non-negative integer"
         };
     }
     return value;
@@ -183,21 +182,176 @@ function serializeRun(run: {
 }
 
 async function getPromptCronjobRun(opencodeSessionId: string) {
-    const run = await prisma.cronjob_runs.findFirst({
+    const runs = await prisma.cronjob_runs.findMany({
         where: {
             opencode_session_id: opencodeSessionId,
             cronjob: { target_type: "prompt" },
         },
-        select: { id: true, status: true },
+        select: { id: true, status: true, session_id: true },
     });
-    if (!run) {
+    if (runs.length === 0) {
         throw {
             status: 404,
             message: "This is not a prompt cronjob session."
         };
     }
+    if (runs.length > 1) {
+        throw {
+            status: 500,
+            message: "Invariant violation: multiple prompt cronjob runs share one OpenCode session."
+        };
+    }
+    return runs[0];
+}
+
+function assertActivePromptCronjobRun(run: { status: string }): void {
+    if (run.status === "running" || run.status === "paused") return;
+    throw {
+        status: 400,
+        message: `Cronjob session is already finished. Current state is: ${run.status}`
+    };
+}
+
+async function requireActivePromptCronjobRun(opencodeSessionId: string) {
+    const run = await getPromptCronjobRun(opencodeSessionId);
+    assertActivePromptCronjobRun(run);
     return run;
 }
+
+type CronjobTodoRecord = {
+    id: string;
+    run_id: string;
+    content: string;
+    status: string;
+    position: number;
+    summary: string | null;
+    created_at: bigint;
+    completed_at: bigint | null;
+};
+
+function serializeCronjobTodo(todo: CronjobTodoRecord) {
+    return {
+        id: todo.id,
+        run_id: todo.run_id,
+        content: todo.content,
+        status: todo.status,
+        position: todo.position,
+        completionSummary: todo.summary,
+        created_at: todo.created_at,
+        completed_at: todo.completed_at,
+    };
+}
+
+async function getActiveCronjobTodos(runId: string): Promise<CronjobTodoRecord[]> {
+    return prisma.cronjob_run_todos.findMany({
+        where: {
+            run_id: runId,
+            status: { not: "completed" },
+        },
+        orderBy: [
+            { position: "asc" },
+            { created_at: "asc" },
+            { id: "asc" },
+        ],
+    });
+}
+
+async function getCurrentCronjobTodoRecord(runId: string): Promise<CronjobTodoRecord | null> {
+    return prisma.cronjob_run_todos.findFirst({
+        where: {
+            run_id: runId,
+            status: "in_progress",
+        },
+        orderBy: [
+            { position: "asc" },
+            { created_at: "asc" },
+            { id: "asc" },
+        ],
+    });
+}
+
+async function normalizeActiveCronjobTodoPositions(
+    tx: Prisma.TransactionClient,
+    runId: string,
+): Promise<CronjobTodoRecord[]> {
+    const activeTodos = await tx.cronjob_run_todos.findMany({
+        where: {
+            run_id: runId,
+            status: { not: "completed" },
+        },
+        orderBy: [
+            { position: "asc" },
+            { created_at: "asc" },
+            { id: "asc" },
+        ],
+    });
+    await Promise.all(activeTodos.map((todo, position) => (
+        tx.cronjob_run_todos.update({
+            where: { id: todo.id },
+            data: { position },
+        })
+    )));
+    return activeTodos.map((todo, position) => ({
+        ...todo,
+        position,
+    }));
+}
+
+router.post("/runs/ask-user-current", apiHandler(async (req, res) => {
+    if (!req.opencode_session_id) {
+        throw {
+            status: 400,
+            message: "This endpoint requires an opencode session token"
+        };
+    }
+    const message = assertNonEmptyString(req.body?.message, "message");
+    const run = await requireActivePromptCronjobRun(req.opencode_session_id);
+    if (!run.session_id) {
+        throw {
+            status: 400,
+            message: "Cronjob run does not have an AI chat session."
+        };
+    }
+
+    const now = Number(nowMs());
+    if (run.status === "running") {
+        await prisma.$transaction([
+            prisma.chat_sessions.update({
+                where: { id: run.session_id },
+                data: {
+                    visible_to_user: true,
+                    updated_at: now,
+                },
+            }),
+            prisma.cronjob_runs.update({
+                where: { id: run.id },
+                data: { status: "paused" },
+            }),
+        ]);
+    } else {
+        await prisma.chat_sessions.update({
+            where: { id: run.session_id },
+            data: {
+                visible_to_user: true,
+                updated_at: now,
+            },
+        });
+    }
+
+    res.json({ success: true, message });
+}, true));
+
+router.get("/runs/todos/not-completed", apiHandler(async (req, res) => {
+    if (!req.opencode_session_id) {
+        throw {
+            status: 400,
+            message: "This endpoint requires an opencode session token"
+        };
+    }
+    const run = await requireActivePromptCronjobRun(req.opencode_session_id);
+    const todos = await getActiveCronjobTodos(run.id);
+    res.json({ todos: todos.map(serializeCronjobTodo) });
+}, true));
 
 router.get("/", apiHandler(async (req, res) => {
     const cronjobs = await prisma.cronjobs.findMany({
@@ -220,19 +374,21 @@ router.get("/", apiHandler(async (req, res) => {
     const activeRuns = await prisma.cronjob_runs.findMany({
         where: {
             cronjob_id: { in: cronjobs.map((cronjob) => cronjob.id) },
-            status: "running",
+            status: { in: ["running", "paused"] },
         },
         select: { id: true, cronjob_id: true, workflow_run_id: true },
     });
     const activeCronjobIds = new Set(activeRuns.map((run) => run.cronjob_id));
     const activeRunIdByCronjobId = new Map(activeRuns.map((run) => [run.cronjob_id, run.id]));
     const activeWorkflowRunIdByCronjobId = new Map(activeRuns.map((run) => [run.cronjob_id, run.workflow_run_id]));
-    res.json({ cronjobs: cronjobs.map((cronjob) => serializeCronjob({
-        ...cronjob,
-        is_running: activeCronjobIds.has(cronjob.id),
-        current_run_id: activeRunIdByCronjobId.get(cronjob.id) ?? null,
-        current_workflow_run_id: activeWorkflowRunIdByCronjobId.get(cronjob.id) ?? null,
-    })) });
+    res.json({
+        cronjobs: cronjobs.map((cronjob) => serializeCronjob({
+            ...cronjob,
+            is_running: activeCronjobIds.has(cronjob.id),
+            current_run_id: activeRunIdByCronjobId.get(cronjob.id) ?? null,
+            current_workflow_run_id: activeWorkflowRunIdByCronjobId.get(cronjob.id) ?? null,
+        }))
+    });
 }, true));
 
 router.post("/", apiHandler(async (req, res) => {
@@ -269,7 +425,7 @@ router.post("/", apiHandler(async (req, res) => {
     }).catch(throwCronjobNameConflictIfNeeded);
     scheduleOneCronjob(cronjob);
     const activeRun = await prisma.cronjob_runs.findFirst({
-        where: { cronjob_id: cronjob.id, status: "running" },
+        where: { cronjob_id: cronjob.id, status: { in: ["running", "paused"] } },
         select: { id: true },
     });
     res.json({ cronjob: serializeCronjob({ ...cronjob, is_running: activeRun !== null }) });
@@ -297,7 +453,7 @@ router.get("/:id", apiHandler(async (req, res) => {
         throw { status: 404, message: "Cronjob not found" };
     }
     const activeRun = await prisma.cronjob_runs.findFirst({
-        where: { cronjob_id: cronjob.id, status: "running" },
+        where: { cronjob_id: cronjob.id, status: { in: ["running", "paused"] } },
         select: { id: true },
     });
     res.json({ cronjob: serializeCronjob({ ...cronjob, is_running: activeRun !== null }) });
@@ -371,14 +527,14 @@ router.delete("/:id", apiHandler(async (req, res) => {
     const activeRun = await prisma.cronjob_runs.findFirst({
         where: {
             cronjob_id: id,
-            status: "running",
+            status: { in: ["running", "paused"] },
         },
         select: { id: true },
     });
     if (activeRun) {
         throw {
             status: 409,
-            message: "Cronjob is currently running. Stop the running cronjob before deleting it."
+            message: "Cronjob currently has an active run. Terminate the active run before deleting it."
         };
     }
     scheduleOneCronjob({ ...cronjob, enabled: false });
@@ -477,139 +633,180 @@ router.get("/runs/:id", apiHandler(async (req, res) => {
     res.json({ run: serializeRun(run) });
 }, true));
 
-router.post("/runs/:id/stop", apiHandler(async (req, res) => {
+router.post("/runs/:id/interrupt", apiHandler(async (req, res) => {
     const id = req.params.id as string;
     const run = await prisma.cronjob_runs.findFirst({
         where: {
             id,
             cronjob: { user_id: req.userId! },
         },
+        select: { id: true },
     });
     if (!run) {
         throw { status: 404, message: "Cronjob run not found" };
     }
-    if (run.status !== "running") {
-        res.json({ success: true });
-        return;
-    }
-    await stopCronjobRun(run);
+    await interruptCronjobRun(run.id);
     res.json({ success: true });
 }, true));
 
-router.post("/runs/:id/reveal-chat", apiHandler(async (req, res) => {
+router.post("/runs/:id/resume", apiHandler(async (req, res) => {
     const id = req.params.id as string;
     const run = await prisma.cronjob_runs.findFirst({
         where: {
             id,
             cronjob: { user_id: req.userId! },
         },
-        include: {
-            session: true,
-        },
+        select: { id: true },
     });
     if (!run) {
         throw { status: 404, message: "Cronjob run not found" };
     }
-    if (run.status === "running") {
-        throw { status: 400, message: "Cronjob run is still running" };
-    }
-    if (!run.session) {
-        throw { status: 400, message: "Cronjob run does not have an AI chat session" };
-    }
-
-    const session = await prisma.chat_sessions.update({
-        where: { id: run.session.id },
-        data: { visible_to_user: true },
-    });
-    res.json({ session_id: session.id });
+    await resumeCronjobRun(run.id);
+    res.json({ success: true });
 }, true));
 
-router.post("/runs/todos/set-current", apiHandler(async (req, res) => {
-    if (!req.opencode_session_id) {
-        throw {
-            status: 400,
-            message: "This endpoint requires an opencode session token"
-        };
-    }
-    const items = assertStringArray(req.body?.items, "items");
-    const run = await getPromptCronjobRun(req.opencode_session_id);
-    const existingTodo = await prisma.cronjob_run_todos.findFirst({
-        where: { run_id: run.id },
+router.post("/runs/:id/terminate", apiHandler(async (req, res) => {
+    const id = req.params.id as string;
+    const run = await prisma.cronjob_runs.findFirst({
+        where: {
+            id,
+            cronjob: { user_id: req.userId! },
+        },
         select: { id: true },
     });
-    if (existingTodo) {
-        throw {
-            status: 400,
-            message: "Cronjob todo list already exists. Use addCronjobTodos to add more items."
-        };
+    if (!run) {
+        throw { status: 404, message: "Cronjob run not found" };
     }
-    const now = nowMs();
-    await prisma.cronjob_run_todos.createMany({
-        data: items.map((content, index) => ({
-            run_id: run.id,
-            content,
-            status: "pending",
-            position: index,
-            created_at: now,
-        })),
-    });
-    res.json({ success: true, todo_count: items.length });
+    await terminateCronjobRun(run.id);
+    res.json({ success: true });
 }, true));
 
-router.post("/runs/todos/add-current", apiHandler(async (req, res) => {
+async function addCronjobTodosHandler(req: { opencode_session_id?: string; body?: unknown }, res: { json: (body: unknown) => void }) {
     if (!req.opencode_session_id) {
         throw {
             status: 400,
             message: "This endpoint requires an opencode session token"
         };
     }
-    const items = assertStringArray(req.body?.items, "items");
-    const index = assertOptionalInsertIndex(req.body?.index);
-    const run = await getPromptCronjobRun(req.opencode_session_id);
+    const items = assertStringArray((req.body as { items?: unknown } | undefined)?.items, "items");
+    const index = assertInsertIndex((req.body as { index?: unknown } | undefined)?.index);
+    const run = await requireActivePromptCronjobRun(req.opencode_session_id);
     const now = nowMs();
 
-    await prisma.$transaction(async (tx) => {
-        const existingTodos = await tx.cronjob_run_todos.findMany({
-            where: { run_id: run.id },
-            orderBy: { position: "asc" },
-            select: { id: true, status: true },
+    const todos = await prisma.$transaction(async (tx) => {
+        const activeTodos = await tx.cronjob_run_todos.findMany({
+            where: {
+                run_id: run.id,
+                status: { not: "completed" },
+            },
+            orderBy: [
+                { position: "asc" },
+                { created_at: "asc" },
+                { id: "asc" },
+            ],
+            select: { id: true, run_id: true, content: true, status: true, position: true, summary: true, created_at: true, completed_at: true },
         });
-        const pendingTodos = existingTodos.filter((todo) => todo.status === "pending");
-        let insertAt = existingTodos.length;
-        if (index !== null) {
-            const boundedIndex = Math.min(index, pendingTodos.length);
-            const beforePendingTodo = pendingTodos[boundedIndex];
-            insertAt = beforePendingTodo
-                ? existingTodos.findIndex((todo) => todo.id === beforePendingTodo.id)
-                : existingTodos.length;
+        if (index > activeTodos.length) {
+            throw {
+                status: 400,
+                message: `index must be less than or equal to the current active todo count (${activeTodos.length}). If you want to append to the end of the list, use index ${activeTodos.length}. Current todo list: ${JSON.stringify(activeTodos.map(serializeCronjobTodo))}`
+            };
         }
-
-        const beforeTodos = existingTodos.slice(0, insertAt);
-        const afterTodos = existingTodos.slice(insertAt);
+        const insertAt = index;
+        const beforeTodos = activeTodos.slice(0, insertAt);
+        const afterTodos = activeTodos.slice(insertAt);
         await Promise.all(beforeTodos.map((todo, position) => (
             tx.cronjob_run_todos.update({
                 where: { id: todo.id },
                 data: { position },
             })
         )));
-        await tx.cronjob_run_todos.createMany({
-            data: items.map((content, offset) => ({
-                run_id: run.id,
-                content,
-                status: "pending",
-                position: insertAt + offset,
-                created_at: now,
-            })),
-        });
         await Promise.all(afterTodos.map((todo, offset) => (
             tx.cronjob_run_todos.update({
                 where: { id: todo.id },
                 data: { position: insertAt + items.length + offset },
             })
         )));
+        const insertedTodoIds: string[] = [];
+        for (const [offset, content] of items.entries()) {
+            const insertedTodo = await tx.cronjob_run_todos.create({
+                data: {
+                    run_id: run.id,
+                    content,
+                    status: "pending",
+                    position: insertAt + offset,
+                    created_at: now,
+                },
+                select: { id: true },
+            });
+            insertedTodoIds.push(insertedTodo.id);
+        }
+        const normalizedTodos = await normalizeActiveCronjobTodoPositions(tx, run.id);
+        return { normalizedTodos, insertedTodoIds };
     });
 
-    res.json({ success: true, added_count: items.length });
+    res.json({
+        success: true,
+        added_count: items.length,
+        added_todo_ids: todos.insertedTodoIds,
+        todos: todos.normalizedTodos.map(serializeCronjobTodo),
+    });
+}
+
+router.post("/runs/todos/add", apiHandler(async (req, res) => {
+    await addCronjobTodosHandler(req, res);
+}, true));
+
+router.post("/runs/todos/clear", apiHandler(async (req, res) => {
+    if (!req.opencode_session_id) {
+        throw {
+            status: 400,
+            message: "This endpoint requires an opencode session token"
+        };
+    }
+    const todoIds = (req.body as { todo_ids?: unknown } | undefined)?.todo_ids;
+    const explicitTodoIds = todoIds === undefined || todoIds === null ? null : assertStringArray(todoIds, "todo_ids");
+    if (!explicitTodoIds) {
+        throw {
+            status: 400,
+            message: "todo_ids is required"
+        };
+    }
+    const run = await requireActivePromptCronjobRun(req.opencode_session_id);
+    const todos = await getActiveCronjobTodos(run.id);
+    const activeTodoIds = new Set(todos.map((todo) => todo.id));
+    const idsToDelete = (explicitTodoIds ?? []).filter((todoId) => activeTodoIds.has(todoId));
+    if (idsToDelete.length === 0) {
+        throw {
+            status: 400,
+            message: "No matching cronjob todos were found to clear."
+        };
+    }
+
+    let clearedCount = 0;
+    const remainingTodos = await prisma.$transaction(async (tx) => {
+        const deleted = await tx.cronjob_run_todos.deleteMany({
+            where: {
+                run_id: run.id,
+                id: { in: idsToDelete },
+            },
+        });
+        if (deleted.count === 0) {
+            throw {
+                status: 400,
+                message: "No matching cronjob todos were found to clear."
+            };
+        }
+        clearedCount = deleted.count;
+        return normalizeActiveCronjobTodoPositions(tx, run.id);
+    });
+
+    res.json({
+        success: true,
+        cleared_count: clearedCount,
+        cleared_todo_ids: idsToDelete,
+        todos: remainingTodos.map(serializeCronjobTodo),
+    });
 }, true));
 
 router.post("/runs/todos/finish-current", apiHandler(async (req, res) => {
@@ -619,16 +816,9 @@ router.post("/runs/todos/finish-current", apiHandler(async (req, res) => {
             message: "This endpoint requires an opencode session token"
         };
     }
-    const summary = assertNonEmptyString(req.body?.summary, "summary");
-    const run = await getPromptCronjobRun(req.opencode_session_id);
-    const currentTodo = await prisma.cronjob_run_todos.findFirst({
-        where: {
-            run_id: run.id,
-            status: "in_progress",
-        },
-        orderBy: { position: "asc" },
-        select: { id: true },
-    });
+    const completionSummary = assertNonEmptyString(req.body?.completionSummary, "completionSummary");
+    const run = await requireActivePromptCronjobRun(req.opencode_session_id);
+    const currentTodo = await getCurrentCronjobTodoRecord(run.id);
     if (!currentTodo) {
         throw {
             status: 400,
@@ -640,7 +830,7 @@ router.post("/runs/todos/finish-current", apiHandler(async (req, res) => {
         data: {
             status: "completed",
             completed_at: nowMs(),
-            summary,
+            summary: completionSummary,
         },
     });
     res.json({ success: true });
@@ -666,25 +856,10 @@ router.post("/runs/fail-current", apiHandler(async (req, res) => {
         };
     }
     const summary = assertNonEmptyString(req.body?.summary, "summary");
-    const run = await prisma.cronjob_runs.findFirst({
-        where: {
-            opencode_session_id: req.opencode_session_id,
-        },
-    });
-    if (!run) {
-        throw {
-            status: 404,
-            message: "This is not a cronjob session. If this was called via the markCronjobFailed tool, then do not use this tool again."
-        };
-    }
-    if (run.status !== "running") {
-        throw {
-            status: 404,
-            message: `Cronjob is not in running state. Current state is: ${run.status}`
-        };
-    }
-    await prisma.cronjob_runs.update({
-        where: { id: run.id },
+    const run = await getPromptCronjobRun(req.opencode_session_id);
+    assertActivePromptCronjobRun(run);
+    const failedRun = await prisma.cronjob_runs.updateMany({
+        where: { id: run.id, status: { in: ["running", "paused"] } },
         data: {
             status: "failed",
             completed_at: nowMs(),
@@ -692,6 +867,12 @@ router.post("/runs/fail-current", apiHandler(async (req, res) => {
             error_message: summary,
         },
     });
+    if (failedRun.count !== 1) {
+        throw {
+            status: 409,
+            message: "Cronjob run is no longer active."
+        };
+    }
     res.json({ success: true });
 }, true));
 

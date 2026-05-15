@@ -28,13 +28,13 @@ async function main(): Promise<void> {
                 must_change_password: false,
             },
         });
-        const cronjob = await prisma.cronjobs.create({
+        const promptCronjob = await prisma.cronjobs.create({
             data: {
                 user_id: user.id,
-                name: "Running reconcile cronjob",
+                name: "Recoverable prompt cronjob",
                 enabled: false,
                 target_type: "prompt",
-                prompt: "Should be reconciled",
+                prompt: "Should stay running",
                 prompt_allow_workflow_runs_without_permission: true,
                 workflow_slug: null,
                 workflow_input_json: null,
@@ -44,16 +44,39 @@ async function main(): Promise<void> {
                 updated_at: now,
             },
         });
-        const runningCronRun = await prisma.cronjob_runs.create({
+        const workflowCronjob = await prisma.cronjobs.create({
             data: {
-                cronjob_id: cronjob.id,
+                user_id: user.id,
+                name: "Interrupted workflow cronjob",
+                enabled: false,
+                target_type: "workflow",
+                prompt: null,
+                prompt_allow_workflow_runs_without_permission: false,
+                workflow_slug: "reconcile-workflow",
+                workflow_input_json: "{}",
+                cron_expression: "0 9 * * *",
+                timezone: "UTC",
+                created_at: now,
+                updated_at: now,
+            },
+        });
+        const runningPromptCronRun = await prisma.cronjob_runs.create({
+            data: {
+                cronjob_id: promptCronjob.id,
+                status: "running",
+                started_at: now,
+            },
+        });
+        const runningWorkflowCronRun = await prisma.cronjob_runs.create({
+            data: {
+                cronjob_id: workflowCronjob.id,
                 status: "running",
                 started_at: now,
             },
         });
         const completedCronRun = await prisma.cronjob_runs.create({
             data: {
-                cronjob_id: cronjob.id,
+                cronjob_id: promptCronjob.id,
                 status: "success",
                 started_at: now - 1n,
                 completed_at: now,
@@ -85,10 +108,15 @@ async function main(): Promise<void> {
 
         await reconcileRunningCronsAndWorkflowRunsOnStartup();
 
-        const reconciledCronRun = await prisma.cronjob_runs.findUniqueOrThrow({ where: { id: runningCronRun.id } });
-        assert.equal(reconciledCronRun.status, "failed");
-        assert.equal(reconciledCronRun.error_message, "Cronjob run was interrupted because TeamCopilot restarted.");
-        assert.notEqual(reconciledCronRun.completed_at, null);
+        const untouchedPromptCronRun = await prisma.cronjob_runs.findUniqueOrThrow({ where: { id: runningPromptCronRun.id } });
+        assert.equal(untouchedPromptCronRun.status, "running");
+        assert.equal(untouchedPromptCronRun.error_message, null);
+        assert.equal(untouchedPromptCronRun.completed_at, null);
+
+        const reconciledWorkflowCronRun = await prisma.cronjob_runs.findUniqueOrThrow({ where: { id: runningWorkflowCronRun.id } });
+        assert.equal(reconciledWorkflowCronRun.status, "failed");
+        assert.equal(reconciledWorkflowCronRun.error_message, "Workflow cronjob run was interrupted because TeamCopilot restarted.");
+        assert.notEqual(reconciledWorkflowCronRun.completed_at, null);
 
         const untouchedCronRun = await prisma.cronjob_runs.findUniqueOrThrow({ where: { id: completedCronRun.id } });
         assert.equal(untouchedCronRun.status, "success");

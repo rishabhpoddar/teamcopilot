@@ -33,7 +33,7 @@ import {
     normalizeWorkspaceRelativePath,
 } from "../utils/chat-session-file-diff";
 import { syncChatSessionUsage } from "../utils/chat-usage";
-import { stopCronjobRun } from "../utils/cronjob-stop";
+import { interruptCronjobRun } from "../cronjobs/scheduler";
 import {
     ACTUAL_USER_MESSAGE_MARKER,
     buildAvailableSecretsPrompt,
@@ -530,8 +530,28 @@ router.get('/sessions', apiHandler(async (req, res) => {
             opencode_session_id: true
         }
     });
+    const controllableCronjobRuns = await prisma.cronjob_runs.findMany({
+        where: {
+            session_id: { in: validSessions.map((session) => session.id) },
+            cronjob: { target_type: "prompt" },
+            status: { in: ["running", "paused"] },
+        },
+        orderBy: { started_at: "desc" },
+        select: {
+            id: true,
+            session_id: true,
+            status: true,
+        },
+    });
+    const controllableRunBySessionId = new Map<string, (typeof controllableCronjobRuns)[number]>();
+    for (const run of controllableCronjobRuns) {
+        assertCondition(run.session_id, "Controllable cronjob run is missing chat session id");
+        if (controllableRunBySessionId.has(run.session_id)) continue;
+        controllableRunBySessionId.set(run.session_id, run);
+    }
 
     const enrichedSessions = await Promise.all(validSessions.map(async (session) => {
+        const controllableRun = controllableRunBySessionId.get(session.id);
         const latestAssistantMessageId = await loadLatestAssistantMessageIdForSession(
             client,
             session.opencode_session_id
@@ -558,7 +578,16 @@ router.get('/sessions', apiHandler(async (req, res) => {
             created_at: session.created_at,
             updated_at: session.updated_at,
             state: sessionState.state,
-            latest_message_id: sessionState.latest_message_id
+            latest_message_id: sessionState.latest_message_id,
+            cronjob_control: controllableRun
+                ? {
+                    run_id: controllableRun.id,
+                    status: controllableRun.status,
+                    can_interrupt: controllableRun.status === "running",
+                    can_resume: controllableRun.status === "paused",
+                    can_terminate: true,
+                }
+                : null,
         };
     }));
 
@@ -957,6 +986,22 @@ router.post('/sessions/:id/messages', apiHandler(async (req, res) => {
         };
     }
 
+    const terminalCronjobRun = await prisma.cronjob_runs.findFirst({
+        where: {
+            session_id: id,
+            cronjob: { target_type: "prompt" },
+            status: { in: ["success", "failed", "terminated", "skipped"] },
+        },
+        orderBy: { started_at: "desc" },
+        select: { status: true },
+    });
+    if (terminalCronjobRun) {
+        throw {
+            status: 409,
+            message: `This cronjob chat is closed because the run is ${terminalCronjobRun.status}. Start a new chat or rerun the cronjob.`
+        };
+    }
+
     const pendingQuestion = await getPendingQuestionForSession(session.opencode_session_id);
     if (pendingQuestion) {
         throw {
@@ -1304,13 +1349,14 @@ router.post('/sessions/:id/abort', apiHandler(async (req, res) => {
         },
     });
     if (runningCronRun) {
-        await stopCronjobRun(runningCronRun);
+        await interruptCronjobRun(runningCronRun.id);
     } else {
         await abortOpencodeSession(session.opencode_session_id);
     }
 
     res.json({
-        success: true
+        success: true,
+        cronjob_run_id: runningCronRun?.id ?? null,
     });
 }, true));
 

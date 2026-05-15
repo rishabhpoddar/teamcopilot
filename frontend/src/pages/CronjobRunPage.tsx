@@ -53,8 +53,7 @@ export default function CronjobRunPage() {
     const runId = params.id as string;
     const [run, setRun] = useState<CronjobRun | null>(null);
     const [loading, setLoading] = useState(true);
-    const [stopping, setStopping] = useState(false);
-    const [revealingChat, setRevealingChat] = useState(false);
+    const [acting, setActing] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
 
     usePageTitle('Cronjob Run');
@@ -105,38 +104,36 @@ export default function CronjobRunPage() {
             updated_at: run.completed_at ?? Date.now(),
             state: run.status === 'running' ? 'processing' : 'idle',
             latest_message_id: null,
+            cronjob_control: run.target_type_snapshot === 'prompt' && ['running', 'paused'].includes(run.status)
+                ? {
+                    run_id: run.id,
+                    status: run.status as 'running' | 'paused',
+                    can_interrupt: run.status === 'running',
+                    can_resume: run.status === 'paused',
+                    can_terminate: true,
+                }
+                : null,
         };
     }, [run]);
 
-    const stopRun = async () => {
-        if (!token || !run || run.status !== 'running') return;
-        setStopping(true);
+    const runAction = async (action: 'interrupt' | 'resume' | 'terminate') => {
+        if (!token || !run) return;
+        setActing(action);
         try {
-            await axiosInstance.post(`/api/cronjobs/runs/${run.id}/stop`, {}, {
+            await axiosInstance.post(`/api/cronjobs/runs/${run.id}/${action}`, {}, {
                 headers: { Authorization: `Bearer ${token}` }
             });
-            toast.success('Cronjob run stopped');
+            const actionPastTense = action === 'resume'
+                ? 'resumed'
+                : action === 'interrupt'
+                    ? 'interrupted'
+                    : 'terminated';
+            toast.success(`Cronjob run ${actionPastTense}`);
             await loadRun({ showLoading: false });
         } catch (err: unknown) {
-            toast.error(getErrorMessage(err, 'Failed to stop cronjob run'));
+            toast.error(getErrorMessage(err, `Failed to ${action} cronjob run`));
         } finally {
-            setStopping(false);
-        }
-    };
-
-    const moveToAiChat = async () => {
-        if (!token || !run || run.status === 'running') return;
-        setRevealingChat(true);
-        try {
-            const response = await axiosInstance.post(`/api/cronjobs/runs/${run.id}/reveal-chat`, {}, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            const sessionId = String(response.data.session_id);
-            navigate(`/?tab=ai&session=${encodeURIComponent(sessionId)}`);
-        } catch (err: unknown) {
-            toast.error(getErrorMessage(err, 'Failed to move cronjob run to AI chat'));
-        } finally {
-            setRevealingChat(false);
+            setActing(null);
         }
     };
 
@@ -168,18 +165,19 @@ export default function CronjobRunPage() {
                 <div className="cronjob-run-status-card">
                     <span>Status</span>
                     <strong>{statusLabel(run.status)}</strong>
-                    {run.status === 'running' && (
-                        <button className="cronjob-run-stop-btn" onClick={stopRun} disabled={stopping}>
-                            {stopping ? 'Stopping...' : 'Stop run'}
+                    {run.target_type_snapshot === 'prompt' && run.status === 'running' && (
+                        <button className="cronjob-run-stop-btn" onClick={() => runAction('interrupt')} disabled={acting !== null}>
+                            {acting === 'interrupt' ? 'Interrupting...' : 'Interrupt'}
                         </button>
                     )}
-                    {run.status !== 'running' && (
-                        <button
-                            className="cronjob-run-ai-btn"
-                            onClick={moveToAiChat}
-                            disabled={revealingChat}
-                        >
-                            {revealingChat ? 'Opening chat...' : 'Move to AI chat'}
+                    {run.target_type_snapshot === 'prompt' && run.status === 'paused' && (
+                        <button className="cronjob-run-ai-btn" onClick={() => runAction('resume')} disabled={acting !== null}>
+                            {acting === 'resume' ? 'Resuming...' : 'Resume'}
+                        </button>
+                    )}
+                    {((run.target_type_snapshot === 'prompt' && ['running', 'paused'].includes(run.status)) || (run.target_type_snapshot === 'workflow' && run.status === 'running')) && (
+                        <button className="cronjob-run-stop-btn" onClick={() => runAction('terminate')} disabled={acting !== null}>
+                            {acting === 'terminate' ? 'Terminating...' : 'Terminate'}
                         </button>
                     )}
                 </div>

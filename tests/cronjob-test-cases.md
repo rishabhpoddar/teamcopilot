@@ -28,15 +28,15 @@ This checklist tracks regression coverage for the cronjob branch diff against `m
 - [x] Patch preserves omitted fields. Covered by `tests/cronjob-routes.test.ts`.
 - [x] List marks active runs and latest run snapshots. Covered by `tests/cronjob-routes.test.ts`.
 - [x] Manual run rejects if a run is already active. Covered by `tests/cronjob-routes.test.ts`.
-- [x] Stop marks running prompt cronjob runs failed. Covered by `tests/cronjob-routes.test.ts`.
-- [x] Stop is idempotent for non-running runs. Covered by `tests/cronjob-routes.test.ts`.
+- [x] Terminate marks running prompt cronjob runs terminated. Covered by `tests/cronjob-routes.test.ts`.
+- [x] Terminate is idempotent for non-active runs. Covered by `tests/cronjob-routes.test.ts`.
 - [x] Users cannot fetch another user's cronjob. Covered by `tests/cronjob-routes.test.ts`.
 - [x] Run history serializes prompt snapshots. Covered by `tests/cronjob-routes.test.ts`.
 - [x] Deleting non-running cronjobs cascades run history. Covered by `tests/cronjob-routes.test.ts`.
 - [x] Deleting running cronjobs is rejected. Covered by `tests/cronjob-delete-route.test.ts`.
 - [x] Enable and disable endpoints update schedule state and serialized `next_run_at`. Covered by `tests/cronjob-routes.test.ts`.
-- [x] Missing cronjobs return 404 for get, patch, enable, disable, run-now, runs, stop. Covered by `tests/cronjob-routes.test.ts`.
-- [x] Another user cannot list or stop another user's cronjob run. Covered by `tests/cronjob-routes.test.ts`.
+- [x] Missing cronjobs return 404 for get, patch, enable, disable, run-now, runs, terminate. Covered by `tests/cronjob-routes.test.ts`.
+- [x] Another user cannot list or terminate another user's cronjob run. Covered by `tests/cronjob-routes.test.ts`.
 - [x] Patch can switch prompt to workflow target and clear prompt fields. Covered by `tests/cronjob-workflow-target.test.ts`.
 - [x] Patch can switch workflow to prompt target and clear workflow fields. Covered by `tests/cronjob-workflow-target.test.ts`.
 
@@ -64,14 +64,14 @@ This checklist tracks regression coverage for the cronjob branch diff against `m
 - [x] `complete-current` rejects already completed runs. Covered by `tests/cronjob-completion-route.test.ts`.
 - [x] `fail-current` marks only running current cronjob run failed with summary and error message. Covered by `tests/cronjob-completion-route.test.ts`.
 
-## Stopping And Recovery
+## Termination And Recovery
 
 - [x] Startup reconciliation fails running cronjob runs. Covered by `tests/reconcile-running-crons-and-workflows.test.ts`.
 - [x] Startup reconciliation fails running workflow runs. Covered by `tests/reconcile-running-crons-and-workflows.test.ts`.
 - [x] Startup reconciliation leaves completed runs unchanged. Covered by `tests/reconcile-running-crons-and-workflows.test.ts`.
-- [x] Stopping a workflow cronjob marks the linked workflow session aborted. Covered by `tests/cronjob-stop-helper.test.ts`.
-- [x] Stopping a prompt cronjob aborts the OpenCode session and marks the run failed. Covered by `tests/cronjob-stop-helper.test.ts`.
-- [x] Stopping an already terminal cronjob run is a no-op. Covered by `tests/cronjob-stop-helper.test.ts`.
+- [x] Terminating a workflow cronjob marks the linked workflow session aborted. Covered by `tests/cronjob-stop-helper.test.ts`.
+- [x] Terminating a prompt cronjob marks the run terminated. Covered by `tests/cronjob-stop-helper.test.ts`.
+- [x] Terminating an already terminal cronjob run is a no-op. Covered by `tests/cronjob-stop-helper.test.ts`.
 
 ## Chat Session Attention And First-Message Context
 

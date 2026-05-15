@@ -66,6 +66,17 @@ async function main(): Promise<void> {
                 session_id: completeSession.id,
             },
         });
+        await prisma.cronjob_run_todos.create({
+            data: {
+                run_id: completeRun.id,
+                content: "Complete the requested cronjob task",
+                status: "completed",
+                position: 0,
+                summary: "Task completed",
+                created_at: now,
+                completed_at: now,
+            },
+        });
 
         const app = createApp();
         await request(app)
@@ -84,12 +95,21 @@ async function main(): Promise<void> {
         assert.notEqual(completedRun.completed_at, null);
 
         await request(app)
+            .post("/api/cronjobs/runs/todos/add")
+            .set("Authorization", `Bearer ${completeSession.opencode_session_id}`)
+            .send({ items: ["Should not mutate completed runs"], index: 0 })
+            .expect(400)
+            .expect((response) => {
+                assert.equal(response.body.message, "Cronjob session is already finished. Current state is: success");
+            });
+
+        await request(app)
             .post("/api/cronjobs/runs/complete-current")
             .set("Authorization", `Bearer ${completeSession.opencode_session_id}`)
             .send({ summary: "Should not complete twice" })
             .expect(404)
             .expect((response) => {
-                assert.equal(response.body.message, "Cronjob is not in running state. Current state is: success");
+                assert.equal(response.body.message, "Cronjob is not active. Current state is: success");
             });
 
         const failSession = await prisma.chat_sessions.create({

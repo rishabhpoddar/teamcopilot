@@ -1,6 +1,7 @@
 import { CronJob, CronTime } from "cron";
 import { randomUUID } from "crypto";
 import prisma from "../prisma/client";
+import { Prisma } from "../../prisma/generated/client";
 import {
     getOpencodeClient,
     listPendingPermissions,
@@ -20,15 +21,51 @@ import {
 } from "../utils/chat-prompt-context";
 import type { CronjobSchedule, CronjobTargetType } from "../types/cronjob";
 import { assertUserCanRunWorkflow } from "../utils/workflow-run-validation";
+import { abortOpencodeSession } from "../utils/session-abort";
+import { markWorkflowSessionAborted } from "../utils/workflow-interruption";
 
 const CRONJOB_MONITOR_INTERVAL_MS = 5000;
 
 const scheduledJobs = new Map<string, CronJob>();
-const runningMonitors = new Map<string, NodeJS.Timeout>();
+const runningMonitors = new Map<string, NodeJS.Timeout | null>();
 type CronjobDispatchMode = "scheduled" | "manual";
 
 function nowMs(): bigint {
     return BigInt(Date.now());
+}
+
+function throwCronjobAlreadyActive(): never {
+    throw {
+        status: 409,
+        message: "Cronjob already has an active run. Wait for it to finish, resume it, or terminate it first."
+    };
+}
+
+function isRunningRunUniquenessError(err: unknown): boolean {
+    return err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002";
+}
+
+function throwIfRunningRunUniquenessError(err: unknown): never {
+    if (isRunningRunUniquenessError(err)) {
+        throwCronjobAlreadyActive();
+    }
+    throw err;
+}
+
+async function abortOpencodeSessionBestEffort(opencodeSessionId: string): Promise<void> {
+    try {
+        await abortOpencodeSession(opencodeSessionId);
+    } catch (err) {
+        console.error("Failed to abort OpenCode session after cronjob state transition:", err);
+    }
+}
+
+async function markWorkflowSessionAbortedBestEffort(sessionId: string): Promise<void> {
+    try {
+        await markWorkflowSessionAborted(sessionId);
+    } catch (err) {
+        console.error("Failed to abort workflow session after cronjob state transition:", err);
+    }
 }
 
 function assertTimezone(timezone: string): void {
@@ -203,13 +240,15 @@ async function buildCronjobPrompt(args: {
         "",
         "This is an unattended scheduled TeamCopilot cronjob run.",
         "Treat the cronjob prompt below as the task to execute.",
-        "Do not attempt to shortcut / automate the task to save time unless you are told to - it's OK if your agentic loop runs for several hours even.",
-        "First thing you must do is understand the task and call setCronjobTodos with a granular todo list. Do not start executing the task until TeamCopilot gives you the first current todo item.",
+        "First thing you must do is understand the task. If it refers to skills / workflows, read them first. Then, based on the instructions from the task and the files you read, call addCronjobTodos with a granular todo list. Do not start executing the task until TeamCopilot gives you the first current todo item.",
+        "The todo list is editable by you. Use getCurrentCronjobTodo to inspect the current todo (returns up to one item with its id) and getCronjobTodos to inspect the active todo list (returns all active todo ids and contents).",
+        "Use addCronjobTodos to insert new todo items anywhere in the active todo list. Use clearCronjobTodos to remove one or more active todo items from the list by todo id.",
         "After planning, TeamCopilot will give you exactly one current todo item at a time in this same session.",
-        "When working on a current todo item, work only on that item. If you discover more required work, call addCronjobTodos.",
-        "When the current todo item is complete, call finishCurrentCronjobTodo and then stop. TeamCopilot will give you the next todo item.",
+        "When working on a current todo item, work only on that item. If you discover more required work, call addCronjobTodos or clearCronjobTodos as needed. Refer to todos by id, not by position.",
+        "When the current todo item is complete, call finishCurrentCronjobTodo with a concise completion summary and then stop. TeamCopilot will give you the next todo item.",
         "Keep working until every todo item needed for the requested cronjob task is complete or the loop is blocked by a real permission, tool question, or safety boundary.",
         "Do not ask the user questions unless the task explicitly requires user approval or clarification that cannot be safely inferred.",
+        "If you need to ask the user for input or notify them that the cronjob needs their attention, call askCronjobUser with the message. This reveals the hidden cronjob chat to the user and pauses the auto-continue loop until the user explicitly resumes the cronjob.",
         "If the task cannot be finished because of a non-recoverable issue, call markCronjobFailed with a concise reason instead of leaving the run hanging.",
         "The only way to mark this cronjob finished successfully is to call the markCronjobCompleted tool.",
         "markCronjobCompleted will fail until all TeamCopilot cronjob todos have been finished.",
@@ -359,7 +398,7 @@ function buildCronjobPlanningReminderPrompt(): string {
         "# Cronjob planning required",
         "",
         "You must create the TeamCopilot cronjob todo list before doing any task work.",
-        "Call setCronjobTodos with granular todo items that cover the requested cronjob task.",
+        "Call addCronjobTodos with granular todo items that cover the requested cronjob task.",
         "Do not execute the task yet. TeamCopilot will give you the first current todo item after the todo list is saved."
     ].join("\n");
 }
@@ -372,7 +411,8 @@ function buildCronjobCurrentTodoPrompt(todo: CronjobTodoForPrompt): string {
         "",
         "Work only on this todo item.",
         "If you discover additional required work, call addCronjobTodos.",
-        "When this todo item is fully complete, call finishCurrentCronjobTodo with a concise summary, then stop.",
+        "If you want to inspect the current todo again, use getCurrentCronjobTodo.",
+        "When this todo item is fully complete, call finishCurrentCronjobTodo with a concise completion summary, then stop.",
         "Do not work on later todo items until TeamCopilot gives them to you.",
         "Do not call markCronjobCompleted while a current todo item is active."
     ].join("\n");
@@ -387,11 +427,11 @@ function buildCronjobCurrentTodoContinuationPrompt(todo: CronjobTodoForPrompt, i
         `Current todo: ${todo.content}`,
         "",
         "Continue this todo item only.",
-        "If this todo item is complete, call finishCurrentCronjobTodo with a concise summary, then stop.",
+        "If this todo item is complete, call finishCurrentCronjobTodo with a concise completion summary, then stop.",
         "If more work is required, take the next concrete step for this todo item.",
-        "If you discover additional required work, call addCronjobTodos.",
+        "If you discover additional required work, call addCronjobTodos or clearCronjobTodos.",
         "If the task cannot continue, call markCronjobFailed.",
-        "If you truly need user input that cannot be safely inferred, use the existing question tool.",
+        "If you truly need user input that cannot be safely inferred, call askCronjobUser with the message for the user.",
         "",
         "Do not switch to another todo item."
     ].join("\n");
@@ -404,19 +444,21 @@ function buildCronjobFinalReviewPrompt(): string {
         "All TeamCopilot cronjob todos are marked complete.",
         "Review the original cronjob task and the work completed in this session.",
         "If the requested task is 100% complete, call markCronjobCompleted with a concise run-history summary.",
-        "If required work is still missing, call addCronjobTodos with the missing todo items.",
+        "If required work is still missing, call addCronjobTodos with the new todo items.",
         "If the task cannot be completed, call markCronjobFailed with a concise reason.",
-        "If you truly need user input that cannot be safely inferred, use the existing question tool."
+        "If you truly need user input that cannot be safely inferred, call askCronjobUser with the message for the user."
     ].join("\n");
 }
 
-function monitorCronjobRun(runId: string, opencodeSessionId: string, timeoutAtMs: number): void {
+async function monitorCronjobRun(runId: string, opencodeSessionId: string, timeoutAtMs: number): Promise<void> {
     if (runningMonitors.has(runId)) return;
+    runningMonitors.set(runId, null);
 
     let revealedForUserInput = false;
     let isChecking = false;
     let continuationCount = 0;
-    const interval = setInterval(async () => {
+    let interval: NodeJS.Timeout;
+    const check = async () => {
         if (isChecking) {
             return;
         }
@@ -531,8 +573,179 @@ function monitorCronjobRun(runId: string, opencodeSessionId: string, timeoutAtMs
         } finally {
             isChecking = false;
         }
+    };
+    interval = setInterval(() => {
+        void check();
     }, CRONJOB_MONITOR_INTERVAL_MS);
     runningMonitors.set(runId, interval);
+}
+
+export async function resumeCronjobRun(runId: string): Promise<void> {
+    const run = await prisma.cronjob_runs.findUnique({
+        where: { id: runId },
+        include: {
+            cronjob: {
+                select: {
+                    target_type: true,
+                    cron_expression: true,
+                    timezone: true,
+                },
+            },
+        },
+    });
+    if (!run) {
+        throw {
+            status: 404,
+            message: "Cronjob run not found"
+        };
+    }
+    if (run.cronjob.target_type !== "prompt" || !run.opencode_session_id || !run.session_id) {
+        throw {
+            status: 400,
+            message: "Only prompt cronjob chats can be resumed."
+        };
+    }
+    if (run.status !== "paused") {
+        throw {
+            status: 400,
+            message: `Only paused prompt cronjob runs can be resumed. Current status is: ${run.status}`
+        };
+    }
+    const opencodeSessionId = run.opencode_session_id;
+    const sessionId = run.session_id;
+    try {
+        await prisma.$transaction(async (tx) => {
+            const resumedRun = await tx.cronjob_runs.updateMany({
+                where: { id: run.id, status: "paused" },
+                data: {
+                    status: "running",
+                    completed_at: null,
+                    error_message: null,
+                    summary: null,
+                },
+            });
+            if (resumedRun.count !== 1) {
+                throw {
+                    status: 409,
+                    message: "Cronjob run is no longer paused."
+                };
+            }
+            await tx.chat_sessions.update({
+                where: { id: sessionId },
+                data: { updated_at: Number(nowMs()) },
+            });
+        });
+    } catch (err) {
+        throwIfRunningRunUniquenessError(err);
+    }
+
+    await monitorCronjobRun(run.id, opencodeSessionId, getCronjobTimeoutAt({
+        cron_expression: run.cronjob.cron_expression,
+        timezone: run.cronjob.timezone,
+    }, Number(run.started_at)));
+}
+
+async function recoverRunningPromptCronjobRun(runId: string): Promise<void> {
+    const run = await prisma.cronjob_runs.findUnique({
+        where: { id: runId },
+        include: {
+            cronjob: {
+                select: {
+                    target_type: true,
+                    cron_expression: true,
+                    timezone: true,
+                },
+            },
+        },
+    });
+    if (!run || run.status !== "running" || run.cronjob.target_type !== "prompt" || !run.opencode_session_id) return;
+    await monitorCronjobRun(run.id, run.opencode_session_id, getCronjobTimeoutAt({
+        cron_expression: run.cronjob.cron_expression,
+        timezone: run.cronjob.timezone,
+    }, Number(run.started_at)));
+}
+
+export async function interruptCronjobRun(runId: string): Promise<void> {
+    const run = await prisma.cronjob_runs.findUnique({
+        where: { id: runId },
+        include: {
+            cronjob: { select: { target_type: true } },
+        },
+    });
+    if (!run) {
+        throw { status: 404, message: "Cronjob run not found" };
+    }
+    if (run.cronjob.target_type !== "prompt" || !run.opencode_session_id || !run.session_id) {
+        throw { status: 400, message: "Only prompt cronjob runs can be interrupted." };
+    }
+    if (run.status !== "running") {
+        throw { status: 400, message: `Only running cronjob runs can be interrupted. Current status is: ${run.status}` };
+    }
+    const sessionId = run.session_id;
+    const opencodeSessionId = run.opencode_session_id;
+
+    await prisma.$transaction(async (tx) => {
+        const interruptedRun = await tx.cronjob_runs.updateMany({
+            where: { id: run.id, status: "running" },
+            data: { status: "paused" },
+        });
+        if (interruptedRun.count !== 1) {
+            throw { status: 409, message: "Cronjob run is no longer running." };
+        }
+        await tx.chat_sessions.update({
+            where: { id: sessionId },
+            data: {
+                visible_to_user: true,
+                updated_at: Number(nowMs()),
+            },
+        });
+    });
+    await abortOpencodeSessionBestEffort(opencodeSessionId);
+}
+
+export async function terminateCronjobRun(runId: string): Promise<void> {
+    const run = await prisma.cronjob_runs.findUnique({
+        where: { id: runId },
+        include: {
+            cronjob: { select: { target_type: true } },
+        },
+    });
+    if (!run) {
+        throw { status: 404, message: "Cronjob run not found" };
+    }
+    if (!["running", "paused"].includes(run.status)) {
+        return;
+    }
+
+    const terminatedRun = await prisma.cronjob_runs.updateMany({
+        where: {
+            id: run.id,
+            status: { in: ["running", "paused"] },
+        },
+        data: {
+            status: run.cronjob.target_type === "prompt" ? "terminated" : "failed",
+            completed_at: nowMs(),
+            error_message: "Cronjob run was terminated by the user.",
+        },
+    });
+    if (terminatedRun.count !== 1) {
+        return;
+    }
+
+    if (run.cronjob.target_type === "prompt") {
+        if (run.status === "running") {
+            await abortOpencodeSessionBestEffort(run.opencode_session_id!);
+        }
+        return;
+    }
+
+    const workflowRun = await prisma.workflow_runs.findUnique({
+        where: { id: run.workflow_run_id! },
+        select: { session_id: true },
+    });
+    if (workflowRun?.session_id) {
+        await markWorkflowSessionAbortedBestEffort(workflowRun.session_id);
+    }
 }
 
 export async function dispatchCronjobRun(cronjobId: string, mode: CronjobDispatchMode = "scheduled"): Promise<string> {
@@ -550,7 +763,7 @@ export async function dispatchCronjobRun(cronjobId: string, mode: CronjobDispatc
     const activeRun = await prisma.cronjob_runs.findFirst({
         where: {
             cronjob_id: cronjob.id,
-            status: "running",
+            status: { in: ["running", "paused"] },
         },
         select: { id: true }
     });
@@ -558,21 +771,27 @@ export async function dispatchCronjobRun(cronjobId: string, mode: CronjobDispatc
         if (mode === "scheduled") {
             return await createSkippedCronjobRun(cronjob.id);
         }
-        throw {
-            status: 409,
-            message: "Cronjob is already running. Wait for the active run to finish, or stop it and run this cronjob again."
-        };
+        throwCronjobAlreadyActive();
     }
 
     if (cronjob.target_type === "workflow") {
         const now = nowMs();
-        const run = await prisma.cronjob_runs.create({
-            data: {
-                cronjob_id: cronjob.id,
-                status: "running",
-                started_at: now,
-            },
-        });
+        let run: { id: string };
+        try {
+            run = await prisma.cronjob_runs.create({
+                data: {
+                    cronjob_id: cronjob.id,
+                    status: "running",
+                    started_at: now,
+                },
+                select: { id: true },
+            });
+        } catch (err) {
+            if (isRunningRunUniquenessError(err) && mode === "scheduled") {
+                return await createSkippedCronjobRun(cronjob.id);
+            }
+            throwIfRunningRunUniquenessError(err);
+        }
         try {
             const workflowSlug = assertNonEmptyString(cronjob.workflow_slug, "workflow_slug");
             const workflowInputs = parseWorkflowInputJson(cronjob.workflow_input_json);
@@ -613,25 +832,37 @@ export async function dispatchCronjobRun(cronjobId: string, mode: CronjobDispatc
     }
 
     const now = nowMs();
-    const chatSession = await prisma.chat_sessions.create({
-        data: {
-            user_id: cronjob.user_id,
-            opencode_session_id: sessionResult.data.id,
-            title: `Cronjob: ${cronjob.name}`,
-            visible_to_user: false,
-            created_at: Number(now),
-            updated_at: Number(now),
-        },
-    });
-    const run = await prisma.cronjob_runs.create({
-        data: {
-            cronjob_id: cronjob.id,
-            status: "running",
-            started_at: now,
-            opencode_session_id: sessionResult.data.id,
-            session_id: chatSession.id,
-        },
-    });
+    let run: { id: string };
+    try {
+        run = await prisma.$transaction(async (tx) => {
+            const chatSession = await tx.chat_sessions.create({
+                data: {
+                    user_id: cronjob.user_id,
+                    opencode_session_id: sessionResult.data.id,
+                    title: `Cronjob: ${cronjob.name}`,
+                    visible_to_user: false,
+                    created_at: Number(now),
+                    updated_at: Number(now),
+                },
+                select: { id: true },
+            });
+            return await tx.cronjob_runs.create({
+                data: {
+                    cronjob_id: cronjob.id,
+                    status: "running",
+                    started_at: now,
+                    opencode_session_id: sessionResult.data.id,
+                    session_id: chatSession.id,
+                },
+                select: { id: true },
+            });
+        });
+    } catch (err) {
+        if (isRunningRunUniquenessError(err) && mode === "scheduled") {
+            return await createSkippedCronjobRun(cronjob.id);
+        }
+        throwIfRunningRunUniquenessError(err);
+    }
 
     const runtimePrompt = await buildCronjobPrompt({
         cronjobName: cronjob.name,
@@ -649,7 +880,7 @@ export async function dispatchCronjobRun(cronjobId: string, mode: CronjobDispatc
         throw new Error("Failed to send cronjob prompt to opencode");
     }
 
-    monitorCronjobRun(run.id, sessionResult.data.id, getCronjobTimeoutAt({
+    await monitorCronjobRun(run.id, sessionResult.data.id, getCronjobTimeoutAt({
         cron_expression: cronjob.cron_expression,
         timezone: cronjob.timezone,
     }, Number(now)));
@@ -680,6 +911,18 @@ export function scheduleOneCronjob(cronjob: {
 }
 
 export async function startUserCronjobScheduler(): Promise<void> {
+    const recoverablePromptRuns = await prisma.cronjob_runs.findMany({
+        where: {
+            status: "running",
+            opencode_session_id: { not: null },
+            cronjob: { target_type: "prompt" },
+        },
+        select: { id: true },
+    });
+    for (const run of recoverablePromptRuns) {
+        await recoverRunningPromptCronjobRun(run.id);
+    }
+
     const cronjobs = await prisma.cronjobs.findMany({
         where: { enabled: true },
         select: {
@@ -695,21 +938,29 @@ export async function startUserCronjobScheduler(): Promise<void> {
 }
 
 export async function completeCurrentCronjobRun(opencodeSessionId: string, summary: string): Promise<void> {
-    const run = await prisma.cronjob_runs.findFirst({
+    const runs = await prisma.cronjob_runs.findMany({
         where: {
             opencode_session_id: opencodeSessionId,
+            cronjob: { target_type: "prompt" },
         },
     });
-    if (!run) {
+    if (runs.length === 0) {
         throw {
             status: 404,
             message: "This is not a cronjob session. If this was called via the markCronjobCompleted tool, then do not use this tool again."
         };
     }
-    if (run.status !== "running") {
+    if (runs.length > 1) {
+        throw {
+            status: 500,
+            message: "Invariant violation: multiple prompt cronjob runs share one OpenCode session."
+        };
+    }
+    const run = runs[0];
+    if (!["running", "paused"].includes(run.status)) {
         throw {
             status: 404,
-            message: `Cronjob is not in running state. Current state is: ${run.status}`
+            message: `Cronjob is not active. Current state is: ${run.status}`
         };
     }
     const unfinishedTodo = await prisma.cronjob_run_todos.findFirst({
@@ -732,16 +983,22 @@ export async function completeCurrentCronjobRun(opencodeSessionId: string, summa
     if (todoCount === 0) {
         throw {
             status: 400,
-            message: "Cronjob cannot be marked complete before setCronjobTodos has created and finishCurrentCronjobTodo has completed the todo list."
+            message: "Cronjob cannot be marked complete before addCronjobTodos has created and finishCurrentCronjobTodo has completed the todo list."
         };
     }
 
-    await prisma.cronjob_runs.update({
-        where: { id: run.id },
+    const completedRun = await prisma.cronjob_runs.updateMany({
+        where: { id: run.id, status: { in: ["running", "paused"] } },
         data: {
             status: "success",
             completed_at: nowMs(),
             summary,
         },
     });
+    if (completedRun.count !== 1) {
+        throw {
+            status: 409,
+            message: "Cronjob run is no longer active."
+        };
+    }
 }
