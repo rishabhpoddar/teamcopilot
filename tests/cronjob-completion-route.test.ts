@@ -97,7 +97,7 @@ async function main(): Promise<void> {
         await request(app)
             .post("/api/cronjobs/runs/todos/add")
             .set("Authorization", `Bearer ${completeSession.opencode_session_id}`)
-            .send({ items: ["Should not mutate completed runs"] })
+            .send({ items: ["Should not mutate completed runs"], index: 0 })
             .expect(400)
             .expect((response) => {
                 assert.equal(response.body.message, "Cronjob session is already finished. Current state is: success");

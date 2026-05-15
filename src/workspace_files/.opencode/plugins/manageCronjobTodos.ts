@@ -104,15 +104,14 @@ export const ManageCronjobTodosPlugin: Plugin = async ({ client }) => {
     tool: {
       addCronjobTodos: tool({
         description:
-          "Add new todo items to the active TeamCopilot cronjob todo list. Omit index to append to the end of the active list. Example: if the active list is [A, B, C], then addCronjobTodos({ items: [\"X\", \"Y\"], index: 1 }) produces [A, X, Y, B, C]. If you pass an index that is greater than or equal to the current active todo count, the tool fails and returns the current todo list so you can pick a valid insertion point. To make sure that you use the right index, always call getCronjobTodos right before calling this tool.",
+          "Add new todo items to the active TeamCopilot cronjob todo list. You must always pass an index. Example: if the active list is [A, B, C], then addCronjobTodos({ items: [\"X\", \"Y\"], index: 1 }) produces [A, X, Y, B, C]. If you want to insert at the start of the list, use index 0. If you want to append to the end of the active list, pass index equal to the length of the current active todo list. If you pass an index that is greater than the current active todo list's length, the tool fails and returns the current todo list so you can pick a valid insertion point. To make sure that you use the right index, always call getCronjobTodos right before calling this tool.",
         args: {
           items: tool.schema
             .array(tool.schema.string())
             .describe("New todo items required to complete the cronjob task."),
           index: tool.schema
             .number()
-            .optional()
-            .describe("Optional insertion index in the active todo list. Use 0 to insert before the current todo."),
+            .describe("Required insertion index in the active todo list."),
         },
         async execute(args, context) {
           const { sessionID } = context

@@ -57,14 +57,11 @@ function assertStringArray(value: unknown, label: string): string[] {
     return items;
 }
 
-function assertOptionalInsertIndex(value: unknown): number | null {
-    if (value === undefined || value === null) {
-        return null;
-    }
+function assertInsertIndex(value: unknown): number {
     if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
         throw {
             status: 400,
-            message: "index must be a non-negative integer"
+            message: "index is required and must be a non-negative integer"
         };
     }
     return value;
@@ -692,7 +689,7 @@ async function addCronjobTodosHandler(req: { opencode_session_id?: string; body?
         };
     }
     const items = assertStringArray((req.body as { items?: unknown } | undefined)?.items, "items");
-    const index = assertOptionalInsertIndex((req.body as { index?: unknown } | undefined)?.index);
+    const index = assertInsertIndex((req.body as { index?: unknown } | undefined)?.index);
     const run = await requireActivePromptCronjobRun(req.opencode_session_id);
     const now = nowMs();
 
@@ -709,13 +706,13 @@ async function addCronjobTodosHandler(req: { opencode_session_id?: string; body?
             ],
             select: { id: true, run_id: true, content: true, status: true, position: true, summary: true, created_at: true, completed_at: true },
         });
-        if (index !== null && index >= activeTodos.length) {
+        if (index > activeTodos.length) {
             throw {
                 status: 400,
-                message: `index must be less than the current active todo count (${activeTodos.length}). If you want to append to the end of the active list, omit index. Current todo list: ${JSON.stringify(activeTodos.map(serializeCronjobTodo))}`
+                message: `index must be less than or equal to the current active todo count (${activeTodos.length}). If you want to append to the end of the list, use index ${activeTodos.length}. Current todo list: ${JSON.stringify(activeTodos.map(serializeCronjobTodo))}`
             };
         }
-        const insertAt = index === null ? activeTodos.length : index;
+        const insertAt = index;
         const beforeTodos = activeTodos.slice(0, insertAt);
         const afterTodos = activeTodos.slice(insertAt);
         await Promise.all(beforeTodos.map((todo, position) => (

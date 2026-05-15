@@ -184,10 +184,10 @@ async function main(): Promise<void> {
         await request(app)
             .post("/api/cronjobs/runs/todos/add")
             .set("Authorization", `Bearer ${runningSession.opencode_session_id}`)
-            .send({ items: ["Out of range"], index: 2 })
+            .send({ items: ["Out of range"], index: 3 })
             .expect(400)
             .expect((response) => {
-                assert.match(response.body.message, /^index must be less than the current active todo count \(2\)\./);
+                assert.match(response.body.message, /^index must be less than or equal to the current active todo count \(2\)\./);
                 assert.match(response.body.message, /Current todo list: \[/);
                 assert.match(response.body.message, new RegExp(runningCurrentTodo.id));
                 assert.match(response.body.message, new RegExp(runningPendingTodo.id));
@@ -266,16 +266,6 @@ async function main(): Promise<void> {
             .post("/api/cronjobs/runs/todos/add")
             .set("Authorization", `Bearer ${pausedSession.opencode_session_id}`)
             .send({ items: ["Paused first", "Paused second"], index: 0 })
-            .expect(400)
-            .expect((response) => {
-                assert.match(response.body.message, /^index must be less than the current active todo count \(0\)\./);
-                assert.match(response.body.message, /Current todo list: \[\]/);
-            });
-
-        await request(app)
-            .post("/api/cronjobs/runs/todos/add")
-            .set("Authorization", `Bearer ${pausedSession.opencode_session_id}`)
-            .send({ items: ["Paused first", "Paused second"] })
             .expect(200)
             .expect((response) => {
                 assert.equal(response.body.added_count, 2);
@@ -287,6 +277,21 @@ async function main(): Promise<void> {
             });
 
         await request(app)
+            .post("/api/cronjobs/runs/todos/add")
+            .set("Authorization", `Bearer ${pausedSession.opencode_session_id}`)
+            .send({ items: ["Paused append"], index: 2 })
+            .expect(200)
+            .expect((response) => {
+                assert.equal(response.body.added_count, 1);
+                assert.equal(response.body.added_todo_ids.length, 1);
+                assert.deepEqual(response.body.todos.map((todo: { content: string }) => todo.content), [
+                    "Paused first",
+                    "Paused second",
+                    "Paused append",
+                ]);
+            });
+
+        await request(app)
             .get("/api/cronjobs/runs/todos/not-completed")
             .set("Authorization", `Bearer ${pausedSession.opencode_session_id}`)
             .expect(200)
@@ -294,6 +299,7 @@ async function main(): Promise<void> {
                 assert.deepEqual(response.body.todos.map((todo: { content: string }) => todo.content), [
                     "Paused first",
                     "Paused second",
+                    "Paused append",
                 ]);
             });
 
@@ -304,29 +310,18 @@ async function main(): Promise<void> {
         await request(app)
             .post("/api/cronjobs/runs/todos/clear")
             .set("Authorization", `Bearer ${pausedSession.opencode_session_id}`)
-            .send({ todo_ids: [pausedTodos[0].id] })
+            .send({ todo_ids: pausedTodos.map((todo) => todo.id) })
             .expect(200)
             .expect((response) => {
-                assert.equal(response.body.cleared_count, 1);
-                assert.equal(response.body.cleared_todo_ids.length, 1);
-                assert.deepEqual(response.body.todos.map((todo: { content: string }) => todo.content), [
-                    "Paused second",
-                ]);
-            });
-        await request(app)
-            .post("/api/cronjobs/runs/todos/clear")
-            .set("Authorization", `Bearer ${pausedSession.opencode_session_id}`)
-            .send({ todo_ids: [pausedTodos[1].id] })
-            .expect(200)
-            .expect((response) => {
-                assert.equal(response.body.cleared_count, 1);
+                assert.equal(response.body.cleared_count, 3);
+                assert.equal(response.body.cleared_todo_ids.length, 3);
                 assert.deepEqual(response.body.todos, []);
             });
 
         await request(app)
             .post("/api/cronjobs/runs/todos/add")
             .set("Authorization", `Bearer ${terminalSession.opencode_session_id}`)
-            .send({ items: ["Should be rejected"] })
+            .send({ items: ["Should be rejected"], index: 0 })
             .expect(400)
             .expect((response) => {
                 assert.equal(response.body.message, "Cronjob session is already finished. Current state is: terminated");
