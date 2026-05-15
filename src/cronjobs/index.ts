@@ -396,12 +396,14 @@ router.get("/", apiHandler(async (req, res) => {
     const activeCronjobIds = new Set(activeRuns.map((run) => run.cronjob_id));
     const activeRunIdByCronjobId = new Map(activeRuns.map((run) => [run.cronjob_id, run.id]));
     const activeWorkflowRunIdByCronjobId = new Map(activeRuns.map((run) => [run.cronjob_id, run.workflow_run_id]));
-    res.json({ cronjobs: cronjobs.map((cronjob) => serializeCronjob({
-        ...cronjob,
-        is_running: activeCronjobIds.has(cronjob.id),
-        current_run_id: activeRunIdByCronjobId.get(cronjob.id) ?? null,
-        current_workflow_run_id: activeWorkflowRunIdByCronjobId.get(cronjob.id) ?? null,
-    })) });
+    res.json({
+        cronjobs: cronjobs.map((cronjob) => serializeCronjob({
+            ...cronjob,
+            is_running: activeCronjobIds.has(cronjob.id),
+            current_run_id: activeRunIdByCronjobId.get(cronjob.id) ?? null,
+            current_workflow_run_id: activeWorkflowRunIdByCronjobId.get(cronjob.id) ?? null,
+        }))
+    });
 }, true));
 
 router.post("/", apiHandler(async (req, res) => {
@@ -719,7 +721,13 @@ async function addCronjobTodosHandler(req: { opencode_session_id?: string; body?
             ],
             select: { id: true, run_id: true, content: true, status: true, position: true, summary: true, created_at: true, completed_at: true },
         });
-        const insertAt = index === null ? activeTodos.length : Math.min(index, activeTodos.length);
+        if (index !== null && index >= activeTodos.length) {
+            throw {
+                status: 400,
+                message: `index must be less than the current active todo count (${activeTodos.length}). If you want to append to the end of the active list, omit index. Current todo list: ${JSON.stringify(activeTodos.map(serializeCronjobTodo))}`
+            };
+        }
+        const insertAt = index === null ? activeTodos.length : index;
         const beforeTodos = activeTodos.slice(0, insertAt);
         const afterTodos = activeTodos.slice(insertAt);
         await Promise.all(beforeTodos.map((todo, position) => (

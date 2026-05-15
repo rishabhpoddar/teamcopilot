@@ -102,7 +102,7 @@ async function main(): Promise<void> {
                 created_at: now + 2n,
             },
         });
-        await prisma.cronjob_run_todos.create({
+        const runningPendingTodo = await prisma.cronjob_run_todos.create({
             data: {
                 run_id: runningRun.id,
                 content: "Pending running todo",
@@ -194,6 +194,20 @@ async function main(): Promise<void> {
         await request(app)
             .post("/api/cronjobs/runs/todos/add")
             .set("Authorization", `Bearer ${runningSession.opencode_session_id}`)
+            .send({ items: ["Out of range"], index: 2 })
+            .expect(400)
+            .expect((response) => {
+                assert.match(response.body.message, /^index must be less than the current active todo count \(2\)\./);
+                assert.match(response.body.message, /Current todo list: \[/);
+                assert.match(response.body.message, new RegExp(runningCurrentTodo.id));
+                assert.match(response.body.message, new RegExp(runningPendingTodo.id));
+                assert.match(response.body.message, /"content":"Current running todo"/);
+                assert.match(response.body.message, /"content":"Pending running todo"/);
+            });
+
+        await request(app)
+            .post("/api/cronjobs/runs/todos/add")
+            .set("Authorization", `Bearer ${runningSession.opencode_session_id}`)
             .send({ items: ["Inserted todo"], index: 1 })
             .expect(200)
             .expect((response) => {
@@ -269,6 +283,16 @@ async function main(): Promise<void> {
             .post("/api/cronjobs/runs/todos/add")
             .set("Authorization", `Bearer ${pausedSession.opencode_session_id}`)
             .send({ items: ["Paused first", "Paused second"], index: 0 })
+            .expect(400)
+            .expect((response) => {
+                assert.match(response.body.message, /^index must be less than the current active todo count \(0\)\./);
+                assert.match(response.body.message, /Current todo list: \[\]/);
+            });
+
+        await request(app)
+            .post("/api/cronjobs/runs/todos/add")
+            .set("Authorization", `Bearer ${pausedSession.opencode_session_id}`)
+            .send({ items: ["Paused first", "Paused second"] })
             .expect(200)
             .expect((response) => {
                 assert.equal(response.body.added_count, 2);
