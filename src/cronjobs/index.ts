@@ -67,6 +67,16 @@ function assertInsertIndex(value: unknown): number {
     return value;
 }
 
+function assertTodoListVersion(value: unknown): number {
+    if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+        throw {
+            status: 400,
+            message: "todo_list_version is required and must be a non-negative integer"
+        };
+    }
+    return value;
+}
+
 function hasRequestField(body: unknown, field: string): boolean {
     return typeof body === "object" && body !== null && Object.prototype.hasOwnProperty.call(body, field);
 }
@@ -181,13 +191,27 @@ function serializeRun(run: {
     };
 }
 
-async function getPromptCronjobRun(opencodeSessionId: string) {
-    const runs = await prisma.cronjob_runs.findMany({
+type PromptCronjobRunRecord = {
+    id: string;
+    status: string;
+    session_id: string | null;
+    todo_list_version: number;
+};
+
+type PromptCronjobRunDb = {
+    cronjob_runs: {
+        findMany: typeof prisma.cronjob_runs.findMany;
+        update: typeof prisma.cronjob_runs.update;
+    };
+};
+
+async function getPromptCronjobRun(client: PromptCronjobRunDb, opencodeSessionId: string): Promise<PromptCronjobRunRecord> {
+    const runs = await client.cronjob_runs.findMany({
         where: {
             opencode_session_id: opencodeSessionId,
             cronjob: { target_type: "prompt" },
         },
-        select: { id: true, status: true, session_id: true },
+        select: { id: true, status: true, session_id: true, todo_list_version: true },
     });
     if (runs.length === 0) {
         throw {
@@ -213,7 +237,7 @@ function assertActivePromptCronjobRun(run: { status: string }): void {
 }
 
 async function requireActivePromptCronjobRun(opencodeSessionId: string) {
-    const run = await getPromptCronjobRun(opencodeSessionId);
+    const run = await getPromptCronjobRun(prisma, opencodeSessionId);
     assertActivePromptCronjobRun(run);
     return run;
 }
@@ -350,7 +374,7 @@ router.get("/runs/todos/not-completed", apiHandler(async (req, res) => {
     }
     const run = await requireActivePromptCronjobRun(req.opencode_session_id);
     const todos = await getActiveCronjobTodos(run.id);
-    res.json({ todos: todos.map(serializeCronjobTodo) });
+    res.json({ todo_list_version: run.todo_list_version, todos: todos.map(serializeCronjobTodo) });
 }, true));
 
 router.get("/", apiHandler(async (req, res) => {
@@ -690,10 +714,12 @@ async function addCronjobTodosHandler(req: { opencode_session_id?: string; body?
     }
     const items = assertStringArray((req.body as { items?: unknown } | undefined)?.items, "items");
     const index = assertInsertIndex((req.body as { index?: unknown } | undefined)?.index);
-    const run = await requireActivePromptCronjobRun(req.opencode_session_id);
+    const todoListVersion = assertTodoListVersion((req.body as { todo_list_version?: unknown } | undefined)?.todo_list_version);
     const now = nowMs();
 
     const todos = await prisma.$transaction(async (tx) => {
+        const run = await getPromptCronjobRun(tx, req.opencode_session_id!);
+        assertActivePromptCronjobRun(run);
         const activeTodos = await tx.cronjob_run_todos.findMany({
             where: {
                 run_id: run.id,
@@ -706,6 +732,12 @@ async function addCronjobTodosHandler(req: { opencode_session_id?: string; body?
             ],
             select: { id: true, run_id: true, content: true, status: true, position: true, summary: true, created_at: true, completed_at: true },
         });
+        if (todoListVersion !== run.todo_list_version) {
+            throw {
+                status: 400,
+                message: `Call getCronjobTodos immediately before addCronjobTodos. Your todo list snapshot is stale (expected version ${run.todo_list_version}, got ${todoListVersion}). Current todo list: ${JSON.stringify(activeTodos.map(serializeCronjobTodo))}`
+            };
+        }
         if (index > activeTodos.length) {
             throw {
                 status: 400,
@@ -742,13 +774,18 @@ async function addCronjobTodosHandler(req: { opencode_session_id?: string; body?
             insertedTodoIds.push(insertedTodo.id);
         }
         const normalizedTodos = await normalizeActiveCronjobTodoPositions(tx, run.id);
-        return { normalizedTodos, insertedTodoIds };
+        await tx.cronjob_runs.update({
+            where: { id: run.id },
+            data: { todo_list_version: { increment: 1 } },
+        });
+        return { normalizedTodos, insertedTodoIds, nextVersion: run.todo_list_version + 1 };
     });
 
     res.json({
         success: true,
         added_count: items.length,
         added_todo_ids: todos.insertedTodoIds,
+        todo_list_version: todos.nextVersion,
         todos: todos.normalizedTodos.map(serializeCronjobTodo),
     });
 }
@@ -798,14 +835,21 @@ router.post("/runs/todos/clear", apiHandler(async (req, res) => {
             };
         }
         clearedCount = deleted.count;
-        return normalizeActiveCronjobTodoPositions(tx, run.id);
+        const normalizedTodos = await normalizeActiveCronjobTodoPositions(tx, run.id);
+        const updatedRun = await tx.cronjob_runs.update({
+            where: { id: run.id },
+            data: { todo_list_version: { increment: 1 } },
+            select: { todo_list_version: true },
+        });
+        return { normalizedTodos, nextVersion: updatedRun.todo_list_version };
     });
 
     res.json({
         success: true,
         cleared_count: clearedCount,
         cleared_todo_ids: idsToDelete,
-        todos: remainingTodos.map(serializeCronjobTodo),
+        todo_list_version: remainingTodos.nextVersion,
+        todos: remainingTodos.normalizedTodos.map(serializeCronjobTodo),
     });
 }, true));
 
@@ -825,15 +869,23 @@ router.post("/runs/todos/finish-current", apiHandler(async (req, res) => {
             message: "There is no current cronjob todo item to finish."
         };
     }
-    await prisma.cronjob_run_todos.update({
-        where: { id: currentTodo.id },
-        data: {
-            status: "completed",
-            completed_at: nowMs(),
-            summary: completionSummary,
-        },
+    const nextVersion = await prisma.$transaction(async (tx) => {
+        await tx.cronjob_run_todos.update({
+            where: { id: currentTodo.id },
+            data: {
+                status: "completed",
+                completed_at: nowMs(),
+                summary: completionSummary,
+            },
+        });
+        const updatedRun = await tx.cronjob_runs.update({
+            where: { id: run.id },
+            data: { todo_list_version: { increment: 1 } },
+            select: { todo_list_version: true },
+        });
+        return updatedRun.todo_list_version;
     });
-    res.json({ success: true });
+    res.json({ success: true, todo_list_version: nextVersion });
 }, true));
 
 router.post("/runs/complete-current", apiHandler(async (req, res) => {
@@ -856,7 +908,7 @@ router.post("/runs/fail-current", apiHandler(async (req, res) => {
         };
     }
     const summary = assertNonEmptyString(req.body?.summary, "summary");
-    const run = await getPromptCronjobRun(req.opencode_session_id);
+    const run = await getPromptCronjobRun(prisma, req.opencode_session_id);
     assertActivePromptCronjobRun(run);
     const failedRun = await prisma.cronjob_runs.updateMany({
         where: { id: run.id, status: { in: ["running", "paused"] } },
