@@ -6,6 +6,7 @@ import { promisify } from "util";
 import crypto from "crypto";
 import { assertEnv } from "./assert";
 import { getPackageRoot, getPrismaSchemaPath, getWorkspaceTemplateDirectory } from "./runtime-paths";
+import { PrismaClient } from "../../prisma/generated/client";
 
 interface IgnoreRuleSet {
     basePath: string;
@@ -51,6 +52,21 @@ export function workspaceDatabaseExists(): boolean {
 
 export function ensureWorkspaceDatabaseDirectory(): void {
     fs.mkdirSync(path.dirname(getWorkspaceDatabasePath()), { recursive: true });
+}
+
+async function repairWorkspaceCronjobRunUniquenessIndex(workspaceDatabaseUrl: string): Promise<void> {
+    const prisma = new PrismaClient({
+        datasourceUrl: workspaceDatabaseUrl,
+    });
+    try {
+        await prisma.$executeRawUnsafe(`
+            CREATE UNIQUE INDEX IF NOT EXISTS "cronjob_runs_one_running_per_cronjob"
+            ON "cronjob_runs"("cronjob_id")
+            WHERE "status" = 'running';
+        `);
+    } finally {
+        await prisma.$disconnect();
+    }
 }
 
 function normalizeRelativePath(relativePath: string): string {
@@ -341,4 +357,6 @@ export async function ensureWorkspaceDatabase(): Promise<void> {
             DATABASE_URL: workspaceDatabaseUrl,
         },
     });
+
+    await repairWorkspaceCronjobRunUniquenessIndex(workspaceDatabaseUrl);
 }
