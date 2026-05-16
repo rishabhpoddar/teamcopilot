@@ -745,7 +745,7 @@ router.get('/sessions/:id', apiHandler(async (req, res) => {
     });
 }, true));
 
-// POST /api/chat/sessions/file-diff/capture-baseline - Capture pre-apply_patch baseline for current opencode session
+// POST /api/chat/sessions/file-diff/capture-baseline - Capture pre-edit baseline for current opencode session
 router.post('/sessions/file-diff/capture-baseline', apiHandler(async (req, res) => {
     if (!req.opencode_session_id) {
         throw {

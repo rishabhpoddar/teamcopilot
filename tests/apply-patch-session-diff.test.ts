@@ -327,6 +327,15 @@ async function main(): Promise<void> {
 
         assertCapturedPaths(
             workspaceRoot,
+            "Captures file paths from the edit tool",
+            "edit",
+            { filePath: `${workspaceRoot}/edited.txt`, oldString: "1", newString: "2" },
+            { filePath: `${workspaceRoot}/edited.txt`, oldString: "1", newString: "2" },
+            ["edited.txt"],
+        );
+
+        assertCapturedPaths(
+            workspaceRoot,
             "Captures write tool path from filePath alias in nested output",
             "write",
             {},
