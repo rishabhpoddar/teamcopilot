@@ -261,6 +261,8 @@ async function buildCronjobPrompt(args: {
     if (availableSkillsPrompt) sections.push("", availableSkillsPrompt);
     if (availableSecretsPrompt) sections.push("", availableSecretsPrompt);
     sections.push("", ACTUAL_USER_MESSAGE_MARKER, "", "# Cronjob task", "", `Name: ${args.cronjobName}`, "", args.cronjobPrompt);
+    sections.push("");
+    sections.push("Current task: Understand the task requirements (based on the above task (read skill files / workflows if needed), and create a granular todo list with addCronjobTodos. Then stop - only start the first todo once the system prompts you with the todo item.")
     return sections.join("\n");
 }
 
