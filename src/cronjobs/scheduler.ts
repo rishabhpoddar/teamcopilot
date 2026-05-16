@@ -132,21 +132,9 @@ export function validateCronjobMonitorTimeout(input: {
     monitorTimeoutValue: number;
     monitorTimeoutUnit: CronjobMonitorTimeoutUnit;
 } {
-    if (input.monitor_timeout_value === undefined) {
-        throw {
-            status: 400,
-            message: "monitor_timeout_value is required"
-        };
-    }
-    if (input.monitor_timeout_unit === undefined) {
-        throw {
-            status: 400,
-            message: "monitor_timeout_unit is required"
-        };
-    }
     return {
-        monitorTimeoutValue: assertMonitorTimeoutValue(input.monitor_timeout_value),
-        monitorTimeoutUnit: assertMonitorTimeoutUnit(input.monitor_timeout_unit),
+        monitorTimeoutValue: input.monitor_timeout_value === undefined ? 2 : assertMonitorTimeoutValue(input.monitor_timeout_value),
+        monitorTimeoutUnit: input.monitor_timeout_unit === undefined ? "hours" : assertMonitorTimeoutUnit(input.monitor_timeout_unit),
     };
 }
 

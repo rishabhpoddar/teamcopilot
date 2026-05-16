@@ -126,8 +126,8 @@ model cronjobs {
   workflow_input_json                          String?
   cron_expression                              String
   timezone                                     String
-  monitor_timeout_value                         Float
-  monitor_timeout_unit                          String // "minutes" | "hours" | "days"
+  monitor_timeout_value                         Float         @default(2)
+  monitor_timeout_unit                          String        @default("hours") // "minutes" | "hours" | "days"
   created_at                                   BigInt
   updated_at                                   BigInt
   user                                         users         @relation(fields: [user_id], references: [id], onDelete: Cascade)
