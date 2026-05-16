@@ -12,6 +12,7 @@ import './CronjobFormPage.css';
 type ScheduleMode = 'builder' | 'cron';
 type BuilderFrequency = 'daily' | 'weekly' | 'monthly';
 type TargetMode = 'prompt' | 'workflow';
+type MonitorTimeoutUnit = 'minutes' | 'hours' | 'days';
 type WorkflowFormValue = string | boolean;
 
 interface CronjobSchedule {
@@ -26,6 +27,8 @@ interface Cronjob {
     prompt: string;
     enabled: boolean;
     allow_workflow_runs_without_permission: boolean;
+    monitor_timeout_value: number;
+    monitor_timeout_unit: MonitorTimeoutUnit;
     target: {
         target_type: TargetMode;
         prompt: string | null;
@@ -62,6 +65,8 @@ interface CronjobFormState {
     execution_steps: string[];
     enabled: boolean;
     allow_workflow_runs_without_permission: boolean;
+    monitor_timeout_value: number;
+    monitor_timeout_unit: MonitorTimeoutUnit;
     workflow_slug: string;
     workflow_inputs: Record<string, WorkflowFormValue>;
     scheduleMode: ScheduleMode;
@@ -110,6 +115,11 @@ function minutesToTime(minutes: number | null): string {
     return `${hours}:${mins}`;
 }
 
+function formatMonitorTimeout(value: number, unit: MonitorTimeoutUnit): string {
+    const label = value === 1 ? unit.slice(0, -1) : unit;
+    return `${value} ${label}`;
+}
+
 function buildCronExpressionFromBuilder(form: CronjobFormState): string {
     const timeMinutes = timeToMinutes(form.time);
     const minute = timeMinutes % 60;
@@ -131,6 +141,8 @@ function emptyForm(): CronjobFormState {
         execution_steps: [],
         enabled: true,
         allow_workflow_runs_without_permission: true,
+        monitor_timeout_value: 2,
+        monitor_timeout_unit: 'hours',
         workflow_slug: '',
         workflow_inputs: {},
         scheduleMode: 'builder',
@@ -248,6 +260,8 @@ function formFromCronjob(cronjob: Cronjob): CronjobFormState {
         execution_steps: parsedPrompt.executionSteps,
         enabled: cronjob.enabled,
         allow_workflow_runs_without_permission: cronjob.allow_workflow_runs_without_permission,
+        monitor_timeout_value: cronjob.monitor_timeout_value,
+        monitor_timeout_unit: cronjob.monitor_timeout_unit,
         workflow_slug: cronjob.target?.workflow_slug ?? '',
         workflow_inputs: {},
         scheduleMode: 'cron',
@@ -377,6 +391,8 @@ export default function CronjobFormPage() {
             workflow_inputs: form.targetMode === 'workflow' ? workflowInputs : null,
             enabled: form.enabled,
             allow_workflow_runs_without_permission: form.targetMode === 'prompt' ? form.allow_workflow_runs_without_permission : null,
+            monitor_timeout_value: form.monitor_timeout_value,
+            monitor_timeout_unit: form.monitor_timeout_unit,
             timezone: form.timezone,
         };
         return {
@@ -789,6 +805,42 @@ export default function CronjobFormPage() {
                                 <small>Schedule this cronjob after saving.</small>
                             </span>
                         </label>
+
+                        {form.targetMode === 'prompt' ? (
+                            <>
+                                <div className="cronjob-form-grid">
+                                    <label className="cronjob-field">
+                                        <span>Job timeout</span>
+                                        <input
+                                            type="number"
+                                            min={0}
+                                            step="any"
+                                            value={form.monitor_timeout_value}
+                                            onChange={(event) => setForm((prev) => ({ ...prev, monitor_timeout_value: Number(event.target.value) }))}
+                                            required
+                                        />
+                                    </label>
+                                    <label className="cronjob-field">
+                                        <span>Timeout unit</span>
+                                        <div className="cronjob-select-wrap">
+                                            <select
+                                                value={form.monitor_timeout_unit}
+                                                onChange={(event) => setForm((prev) => ({ ...prev, monitor_timeout_unit: event.target.value as MonitorTimeoutUnit }))}
+                                            >
+                                                <option value="minutes">Minutes</option>
+                                                <option value="hours">Hours</option>
+                                                <option value="days">Days</option>
+                                            </select>
+                                        </div>
+                                    </label>
+                                </div>
+                                <p className="cronjob-muted-copy">
+                                    The job will fail a run if it stays active longer than {formatMonitorTimeout(form.monitor_timeout_value, form.monitor_timeout_unit)}.
+                                </p>
+                            </>
+                        ) : (
+                            null
+                        )}
 
                         {form.targetMode === 'prompt' ? (
                             <label className="cronjob-switch-row">

@@ -12,6 +12,7 @@ import {
     terminateCronjobRun,
     validateCronjobTarget,
     validateCronjobSchedule,
+    validateCronjobMonitorTimeout,
 } from "./scheduler";
 import { DefaultArgs } from "../../prisma/generated/client/runtime/library";
 
@@ -103,6 +104,8 @@ function serializeCronjob(cronjob: {
     workflow_input_json: string | null;
     cron_expression: string;
     timezone: string;
+    monitor_timeout_value: number;
+    monitor_timeout_unit: string;
     created_at: bigint;
     updated_at: bigint;
     is_running?: boolean;
@@ -140,6 +143,8 @@ function serializeCronjob(cronjob: {
             timezone: schedule.timezone,
             effective_cron_expression: schedule.cron_expression,
         },
+        monitor_timeout_value: cronjob.monitor_timeout_value,
+        monitor_timeout_unit: cronjob.monitor_timeout_unit,
         next_run_at: cronjob.enabled ? getNextRunAt(schedule) : null,
         is_running: cronjob.is_running === true,
         current_run_id: cronjob.current_run_id ?? null,
@@ -415,6 +420,10 @@ router.post("/", apiHandler(async (req, res) => {
         cron_expression: req.body?.cron_expression,
         timezone: req.body?.timezone,
     });
+    const monitorTimeout = validateCronjobMonitorTimeout({
+        monitor_timeout_value: req.body?.monitor_timeout_value,
+        monitor_timeout_unit: req.body?.monitor_timeout_unit,
+    });
     const now = nowMs();
     const enabled = assertBoolean(req.body?.enabled, "enabled");
 
@@ -430,6 +439,8 @@ router.post("/", apiHandler(async (req, res) => {
             workflow_input_json: target.workflowInputJson,
             cron_expression: schedule.cronExpression,
             timezone: schedule.timezone,
+            monitor_timeout_value: monitorTimeout.monitorTimeoutValue,
+            monitor_timeout_unit: monitorTimeout.monitorTimeoutUnit,
             created_at: now,
             updated_at: now,
         },
@@ -505,6 +516,14 @@ router.patch("/:id", apiHandler(async (req, res) => {
         cron_expression: hasRequestField(req.body, "cron_expression") ? req.body.cron_expression : existing.cron_expression,
         timezone: hasRequestField(req.body, "timezone") ? req.body.timezone : existing.timezone,
     });
+    const monitorTimeout = validateCronjobMonitorTimeout({
+        monitor_timeout_value: hasRequestField(req.body, "monitor_timeout_value")
+            ? req.body.monitor_timeout_value
+            : existing.monitor_timeout_value,
+        monitor_timeout_unit: hasRequestField(req.body, "monitor_timeout_unit")
+            ? req.body.monitor_timeout_unit
+            : existing.monitor_timeout_unit,
+    });
     const now = nowMs();
 
     const cronjob = await prisma.cronjobs.update({
@@ -519,6 +538,8 @@ router.patch("/:id", apiHandler(async (req, res) => {
             workflow_input_json: target.workflowInputJson,
             cron_expression: schedule.cronExpression,
             timezone: schedule.timezone,
+            monitor_timeout_value: monitorTimeout.monitorTimeoutValue,
+            monitor_timeout_unit: monitorTimeout.monitorTimeoutUnit,
             updated_at: now,
         },
     }).catch(throwCronjobNameConflictIfNeeded);

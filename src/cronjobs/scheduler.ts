@@ -19,7 +19,7 @@ import {
     buildAvailableSkillsPrompt,
     buildCurrentTimePrompt,
 } from "../utils/chat-prompt-context";
-import type { CronjobSchedule, CronjobTargetType } from "../types/cronjob";
+import type { CronjobMonitorTimeoutUnit, CronjobSchedule, CronjobTargetType } from "../types/cronjob";
 import { assertUserCanRunWorkflow } from "../utils/workflow-run-validation";
 import { abortOpencodeSession } from "../utils/session-abort";
 import { markWorkflowSessionAborted } from "../utils/workflow-interruption";
@@ -103,6 +103,57 @@ function assertCronExpression(cronExpression: string, timezone: string): void {
         };
     }
     new CronTime(expression, timezone);
+}
+
+function assertMonitorTimeoutUnit(value: unknown): CronjobMonitorTimeoutUnit {
+    if (value !== "minutes" && value !== "hours" && value !== "days") {
+        throw {
+            status: 400,
+            message: "monitor_timeout_unit must be minutes, hours, or days"
+        };
+    }
+    return value;
+}
+
+function assertMonitorTimeoutValue(value: unknown): number {
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+        throw {
+            status: 400,
+            message: "monitor_timeout_value must be a non-negative number"
+        };
+    }
+    return value;
+}
+
+export function validateCronjobMonitorTimeout(input: {
+    monitor_timeout_value?: unknown;
+    monitor_timeout_unit?: unknown;
+}): {
+    monitorTimeoutValue: number;
+    monitorTimeoutUnit: CronjobMonitorTimeoutUnit;
+} {
+    if (input.monitor_timeout_value === undefined) {
+        throw {
+            status: 400,
+            message: "monitor_timeout_value is required"
+        };
+    }
+    if (input.monitor_timeout_unit === undefined) {
+        throw {
+            status: 400,
+            message: "monitor_timeout_unit is required"
+        };
+    }
+    return {
+        monitorTimeoutValue: assertMonitorTimeoutValue(input.monitor_timeout_value),
+        monitorTimeoutUnit: assertMonitorTimeoutUnit(input.monitor_timeout_unit),
+    };
+}
+
+function monitorTimeoutToMs(value: number, unit: CronjobMonitorTimeoutUnit): number {
+    if (unit === "minutes") return value * 60_000;
+    if (unit === "hours") return value * 3_600_000;
+    return value * 86_400_000;
 }
 
 function assertNonEmptyString(value: unknown, label: string): string {
@@ -222,12 +273,8 @@ export function getNextRunAt(schedule: CronjobSchedule): number {
     return cronTime.sendAt().toMillis();
 }
 
-function getCronjobTimeoutAt(schedule: CronjobSchedule, startedAtMs: number): number {
-    const expression = toCronPackageExpression(schedule.cron_expression);
-    const cronTime = new CronTime(expression, schedule.timezone);
-    const firstRun = cronTime.getNextDateFrom(new Date(startedAtMs), schedule.timezone);
-    const secondRun = cronTime.getNextDateFrom(firstRun.toJSDate(), schedule.timezone);
-    return startedAtMs + Math.ceil((secondRun.toMillis() - firstRun.toMillis()) * 1.5);
+function getCronjobTimeoutAt(timeoutValue: number, timeoutUnit: CronjobMonitorTimeoutUnit, startedAtMs: number): number {
+    return startedAtMs + monitorTimeoutToMs(timeoutValue, timeoutUnit);
 }
 
 async function buildCronjobPrompt(args: {
@@ -484,7 +531,8 @@ async function monitorCronjobRun(runId: string, opencodeSessionId: string, timeo
             }
 
             if (Date.now() >= timeoutAtMs) {
-                await markCronjobRunFailed(runId, "Cronjob run timed out after 1.5x the configured interval.");
+                await markCronjobRunFailed(runId, "Cronjob run timed out after the configured monitor timeout.");
+                await abortOpencodeSessionBestEffort(opencodeSessionId);
                 clearInterval(interval);
                 runningMonitors.delete(runId);
                 return;
@@ -596,8 +644,8 @@ export async function resumeCronjobRun(runId: string): Promise<void> {
             cronjob: {
                 select: {
                     target_type: true,
-                    cron_expression: true,
-                    timezone: true,
+                    monitor_timeout_value: true,
+                    monitor_timeout_unit: true,
                 },
             },
         },
@@ -648,10 +696,15 @@ export async function resumeCronjobRun(runId: string): Promise<void> {
         throwIfRunningRunUniquenessError(err);
     }
 
-    await monitorCronjobRun(run.id, opencodeSessionId, getCronjobTimeoutAt({
-        cron_expression: run.cronjob.cron_expression,
-        timezone: run.cronjob.timezone,
-    }, Number(run.started_at)));
+    await monitorCronjobRun(
+        run.id,
+        opencodeSessionId,
+        getCronjobTimeoutAt(
+            run.cronjob.monitor_timeout_value,
+            assertMonitorTimeoutUnit(run.cronjob.monitor_timeout_unit),
+            Number(run.started_at),
+        )
+    );
 }
 
 async function recoverRunningPromptCronjobRun(runId: string): Promise<void> {
@@ -661,17 +714,22 @@ async function recoverRunningPromptCronjobRun(runId: string): Promise<void> {
             cronjob: {
                 select: {
                     target_type: true,
-                    cron_expression: true,
-                    timezone: true,
+                    monitor_timeout_value: true,
+                    monitor_timeout_unit: true,
                 },
             },
         },
     });
     if (!run || run.status !== "running" || run.cronjob.target_type !== "prompt" || !run.opencode_session_id) return;
-    await monitorCronjobRun(run.id, run.opencode_session_id, getCronjobTimeoutAt({
-        cron_expression: run.cronjob.cron_expression,
-        timezone: run.cronjob.timezone,
-    }, Number(run.started_at)));
+    await monitorCronjobRun(
+        run.id,
+        run.opencode_session_id,
+        getCronjobTimeoutAt(
+            run.cronjob.monitor_timeout_value,
+            assertMonitorTimeoutUnit(run.cronjob.monitor_timeout_unit),
+            Number(run.started_at),
+        )
+    );
 }
 
 export async function interruptCronjobRun(runId: string): Promise<void> {
@@ -889,10 +947,15 @@ export async function dispatchCronjobRun(cronjobId: string, mode: CronjobDispatc
         throw new Error("Failed to send cronjob prompt to opencode");
     }
 
-    await monitorCronjobRun(run.id, sessionResult.data.id, getCronjobTimeoutAt({
-        cron_expression: cronjob.cron_expression,
-        timezone: cronjob.timezone,
-    }, Number(now)));
+    await monitorCronjobRun(
+        run.id,
+        sessionResult.data.id,
+        getCronjobTimeoutAt(
+            cronjob.monitor_timeout_value,
+            assertMonitorTimeoutUnit(cronjob.monitor_timeout_unit),
+            Number(now),
+        )
+    );
     return run.id;
 }
 

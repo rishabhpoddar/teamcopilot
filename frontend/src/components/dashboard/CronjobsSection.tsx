@@ -39,6 +39,8 @@ interface Cronjob {
     prompt: string;
     enabled: boolean;
     allow_workflow_runs_without_permission: boolean;
+    monitor_timeout_value: number;
+    monitor_timeout_unit: 'minutes' | 'hours' | 'days';
     target: {
         target_type: 'prompt' | 'workflow';
         prompt: string | null;
@@ -89,6 +91,11 @@ function targetLabel(cronjob: Cronjob): string {
         return `Workflow: ${cronjob.target.workflow_slug}`;
     }
     return 'Prompt';
+}
+
+function formatMonitorTimeout(value: number, unit: Cronjob['monitor_timeout_unit']): string {
+    const label = value === 1 ? unit.slice(0, -1) : unit;
+    return `${value} ${label}`;
 }
 
 function statusLabel(status: string): string {
@@ -284,6 +291,10 @@ export default function CronjobsSection() {
                                 <div>
                                     <span>Next run</span>
                                     <strong>{formatTimestamp(cronjob.next_run_at)}</strong>
+                                </div>
+                                <div>
+                                    <span>Job timeout</span>
+                                    <strong>{formatMonitorTimeout(cronjob.monitor_timeout_value, cronjob.monitor_timeout_unit)}</strong>
                                 </div>
                             </div>
 
