@@ -8,9 +8,10 @@ interface AIModeSectionProps {
     initialDraftMessage: string | null;
     forceNewChat: boolean;
     onDraftHandled: () => void;
+    selectedSessionId?: string | null;
 }
 
-export default function AIModeSection({ initialDraftMessage, forceNewChat, onDraftHandled }: AIModeSectionProps) {
+export default function AIModeSection({ initialDraftMessage, forceNewChat, onDraftHandled, selectedSessionId }: AIModeSectionProps) {
     const navigate = useNavigate();
     const auth = useAuth();
     const showReconfigureButton = !auth.loading && auth.user?.role === 'Engineer';
@@ -42,6 +43,7 @@ export default function AIModeSection({ initialDraftMessage, forceNewChat, onDra
                 initialDraftMessage={initialDraftMessage}
                 forceNewChat={forceNewChat}
                 onDraftHandled={onDraftHandled}
+                selectedSessionId={selectedSessionId}
             />
         </div>
     );

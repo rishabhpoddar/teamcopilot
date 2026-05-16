@@ -1,9 +1,12 @@
 import prisma from "../prisma/client";
 import { getOpencodePort } from "./opencode-client";
 
+export function usesWorkflowDatabaseAbortMarker(sessionId: string): boolean {
+    return sessionId.startsWith("manual-") || sessionId.startsWith("api-") || sessionId.startsWith("cronjob-");
+}
+
 export async function isWorkflowSessionInterrupted(sessionId: string, workspaceDir: string): Promise<boolean> {
-    const usesDatabaseAbortMarker = sessionId.startsWith("manual-") || sessionId.startsWith("api-");
-    if (usesDatabaseAbortMarker) {
+    if (usesWorkflowDatabaseAbortMarker(sessionId)) {
         const aborted = await prisma.workflow_aborted_sessions.findUnique({
             where: { session_id: sessionId }
         });

@@ -16,6 +16,8 @@ import OpencodeAuthSetup from './pages/OpencodeAuthSetup'
 import OpencodeAuthComplete from './pages/OpencodeAuthComplete'
 import UserInstructionsPage from './pages/UserInstructionsPage'
 import ProfileSecretsPage from './pages/ProfileSecretsPage'
+import CronjobFormPage from './pages/CronjobFormPage'
+import CronjobRunPage from './pages/CronjobRunPage'
 import './App.css'
 
 type OpencodeAuthStatus = {
@@ -213,6 +215,9 @@ function AppShell() {
         <Route path="/user-instructions" element={<ProtectedRoute><CredentialedRoute><UserInstructionsPage /></CredentialedRoute></ProtectedRoute>} />
         <Route path="/profile/secrets" element={<ProtectedRoute><CredentialedRoute><ProfileSecretsPage /></CredentialedRoute></ProtectedRoute>} />
         <Route path="/" element={<ProtectedRoute><CredentialedRoute><Home /></CredentialedRoute></ProtectedRoute>} />
+        <Route path="/cronjobs/new" element={<ProtectedRoute><CredentialedRoute><CronjobFormPage /></CredentialedRoute></ProtectedRoute>} />
+        <Route path="/cronjobs/:id/edit" element={<ProtectedRoute><CredentialedRoute><CronjobFormPage /></CredentialedRoute></ProtectedRoute>} />
+        <Route path="/cronjobs/runs/:id" element={<ProtectedRoute><CredentialedRoute><CronjobRunPage /></CredentialedRoute></ProtectedRoute>} />
         <Route path="/runs/:id" element={<ProtectedRoute><CredentialedRoute><RunDetailsPage /></CredentialedRoute></ProtectedRoute>} />
         <Route path="/workflows/:slug/manual-run" element={<ProtectedRoute><CredentialedRoute><ManualRunPage /></CredentialedRoute></ProtectedRoute>} />
         <Route path="/workflows/:slug/api-run" element={<ProtectedRoute><CredentialedRoute><WorkflowApiRunPage /></CredentialedRoute></ProtectedRoute>} />

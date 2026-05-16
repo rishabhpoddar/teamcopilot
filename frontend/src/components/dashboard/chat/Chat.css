@@ -259,6 +259,7 @@
 }
 
 .chat-main-toolbar-meta {
+    flex: 1;
     min-width: 0;
     display: flex;
     flex-direction: column;
@@ -274,6 +275,55 @@
 .chat-main-toolbar-meta span {
     font-size: 0.78rem;
     color: #888;
+}
+
+.chat-cronjob-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex: 0 0 auto;
+    min-width: 0;
+}
+
+.chat-cronjob-control-btn {
+    flex: 0 0 auto;
+    min-width: 0;
+    border: 1px solid #4a4a4a;
+    border-radius: 7px;
+    background: #242424;
+    color: #f0f0f0;
+    font: inherit;
+    font-size: 0.88rem;
+    font-weight: 600;
+    padding: 0.48rem 0.75rem;
+    white-space: nowrap;
+}
+
+.chat-cronjob-control-btn:hover {
+    border-color: #666;
+    background: #2d2d2d;
+}
+
+.chat-cronjob-control-btn.resume {
+    border-color: #4d5a4d;
+    background: #203020;
+    color: #d8f3d8;
+}
+
+.chat-cronjob-control-btn.resume:hover {
+    border-color: #6d8a6d;
+    background: #263a26;
+}
+
+.chat-cronjob-control-btn.danger {
+    border-color: #6b3b3b;
+    background: #351f1f;
+    color: #ffdede;
+}
+
+.chat-cronjob-control-btn.danger:hover {
+    border-color: #8a4a4a;
+    background: #422626;
 }
 
 .chat-usage-sync-warning {
@@ -1548,6 +1598,22 @@
 
     .chat-main-toolbar-toggle {
         width: 100%;
+    }
+
+    .chat-cronjob-controls,
+    .chat-cronjob-control-btn {
+        width: 100%;
+    }
+
+    .chat-cronjob-controls {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 0.5rem;
+    }
+
+    .chat-cronjob-control-btn {
+        justify-content: center;
+        text-align: center;
     }
 
     .chat-main-toolbar-meta strong,

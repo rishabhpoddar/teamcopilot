@@ -6,6 +6,13 @@ type ChatSessionBase = {
     title: string | null;
     created_at: number;
     updated_at: number;
+    cronjob_control: {
+        run_id: string;
+        status: "running" | "paused";
+        can_interrupt: boolean;
+        can_resume: boolean;
+        can_terminate: boolean;
+    } | null;
 };
 
 export type ChatSession =

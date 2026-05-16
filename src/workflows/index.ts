@@ -41,7 +41,7 @@ import {
 } from "../utils/workflow-approval-snapshot";
 import { getWorkspaceDirFromEnv } from "../utils/workspace-sync";
 import { startWorkflowRunViaBackend } from "../utils/workflow-runner";
-import { isWorkflowSessionInterrupted, markWorkflowSessionAborted } from "../utils/workflow-interruption";
+import { isWorkflowSessionInterrupted, markWorkflowSessionAborted, usesWorkflowDatabaseAbortMarker } from "../utils/workflow-interruption";
 import { abortOpencodeSession } from "../utils/session-abort";
 import { registerResourceFileRoutes } from "../utils/resource-file-routes";
 import { getResourceAccessSummary } from "../utils/resource-access";
@@ -54,6 +54,7 @@ import {
     listWorkflowApiKeys,
 } from "../utils/workflow-api-keys";
 import { getWorkflowApiBaseUrl } from "../utils/external-host";
+import { assertUserCanRunWorkflow } from "../utils/workflow-run-validation";
 
 const router = express.Router({ mergeParams: true });
 
@@ -82,27 +83,6 @@ function isPathInside(childPath: string, parentPath: string): boolean {
 
 function sanitizeFilenamePart(value: string): string {
     return value.replace(/[^a-zA-Z0-9._-]/g, "_");
-}
-
-async function assertCurrentUserCanRunWorkflow(slug: string, userId: string): Promise<void> {
-    await readWorkflowManifestAndEnsurePermissions(slug);
-    const approvalState = await getWorkflowSnapshotApprovalState(slug);
-    if (!approvalState.is_current_code_approved) {
-        throw {
-            status: 403,
-            message: 'Workflow is not approved for the current code version'
-        };
-    }
-
-    const permissionSummary = await getResourceAccessSummary("workflow", slug, userId);
-    if (!permissionSummary.can_edit) {
-        throw {
-            status: 403,
-            message: permissionSummary.is_locked_due_to_missing_users
-                ? 'Workflow cannot be run because no allowed users remain'
-                : 'You do not have permission to run this workflow. Please contact the workflow owner to request permission.'
-        };
-    }
 }
 
 async function getWorkflowEditorAccess(slug: string, userId: string): Promise<EditorAccessResponse> {
@@ -360,8 +340,7 @@ router.post('/runs/:id/stop', apiHandler(async (req, res) => {
             message: 'Workflow run session not found'
         };
     }
-    const isManualSession = run.session_id.startsWith("manual-");
-    if (isManualSession) {
+    if (usesWorkflowDatabaseAbortMarker(run.session_id)) {
         await markWorkflowSessionAborted(run.session_id);
     } else {
         await abortOpencodeSession(run.session_id);
@@ -385,7 +364,7 @@ router.post('/:slug/manual-run', apiHandler(async (req, res) => {
     const manualMessageId = `manual-message-${randomUUID()}`;
     const manualCallId = `manual-call-${randomUUID()}`;
     const workspaceDir = getWorkspaceDirFromEnv();
-    await assertCurrentUserCanRunWorkflow(slug, req.userId!);
+    await assertUserCanRunWorkflow(slug, req.userId!);
 
     const startedRun = await startWorkflowRunViaBackend({
         workspaceDir,
@@ -436,7 +415,25 @@ router.post('/execute', apiHandler(async (req, res) => {
     const messageId = body.message_id;
     const callId = body.call_id;
     const workspaceDir = getWorkspaceDirFromEnv();
-    await assertCurrentUserCanRunWorkflow(slug, req.userId!);
+    await assertUserCanRunWorkflow(slug, req.userId!);
+    const promptCronjobRun = await prisma.cronjob_runs.findFirst({
+        where: {
+            opencode_session_id: req.opencode_session_id,
+            status: "running",
+            cronjob: { target_type: "prompt" },
+        },
+        select: {
+            cronjob: {
+                select: {
+                    prompt_allow_workflow_runs_without_permission: true,
+                },
+            },
+        },
+    });
+    const requirePermissionPrompt = promptCronjobRun
+        ? promptCronjobRun.cronjob.prompt_allow_workflow_runs_without_permission !== true
+        : true;
+    const runSource = promptCronjobRun ? "cronjob" : "user";
     const startedRun = await startWorkflowRunViaBackend({
         workspaceDir,
         slug,
@@ -445,8 +442,8 @@ router.post('/execute', apiHandler(async (req, res) => {
         sessionId: req.opencode_session_id,
         messageId,
         callId,
-        requirePermissionPrompt: true,
-        runSource: "user",
+        requirePermissionPrompt,
+        runSource,
         secretResolutionMode: "user",
     });
 

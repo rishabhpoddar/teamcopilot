@@ -1,5 +1,6 @@
 import { CronJob } from "cron";
 import { reconcileResourceMetadataWithFilesystem } from "./resource-reconciliation";
+import { startUserCronjobScheduler } from "../cronjobs/scheduler";
 
 let isCronStarted = false;
 
@@ -13,4 +14,6 @@ export function startCronJobs() {
         void reconcileResourceMetadataWithFilesystem();
     });
     resourceReconciliationJob.start();
+
+    void startUserCronjobScheduler();
 }

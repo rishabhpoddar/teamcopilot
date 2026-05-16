@@ -1,0 +1,146 @@
+.cronjob-run-page {
+  max-width: 1180px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.cronjob-run-topbar {
+  display: flex;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+
+.cronjob-run-topbar button,
+.cronjob-run-stop-btn {
+  border: 1px solid #555;
+  background: #232323;
+  color: #e5e7eb;
+  border-radius: 8px;
+  padding: 0.6rem 1rem;
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.cronjob-run-ai-btn {
+  border: 1px solid #355d4d;
+  background: rgba(20, 83, 45, 0.24);
+  color: #bbf7d0;
+  border-radius: 8px;
+  padding: 0.6rem 1rem;
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.cronjob-run-stop-btn {
+  background: #3b0d12;
+  color: #fecaca;
+  border-color: #7f1d1d;
+}
+
+.cronjob-run-header,
+.cronjob-run-meta,
+.cronjob-run-state,
+.cronjob-run-status-card {
+  border: 1px solid #333;
+  border-radius: 12px;
+  background: #1a1a1a;
+}
+
+.cronjob-run-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: stretch;
+  margin-bottom: 1rem;
+  padding: 1rem 1.1rem;
+}
+
+.cronjob-run-header h1 {
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+.cronjob-run-header p {
+  margin: 0.45rem 0 0;
+  color: #aaa;
+}
+
+.cronjob-run-status-card {
+  min-width: 190px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 1rem;
+  background: #141414;
+}
+
+.cronjob-run-status-card span,
+.cronjob-run-meta span,
+.cronjobs-eyebrow {
+  color: #888;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.cronjob-run-status-card strong {
+  font-size: 1.05rem;
+  text-transform: capitalize;
+}
+
+.cronjob-run-stop-btn:disabled,
+.cronjob-run-topbar button:disabled,
+.cronjob-run-ai-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.cronjob-run-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  padding: 1rem;
+}
+
+.cronjob-run-meta div {
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 0.85rem;
+  background: #141414;
+}
+
+.cronjob-run-meta strong {
+  display: block;
+  margin-top: 0.3rem;
+  color: #e5e5e5;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.cronjob-run-meta-wide {
+  grid-column: 1 / -1;
+}
+
+.cronjob-run-state {
+  max-width: 900px;
+  margin: 4rem auto;
+  text-align: center;
+  color: #888;
+  padding: 1.5rem 1rem;
+}
+
+.cronjob-run-state.error {
+  color: #ff6b6b;
+}
+
+@media (max-width: 720px) {
+  .cronjob-run-header,
+  .cronjob-run-topbar {
+    flex-direction: column;
+  }
+}

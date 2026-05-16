@@ -6,15 +6,17 @@ import RunHistorySection from '../components/dashboard/RunHistorySection';
 import AIModeSection from '../components/dashboard/AIModeSection';
 import SkillsSection from '../components/dashboard/SkillsSection';
 import UsageSection from '../components/dashboard/UsageSection';
+import CronjobsSection from '../components/dashboard/CronjobsSection';
 import './Home.css';
 
-type Tab = 'workflows' | 'history' | 'ai' | 'skills' | 'usage';
-const validTabs: Tab[] = ['ai', 'usage', 'workflows', 'skills', 'history'];
+type Tab = 'workflows' | 'history' | 'ai' | 'skills' | 'usage' | 'cronjobs';
+const validTabs: Tab[] = ['ai', 'usage', 'workflows', 'skills', 'cronjobs', 'history'];
 const tabTitles: Record<Tab, string> = {
     ai: 'AI Chat',
     usage: 'Token Usage',
     workflows: 'Workflows',
     skills: 'Skills',
+    cronjobs: 'Cronjobs',
     history: 'Run History'
 };
 
@@ -25,6 +27,7 @@ export default function Home() {
     const activeTab: Tab = validTabs.includes(tabParam as Tab) ? (tabParam as Tab) : 'ai';
     const composeDraft = searchParams.get('draft');
     const composeNewChat = searchParams.get('newChat') === '1';
+    const selectedChatSessionId = searchParams.get('session');
 
     usePageTitle(tabTitles[activeTab]);
 
@@ -62,6 +65,8 @@ export default function Home() {
                 return <RunHistorySection />;
             case 'skills':
                 return <SkillsSection />;
+            case 'cronjobs':
+                return <CronjobsSection />;
             case 'usage':
                 return <UsageSection />;
             case 'ai':
@@ -70,6 +75,7 @@ export default function Home() {
                         initialDraftMessage={composeDraft}
                         forceNewChat={composeNewChat}
                         onDraftHandled={clearComposeParams}
+                        selectedSessionId={selectedChatSessionId}
                     />
                 );
         }
@@ -101,6 +107,12 @@ export default function Home() {
                     onClick={() => setActiveTab('skills')}
                 >
                     Browse skills
+                </button>
+                <button
+                    className={`tab-btn ${activeTab === 'cronjobs' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('cronjobs')}
+                >
+                    Cronjobs
                 </button>
                 <button
                     className={`tab-btn ${activeTab === 'history' ? 'active' : ''}`}

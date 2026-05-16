@@ -27,6 +27,9 @@ interface ChatContainerProps {
     initialDraftMessage: string | null;
     forceNewChat: boolean;
     onDraftHandled: () => void;
+    selectedSessionId?: string | null;
+    fixedSession?: ChatSession;
+    readOnly?: boolean;
 }
 
 function getSessionErrorMessage(error: unknown): string {
@@ -136,7 +139,7 @@ function playNotificationSound() {
     });
 }
 
-export default function ChatContainer({ initialDraftMessage, forceNewChat, onDraftHandled }: ChatContainerProps) {
+export default function ChatContainer({ initialDraftMessage, forceNewChat, onDraftHandled, selectedSessionId, fixedSession, readOnly = false }: ChatContainerProps) {
     const PENDING_SESSION_ID = 'pending';
     const PERMISSION_POLL_INTERVAL_MS = 1000;
     const SESSION_DIFF_POLL_INTERVAL_MS = 1000;
@@ -182,6 +185,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
     const lastEscapePressRef = useRef<number>(0);
     // const currentSessionInfoRef = useRef<{ id: string; isEmpty: boolean } | null>(null);
     const handledComposeKeyRef = useRef<string | null>(null);
+    const handledSelectedSessionIdRef = useRef<string | null>(null);
     const previousSessionsRef = useRef<Record<string, ChatSession>>({});
     const readingSessionIdsRef = useRef<Set<string>>(new Set());
     const messagesAbortControllerRef = useRef<AbortController | null>(null);
@@ -230,6 +234,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
 
     const token = auth.loading ? null : auth.token;
     const activeSession = sessions.find((session) => session.id === activeSessionId) ?? null;
+    const isFixedSessionMode = fixedSession !== undefined;
 
     useEffect(() => {
         const handleResize = () => {
@@ -814,11 +819,22 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
     // Load sessions on mount
     useEffect(() => {
         if (!token) return;
+        if (isFixedSessionMode) {
+            setSessions([fixedSession]);
+            previousSessionsRef.current = { [fixedSession.id]: fixedSession };
+            setActiveSessionId(fixedSession.id);
+            setLoading(false);
+            setError(null);
+            return;
+        }
         loadSessions();
-    }, [token, loadSessions]);
+    }, [fixedSession, isFixedSessionMode, token, loadSessions]);
 
     useEffect(() => {
         if (!token) {
+            return;
+        }
+        if (isFixedSessionMode) {
             return;
         }
 
@@ -829,7 +845,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
         return () => {
             window.clearInterval(intervalId);
         };
-    }, [loadSessions, token]);
+    }, [isFixedSessionMode, loadSessions, token]);
 
     useEffect(() => {
         markActiveAttentionAsSeenIfVisible();
@@ -901,6 +917,23 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
     }, [activeSessionId, switchSession]);
 
     useEffect(() => {
+        if (isFixedSessionMode || !selectedSessionId) {
+            return;
+        }
+        if (handledSelectedSessionIdRef.current === selectedSessionId) {
+            return;
+        }
+        if (!sessions.some((session) => session.id === selectedSessionId)) {
+            return;
+        }
+        handledSelectedSessionIdRef.current = selectedSessionId;
+        switchSession(selectedSessionId);
+    }, [isFixedSessionMode, selectedSessionId, sessions, switchSession]);
+
+    useEffect(() => {
+        if (isFixedSessionMode) {
+            return;
+        }
         const composeKey = `${forceNewChat ? '1' : '0'}::${initialDraftMessage ?? ''}`;
         if (composeKey === '0::') {
             return;
@@ -919,7 +952,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
             refreshDraftForSession(targetSessionId);
         }
         onDraftHandled();
-    }, [forceNewChat, initialDraftMessage, activeSessionId, onDraftHandled, createSession, refreshDraftForSession, updateDraftForSession]);
+    }, [forceNewChat, initialDraftMessage, activeSessionId, isFixedSessionMode, onDraftHandled, createSession, refreshDraftForSession, updateDraftForSession]);
 
     /*
     const deleteSession = async (sessionId: string) => {
@@ -1094,15 +1127,124 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
         }
     }, [token, activeSessionId]);
 
+    const resumeCronjob = useCallback(async () => {
+        if (!token || !activeSessionId || activeSessionId === PENDING_SESSION_ID) return;
+        const runId = sessions.find((session) => session.id === activeSessionId)?.cronjob_control?.run_id;
+        if (!runId) return;
+
+        try {
+            await axiosInstance.post(
+                `/api/cronjobs/runs/${runId}/resume`,
+                {},
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+            setSessions((prev) => prev.map((session) => (
+                session.id === activeSessionId
+                    ? {
+                        ...session,
+                        cronjob_control: {
+                            run_id: runId,
+                            status: "running",
+                            can_interrupt: true,
+                            can_resume: false,
+                            can_terminate: true,
+                        },
+                    }
+                    : session
+            )));
+            toast.success('Cronjob automation resumed');
+        } catch (err: unknown) {
+            const errorMessage = err instanceof AxiosError
+                ? err.response?.data?.message || err.response?.data || err.message
+                : 'Failed to resume cronjob';
+            toast.error(errorMessage);
+        }
+    }, [token, activeSessionId, sessions]);
+
+    const interruptCronjob = useCallback(async () => {
+        if (!token || !activeSessionId || activeSessionId === PENDING_SESSION_ID) return;
+        const runId = sessions.find((session) => session.id === activeSessionId)?.cronjob_control?.run_id;
+        if (!runId) return;
+
+        try {
+            await axiosInstance.post(
+                `/api/cronjobs/runs/${runId}/interrupt`,
+                {},
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+            setSessions((prev) => prev.map((session) => (
+                session.id === activeSessionId
+                    ? {
+                        ...session,
+                        cronjob_control: {
+                            run_id: runId,
+                            status: "paused",
+                            can_interrupt: false,
+                            can_resume: true,
+                            can_terminate: true,
+                        },
+                    }
+                    : session
+            )));
+            setIsStreaming(false);
+            toast.success('Cronjob automation interrupted');
+        } catch (err: unknown) {
+            const errorMessage = err instanceof AxiosError
+                ? err.response?.data?.message || err.response?.data || err.message
+                : 'Failed to interrupt cronjob';
+            toast.error(errorMessage);
+        }
+    }, [token, activeSessionId, sessions]);
+
+    const terminateCronjob = useCallback(async () => {
+        if (!token || !activeSessionId || activeSessionId === PENDING_SESSION_ID) return;
+        const runId = sessions.find((session) => session.id === activeSessionId)?.cronjob_control?.run_id;
+        if (!runId) return;
+
+        try {
+            await axiosInstance.post(
+                `/api/cronjobs/runs/${runId}/terminate`,
+                {},
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+            setSessions((prev) => prev.map((session) => (
+                session.id === activeSessionId
+                    ? { ...session, cronjob_control: null }
+                    : session
+            )));
+            setIsStreaming(false);
+            toast.success('Cronjob automation terminated');
+        } catch (err: unknown) {
+            const errorMessage = err instanceof AxiosError
+                ? err.response?.data?.message || err.response?.data || err.message
+                : 'Failed to terminate cronjob';
+            toast.error(errorMessage);
+        }
+    }, [token, activeSessionId, sessions]);
+
     const abortResponse = useCallback(async () => {
         if (!token || !activeSessionId || activeSessionId === PENDING_SESSION_ID) return;
 
         try {
-            await axiosInstance.post(
+            const response = await axiosInstance.post(
                 `/api/chat/sessions/${activeSessionId}/abort`,
                 {},
                 { headers: { Authorization: `Bearer ${token}` } }
             );
+            setSessions((prev) => prev.map((session) => (
+                session.id === activeSessionId && response.data.cronjob_run_id
+                    ? {
+                        ...session,
+                        cronjob_control: {
+                            run_id: response.data.cronjob_run_id,
+                            status: "paused",
+                            can_interrupt: false,
+                            can_resume: true,
+                            can_terminate: true,
+                        },
+                    }
+                    : session
+            )));
             setIsStreaming(false);
         } catch (err: unknown) {
             const errorMessage = err instanceof AxiosError
@@ -1232,28 +1374,31 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
 
     return (
         <div className="chat-layout">
-            {/* Previously used: onDeleteSession={deleteSession} */}
-            <SessionSidebar
-                sessions={sessions}
-                activeSessionId={activeSessionId}
-                attentionStateBySessionId={attentionStateBySessionId}
-                onSelectSession={switchSession}
-                onNewSession={createSession}
-                isOpen={isSidebarOpen}
-                onToggle={() => setIsSidebarOpen((prev) => !prev)}
-                loading={loading}
-            />
+            {isFixedSessionMode ? null : (
+                <SessionSidebar
+                    sessions={sessions}
+                    activeSessionId={activeSessionId}
+                    attentionStateBySessionId={attentionStateBySessionId}
+                    onSelectSession={switchSession}
+                    onNewSession={createSession}
+                    isOpen={isSidebarOpen}
+                    onToggle={() => setIsSidebarOpen((prev) => !prev)}
+                    loading={loading}
+                />
+            )}
             <div className="chat-main">
                 <div className="chat-main-toolbar">
-                    <button
-                        type="button"
-                        className="chat-main-toolbar-toggle"
-                        onClick={() => setIsSidebarOpen((prev) => !prev)}
-                        aria-expanded={isSidebarOpen}
-                        aria-controls="chat-session-list"
-                    >
-                        Sessions
-                    </button>
+                    {isFixedSessionMode ? null : (
+                        <button
+                            type="button"
+                            className="chat-main-toolbar-toggle"
+                            onClick={() => setIsSidebarOpen((prev) => !prev)}
+                            aria-expanded={isSidebarOpen}
+                            aria-controls="chat-session-list"
+                        >
+                            Sessions
+                        </button>
+                    )}
                     {hasVisibleSessionDiff ? (
                         <button
                             type="button"
@@ -1269,10 +1414,45 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                         <strong>{activeSession?.title || (activeSessionId ? 'New Chat' : 'AI Assistant')}</strong>
                         <span>
                             {activeSessionId
-                                ? 'Fixed viewport with scrollable conversation'
+                                ? activeSession?.cronjob_control
+                                    ? activeSession.cronjob_control.status === "paused"
+                                        ? 'Cronjob is paused in chat'
+                                        : 'Cronjob automation is running'
+                                    : 'Fixed viewport with scrollable conversation'
                                 : 'Select a session or start a new chat'}
                         </span>
                     </div>
+                    {activeSession?.cronjob_control && !readOnly ? (
+                        <div className="chat-cronjob-controls">
+                            {activeSession.cronjob_control.can_interrupt ? (
+                                <button
+                                    type="button"
+                                    className="chat-cronjob-control-btn"
+                                    onClick={interruptCronjob}
+                                >
+                                    Interrupt
+                                </button>
+                            ) : null}
+                            {activeSession.cronjob_control.can_resume ? (
+                                <button
+                                    type="button"
+                                    className="chat-cronjob-control-btn resume"
+                                    onClick={resumeCronjob}
+                                >
+                                    Resume
+                                </button>
+                            ) : null}
+                            {activeSession.cronjob_control.can_terminate ? (
+                                <button
+                                    type="button"
+                                    className="chat-cronjob-control-btn danger"
+                                    onClick={terminateCronjob}
+                                >
+                                    Terminate
+                                </button>
+                            ) : null}
+                        </div>
+                    ) : null}
                 </div>
                 {usageSyncWarning ? (
                     <div className="chat-usage-sync-warning" role="status">
@@ -1293,21 +1473,23 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                                 onPermissionRespond={sendPermissionResponse}
                                 respondingPermissionIds={respondingPermissionIds}
                             />
-                            <ChatInput
-                                onSend={sendMessage}
-                                fetchFileSuggestions={searchMentionFiles}
-                                draftSessionKey={activeDraftSessionKey}
-                                onDraftChange={(content: string) => {
-                                    if (!activeSessionId) {
-                                        return;
-                                    }
-                                    updateDraftForSession(activeSessionId, content);
-                                }}
-                                onAbort={abortResponse}
-                                disabled={!activeSessionId}
-                                isStreaming={isStreaming}
-                                draftMessage={activeDraftMessage}
-                            />
+                            {readOnly ? null : (
+                                <ChatInput
+                                    onSend={sendMessage}
+                                    fetchFileSuggestions={searchMentionFiles}
+                                    draftSessionKey={activeDraftSessionKey}
+                                    onDraftChange={(content: string) => {
+                                        if (!activeSessionId) {
+                                            return;
+                                        }
+                                        updateDraftForSession(activeSessionId, content);
+                                    }}
+                                    onAbort={abortResponse}
+                                    disabled={!activeSessionId}
+                                    isStreaming={isStreaming}
+                                    draftMessage={activeDraftMessage}
+                                />
+                            )}
                         </div>
                     </div>
                 ) : (

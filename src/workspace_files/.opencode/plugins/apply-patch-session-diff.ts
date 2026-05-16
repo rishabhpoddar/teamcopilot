@@ -242,7 +242,7 @@ function collectTrackedPathsForTool(
     return extractTrackedPathsFromPatch(patchPayload)
   }
 
-  if (tool === "write") {
+  if (tool === "write" || tool === "edit") {
     const filepath =
       findNestedStringByKeys(outputArgs, new Set(["filepath", "filePath"])) ??
       findNestedStringByKeys(inputArgs, new Set(["filepath", "filePath"]))
@@ -318,7 +318,7 @@ export const ApplyPatchSessionDiffPlugin: Plugin = async ({ client, directory })
 
   return {
     "tool.execute.before": async (input, output) => {
-      if (!["apply_patch", "write", "bash"].includes(input.tool)) {
+      if (!["apply_patch", "write", "edit", "bash"].includes(input.tool)) {
         return
       }
 

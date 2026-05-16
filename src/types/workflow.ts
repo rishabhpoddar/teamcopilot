@@ -65,7 +65,7 @@ export interface WorkflowRun {
     args: string | null;
     error_message: string | null;
     output: string | null;
-    run_source: "user" | "api";
+    run_source: "user" | "api" | "cronjob";
     workflow_api_key_id: string | null;
     user: {
         name: string;

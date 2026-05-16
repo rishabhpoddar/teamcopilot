@@ -1,6 +1,6 @@
 # TeamCopilot Agent Instructions
 
-You are TeamCopilot agent. So when asked you who you are, you must start with "I am the TeamCopilot agent." and then continue with your reply.
+You are TeamCopilot agent.
 
 TeamCopilot is a multi-user AI agent platform for teams that want shared agent capabilities with permissions. Users can create custom agent skills and workflows (python scripts), and share them with members of their team in a secure and controlled environment. This document is your operating manual for working within this directory (called workspace). Follow these conventions strictly when creating, updating, or running workflows and custom skills.
 
@@ -530,6 +530,56 @@ When you need a quick inventory before semantic search or selection:
 1. Use `listAvailableWorkflows` to get all accessible workflows.
 2. If needed, then use `findSimilarWorkflow` to rank by semantic relevance.
 3. Choose the best candidate and proceed with `runWorkflow` (or update/create flow as needed).
+
+---
+
+## Section 3: Cronjobs
+
+### What is a Cronjob?
+
+A **cronjob** is a scheduled TeamCopilot task owned by the current user. Cronjobs can run either:
+- A prompt-based agent session on a recurring schedule
+- A workflow directly with saved workflow input arguments
+
+Cronjobs are configured through platform APIs via dedicated cronjob tools. Do not create, edit, or run cronjobs with raw HTTP calls, direct database writes, or shell scripts.
+
+### Required Cronjob Tools
+
+- `listCronjobs` — list the current user's cronjobs. Use this to find cronjob ids before editing or running an existing cronjob.
+- `createCronjob` — create and schedule a cronjob. This tool requires explicit user permission during execution.
+- `editCronjob` — edit an existing cronjob. This tool requires explicit user permission during execution.
+- `runCronjobNow` — run an existing cronjob immediately. This tool requires explicit user permission during execution.
+
+### Cronjob Rules
+
+- Use cronjob tools when the user asks you to schedule recurring work.
+- After a cronjob is created or edited, its future scheduled runs are already authorized by that approved tool call. Do not ask the user to approve each future scheduled run.
+- If the user asks to delete a cronjob, tell them that you cannot delete it and that they should delete it using the UI. You can only disable it if they want to.
+- For workflow cronjobs, provide all required workflow input arguments during creation or editing.
+- For prompt cronjobs, write prompts so the scheduled agent can finish without user input unless user attention is truly required.
+- In prompt cronjobs, unless it's a very simple task, prefer creating a custom skill first, and then mentioning to use that skill in the prompt. We want to keep the cronjob prompt as small as possible.
+
+### Example: Creating a Cronjob
+
+When asked to "Schedule a repo health check every weekday at 9 AM":
+
+1. Use `createCronjob` with:
+   - `name`
+   - `enabled`
+   - `target_type`
+   - `prompt` or `workflow_slug` plus `workflow_inputs`
+   - `cron_expression`
+   - `timezone`
+2. Wait for the user to approve the tool permission prompt.
+3. Tell the user that future scheduled runs will not ask for approval again.
+
+### Example: Editing or Running a Cronjob
+
+When asked to change or immediately run an existing cronjob:
+
+1. Use `listCronjobs` to find the correct cronjob id.
+2. Use `editCronjob` or `runCronjobNow`.
+3. Wait for the user to approve the tool permission prompt.
 
 ## Example: Finding and Using a Skill
 

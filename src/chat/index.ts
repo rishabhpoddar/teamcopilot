@@ -5,9 +5,6 @@ import { pathToFileURL } from "url";
 import type { FilePartInput, TextPartInput } from "@opencode-ai/sdk";
 import prisma from "../prisma/client";
 import { apiHandler } from "../utils/index";
-import { getResourceAccessSummary } from "../utils/resource-access";
-import { listSkillSlugs, readSkillManifestAndEnsurePermissions } from "../utils/skill";
-import { listResolvedSecretsForUser } from "../utils/secrets";
 import {
     getOpencodeClient,
     getPendingQuestionForSession,
@@ -22,6 +19,7 @@ import {
 import {
     getSessionStatusTypeForSession,
     normalizeStaleRunningTools,
+    sessionHasPendingInputForLatestAssistantMessage,
     type SessionMessageWire,
     type SessionStatusMap,
     type SessionStatusType
@@ -35,10 +33,16 @@ import {
     normalizeWorkspaceRelativePath,
 } from "../utils/chat-session-file-diff";
 import { syncChatSessionUsage } from "../utils/chat-usage";
+import { interruptCronjobRun } from "../cronjobs/scheduler";
+import {
+    ACTUAL_USER_MESSAGE_MARKER,
+    buildAvailableSecretsPrompt,
+    buildAvailableSkillsPrompt,
+    buildCurrentTimePrompt,
+} from "../utils/chat-prompt-context";
 
 const router = express.Router({ mergeParams: true });
 const USER_INSTRUCTIONS_FILENAME = "USER_INSTRUCTIONS.md";
-const ACTUAL_USER_MESSAGE_MARKER = "####### Actual user message below #######";
 
 function getErrorMessage(error: unknown): string {
     if (error && typeof error === 'object' && 'detail' in error) {
@@ -171,63 +175,6 @@ async function readWorkspaceUserInstructions(): Promise<string | null> {
         }
         throw new Error(`Failed to read ${USER_INSTRUCTIONS_FILENAME}: ${nodeError.message}`);
     }
-}
-
-async function buildAvailableSkillsPrompt(userId: string): Promise<string | null> {
-    const slugs = listSkillSlugs();
-    if (slugs.length === 0) {
-        return null;
-    }
-
-    const availableSkills = (await Promise.all(
-        slugs.map(async (slug) => {
-            const accessSummary = await getResourceAccessSummary("skill", slug, userId);
-            if (!accessSummary.can_view || !accessSummary.is_approved) {
-                return null;
-            }
-
-            const { manifest } = await readSkillManifestAndEnsurePermissions(slug);
-            return {
-                path: `.agents/skills/${slug}`,
-                slug,
-                name: manifest.name,
-                description: manifest.description,
-            };
-        })
-    )).filter((skill): skill is {
-        path: string;
-        slug: string;
-        name: string;
-        description: string;
-    } => skill !== null);
-
-    if (availableSkills.length === 0) {
-        return null;
-    }
-
-    const skillLines = availableSkills.map((skill, index) =>
-        `${index + 1}. ${skill.name} (${skill.slug})\n   path: ${skill.path}\n   description: ${skill.description || "(no description provided)"}`
-    );
-
-    return `# Available custom skills\n\nThese custom skills are available to you for this session (this is also the result of calling listAvailableSkills at this point in time). Use getSkillContent tool for a specific skill when you need to inspect its SKILL.md before using it.\n\n${skillLines.join("\n\n")}`;
-}
-
-async function buildAvailableSecretsPrompt(userId: string): Promise<string | null> {
-    const secretMap = await listResolvedSecretsForUser(userId);
-    const keys = Object.keys(secretMap);
-    if (keys.length === 0) {
-        return null;
-    }
-
-    return [
-        "# Available secrets for this user",
-        "",
-        "These secret keys are available to the current user for this session. Reuse these exact keys when creating or editing skills and workflows whenever they fit the need.",
-        "When referring to a secret in skill content or bash commands, use the proxy placeholder format {{SECRET:KEY}} instead of a raw value.",
-        "If you create a skill or workflow that needs a new secret key not listed here, you may introduce that new key, but you must tell the user to add it in their Profile Secrets before the skill or workflow can be used.",
-        "",
-        `Available secret keys: ${keys.join(", ")}`,
-    ].join("\n");
 }
 
 async function writeWorkspaceUserInstructions(content: string): Promise<void> {
@@ -531,7 +478,10 @@ function getSessionState(args: {
 // GET /api/chat/sessions - List user's sessions
 router.get('/sessions', apiHandler(async (req, res) => {
     const sessions = await prisma.chat_sessions.findMany({
-        where: { user_id: req.userId! },
+        where: {
+            user_id: req.userId!,
+            visible_to_user: true,
+        },
         orderBy: { updated_at: 'desc' }
     });
 
@@ -556,7 +506,7 @@ router.get('/sessions', apiHandler(async (req, res) => {
         await prisma.chat_sessions.deleteMany({
             where: {
                 id: { in: staleSessionIds },
-                user_id: req.userId!
+                user_id: req.userId!,
             }
         });
     }
@@ -580,26 +530,39 @@ router.get('/sessions', apiHandler(async (req, res) => {
             opencode_session_id: true
         }
     });
+    const controllableCronjobRuns = await prisma.cronjob_runs.findMany({
+        where: {
+            session_id: { in: validSessions.map((session) => session.id) },
+            cronjob: { target_type: "prompt" },
+            status: { in: ["running", "paused"] },
+        },
+        orderBy: { started_at: "desc" },
+        select: {
+            id: true,
+            session_id: true,
+            status: true,
+        },
+    });
+    const controllableRunBySessionId = new Map<string, (typeof controllableCronjobRuns)[number]>();
+    for (const run of controllableCronjobRuns) {
+        assertCondition(run.session_id, "Controllable cronjob run is missing chat session id");
+        if (controllableRunBySessionId.has(run.session_id)) continue;
+        controllableRunBySessionId.set(run.session_id, run);
+    }
 
     const enrichedSessions = await Promise.all(validSessions.map(async (session) => {
+        const controllableRun = controllableRunBySessionId.get(session.id);
         const latestAssistantMessageId = await loadLatestAssistantMessageIdForSession(
             client,
             session.opencode_session_id
         );
-        const hasPendingInput = latestAssistantMessageId !== null && (
-            pendingQuestions.some((question) =>
-                question.sessionID === session.opencode_session_id
-                && question.messageID === latestAssistantMessageId
-            )
-            || pendingPermissions.some((permission) =>
-                permission.sessionID === session.opencode_session_id
-                && permission.tool?.messageID === latestAssistantMessageId
-            )
-            || customPendingPermissions.some((permission) =>
-                permission.opencode_session_id === session.opencode_session_id
-                && permission.message_id === latestAssistantMessageId
-            )
-        );
+        const hasPendingInput = sessionHasPendingInputForLatestAssistantMessage({
+            opencodeSessionId: session.opencode_session_id,
+            latestAssistantMessageId,
+            pendingQuestions,
+            pendingPermissions,
+            customPendingPermissions
+        });
         const rawSessionStatus = getSessionStatusTypeForSession(sessionStatusMap, session.opencode_session_id);
         const sessionState = getSessionState({
             rawSessionStatus,
@@ -615,7 +578,16 @@ router.get('/sessions', apiHandler(async (req, res) => {
             created_at: session.created_at,
             updated_at: session.updated_at,
             state: sessionState.state,
-            latest_message_id: sessionState.latest_message_id
+            latest_message_id: sessionState.latest_message_id,
+            cronjob_control: controllableRun
+                ? {
+                    run_id: controllableRun.id,
+                    status: controllableRun.status,
+                    can_interrupt: controllableRun.status === "running",
+                    can_resume: controllableRun.status === "paused",
+                    can_terminate: true,
+                }
+                : null,
         };
     }));
 
@@ -773,7 +745,7 @@ router.get('/sessions/:id', apiHandler(async (req, res) => {
     });
 }, true));
 
-// POST /api/chat/sessions/file-diff/capture-baseline - Capture pre-apply_patch baseline for current opencode session
+// POST /api/chat/sessions/file-diff/capture-baseline - Capture pre-edit baseline for current opencode session
 router.post('/sessions/file-diff/capture-baseline', apiHandler(async (req, res) => {
     if (!req.opencode_session_id) {
         throw {
@@ -1014,6 +986,22 @@ router.post('/sessions/:id/messages', apiHandler(async (req, res) => {
         };
     }
 
+    const terminalCronjobRun = await prisma.cronjob_runs.findFirst({
+        where: {
+            session_id: id,
+            cronjob: { target_type: "prompt" },
+            status: { in: ["success", "failed", "terminated", "skipped"] },
+        },
+        orderBy: { started_at: "desc" },
+        select: { status: true },
+    });
+    if (terminalCronjobRun) {
+        throw {
+            status: 409,
+            message: `This cronjob chat is closed because the run is ${terminalCronjobRun.status}. Start a new chat or rerun the cronjob.`
+        };
+    }
+
     const pendingQuestion = await getPendingQuestionForSession(session.opencode_session_id);
     if (pendingQuestion) {
         throw {
@@ -1045,27 +1033,25 @@ router.post('/sessions/:id/messages', apiHandler(async (req, res) => {
         const userInstructions = await readWorkspaceUserInstructions();
         const availableSkillsPrompt = await buildAvailableSkillsPrompt(req.userId!);
         const availableSecretsPrompt = await buildAvailableSecretsPrompt(req.userId!);
-        if (userInstructions || availableSkillsPrompt || availableSecretsPrompt) {
-            const preambleSections: string[] = [];
-            if (userInstructions) {
-                preambleSections.push(`# Custom user instructions (in case of conflicts, the instructions here take precedence over the contents of the AGENTS.md file)\n\n${userInstructions}`);
-            }
-            if (availableSkillsPrompt) {
-                preambleSections.push(availableSkillsPrompt);
-            }
-            if (availableSecretsPrompt) {
-                preambleSections.push(availableSecretsPrompt);
-            }
-
-            const wrappedUserInstructions = `${preambleSections.join("\n\n")}\n\n${ACTUAL_USER_MESSAGE_MARKER}\n\n`;
-            finalPromptParts = [
-                {
-                    type: "text",
-                    text: wrappedUserInstructions
-                },
-                ...promptParts
-            ];
+        const preambleSections: string[] = [buildCurrentTimePrompt()];
+        if (userInstructions) {
+            preambleSections.push(`# Custom user instructions (in case of conflicts, the instructions here take precedence over the contents of the AGENTS.md file)\n\n${userInstructions}`);
         }
+        if (availableSkillsPrompt) {
+            preambleSections.push(availableSkillsPrompt);
+        }
+        if (availableSecretsPrompt) {
+            preambleSections.push(availableSecretsPrompt);
+        }
+
+        const wrappedUserInstructions = `${preambleSections.join("\n\n")}\n\n${ACTUAL_USER_MESSAGE_MARKER}\n\n`;
+        finalPromptParts = [
+            {
+                type: "text",
+                text: wrappedUserInstructions
+            },
+            ...promptParts
+        ];
     }
 
     // Use promptAsync to send message and return immediately
@@ -1350,10 +1336,27 @@ router.post('/sessions/:id/abort', apiHandler(async (req, res) => {
         };
     }
 
-    await abortOpencodeSession(session.opencode_session_id);
+    const runningCronRun = await prisma.cronjob_runs.findFirst({
+        where: {
+            session_id: id,
+            status: "running",
+        },
+        select: {
+            id: true,
+            status: true,
+            opencode_session_id: true,
+            workflow_run_id: true,
+        },
+    });
+    if (runningCronRun) {
+        await interruptCronjobRun(runningCronRun.id);
+    } else {
+        await abortOpencodeSession(session.opencode_session_id);
+    }
 
     res.json({
-        success: true
+        success: true,
+        cronjob_run_id: runningCronRun?.id ?? null,
     });
 }, true));
 

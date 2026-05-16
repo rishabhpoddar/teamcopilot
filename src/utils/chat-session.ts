@@ -2,6 +2,25 @@ import { assertCondition } from "./assert";
 export type SessionStatusType = 'busy' | 'retry' | 'idle';
 export type SessionStatusMap = Record<string, { type: 'busy' | 'retry' | 'idle' }>;
 
+type PendingQuestionWire = {
+    sessionID: string;
+    tool?: {
+        messageID: string;
+    };
+};
+
+type PendingPermissionWire = {
+    sessionID: string;
+    tool?: {
+        messageID: string;
+    };
+};
+
+type CustomPendingPermissionWire = {
+    opencode_session_id: string;
+    message_id: string;
+};
+
 type ToolStateWire = {
     status: 'pending' | 'running' | 'completed' | 'error';
     input: Record<string, unknown>;
@@ -42,6 +61,33 @@ export function getSessionStatusTypeForSession(
 ): SessionStatusType {
     const status = statusMap[sessionId];
     return status ? status.type : 'idle';
+}
+
+export function sessionHasPendingInputForLatestAssistantMessage(args: {
+    opencodeSessionId: string;
+    latestAssistantMessageId: string | null;
+    pendingQuestions: PendingQuestionWire[];
+    pendingPermissions: PendingPermissionWire[];
+    customPendingPermissions: CustomPendingPermissionWire[];
+}): boolean {
+    if (args.latestAssistantMessageId === null) {
+        return false;
+    }
+
+    return (
+        args.pendingQuestions.some((question) =>
+            question.sessionID === args.opencodeSessionId
+            && question.tool?.messageID === args.latestAssistantMessageId
+        )
+        || args.pendingPermissions.some((permission) =>
+            permission.sessionID === args.opencodeSessionId
+            && permission.tool?.messageID === args.latestAssistantMessageId
+        )
+        || args.customPendingPermissions.some((permission) =>
+            permission.opencode_session_id === args.opencodeSessionId
+            && permission.message_id === args.latestAssistantMessageId
+        )
+    );
 }
 
 export function normalizeStaleRunningTools(

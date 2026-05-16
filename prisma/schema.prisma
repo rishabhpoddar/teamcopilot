@@ -20,6 +20,7 @@ model users {
   reset_token_expires_at     BigInt?
   workflowRuns               workflow_runs[]
   chatSessions               chat_sessions[]
+  cronjobs                   cronjobs[]
   resourcePermissionUsers    resource_permission_users[]
   createdResourceMetadata    resource_metadata[]             @relation("ResourceCreatedBy")
   approvedResourceMetadata   resource_metadata[]             @relation("ResourceApprovedBy")
@@ -38,10 +39,11 @@ model workflow_runs {
   workflow_slug  String
   session_id     String?
   message_id     String?
-  run_source     String // "user" | "api"
+  run_source     String // "user" | "api" | "cronjob"
   workflow_api_key_id String?
   user           users?  @relation(fields: [ran_by_user_id], references: [id], onDelete: SetNull)
   workflowApiKey workflow_api_keys? @relation(fields: [workflow_api_key_id], references: [id], onDelete: SetNull)
+  cronjobRuns    cronjob_runs[]
 
   @@index([started_at])
   @@index([session_id, message_id])
@@ -102,11 +104,77 @@ model chat_sessions {
   opencode_session_id String @unique
   title               String
   last_seen_assistant_message_id String?
+  visible_to_user     Boolean @default(true)
   created_at          BigInt
   updated_at          BigInt
   trackedFiles        chat_session_tracked_files[]
   usage               chat_session_usage?
+  cronjobRuns         cronjob_runs[]
   user                users                      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  @@index([visible_to_user])
+}
+
+model cronjobs {
+  id                                           String        @id @default(uuid())
+  user_id                                      String
+  name                                         String
+  enabled                                      Boolean
+  target_type                                  String        // "prompt" | "workflow"
+  prompt                                       String?
+  prompt_allow_workflow_runs_without_permission Boolean?
+  workflow_slug                                String?
+  workflow_input_json                          String?
+  cron_expression                              String
+  timezone                                     String
+  created_at                                   BigInt
+  updated_at                                   BigInt
+  user                                         users         @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  runs                                         cronjob_runs[]
+
+  @@unique([user_id, name])
+  @@index([user_id])
+  @@index([enabled])
+  @@index([target_type])
+  @@index([workflow_slug])
+}
+
+model cronjob_runs {
+  id                         String         @id @default(uuid())
+  cronjob_id                 String
+  status                     String // prompt: "running" | "paused" | "success" | "failed" | "skipped" | "terminated"; workflow: "running" | "success" | "failed" | "skipped"
+  started_at                 BigInt
+  completed_at               BigInt?
+  workflow_run_id            String?
+  summary                    String?
+  session_id                 String?
+  opencode_session_id        String?
+  error_message              String?
+  todo_list_version          Int            @default(0)
+  cronjob                    cronjobs       @relation(fields: [cronjob_id], references: [id], onDelete: Cascade)
+  session                    chat_sessions? @relation(fields: [session_id], references: [id], onDelete: Cascade)
+  workflowRun                workflow_runs? @relation(fields: [workflow_run_id], references: [id], onDelete: Cascade)
+  todos                      cronjob_run_todos[]
+
+  @@index([cronjob_id, started_at])
+  @@index([cronjob_id, status])
+  @@index([workflow_run_id])
+  @@index([session_id])
+  @@index([opencode_session_id, status])
+}
+
+model cronjob_run_todos {
+  id           String       @id @default(uuid())
+  run_id       String
+  content      String
+  status       String       // "pending" = not started yet; "in_progress" = current todo; "completed" = finished
+  position     Int
+  summary      String?
+  created_at   BigInt
+  completed_at BigInt?
+  run          cronjob_runs @relation(fields: [run_id], references: [id], onDelete: Cascade)
+
+  @@index([run_id, status, position])
+  @@index([run_id, position])
 }
 
 model chat_session_usage {
