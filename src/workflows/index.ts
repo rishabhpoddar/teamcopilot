@@ -17,6 +17,7 @@ import {
 } from "../utils/workflow";
 import {
     createWorkflowFileOrFolder,
+    downloadWorkflowPath,
     deleteWorkflowPath,
     listWorkflowDirectory,
     readWorkflowFileContent,
@@ -720,6 +721,7 @@ registerResourceFileRoutes({
     assertCanEdit: assertCanEditWorkflowFiles,
     listDirectory: listWorkflowDirectory,
     readFileContent: readWorkflowFileContent,
+    downloadPath: downloadWorkflowPath,
     saveFileContent: saveWorkflowFileContent,
     createFileOrFolder: createWorkflowFileOrFolder,
     uploadFileFromTempPath: uploadWorkflowFileFromTempPath,

@@ -15,6 +15,7 @@ import {
 import { assertCommonPermissionMode } from "../utils/permission-common";
 import {
     createSkillFileOrFolder,
+    downloadSkillPath,
     deleteSkillPath,
     listSkillDirectory,
     readSkillFileContent,
@@ -315,6 +316,7 @@ registerResourceFileRoutes({
     assertCanEdit: assertCanEditSkillFiles,
     listDirectory: listSkillDirectory,
     readFileContent: readSkillFileContent,
+    downloadPath: downloadSkillPath,
     saveFileContent: saveSkillFileContent,
     createFileOrFolder: createSkillFileOrFolder,
     uploadFileFromTempPath: uploadSkillFileFromTempPath,

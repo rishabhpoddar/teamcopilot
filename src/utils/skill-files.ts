@@ -16,6 +16,7 @@ const skillFileManager = createResourceFileManager({
 
 export const listSkillDirectory = skillFileManager.listDirectory;
 export const readSkillFileContent = skillFileManager.readFileContent;
+export const downloadSkillPath = skillFileManager.downloadPath;
 export const saveSkillFileContent = skillFileManager.saveFileContent;
 export const createSkillFileOrFolder = skillFileManager.createFileOrFolder;
 export const uploadSkillFileFromTempPath = skillFileManager.uploadFileFromTempPath;

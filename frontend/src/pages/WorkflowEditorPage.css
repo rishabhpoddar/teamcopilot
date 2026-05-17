@@ -250,6 +250,11 @@
     display: inline-flex;
 }
 
+.wf-tree-mobile-trigger,
+.wf-mobile-action-backdrop {
+    display: none;
+}
+
 .wf-tree-actions button {
     padding: 2px 6px;
     font-size: 0.72rem;
@@ -436,10 +441,80 @@
 
     .wf-tree-row {
         min-height: 36px;
+        align-items: center;
+        padding-right: 4px;
     }
 
     .wf-tree-actions {
+        display: none;
+    }
+
+    .wf-tree-row:hover .wf-tree-actions {
+        display: none;
+    }
+
+    .wf-tree-mobile-trigger {
         display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        margin-left: auto;
+        width: 30px;
+        height: 30px;
+        border: 1px solid #4a5568;
+        background: #374151;
+        color: #e5e7eb;
+        border-radius: 8px;
+        cursor: pointer;
+        flex-shrink: 0;
+    }
+
+    .wf-mobile-action-backdrop {
+        display: flex;
+        position: fixed;
+        inset: 0;
+        z-index: 1000;
+        align-items: flex-end;
+        justify-content: center;
+        padding: 16px;
+        background: rgba(3, 7, 18, 0.5);
+    }
+
+    .wf-mobile-action-sheet {
+        width: min(360px, 100%);
+        padding: 8px;
+        border: 1px solid #374151;
+        border-radius: 12px;
+        background: #111827;
+        box-shadow: 0 18px 44px rgba(0, 0, 0, 0.42);
+    }
+
+    .wf-mobile-action-title {
+        padding: 8px 10px 10px;
+        color: #d1d5db;
+        font-size: 0.82rem;
+        font-weight: 700;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .wf-mobile-action-sheet button {
+        width: 100%;
+        text-align: left;
+        border: 1px solid #4a5568;
+        background: #374151;
+        color: #e5e7eb;
+        border-radius: 8px;
+        padding: 10px 12px;
+        cursor: pointer;
+        font-size: 0.9rem;
+        margin-top: 6px;
+    }
+
+    .wf-mobile-action-sheet button.danger {
+        border-color: #7f1d1d;
+        background: #450a0a;
+        color: #fecaca;
     }
 }
 
@@ -456,5 +531,9 @@
     .wf-sidebar-actions button,
     .wf-tree-actions button {
         padding: 0.45rem 0.7rem;
+    }
+
+    .wf-mobile-action-backdrop {
+        padding: 10px;
     }
 }

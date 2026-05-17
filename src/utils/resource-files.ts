@@ -28,6 +28,11 @@ interface ResourceFileManagerOptions {
 interface ResourceFileManager {
     listDirectory: (slug: string, rawPath: string | undefined) => FileTreeResponse;
     readFileContent: (slug: string, rawPath: string | undefined) => FileContentResponse;
+    downloadPath: (slug: string, rawPath: string | undefined) => {
+        filename: string;
+        contentType: string;
+        body: NodeJS.ReadableStream;
+    };
     saveFileContent: (slug: string, request: FileSaveRequest) => FileSaveResponse;
     createFileOrFolder: (slug: string, rawParentPath: string | undefined, name: string, kind: "file" | "directory") => FileNode;
     uploadFileFromTempPath: (slug: string, rawParentPath: string | undefined, name: string, tempFilePath: string) => FileNode;
@@ -379,6 +384,36 @@ export function createResourceFileManager(options: ResourceFileManagerOptions): 
         return response;
     }
 
+    function downloadPath(slug: string, rawPath: string | undefined): {
+        filename: string;
+        contentType: string;
+        body: NodeJS.ReadableStream;
+    } {
+        const relativePath = normalizeRelativePath(rawPath ?? "", false);
+        const absolutePath = resolveTarget(slug, relativePath);
+        if (!fs.existsSync(absolutePath)) {
+            throw {
+                status: 404,
+                message: "File or folder not found"
+            };
+        }
+        assertExistingPathIsSafe(slug, absolutePath);
+
+        const stat = fs.statSync(absolutePath);
+        if (!stat.isFile()) {
+            throw {
+                status: 400,
+                message: "path must be a file"
+            };
+        }
+
+        return {
+            filename: path.basename(relativePath),
+            contentType: "application/octet-stream",
+            body: fs.createReadStream(absolutePath),
+        };
+    }
+
     function saveFileContent(slug: string, request: FileSaveRequest): FileSaveResponse {
         const relativePath = normalizeRelativePath(request.path, false);
         const absolutePath = resolveTarget(slug, relativePath);
@@ -560,6 +595,7 @@ export function createResourceFileManager(options: ResourceFileManagerOptions): 
     return {
         listDirectory,
         readFileContent,
+        downloadPath,
         saveFileContent,
         createFileOrFolder,
         uploadFileFromTempPath,
