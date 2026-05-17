@@ -9,6 +9,7 @@ const workflowFileManager = createResourceFileManager({
 
 export const listWorkflowDirectory = workflowFileManager.listDirectory;
 export const readWorkflowFileContent = workflowFileManager.readFileContent;
+export const downloadWorkflowPath = workflowFileManager.downloadPath;
 export const saveWorkflowFileContent = workflowFileManager.saveFileContent;
 export const createWorkflowFileOrFolder = workflowFileManager.createFileOrFolder;
 export const uploadWorkflowFileFromTempPath = workflowFileManager.uploadFileFromTempPath;

@@ -108,6 +108,43 @@ function displayUser(name: string | null, email: string | null): string {
     return 'Unknown';
 }
 
+function filenameFromContentDisposition(value: string | undefined): string | null {
+    if (!value) return null;
+
+    const utf8Match = value.match(/filename\*=UTF-8''([^;]+)/i);
+    if (utf8Match?.[1]) {
+        try {
+            return decodeURIComponent(utf8Match[1]);
+        } catch {
+            return utf8Match[1];
+        }
+    }
+
+    const asciiMatch = value.match(/filename="?([^"]+)"?/i);
+    return asciiMatch?.[1] ?? null;
+}
+
+async function getDownloadErrorMessage(err: unknown, fallback: string): Promise<string> {
+    if (!(err instanceof AxiosError)) {
+        return fallback;
+    }
+
+    const responseData = err.response?.data;
+    if (responseData instanceof Blob) {
+        const text = await responseData.text();
+        try {
+            const parsed = JSON.parse(text) as { message?: unknown };
+            return typeof parsed.message === 'string' && parsed.message.length > 0
+                ? parsed.message
+                : text || err.message || fallback;
+        } catch {
+            return text || err.message || fallback;
+        }
+    }
+
+    return String(err.response?.data?.message || err.response?.data || err.message || fallback);
+}
+
 export default function EditorPage({ entity = 'workflow' }: { entity?: EditorEntity }) {
     const { slug = '' } = useParams();
     const navigate = useNavigate();
@@ -136,6 +173,8 @@ export default function EditorPage({ entity = 'workflow' }: { entity?: EditorEnt
     const [uploadTargetDir, setUploadTargetDir] = useState<string>('');
     const [uploadingByDir, setUploadingByDir] = useState<Record<string, boolean>>({});
     const [uploadProgressByDir, setUploadProgressByDir] = useState<Record<string, { fileName: string; percent: number }>>({});
+    const [downloadError, setDownloadError] = useState<string | null>(null);
+    const [openRowMenuNode, setOpenRowMenuNode] = useState<FileNode | null>(null);
     const uploadInputRef = useRef<HTMLInputElement | null>(null);
 
     const canEdit = access?.can_edit ?? false;
@@ -172,6 +211,7 @@ export default function EditorPage({ entity = 'workflow' }: { entity?: EditorEnt
         let cancelled = false;
         setPageLoading(true);
         setPageError(null);
+        setDownloadError(null);
         void (async () => {
             try {
                 const [accessResponse, detailResponse] = await Promise.all([
@@ -423,6 +463,36 @@ export default function EditorPage({ entity = 'workflow' }: { entity?: EditorEnt
         }
     };
 
+    const handleDownload = async (pathToDownload: string, fallbackFilename: string) => {
+        if (!authHeader) return;
+        setDownloadError(null);
+        try {
+            const response = await axiosInstance.get(`${apiBase}/${encodeURIComponent(slug)}/files/download`, {
+                params: pathToDownload ? { path: pathToDownload } : {},
+                headers: authHeader,
+                responseType: 'blob',
+            });
+            const filename = filenameFromContentDisposition(String(response.headers['content-disposition'] ?? '')) ?? fallbackFilename;
+            const blob = new Blob([response.data], {
+                type: String(response.headers['content-type'] ?? 'application/octet-stream'),
+            });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.setTimeout(() => window.URL.revokeObjectURL(url), 0);
+        } catch (err: unknown) {
+            setDownloadError(await getDownloadErrorMessage(err, 'Failed to download'));
+        }
+    };
+
+    const closeRowMenu = () => {
+        setOpenRowMenuNode(null);
+    };
+
     const handleTriggerUpload = (dirPath: string) => {
         if (!canEdit) return;
         setUploadTargetDir(dirPath);
@@ -476,6 +546,7 @@ export default function EditorPage({ entity = 'workflow' }: { entity?: EditorEnt
             const dirError = dirErrors[node.path];
             const dirUploading = uploadingByDir[node.path];
             const dirUploadProgress = uploadProgressByDir[node.path];
+            const hasMobileActions = node.kind === 'file' || canEdit;
 
             return (
                 <div key={node.path} className="wf-tree-row-wrap">
@@ -483,6 +554,7 @@ export default function EditorPage({ entity = 'workflow' }: { entity?: EditorEnt
                         className={`wf-tree-row ${isSelected ? 'selected' : ''}`}
                         style={{ paddingLeft: `${8 + depth * 16}px` }}
                         onClick={() => {
+                            closeRowMenu();
                             if (node.kind === 'directory') {
                                 void handleToggleDirectory(node);
                             } else {
@@ -494,6 +566,7 @@ export default function EditorPage({ entity = 'workflow' }: { entity?: EditorEnt
                         onKeyDown={(e) => {
                             if (e.key !== 'Enter' && e.key !== ' ') return;
                             e.preventDefault();
+                            closeRowMenu();
                             if (node.kind === 'directory') {
                                 void handleToggleDirectory(node);
                             } else {
@@ -518,18 +591,45 @@ export default function EditorPage({ entity = 'workflow' }: { entity?: EditorEnt
                         </span>
                         <span className="wf-tree-name">{node.name}</span>
                         {!node.readable && <span className="wf-tree-badge">no-read</span>}
-                        {canEdit && (
-                            <span className="wf-tree-actions" onClick={(e) => e.stopPropagation()}>
-                                {node.kind === 'directory' && (
-                                    <>
-                                        <button type="button" onClick={() => void handleCreate(node.path, 'file')} title="New file">+F</button>
-                                        <button type="button" onClick={() => void handleCreate(node.path, 'directory')} title="New folder">+D</button>
-                                        <button type="button" onClick={() => handleTriggerUpload(node.path)} title="Upload files">Upload</button>
-                                    </>
-                                )}
-                                <button type="button" onClick={() => void handleRename(node)} title="Rename">Rename</button>
-                                <button type="button" onClick={() => void handleDelete(node)} title="Delete">Delete</button>
-                            </span>
+                        <span className="wf-tree-actions" onClick={(e) => e.stopPropagation()}>
+                            {node.kind === 'file' && (
+                                <button
+                                    type="button"
+                                    onClick={() => void handleDownload(node.path, node.name)}
+                                    title="Download"
+                                >
+                                    Download
+                                </button>
+                            )}
+                            {canEdit && node.kind === 'directory' && (
+                                <>
+                                    <button type="button" onClick={() => void handleCreate(node.path, 'file')} title="New file">+F</button>
+                                    <button type="button" onClick={() => void handleCreate(node.path, 'directory')} title="New folder">+D</button>
+                                    <button type="button" onClick={() => handleTriggerUpload(node.path)} title="Upload files">Upload</button>
+                                </>
+                            )}
+                            {canEdit && (
+                                <>
+                                    <button type="button" onClick={() => void handleRename(node)} title="Rename">Rename</button>
+                                    <button type="button" onClick={() => void handleDelete(node)} title="Delete">Delete</button>
+                                </>
+                            )}
+                        </span>
+                        {hasMobileActions && (
+                            <button
+                                type="button"
+                                className="wf-tree-mobile-trigger"
+                                aria-expanded={openRowMenuNode?.path === node.path}
+                                aria-label={`More actions for ${node.name}`}
+                                onMouseDown={(event) => event.stopPropagation()}
+                                onClick={(event) => {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    setOpenRowMenuNode((prev) => prev?.path === node.path ? null : node);
+                                }}
+                            >
+                                ⋯
+                            </button>
                         )}
                     </div>
                     {node.kind === 'directory' && isExpanded && (
@@ -567,6 +667,8 @@ export default function EditorPage({ entity = 'workflow' }: { entity?: EditorEnt
                     ? 'Restricted (locked: no allowed users remain)'
                     : 'Restricted'
         : null;
+
+    const mobileActionNode = openRowMenuNode;
 
     return (
         <div className="workflow-editor-page">
@@ -651,14 +753,17 @@ export default function EditorPage({ entity = 'workflow' }: { entity?: EditorEnt
                                 <div className="wf-sidebar-title">Files</div>
                                 <div className="wf-sidebar-caption">{explorerCaption}</div>
                             </div>
-                            {canEdit && (
-                                <div className="wf-sidebar-actions">
-                                    <button type="button" onClick={() => void handleCreate('', 'file')}>New File</button>
-                                    <button type="button" onClick={() => void handleCreate('', 'directory')}>New Folder</button>
-                                    <button type="button" onClick={() => handleTriggerUpload('')}>Upload</button>
-                                </div>
-                            )}
+                            <div className="wf-sidebar-actions">
+                                {canEdit && (
+                                    <>
+                                        <button type="button" onClick={() => void handleCreate('', 'file')}>New File</button>
+                                        <button type="button" onClick={() => void handleCreate('', 'directory')}>New Folder</button>
+                                        <button type="button" onClick={() => handleTriggerUpload('')}>Upload</button>
+                                    </>
+                                )}
+                            </div>
                         </div>
+                        {downloadError && <div className="wf-tree-note error">{downloadError}</div>}
                         <div className="wf-tree-scroll">
                             {loadingDirs[''] && rootEntries.length === 0 && <div className="wf-tree-note">Loading...</div>}
                             {uploadingByDir[''] && uploadProgressByDir[''] && (
@@ -677,6 +782,94 @@ export default function EditorPage({ entity = 'workflow' }: { entity?: EditorEnt
                                 type="file"
                                 onChange={(event) => void handleUploadSelectedFiles(event)}
                             />
+                        )}
+                        {mobileActionNode && (
+                            <div
+                                className="wf-mobile-action-backdrop"
+                                role="presentation"
+                                onClick={closeRowMenu}
+                            >
+                                <div
+                                    className="wf-mobile-action-sheet"
+                                    role="menu"
+                                    aria-label={`Actions for ${mobileActionNode.name}`}
+                                    onClick={(event) => event.stopPropagation()}
+                                >
+                                    <div className="wf-mobile-action-title">{mobileActionNode.name}</div>
+                                    {mobileActionNode.kind === 'file' && (
+                                        <button
+                                            type="button"
+                                            role="menuitem"
+                                            onClick={() => {
+                                                closeRowMenu();
+                                                void handleDownload(mobileActionNode.path, mobileActionNode.name);
+                                            }}
+                                        >
+                                            Download
+                                        </button>
+                                    )}
+                                    {canEdit && mobileActionNode.kind === 'directory' && (
+                                        <>
+                                            <button
+                                                type="button"
+                                                role="menuitem"
+                                                onClick={() => {
+                                                    closeRowMenu();
+                                                    void handleCreate(mobileActionNode.path, 'file');
+                                                }}
+                                            >
+                                                New File
+                                            </button>
+                                            <button
+                                                type="button"
+                                                role="menuitem"
+                                                onClick={() => {
+                                                    closeRowMenu();
+                                                    void handleCreate(mobileActionNode.path, 'directory');
+                                                }}
+                                            >
+                                                New Folder
+                                            </button>
+                                            <button
+                                                type="button"
+                                                role="menuitem"
+                                                onClick={() => {
+                                                    closeRowMenu();
+                                                    handleTriggerUpload(mobileActionNode.path);
+                                                }}
+                                            >
+                                                Upload
+                                            </button>
+                                        </>
+                                    )}
+                                    {canEdit && (
+                                        <>
+                                            <button
+                                                type="button"
+                                                role="menuitem"
+                                                onClick={() => {
+                                                    closeRowMenu();
+                                                    void handleRename(mobileActionNode);
+                                                }}
+                                            >
+                                                Rename
+                                            </button>
+                                            <button
+                                                type="button"
+                                                role="menuitem"
+                                                className="danger"
+                                                onClick={() => {
+                                                    closeRowMenu();
+                                                    void handleDelete(mobileActionNode);
+                                                }}
+                                            >
+                                                Delete
+                                            </button>
+                                        </>
+                                    )}
+                                    <button type="button" role="menuitem" onClick={closeRowMenu}>Cancel</button>
+                                </div>
+                            </div>
                         )}
                     </aside>
 

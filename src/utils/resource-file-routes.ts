@@ -20,6 +20,11 @@ interface ResourceFileRouteOptions {
     assertCanEdit: (slug: string, userId: string) => Promise<void>;
     listDirectory: (slug: string, rawPath: string | undefined) => FileTreeResponse;
     readFileContent: (slug: string, rawPath: string | undefined) => FileContentResponse;
+    downloadPath: (slug: string, rawPath: string | undefined) => {
+        filename: string;
+        contentType: string;
+        body: Buffer | NodeJS.ReadableStream;
+    };
     saveFileContent: (slug: string, payload: { path: string; content: string; base_etag: string }) => FileSaveResponse;
     createFileOrFolder: (slug: string, parentPath: string, name: string, kind: "file" | "directory") => FileNode;
     uploadFileFromTempPath: (slug: string, parentPath: string, name: string, tempFilePath: string) => FileNode;
@@ -37,6 +42,7 @@ export function registerResourceFileRoutes(options: ResourceFileRouteOptions): v
         assertCanEdit,
         listDirectory,
         readFileContent,
+        downloadPath,
         saveFileContent,
         createFileOrFolder,
         uploadFileFromTempPath,
@@ -70,6 +76,22 @@ export function registerResourceFileRoutes(options: ResourceFileRouteOptions): v
         const content = readFileContent(slug, rawPath);
         (res.locals as { skipResponseSanitization?: boolean }).skipResponseSanitization = true;
         res.json(content);
+    }, true));
+
+    router.get("/:slug/files/download", apiHandler(async (req, res) => {
+        const slug = req.params.slug as string;
+        const authReq = req as AuthenticatedRequest;
+        await assertCanView(slug, authReq.userId!);
+        await ensureResourceExists(slug);
+        const rawPath = typeof req.query.path === "string" ? req.query.path : undefined;
+        const download = downloadPath(slug, rawPath);
+        res.type(download.contentType);
+        res.attachment(download.filename);
+        if (Buffer.isBuffer(download.body)) {
+            res.send(download.body);
+            return;
+        }
+        download.body.pipe(res);
     }, true));
 
     router.put("/:slug/files/content", apiHandler(async (req, res) => {
