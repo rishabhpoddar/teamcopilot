@@ -170,7 +170,59 @@ async function main(): Promise<void> {
         assert.ok(promptText.includes("####### Actual user message below #######"));
         assert.ok(promptText.includes("Name: Prompt dispatch cronjob"));
         assert.ok(promptText.includes("Perform prompt dispatch."));
+        const promptRunTodos = await prisma.cronjob_run_todos.findMany({
+            where: { run_id: promptRun.id },
+        });
+        assert.equal(promptRunTodos.length, 0, "Prompt cronjobs without saved todo steps should not pre-seed run todos");
         assert.equal(scheduledIntervals.length, 1, "Prompt cronjob dispatch should start a monitor interval");
+
+        const promptWithSavedTodosCronjob = await prisma.cronjobs.create({
+            data: {
+                user_id: user.id,
+                name: "Prompt dispatch with saved todos",
+                enabled: false,
+                target_type: "prompt",
+                prompt: [
+                    "Perform prompt dispatch with saved todos. Todo steps to follow:",
+                    "- Inspect current status",
+                    "- Run the relevant checks",
+                    "- Summarize the result",
+                ].join("\n"),
+                prompt_allow_workflow_runs_without_permission: true,
+                cron_expression: "*/10 * * * *",
+                timezone: "UTC",
+                created_at: now,
+                updated_at: now,
+            },
+        });
+
+        const promptWithSavedTodosRunId = await dispatchCronjobRun(promptWithSavedTodosCronjob.id, "manual");
+        const promptWithSavedTodosRun = await prisma.cronjob_runs.findUniqueOrThrow({ where: { id: promptWithSavedTodosRunId } });
+        const savedTodos = await prisma.cronjob_run_todos.findMany({
+            where: { run_id: promptWithSavedTodosRun.id },
+            orderBy: { position: "asc" },
+        });
+        assert.deepEqual(
+            savedTodos.map((todo) => ({
+                content: todo.content,
+                status: todo.status,
+                position: todo.position,
+            })),
+            [
+                { content: "Inspect current status", status: "pending", position: 0 },
+                { content: "Run the relevant checks", status: "pending", position: 1 },
+                { content: "Summarize the result", status: "pending", position: 2 },
+            ],
+            "Prompt cronjobs with saved todo steps should pre-seed run todos",
+        );
+        assert.equal(promptWithSavedTodosRun.todo_list_version, 1);
+        assert.equal(promptCalls.length, 2);
+        const promptWithSavedTodosText = (promptCalls[1] as { body: { parts: Array<{ text: string }> } }).body.parts[0].text;
+        assert.ok(promptWithSavedTodosText.includes("Perform prompt dispatch with saved todos."));
+        assert.ok(!promptWithSavedTodosText.includes("Todo steps to follow:"));
+        assert.ok(!promptWithSavedTodosText.includes("Inspect current status"));
+        assert.ok(promptWithSavedTodosText.includes("inspect the TeamCopilot cronjob todo list"));
+        assert.ok(promptWithSavedTodosText.includes("add more todos with addCronjobTodos only if needed"));
 
         const failingPromptCronjob = await prisma.cronjobs.create({
             data: {
@@ -234,8 +286,12 @@ async function main(): Promise<void> {
         );
         assert.equal((workflowStartCalls[0] as { requirePermissionPrompt: boolean }).requirePermissionPrompt, false);
         assert.equal((workflowStartCalls[0] as { runSource: string }).runSource, "cronjob");
-        await new Promise((resolve) => setImmediate(resolve));
-        const completedWorkflowCronRun = await prisma.cronjob_runs.findUniqueOrThrow({ where: { id: workflowRunId } });
+        const deadline = Date.now() + 5000;
+        let completedWorkflowCronRun = await prisma.cronjob_runs.findUniqueOrThrow({ where: { id: workflowRunId } });
+        while (completedWorkflowCronRun.status === "running" && Date.now() < deadline) {
+            await new Promise((resolve) => setTimeout(resolve, 50));
+            completedWorkflowCronRun = await prisma.cronjob_runs.findUniqueOrThrow({ where: { id: workflowRunId } });
+        }
         assert.equal(completedWorkflowCronRun.status, "success");
         assert.equal(completedWorkflowCronRun.summary, "Workflow completed successfully.");
 

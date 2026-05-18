@@ -80,6 +80,30 @@ async function main(): Promise<void> {
         assert.equal(createResponse.body.cronjob.next_run_at, null);
         assert.equal(createResponse.body.cronjob.is_running, false);
 
+        const cronjobWithStepsResponse = await request(app)
+            .post("/api/cronjobs")
+            .set(auth)
+            .send({
+                name: "  Morning repo check with steps  ",
+                enabled: false,
+                target_type: "prompt",
+                prompt: [
+                    "Check repo health and summarize. Todo steps to follow:",
+                    "- Inspect git status",
+                    "- Run relevant tests",
+                ].join("\n"),
+                allow_workflow_runs_without_permission: false,
+                cron_expression: " 0 9 * * 1-5 ",
+                timezone: " UTC ",
+            })
+            .expect(200);
+        assert.ok(cronjobWithStepsResponse.body.cronjob.prompt.includes("Todo steps to follow:"));
+        assert.deepEqual(cronjobWithStepsResponse.body.cronjob.initial_todos, [
+            "Inspect git status",
+            "Run relevant tests",
+        ]);
+        assert.ok(cronjobWithStepsResponse.body.cronjob.target.prompt.includes("Todo steps to follow:"));
+
         const storedCronjob = await prisma.cronjobs.findUniqueOrThrow({ where: { id: cronjobId } });
         assert.equal(storedCronjob.name, "Morning repo check");
         assert.equal(storedCronjob.prompt, "Check repo health and summarize.");

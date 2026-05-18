@@ -7,6 +7,7 @@ import { axiosInstance } from '../utils';
 import { useAuth } from '../lib/auth';
 import { usePageTitle } from '../lib/usePageTitle';
 import type { WorkflowInput } from '../types/workflow';
+import { cronjobPrompt } from '../../../src/utils/cronjob-prompt';
 import './CronjobFormPage.css';
 
 type ScheduleMode = 'builder' | 'cron';
@@ -62,7 +63,7 @@ interface CronjobFormState {
     name: string;
     targetMode: TargetMode;
     prompt: string;
-    execution_steps: string[];
+    execution_steps: CronjobExecutionStep[];
     enabled: boolean;
     allow_workflow_runs_without_permission: boolean;
     monitor_timeout_value: number;
@@ -78,6 +79,11 @@ interface CronjobFormState {
     day_of_month: number;
 }
 
+interface CronjobExecutionStep {
+    id: string;
+    content: string;
+}
+
 const DAYS_OF_WEEK = [
     { value: 1, label: 'Mon' },
     { value: 2, label: 'Tue' },
@@ -87,8 +93,6 @@ const DAYS_OF_WEEK = [
     { value: 6, label: 'Sat' },
     { value: 0, label: 'Sun' },
 ];
-
-const TODO_STEP_MARKER = 'Todo steps to follow:';
 
 const FALLBACK_TIMEZONES = ['UTC', 'Asia/Calcutta', 'America/Los_Angeles', 'America/New_York', 'Europe/London', 'Europe/Berlin', 'Asia/Singapore', 'Asia/Tokyo', 'Australia/Sydney'];
 
@@ -131,6 +135,13 @@ function buildCronExpressionFromBuilder(form: CronjobFormState): string {
         return `${minute} ${hour} * * ${form.days_of_week.join(',')}`;
     }
     return `${minute} ${hour} * * *`;
+}
+
+function createExecutionStep(content = ''): CronjobExecutionStep {
+    return {
+        id: crypto.randomUUID(),
+        content,
+    };
 }
 
 function emptyForm(): CronjobFormState {
@@ -206,41 +217,6 @@ function parseWorkflowInputsForPayload(inputs: Record<string, WorkflowInput>, va
     return parsedInputs;
 }
 
-function parsePromptAndExecutionSteps(prompt: string): { prompt: string; executionSteps: string[] } {
-    const markerIndex = prompt.indexOf(TODO_STEP_MARKER);
-    if (markerIndex === -1) {
-        return { prompt: prompt.trim(), executionSteps: [] };
-    }
-
-    const promptText = prompt.slice(0, markerIndex).trimEnd();
-    const rawSteps = prompt.slice(markerIndex + TODO_STEP_MARKER.length).trim();
-    if (rawSteps.length === 0) {
-        return { prompt: promptText, executionSteps: [] };
-    }
-
-    const executionSteps = rawSteps
-        .split('\n')
-        .map((line) => line.replace(/^- /, '').trim())
-        .filter((line) => line.length > 0);
-
-    return {
-        prompt: promptText,
-        executionSteps,
-    };
-}
-
-function buildPromptWithExecutionSteps(prompt: string, executionSteps: string[]): string {
-    const promptText = prompt.trim();
-    const steps = executionSteps.map((step) => step.trim()).filter((step) => step.length > 0);
-
-    if (steps.length === 0) {
-        return promptText;
-    }
-
-    const promptSuffix = /[.?!]$/.test(promptText) ? '' : '.';
-    return `${promptText}${promptSuffix} ${TODO_STEP_MARKER}\n- ${steps.join('\n- ')}`;
-}
-
 function getErrorMessage(err: unknown, fallback: string): string {
     if (err instanceof AxiosError) {
         const responseData = err.response?.data;
@@ -252,12 +228,12 @@ function getErrorMessage(err: unknown, fallback: string): string {
 }
 
 function formFromCronjob(cronjob: Cronjob): CronjobFormState {
-    const parsedPrompt = parsePromptAndExecutionSteps(cronjob.prompt);
+    const parsedPrompt = cronjobPrompt.parse(cronjob.prompt);
     return {
         name: cronjob.name,
         targetMode: cronjob.target?.target_type ?? 'prompt',
         prompt: parsedPrompt.prompt,
-        execution_steps: parsedPrompt.executionSteps,
+        execution_steps: parsedPrompt.executionSteps.map((content) => createExecutionStep(content)),
         enabled: cronjob.enabled,
         allow_workflow_runs_without_permission: cronjob.allow_workflow_runs_without_permission,
         monitor_timeout_value: cronjob.monitor_timeout_value,
@@ -290,6 +266,8 @@ export default function CronjobFormPage() {
     const [workflowLoading, setWorkflowLoading] = useState(false);
     const [workflowError, setWorkflowError] = useState<string | null>(null);
     const pendingWorkflowInputsRef = useRef<Record<string, unknown>>({});
+    const executionStepRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+    const [animatingExecutionStepIds, setAnimatingExecutionStepIds] = useState<Set<string>>(() => new Set());
 
     usePageTitle(isEditing ? 'Edit Cronjob' : 'Create Cronjob');
 
@@ -385,7 +363,7 @@ export default function CronjobFormPage() {
             name: form.name,
             target_type: form.targetMode,
             prompt: form.targetMode === 'prompt'
-                ? buildPromptWithExecutionSteps(form.prompt, form.execution_steps)
+                ? cronjobPrompt.buildWithExecutionSteps(form.prompt, form.execution_steps.map((step) => step.content))
                 : null,
             workflow_slug: form.targetMode === 'workflow' ? form.workflow_slug : null,
             workflow_inputs: form.targetMode === 'workflow' ? workflowInputs : null,
@@ -410,9 +388,104 @@ export default function CronjobFormPage() {
         });
     };
 
+    const addExecutionStep = () => {
+        setForm((prev) => ({
+            ...prev,
+            execution_steps: [...prev.execution_steps, createExecutionStep()],
+        }));
+    };
+
+    const updateExecutionStep = (stepId: string, content: string) => {
+        setForm((prev) => ({
+            ...prev,
+            execution_steps: prev.execution_steps.map((step) => (
+                step.id === stepId ? { ...step, content } : step
+            )),
+        }));
+    };
+
+    const removeExecutionStep = (stepId: string) => {
+        setForm((prev) => ({
+            ...prev,
+            execution_steps: prev.execution_steps.filter((step) => step.id !== stepId),
+        }));
+    };
+
+    const swapExecutionStepWithNext = (index: number) => {
+        const beforePositions = new Map(
+            form.execution_steps.map((step) => [
+                step.id,
+                executionStepRowRefs.current[step.id]?.getBoundingClientRect().top ?? null,
+            ])
+        );
+        const swappedStepIds = new Set([
+            form.execution_steps[index]?.id,
+            form.execution_steps[index + 1]?.id,
+        ].filter((stepId): stepId is string => Boolean(stepId)));
+
+        setForm((prev) => {
+            if (index < 0 || index >= prev.execution_steps.length - 1) {
+                return prev;
+            }
+            const nextSteps = [...prev.execution_steps];
+            [nextSteps[index], nextSteps[index + 1]] = [nextSteps[index + 1], nextSteps[index]];
+            return {
+                ...prev,
+                execution_steps: nextSteps,
+            };
+        });
+
+        requestAnimationFrame(() => {
+            const animatedIds = new Set<string>();
+            for (const stepId of swappedStepIds) {
+                const row = executionStepRowRefs.current[stepId];
+                const beforeTop = beforePositions.get(stepId);
+                if (!row || beforeTop === null || beforeTop === undefined) {
+                    continue;
+                }
+                const afterTop = row.getBoundingClientRect().top;
+                const deltaY = beforeTop - afterTop;
+                if (deltaY === 0) {
+                    continue;
+                }
+                row.style.transform = `translateY(${deltaY}px)`;
+                row.style.transition = 'transform 0s';
+                animatedIds.add(stepId);
+            }
+            if (animatedIds.size === 0) {
+                return;
+            }
+            setAnimatingExecutionStepIds(animatedIds);
+            requestAnimationFrame(() => {
+                for (const stepId of animatedIds) {
+                    const row = executionStepRowRefs.current[stepId];
+                    if (!row) {
+                        continue;
+                    }
+                    row.style.transition = 'transform 0.24s ease';
+                    row.style.transform = '';
+                }
+                window.setTimeout(() => {
+                    for (const stepId of animatedIds) {
+                        const row = executionStepRowRefs.current[stepId];
+                        if (!row) {
+                            continue;
+                        }
+                        row.style.transition = '';
+                    }
+                    setAnimatingExecutionStepIds(new Set());
+                }, 260);
+            });
+        });
+    };
+
     const saveCronjob = async (event: FormEvent) => {
         event.preventDefault();
         if (!token) return;
+        if (form.targetMode === 'prompt' && form.prompt.includes(cronjobPrompt.LEGACY_TODO_STEP_MARKER)) {
+            toast.error(`Do not add "${cronjobPrompt.LEGACY_TODO_STEP_MARKER}" in the prompt. Add those items as execution steps instead.`);
+            return;
+        }
         const payload = buildPayload();
         if (payload === null) return;
         setSaving(true);
@@ -445,7 +518,6 @@ export default function CronjobFormPage() {
     }
 
     const timezoneOptions = getTimezoneOptions();
-    const executionSteps = form.execution_steps.map((step) => step.trim()).filter((step) => step.length > 0);
 
     return (
         <main className="cronjob-form-page">
@@ -510,15 +582,12 @@ export default function CronjobFormPage() {
                                     <div className="cronjob-prompt-steps-header">
                                         <div>
                                             <span>Execution steps</span>
-                                            <p>Optional. These get appended to the prompt as a todo list.</p>
+                                            <p>Optional. These are inserted into the cronjob todo list before the agent starts.</p>
                                         </div>
                                         <button
                                             type="button"
                                             className="cronjob-step-add"
-                                            onClick={() => setForm((prev) => ({
-                                                ...prev,
-                                                execution_steps: [...prev.execution_steps, ''],
-                                            }))}
+                                            onClick={addExecutionStep}
                                         >
                                             Add step
                                         </button>
@@ -531,41 +600,45 @@ export default function CronjobFormPage() {
                                     ) : (
                                         <div className="cronjob-step-list">
                                             {form.execution_steps.map((step, index) => (
-                                                <div key={index} className="cronjob-step-row">
-                                                    <span className="cronjob-step-index">{index + 1}</span>
-                                                    <textarea
-                                                        value={step}
-                                                        onChange={(event) => setForm((prev) => ({
-                                                            ...prev,
-                                                            execution_steps: prev.execution_steps.map((item, itemIndex) => (
-                                                                itemIndex === index ? event.target.value : item
-                                                            )),
-                                                        }))}
-                                                        placeholder={`Step ${index + 1}`}
-                                                    />
-                                                    <button
-                                                        type="button"
-                                                        className="cronjob-step-remove"
-                                                        aria-label={`Remove step ${index + 1}`}
-                                                        title={`Remove step ${index + 1}`}
-                                                        onClick={() => setForm((prev) => ({
-                                                            ...prev,
-                                                            execution_steps: prev.execution_steps.filter((_, itemIndex) => itemIndex !== index),
-                                                        }))}
-                                                    >
-                                                        ×
-                                                    </button>
+                                                <div
+                                                    key={step.id}
+                                                    ref={(element) => {
+                                                        executionStepRowRefs.current[step.id] = element;
+                                                    }}
+                                                    className={`cronjob-step-row-wrap${animatingExecutionStepIds.has(step.id) ? ' is-reordering' : ''}`}
+                                                >
+                                                    <div className="cronjob-step-row">
+                                                        <span className="cronjob-step-index">{index + 1}</span>
+                                                        <textarea
+                                                            value={step.content}
+                                                            onChange={(event) => updateExecutionStep(step.id, event.target.value)}
+                                                            placeholder={`Step ${index + 1}`}
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            className="cronjob-step-move-down"
+                                                            aria-label={`Move step ${index + 1} down`}
+                                                            title={index === form.execution_steps.length - 1 ? 'Already last step' : `Swap step ${index + 1} with step ${index + 2}`}
+                                                            disabled={index === form.execution_steps.length - 1}
+                                                            onClick={() => swapExecutionStepWithNext(index)}
+                                                        >
+                                                            ↓
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            className="cronjob-step-remove"
+                                                            aria-label={`Remove step ${index + 1}`}
+                                                            title={`Remove step ${index + 1}`}
+                                                            onClick={() => removeExecutionStep(step.id)}
+                                                        >
+                                                            ×
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             ))}
                                         </div>
                                     )}
 
-                                    {executionSteps.length > 0 && (
-                                        <div className="cronjob-prompt-preview">
-                                            <span>Final prompt preview</span>
-                                            <pre>{buildPromptWithExecutionSteps(form.prompt, executionSteps)}</pre>
-                                        </div>
-                                    )}
                                 </div>
                             </div>
                         ) : (

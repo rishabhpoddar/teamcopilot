@@ -249,9 +249,17 @@
   margin-top: 0.9rem;
 }
 
+.cronjob-step-row-wrap {
+  will-change: transform;
+}
+
+.cronjob-step-row-wrap.is-reordering {
+  animation: cronjob-step-reorder-pulse 0.26s ease;
+}
+
 .cronjob-step-row {
   display: grid;
-  grid-template-columns: 2rem minmax(0, 1fr) 2rem;
+  grid-template-columns: 2rem minmax(0, 1fr) 2rem 2rem;
   gap: 0.55rem;
   align-items: start;
   width: 100%;
@@ -305,6 +313,7 @@
   box-shadow: 0 0 0 3px rgba(122, 133, 148, 0.14);
 }
 
+.cronjob-step-move-down,
 .cronjob-step-remove {
   width: 2rem;
   height: 2rem;
@@ -316,34 +325,19 @@
   line-height: 1;
 }
 
-.cronjob-prompt-preview {
-  margin-top: 1rem;
-  border-top: 1px solid #2a2a2a;
-  padding-top: 0.85rem;
+.cronjob-step-move-down:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
 }
 
-.cronjob-prompt-preview span {
-  display: block;
-  color: #888;
-  font-size: 0.8rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
+@keyframes cronjob-step-reorder-pulse {
+  0% {
+    background: rgba(100, 108, 255, 0.18);
+  }
 
-.cronjob-prompt-preview pre {
-  margin: 0.45rem 0 0;
-  max-height: 9rem;
-  overflow: auto;
-  padding: 0.8rem 0.85rem;
-  border: 1px solid #2b2b2b;
-  border-radius: 8px;
-  background: #111;
-  color: #bfc5ce;
-  white-space: pre-wrap;
-  word-break: break-word;
-  font: inherit;
-  line-height: 1.45;
+  100% {
+    background: transparent;
+  }
 }
 
 @media (max-width: 620px) {
@@ -361,7 +355,7 @@
   }
 
   .cronjob-step-row {
-    grid-template-columns: 1.85rem minmax(0, 1fr) 1.85rem;
+    grid-template-columns: 1.85rem minmax(0, 1fr) 1.85rem 1.85rem;
     gap: 0.45rem;
     padding-bottom: 0.7rem;
   }
@@ -373,12 +367,7 @@
     font-size: 0.72rem;
   }
 
-  .cronjob-step-row textarea {
-    min-height: 4.4rem;
-    padding: 0.85rem 0.75rem;
-    font-size: 0.95rem;
-  }
-
+  .cronjob-step-move-down,
   .cronjob-step-remove {
     width: 1.85rem;
     height: 1.85rem;
@@ -386,15 +375,12 @@
     font-size: 1rem;
   }
 
-  .cronjob-prompt-preview {
-    margin-top: 0.7rem;
-    padding-top: 0.7rem;
+  .cronjob-step-row textarea {
+    min-height: 4.4rem;
+    padding: 0.85rem 0.75rem;
+    font-size: 0.95rem;
   }
 
-  .cronjob-prompt-preview pre {
-    padding: 0.7rem;
-    font-size: 0.92rem;
-  }
 }
 
 .cronjob-field input:focus,
