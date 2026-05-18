@@ -7,7 +7,7 @@ import { axiosInstance } from '../utils';
 import { useAuth } from '../lib/auth';
 import { usePageTitle } from '../lib/usePageTitle';
 import type { WorkflowInput } from '../types/workflow';
-import { buildCronjobPromptWithExecutionSteps, parseCronjobPrompt } from '../utils/cronjob-prompt';
+import { LEGACY_TODO_STEP_MARKER, buildCronjobPromptWithExecutionSteps, parseCronjobPrompt, promptContainsLegacyTodoStepMarker } from '../utils/cronjob-prompt';
 import './CronjobFormPage.css';
 
 type ScheduleMode = 'builder' | 'cron';
@@ -426,6 +426,10 @@ export default function CronjobFormPage() {
     const saveCronjob = async (event: FormEvent) => {
         event.preventDefault();
         if (!token) return;
+        if (form.targetMode === 'prompt' && promptContainsLegacyTodoStepMarker(form.prompt)) {
+            toast.error(`Do not add "${LEGACY_TODO_STEP_MARKER}" in the prompt. Add those items as execution steps instead.`);
+            return;
+        }
         const payload = buildPayload();
         if (payload === null) return;
         setSaving(true);
