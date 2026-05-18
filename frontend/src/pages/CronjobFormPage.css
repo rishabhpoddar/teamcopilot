@@ -249,6 +249,14 @@
   margin-top: 0.9rem;
 }
 
+.cronjob-step-row-wrap {
+  will-change: transform;
+}
+
+.cronjob-step-row-wrap.is-reordering {
+  animation: cronjob-step-reorder-pulse 0.26s ease;
+}
+
 .cronjob-step-row {
   display: grid;
   grid-template-columns: 2rem minmax(0, 1fr) 2rem 2rem;
@@ -320,6 +328,16 @@
 .cronjob-step-move-down:disabled {
   opacity: 0.38;
   cursor: not-allowed;
+}
+
+@keyframes cronjob-step-reorder-pulse {
+  0% {
+    background: rgba(100, 108, 255, 0.18);
+  }
+
+  100% {
+    background: transparent;
+  }
 }
 
 @media (max-width: 620px) {

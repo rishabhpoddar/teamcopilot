@@ -266,6 +266,8 @@ export default function CronjobFormPage() {
     const [workflowLoading, setWorkflowLoading] = useState(false);
     const [workflowError, setWorkflowError] = useState<string | null>(null);
     const pendingWorkflowInputsRef = useRef<Record<string, unknown>>({});
+    const executionStepRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+    const [animatingExecutionStepIds, setAnimatingExecutionStepIds] = useState<Set<string>>(() => new Set());
 
     usePageTitle(isEditing ? 'Edit Cronjob' : 'Create Cronjob');
 
@@ -410,6 +412,17 @@ export default function CronjobFormPage() {
     };
 
     const swapExecutionStepWithNext = (index: number) => {
+        const beforePositions = new Map(
+            form.execution_steps.map((step) => [
+                step.id,
+                executionStepRowRefs.current[step.id]?.getBoundingClientRect().top ?? null,
+            ])
+        );
+        const swappedStepIds = new Set([
+            form.execution_steps[index]?.id,
+            form.execution_steps[index + 1]?.id,
+        ].filter((stepId): stepId is string => Boolean(stepId)));
+
         setForm((prev) => {
             if (index < 0 || index >= prev.execution_steps.length - 1) {
                 return prev;
@@ -420,6 +433,49 @@ export default function CronjobFormPage() {
                 ...prev,
                 execution_steps: nextSteps,
             };
+        });
+
+        requestAnimationFrame(() => {
+            const animatedIds = new Set<string>();
+            for (const stepId of swappedStepIds) {
+                const row = executionStepRowRefs.current[stepId];
+                const beforeTop = beforePositions.get(stepId);
+                if (!row || beforeTop === null || beforeTop === undefined) {
+                    continue;
+                }
+                const afterTop = row.getBoundingClientRect().top;
+                const deltaY = beforeTop - afterTop;
+                if (deltaY === 0) {
+                    continue;
+                }
+                row.style.transform = `translateY(${deltaY}px)`;
+                row.style.transition = 'transform 0s';
+                animatedIds.add(stepId);
+            }
+            if (animatedIds.size === 0) {
+                return;
+            }
+            setAnimatingExecutionStepIds(animatedIds);
+            requestAnimationFrame(() => {
+                for (const stepId of animatedIds) {
+                    const row = executionStepRowRefs.current[stepId];
+                    if (!row) {
+                        continue;
+                    }
+                    row.style.transition = 'transform 0.24s ease';
+                    row.style.transform = '';
+                }
+                window.setTimeout(() => {
+                    for (const stepId of animatedIds) {
+                        const row = executionStepRowRefs.current[stepId];
+                        if (!row) {
+                            continue;
+                        }
+                        row.style.transition = '';
+                    }
+                    setAnimatingExecutionStepIds(new Set());
+                }, 260);
+            });
         });
     };
 
@@ -526,7 +582,7 @@ export default function CronjobFormPage() {
                                     <div className="cronjob-prompt-steps-header">
                                         <div>
                                             <span>Execution steps</span>
-                                            <p>Optional. Drag to reorder. These are inserted into the cronjob todo list before the agent starts.</p>
+                                            <p>Optional. These are inserted into the cronjob todo list before the agent starts.</p>
                                         </div>
                                         <button
                                             type="button"
@@ -544,7 +600,13 @@ export default function CronjobFormPage() {
                                     ) : (
                                         <div className="cronjob-step-list">
                                             {form.execution_steps.map((step, index) => (
-                                                <div key={step.id} className="cronjob-step-row-wrap">
+                                                <div
+                                                    key={step.id}
+                                                    ref={(element) => {
+                                                        executionStepRowRefs.current[step.id] = element;
+                                                    }}
+                                                    className={`cronjob-step-row-wrap${animatingExecutionStepIds.has(step.id) ? ' is-reordering' : ''}`}
+                                                >
                                                     <div className="cronjob-step-row">
                                                         <span className="cronjob-step-index">{index + 1}</span>
                                                         <textarea
