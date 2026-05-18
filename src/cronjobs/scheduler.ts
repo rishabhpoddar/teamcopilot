@@ -25,10 +25,29 @@ import { abortOpencodeSession } from "../utils/session-abort";
 import { markWorkflowSessionAborted } from "../utils/workflow-interruption";
 
 const CRONJOB_MONITOR_INTERVAL_MS = 5000;
+const LEGACY_TODO_STEP_MARKER = "Todo steps to follow:";
 
 const scheduledJobs = new Map<string, CronJob>();
 const runningMonitors = new Map<string, NodeJS.Timeout | null>();
 type CronjobDispatchMode = "scheduled" | "manual";
+
+export function parsePromptCronjobTaskAndInitialTodos(prompt: string): {
+    prompt: string;
+    initialTodos: string[];
+} {
+    const markerIndex = prompt.indexOf(LEGACY_TODO_STEP_MARKER);
+    if (markerIndex === -1) {
+        return { prompt, initialTodos: [] };
+    }
+
+    const promptText = prompt.slice(0, markerIndex).trimEnd();
+    const rawSteps = prompt.slice(markerIndex + LEGACY_TODO_STEP_MARKER.length).trim();
+    const initialTodos = rawSteps
+        .split("\n")
+        .map((line) => line.replace(/^- /, "").trim())
+        .filter((line) => line.length > 0);
+    return { prompt: promptText, initialTodos };
+}
 
 function nowMs(): bigint {
     return BigInt(Date.now());
@@ -275,7 +294,7 @@ async function buildCronjobPrompt(args: {
         "",
         "This is an unattended scheduled TeamCopilot cronjob run.",
         "Treat the cronjob prompt below as the task to execute.",
-        "First thing you must do is understand the task. If it refers to skills / workflows, read them first. Then call getCronjobTodos to fetch the current todo_list_version, and based on the instructions from the task and the files you read, call addCronjobTodos with a granular todo list. Do not start executing the task until TeamCopilot gives you the first current todo item.",
+        "First thing you must do is understand the task and inspect the TeamCopilot cronjob todo list, because it may already contain todos inserted from the cronjob configuration. If the task refers to skills / workflows, read them first. Then call getCronjobTodos to fetch the current active todos and todo_list_version. Based on the task, the existing todos, and the files you read, call addCronjobTodos only if more granular todo items are needed. Do not start executing the task until TeamCopilot gives you the first current todo item.",
         "The todo list is editable by you. Use getCurrentCronjobTodo to inspect the current todo (returns up to one item with its id) and getCronjobTodos to inspect the active todo list (returns all active todo ids, contents, and a todo_list_version snapshot token).",
         "Use addCronjobTodos to insert new todo items anywhere in the active todo list, and always pass the todo_list_version returned by the most recent getCronjobTodos call. Use clearCronjobTodos to remove one or more active todo items from the list by todo id.",
         "After planning, TeamCopilot will give you exactly one current todo item at a time in this same session.",
@@ -297,7 +316,7 @@ async function buildCronjobPrompt(args: {
     if (availableSecretsPrompt) sections.push("", availableSecretsPrompt);
     sections.push("", ACTUAL_USER_MESSAGE_MARKER, "", "# Cronjob task", "", `Name: ${args.cronjobName}`, "", args.cronjobPrompt);
     sections.push("");
-    sections.push("Current task: Understand the task requirements (based on the above task (read skill files / workflows if needed), and create a granular todo list with addCronjobTodos. Then stop - only start the first todo once the system prompts you with the todo item.")
+    sections.push("Current task: Understand the task requirements, inspect the current cronjob todo list with getCronjobTodos, and add more todos with addCronjobTodos only if needed. Then stop - only start the first todo once the system prompts you with the todo item.")
     return sections.join("\n");
 }
 
@@ -875,10 +894,11 @@ export async function dispatchCronjobRun(cronjobId: string, mode: CronjobDispatc
         }
     }
 
-    const userPrompt = cronjob.prompt;
-    if (!userPrompt) {
+    const rawUserPrompt = cronjob.prompt;
+    if (!rawUserPrompt) {
         throw new Error("Prompt cronjob target is missing prompt");
     }
+    const promptTarget = parsePromptCronjobTaskAndInitialTodos(rawUserPrompt);
 
     const client = await getOpencodeClient();
     const sessionResult = await client.session.create();
@@ -901,7 +921,7 @@ export async function dispatchCronjobRun(cronjobId: string, mode: CronjobDispatc
                 },
                 select: { id: true },
             });
-            return await tx.cronjob_runs.create({
+            const cronjobRun = await tx.cronjob_runs.create({
                 data: {
                     cronjob_id: cronjob.id,
                     status: "running",
@@ -911,6 +931,25 @@ export async function dispatchCronjobRun(cronjobId: string, mode: CronjobDispatc
                 },
                 select: { id: true },
             });
+            const initialTodos = promptTarget.initialTodos;
+            for (const [position, content] of initialTodos.entries()) {
+                await tx.cronjob_run_todos.create({
+                    data: {
+                        run_id: cronjobRun.id,
+                        content,
+                        status: "pending",
+                        position,
+                        created_at: now,
+                    },
+                });
+            }
+            if (initialTodos.length > 0) {
+                await tx.cronjob_runs.update({
+                    where: { id: cronjobRun.id },
+                    data: { todo_list_version: { increment: 1 } },
+                });
+            }
+            return cronjobRun;
         });
     } catch (err) {
         if (isRunningRunUniquenessError(err) && mode === "scheduled") {
@@ -921,7 +960,7 @@ export async function dispatchCronjobRun(cronjobId: string, mode: CronjobDispatc
 
     const runtimePrompt = await buildCronjobPrompt({
         cronjobName: cronjob.name,
-        cronjobPrompt: userPrompt,
+        cronjobPrompt: promptTarget.prompt,
         userId: cronjob.user_id,
     });
     const promptResult = await client.session.promptAsync({

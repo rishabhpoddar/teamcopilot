@@ -445,7 +445,6 @@ export default function CronjobFormPage() {
     }
 
     const timezoneOptions = getTimezoneOptions();
-    const executionSteps = form.execution_steps.map((step) => step.trim()).filter((step) => step.length > 0);
 
     return (
         <main className="cronjob-form-page">
@@ -510,7 +509,7 @@ export default function CronjobFormPage() {
                                     <div className="cronjob-prompt-steps-header">
                                         <div>
                                             <span>Execution steps</span>
-                                            <p>Optional. These get appended to the prompt as a todo list.</p>
+                                            <p>Optional. These are inserted into the cronjob todo list before the agent starts.</p>
                                         </div>
                                         <button
                                             type="button"
@@ -560,12 +559,6 @@ export default function CronjobFormPage() {
                                         </div>
                                     )}
 
-                                    {executionSteps.length > 0 && (
-                                        <div className="cronjob-prompt-preview">
-                                            <span>Final prompt preview</span>
-                                            <pre>{buildPromptWithExecutionSteps(form.prompt, executionSteps)}</pre>
-                                        </div>
-                                    )}
                                 </div>
                             </div>
                         ) : (
