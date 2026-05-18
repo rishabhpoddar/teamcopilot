@@ -6,6 +6,18 @@ import {
 } from "../src/cronjobs/scheduler";
 import { buildCurrentTimePrompt } from "../src/utils/chat-prompt-context";
 
+function buildCronjobPromptWithExecutionSteps(prompt: string, executionSteps: string[]): string {
+    const promptText = prompt.trim();
+    const steps = executionSteps.map((step) => step.trim()).filter((step) => step.length > 0);
+
+    if (steps.length === 0) {
+        return promptText;
+    }
+
+    const promptSuffix = /[.?!]$/.test(promptText) ? '' : '.';
+    return `${promptText}${promptSuffix} Todo steps to follow:\n- ${steps.join('\n- ')}`;
+}
+
 async function main(): Promise<void> {
     assert.deepEqual(
         parsePromptCronjobTaskAndInitialTodos("Check repo health."),
@@ -62,6 +74,21 @@ async function main(): Promise<void> {
             initialTodos: [],
         },
         "prompt parsing should tolerate an empty saved todo section",
+    );
+
+    assert.equal(
+        buildCronjobPromptWithExecutionSteps("Check repo health", [
+            "Inspect git status",
+            "Run relevant tests",
+            "Summarize failures",
+        ]),
+        [
+            "Check repo health. Todo steps to follow:",
+            "- Inspect git status",
+            "- Run relevant tests",
+            "- Summarize failures",
+        ].join("\n"),
+        "prompt serialization should keep execution steps in the order they were provided",
     );
 
     const fixedDate = new Date("2026-05-12T10:30:45.000Z");

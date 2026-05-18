@@ -5,6 +5,7 @@ import { toast } from 'react-toastify';
 import { axiosInstance } from '../../utils';
 import { useAuth } from '../../lib/auth';
 import { cronjobRunSummaryText } from '../../utils/cronjob-format';
+import { parseCronjobPrompt } from '../../utils/cronjob-prompt';
 import './WorkflowsSection.css';
 import './CronjobsSection.css';
 
@@ -91,6 +92,10 @@ function targetLabel(cronjob: Cronjob): string {
         return `Workflow: ${cronjob.target.workflow_slug}`;
     }
     return 'Prompt';
+}
+
+function promptPreview(prompt: string): string {
+    return parseCronjobPrompt(prompt).prompt;
 }
 
 function formatMonitorTimeout(value: number, unit: Cronjob['monitor_timeout_unit']): string {
@@ -284,7 +289,7 @@ export default function CronjobsSection() {
 
                             <div className="cronjob-card-header">
                                 <h3>{cronjob.name}</h3>
-                                <p>{cronjob.target.target_type === 'workflow' ? targetLabel(cronjob) : cronjob.prompt}</p>
+                                <p>{cronjob.target.target_type === 'workflow' ? targetLabel(cronjob) : promptPreview(cronjob.prompt)}</p>
                             </div>
 
                             <div className="cronjob-metrics">

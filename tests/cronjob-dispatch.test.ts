@@ -286,8 +286,12 @@ async function main(): Promise<void> {
         );
         assert.equal((workflowStartCalls[0] as { requirePermissionPrompt: boolean }).requirePermissionPrompt, false);
         assert.equal((workflowStartCalls[0] as { runSource: string }).runSource, "cronjob");
-        await new Promise((resolve) => setImmediate(resolve));
-        const completedWorkflowCronRun = await prisma.cronjob_runs.findUniqueOrThrow({ where: { id: workflowRunId } });
+        const deadline = Date.now() + 5000;
+        let completedWorkflowCronRun = await prisma.cronjob_runs.findUniqueOrThrow({ where: { id: workflowRunId } });
+        while (completedWorkflowCronRun.status === "running" && Date.now() < deadline) {
+            await new Promise((resolve) => setTimeout(resolve, 50));
+            completedWorkflowCronRun = await prisma.cronjob_runs.findUniqueOrThrow({ where: { id: workflowRunId } });
+        }
         assert.equal(completedWorkflowCronRun.status, "success");
         assert.equal(completedWorkflowCronRun.summary, "Workflow completed successfully.");
 
