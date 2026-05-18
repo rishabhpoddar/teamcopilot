@@ -137,9 +137,17 @@ function buildCronExpressionFromBuilder(form: CronjobFormState): string {
     return `${minute} ${hour} * * *`;
 }
 
+function createExecutionStepId(): string {
+    const crypto = globalThis.crypto;
+    if (crypto && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+    }
+    return `step-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 function createExecutionStep(content = ''): CronjobExecutionStep {
     return {
-        id: crypto.randomUUID(),
+        id: createExecutionStepId(),
         content,
     };
 }
