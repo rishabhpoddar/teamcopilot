@@ -23,9 +23,9 @@ import type { CronjobMonitorTimeoutUnit, CronjobSchedule, CronjobTargetType } fr
 import { assertUserCanRunWorkflow } from "../utils/workflow-run-validation";
 import { abortOpencodeSession } from "../utils/session-abort";
 import { markWorkflowSessionAborted } from "../utils/workflow-interruption";
+import { cronjobPrompt } from "../utils/cronjob-prompt";
 
 const CRONJOB_MONITOR_INTERVAL_MS = 5000;
-const LEGACY_TODO_STEP_MARKER = "Todo steps to follow:";
 
 const scheduledJobs = new Map<string, CronJob>();
 const runningMonitors = new Map<string, NodeJS.Timeout | null>();
@@ -35,18 +35,8 @@ export function parsePromptCronjobTaskAndInitialTodos(prompt: string): {
     prompt: string;
     initialTodos: string[];
 } {
-    const markerIndex = prompt.indexOf(LEGACY_TODO_STEP_MARKER);
-    if (markerIndex === -1) {
-        return { prompt, initialTodos: [] };
-    }
-
-    const promptText = prompt.slice(0, markerIndex).trimEnd();
-    const rawSteps = prompt.slice(markerIndex + LEGACY_TODO_STEP_MARKER.length).trim();
-    const initialTodos = rawSteps
-        .split("\n")
-        .map((line) => line.replace(/^- /, "").trim())
-        .filter((line) => line.length > 0);
-    return { prompt: promptText, initialTodos };
+    const parsedPrompt = cronjobPrompt.parse(prompt);
+    return { prompt: parsedPrompt.prompt, initialTodos: parsedPrompt.executionSteps };
 }
 
 function nowMs(): bigint {

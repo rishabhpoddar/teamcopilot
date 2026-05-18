@@ -5,18 +5,7 @@ import {
     validateCronjobTarget,
 } from "../src/cronjobs/scheduler";
 import { buildCurrentTimePrompt } from "../src/utils/chat-prompt-context";
-
-function buildCronjobPromptWithExecutionSteps(prompt: string, executionSteps: string[]): string {
-    const promptText = prompt.trim();
-    const steps = executionSteps.map((step) => step.trim()).filter((step) => step.length > 0);
-
-    if (steps.length === 0) {
-        return promptText;
-    }
-
-    const promptSuffix = /[.?!]$/.test(promptText) ? '' : '.';
-    return `${promptText}${promptSuffix} Todo steps to follow:\n- ${steps.join('\n- ')}`;
-}
+import { cronjobPrompt } from "../src/utils/cronjob-prompt";
 
 async function main(): Promise<void> {
     assert.deepEqual(
@@ -77,7 +66,7 @@ async function main(): Promise<void> {
     );
 
     assert.equal(
-        buildCronjobPromptWithExecutionSteps("Check repo health", [
+        cronjobPrompt.buildWithExecutionSteps("Check repo health", [
             "Inspect git status",
             "Run relevant tests",
             "Summarize failures",

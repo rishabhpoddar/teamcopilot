@@ -5,7 +5,7 @@ import { toast } from 'react-toastify';
 import { axiosInstance } from '../../utils';
 import { useAuth } from '../../lib/auth';
 import { cronjobRunSummaryText } from '../../utils/cronjob-format';
-import { parseCronjobPrompt } from '../../utils/cronjob-prompt';
+import { cronjobPrompt } from '../../../../src/utils/cronjob-prompt';
 import './WorkflowsSection.css';
 import './CronjobsSection.css';
 
@@ -95,7 +95,7 @@ function targetLabel(cronjob: Cronjob): string {
 }
 
 function promptPreview(prompt: string): string {
-    return parseCronjobPrompt(prompt).prompt;
+    return cronjobPrompt.parse(prompt).prompt;
 }
 
 function formatMonitorTimeout(value: number, unit: Cronjob['monitor_timeout_unit']): string {

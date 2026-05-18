@@ -1,6 +1,11 @@
-export const LEGACY_TODO_STEP_MARKER = 'Todo steps to follow:';
+const LEGACY_TODO_STEP_MARKER = "Todo steps to follow:";
 
-export function parseCronjobPrompt(prompt: string): { prompt: string; executionSteps: string[] } {
+type ParsedCronjobPrompt = {
+    prompt: string;
+    executionSteps: string[];
+};
+
+function parseCronjobPrompt(prompt: string): ParsedCronjobPrompt {
     const markerIndex = prompt.indexOf(LEGACY_TODO_STEP_MARKER);
     if (markerIndex === -1) {
         return { prompt: prompt.trim(), executionSteps: [] };
@@ -13,8 +18,8 @@ export function parseCronjobPrompt(prompt: string): { prompt: string; executionS
     }
 
     const executionSteps = rawSteps
-        .split('\n')
-        .map((line) => line.replace(/^- /, '').trim())
+        .split("\n")
+        .map((line) => line.replace(/^- /, "").trim())
         .filter((line) => line.length > 0);
 
     return {
@@ -23,7 +28,7 @@ export function parseCronjobPrompt(prompt: string): { prompt: string; executionS
     };
 }
 
-export function buildCronjobPromptWithExecutionSteps(prompt: string, executionSteps: string[]): string {
+function buildCronjobPromptWithExecutionSteps(prompt: string, executionSteps: string[]): string {
     const promptText = prompt.trim();
     const steps = executionSteps.map((step) => step.trim()).filter((step) => step.length > 0);
 
@@ -31,10 +36,12 @@ export function buildCronjobPromptWithExecutionSteps(prompt: string, executionSt
         return promptText;
     }
 
-    const promptSuffix = /[.?!]$/.test(promptText) ? '' : '.';
-    return `${promptText}${promptSuffix} ${LEGACY_TODO_STEP_MARKER}\n- ${steps.join('\n- ')}`;
+    const promptSuffix = /[.?!]$/.test(promptText) ? "" : ".";
+    return `${promptText}${promptSuffix} ${LEGACY_TODO_STEP_MARKER}\n- ${steps.join("\n- ")}`;
 }
 
-export function promptContainsLegacyTodoStepMarker(prompt: string): boolean {
-    return prompt.includes(LEGACY_TODO_STEP_MARKER);
-}
+export const cronjobPrompt = {
+    LEGACY_TODO_STEP_MARKER,
+    parse: parseCronjobPrompt,
+    buildWithExecutionSteps: buildCronjobPromptWithExecutionSteps,
+};

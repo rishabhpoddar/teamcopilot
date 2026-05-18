@@ -7,7 +7,7 @@ import { axiosInstance } from '../utils';
 import { useAuth } from '../lib/auth';
 import { usePageTitle } from '../lib/usePageTitle';
 import type { WorkflowInput } from '../types/workflow';
-import { LEGACY_TODO_STEP_MARKER, buildCronjobPromptWithExecutionSteps, parseCronjobPrompt, promptContainsLegacyTodoStepMarker } from '../utils/cronjob-prompt';
+import { cronjobPrompt } from '../../../src/utils/cronjob-prompt';
 import './CronjobFormPage.css';
 
 type ScheduleMode = 'builder' | 'cron';
@@ -228,7 +228,7 @@ function getErrorMessage(err: unknown, fallback: string): string {
 }
 
 function formFromCronjob(cronjob: Cronjob): CronjobFormState {
-    const parsedPrompt = parseCronjobPrompt(cronjob.prompt);
+    const parsedPrompt = cronjobPrompt.parse(cronjob.prompt);
     return {
         name: cronjob.name,
         targetMode: cronjob.target?.target_type ?? 'prompt',
@@ -363,7 +363,7 @@ export default function CronjobFormPage() {
             name: form.name,
             target_type: form.targetMode,
             prompt: form.targetMode === 'prompt'
-                ? buildCronjobPromptWithExecutionSteps(form.prompt, form.execution_steps.map((step) => step.content))
+                ? cronjobPrompt.buildWithExecutionSteps(form.prompt, form.execution_steps.map((step) => step.content))
                 : null,
             workflow_slug: form.targetMode === 'workflow' ? form.workflow_slug : null,
             workflow_inputs: form.targetMode === 'workflow' ? workflowInputs : null,
@@ -482,8 +482,8 @@ export default function CronjobFormPage() {
     const saveCronjob = async (event: FormEvent) => {
         event.preventDefault();
         if (!token) return;
-        if (form.targetMode === 'prompt' && promptContainsLegacyTodoStepMarker(form.prompt)) {
-            toast.error(`Do not add "${LEGACY_TODO_STEP_MARKER}" in the prompt. Add those items as execution steps instead.`);
+        if (form.targetMode === 'prompt' && form.prompt.includes(cronjobPrompt.LEGACY_TODO_STEP_MARKER)) {
+            toast.error(`Do not add "${cronjobPrompt.LEGACY_TODO_STEP_MARKER}" in the prompt. Add those items as execution steps instead.`);
             return;
         }
         const payload = buildPayload();
