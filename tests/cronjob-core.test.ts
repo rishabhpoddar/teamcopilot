@@ -1,11 +1,69 @@
 import assert from "node:assert/strict";
 import {
+    parsePromptCronjobTaskAndInitialTodos,
     validateCronjobSchedule,
     validateCronjobTarget,
 } from "../src/cronjobs/scheduler";
 import { buildCurrentTimePrompt } from "../src/utils/chat-prompt-context";
 
 async function main(): Promise<void> {
+    assert.deepEqual(
+        parsePromptCronjobTaskAndInitialTodos("Check repo health."),
+        {
+            prompt: "Check repo health.",
+            initialTodos: [],
+        },
+        "prompt parsing should leave prompts without saved todos unchanged",
+    );
+
+    assert.deepEqual(
+        parsePromptCronjobTaskAndInitialTodos([
+            "Check repo health. Todo steps to follow:",
+            "- Inspect git status",
+            "- Run tests",
+            "- Summarize failures",
+        ].join("\n")),
+        {
+            prompt: "Check repo health.",
+            initialTodos: [
+                "Inspect git status",
+                "Run tests",
+                "Summarize failures",
+            ],
+        },
+        "prompt parsing should extract saved todo steps from the legacy prompt marker",
+    );
+
+    assert.deepEqual(
+        parsePromptCronjobTaskAndInitialTodos([
+            "Check repo health.",
+            "",
+            "Todo steps to follow:",
+            "Inspect git status",
+            "- Run tests",
+            "",
+            "- Summarize failures",
+        ].join("\n")),
+        {
+            prompt: "Check repo health.",
+            initialTodos: [
+                "Inspect git status",
+                "Run tests",
+                "Summarize failures",
+            ],
+        },
+        "prompt parsing should accept saved todo lines with or without dash prefixes",
+    );
+
+    assert.deepEqual(
+        parsePromptCronjobTaskAndInitialTodos("Check repo health. Todo steps to follow:\n\n"),
+        {
+            prompt: "Check repo health.",
+            initialTodos: [],
+        },
+        "prompt parsing should tolerate an empty saved todo section",
+    );
+
     const fixedDate = new Date("2026-05-12T10:30:45.000Z");
     const timePrompt = buildCurrentTimePrompt(fixedDate);
     assert.ok(timePrompt.includes("# Current time"));

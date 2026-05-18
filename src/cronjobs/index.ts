@@ -120,7 +120,9 @@ function serializeCronjob(cronjob: {
         workflow_run_id?: string | null;
     }>;
 }) {
-    const promptTarget = parsePromptCronjobTaskAndInitialTodos(cronjob.prompt ?? "");
+    const promptTarget = cronjob.target_type === "prompt"
+        ? parsePromptCronjobTaskAndInitialTodos(cronjob.prompt ?? "")
+        : { prompt: cronjob.prompt, initialTodos: [] };
     const schedule = {
         cron_expression: cronjob.cron_expression,
         timezone: cronjob.timezone,
@@ -128,7 +130,7 @@ function serializeCronjob(cronjob: {
     return {
         id: cronjob.id,
         name: cronjob.name,
-        prompt: promptTarget.prompt,
+        prompt: promptTarget.prompt ?? "",
         initial_todos: promptTarget.initialTodos,
         enabled: cronjob.enabled,
         allow_workflow_runs_without_permission: cronjob.prompt_allow_workflow_runs_without_permission ?? true,
