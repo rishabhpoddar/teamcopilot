@@ -628,7 +628,18 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
             if (isInitialLoad) {
                 setLoading(true);
             }
-            const sessionListTime = showAllSessions ? 'all' : 'recent';
+            // The session sidebar normally polls only recent sessions so users with
+            // long chat history do not pay the cost of enriching every old session
+            // every two seconds. A deep link such as /?tab=ai&session=<id> can point
+            // at an older session that is outside that recent window, though. In
+            // that case, do one full session-list load until the selectedSessionId
+            // has been found and opened by the effect below. After
+            // handledSelectedSessionIdRef is set, polling falls back to the cheap
+            // recent list while the active older session is preserved from the
+            // previous full load.
+            const shouldLoadAllForDeepLink = Boolean(selectedSessionId)
+                && handledSelectedSessionIdRef.current !== selectedSessionId;
+            const sessionListTime = showAllSessions || shouldLoadAllForDeepLink ? 'all' : 'recent';
             const response = await axiosInstance.get('/api/chat/sessions', {
                 headers: { Authorization: `Bearer ${token}` },
                 params: { time: sessionListTime },
@@ -734,7 +745,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                 setLoading(false);
             }
         }
-    }, [activeSessionId, attentionStateBySessionId, loading, markAttentionSessionAsSeen, resetSessionViewState, showAllSessions, token, updateAttentionState]);
+    }, [activeSessionId, attentionStateBySessionId, loading, markAttentionSessionAsSeen, resetSessionViewState, selectedSessionId, showAllSessions, token, updateAttentionState]);
 
     const handleShowAllSessions = useCallback(() => {
         setShowAllSessions(true);
