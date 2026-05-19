@@ -16,7 +16,6 @@ import {
     validateCronjobMonitorTimeout,
 } from "./scheduler";
 import { DefaultArgs } from "../../prisma/generated/client/runtime/library";
-import { isFinishedCronjobRunStatus } from "./run-lifecycle";
 
 const router = express.Router({ mergeParams: true });
 
@@ -676,6 +675,12 @@ router.get("/runs/:id", apiHandler(async (req, res) => {
 }, true));
 
 router.post("/runs/:id/reveal-in-chat", apiHandler(async (req, res) => {
+    // we intentionally don't allow skipped runs to be revealed in chat
+    const FINISHED_CRONJOB_RUN_STATUSES = ["success", "failed", "terminated"] as const;
+
+    function isFinishedCronjobRunStatus(status: string): boolean {
+        return (FINISHED_CRONJOB_RUN_STATUSES as readonly string[]).includes(status);
+    }
     const id = req.params.id as string;
     const run = await prisma.cronjob_runs.findFirst({
         where: {
