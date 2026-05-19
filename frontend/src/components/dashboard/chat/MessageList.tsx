@@ -55,16 +55,9 @@ function MessageList({
         () => messages.slice(visibleStartIndex),
         [messages, visibleStartIndex]
     );
-    const visibleMessageIds = useMemo(
-        () => new Set(visibleMessages.map((message) => message.id)),
-        [visibleMessages]
-    );
     const partsByMessageId = useMemo(() => {
         const grouped = new Map<string, Part[]>();
         for (const part of parts) {
-            if (!visibleMessageIds.has(part.messageID)) {
-                continue;
-            }
             const existing = grouped.get(part.messageID);
             if (existing) {
                 existing.push(part);
@@ -73,7 +66,7 @@ function MessageList({
             }
         }
         return grouped;
-    }, [parts, visibleMessageIds]);
+    }, [parts]);
     const isAtBottom = useCallback(() => {
         const container = messagesContainerRef.current;
         if (!container) {
