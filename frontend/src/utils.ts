@@ -45,3 +45,28 @@ export function assertMessagesPayload(value: unknown): MessagesPayload {
     }
     throw new Error('Invalid messages payload from /messages')
 }
+
+export type SessionMessagesPageResponse = {
+    messages: MessagesPayload;
+    session_status: SessionStatus;
+    has_more: boolean;
+    next_cursor: string | null;
+};
+
+export function assertSessionMessagesPageResponse(value: unknown): SessionMessagesPageResponse {
+    if (!value || typeof value !== 'object') {
+        throw new Error('Invalid session messages page response from /messages');
+    }
+    const candidate = value as {
+        messages?: unknown;
+        session_status?: unknown;
+        has_more?: unknown;
+        next_cursor?: unknown;
+    };
+    return {
+        messages: assertMessagesPayload(candidate.messages),
+        session_status: assertSessionStatus(candidate.session_status),
+        has_more: candidate.has_more === true,
+        next_cursor: typeof candidate.next_cursor === 'string' ? candidate.next_cursor : null,
+    };
+}

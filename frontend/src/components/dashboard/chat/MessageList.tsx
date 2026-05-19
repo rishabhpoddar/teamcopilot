@@ -12,6 +12,9 @@ interface MessageListProps {
     pendingPermissions: PermissionRequest[];
     onPermissionRespond: (permissionId: string, response: "once" | "always" | "reject") => void;
     respondingPermissionIds: Record<string, boolean>;
+    hasMoreOlderMessages: boolean;
+    loadingOlderMessages: boolean;
+    onLoadOlderMessages: () => void;
 }
 
 function MessageList({
@@ -23,38 +26,18 @@ function MessageList({
     onAnswer,
     pendingPermissions,
     onPermissionRespond,
-    respondingPermissionIds
+    respondingPermissionIds,
+    hasMoreOlderMessages,
+    loadingOlderMessages,
+    onLoadOlderMessages,
 }: MessageListProps) {
     const BOTTOM_THRESHOLD_PX = 24;
     const TOP_LOAD_THRESHOLD_PX = 72;
-    const INITIAL_VISIBLE_MESSAGES = 5;
-    const LOAD_MORE_STEP = 5;
     const messagesContainerRef = useRef<HTMLDivElement>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
-    const [visibleStartMessageId, setVisibleStartMessageId] = useState<string | null>(null);
     const pendingScrollRestoreRef = useRef<number | null>(null);
     const previousSessionKeyRef = useRef(sessionKey);
-    const visibleStartIndex = useMemo(() => {
-        if (messages.length === 0) {
-            return 0;
-        }
-
-        if (!visibleStartMessageId) {
-            return Math.max(messages.length - INITIAL_VISIBLE_MESSAGES, 0);
-        }
-
-        const matchedIndex = messages.findIndex((message) => message.id === visibleStartMessageId);
-        if (matchedIndex === -1) {
-            return Math.max(messages.length - INITIAL_VISIBLE_MESSAGES, 0);
-        }
-
-        return matchedIndex;
-    }, [messages, visibleStartMessageId]);
-    const visibleMessages = useMemo(
-        () => messages.slice(visibleStartIndex),
-        [messages, visibleStartIndex]
-    );
     const partsByMessageId = useMemo(() => {
         const grouped = new Map<string, Part[]>();
         for (const part of parts) {
@@ -83,14 +66,13 @@ function MessageList({
         }
 
         setShouldAutoScroll(isAtBottom());
-        if (container.scrollTop > TOP_LOAD_THRESHOLD_PX || visibleStartIndex === 0) {
+        if (container.scrollTop > TOP_LOAD_THRESHOLD_PX || !hasMoreOlderMessages || loadingOlderMessages) {
             return;
         }
 
         pendingScrollRestoreRef.current = container.scrollHeight;
-        const nextStartIndex = Math.max(visibleStartIndex - LOAD_MORE_STEP, 0);
-        setVisibleStartMessageId(messages[nextStartIndex]?.id ?? null);
-    }, [isAtBottom, messages, visibleStartIndex]);
+        onLoadOlderMessages();
+    }, [hasMoreOlderMessages, isAtBottom, loadingOlderMessages, onLoadOlderMessages]);
 
     useEffect(() => {
         if (previousSessionKeyRef.current === sessionKey) {
@@ -99,7 +81,6 @@ function MessageList({
 
         previousSessionKeyRef.current = sessionKey;
         pendingScrollRestoreRef.current = null;
-        setVisibleStartMessageId(null);
         setShouldAutoScroll(true);
     }, [sessionKey]);
 
@@ -113,14 +94,14 @@ function MessageList({
         const nextScrollHeight = container.scrollHeight;
         container.scrollTop += nextScrollHeight - previousScrollHeight;
         pendingScrollRestoreRef.current = null;
-    }, [visibleStartIndex, visibleMessages.length]);
+    }, [messages.length, parts.length]);
 
     useEffect(() => {
         if (!shouldAutoScroll) {
             return;
         }
         messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
-    }, [visibleMessages, parts, isStreaming, isWaitingForInput, shouldAutoScroll]);
+    }, [messages, parts, isStreaming, isWaitingForInput, shouldAutoScroll]);
 
     if (messages.length === 0) {
         return (
@@ -133,7 +114,12 @@ function MessageList({
 
     return (
         <div className="chat-messages" ref={messagesContainerRef} onScroll={handleScroll}>
-            {visibleMessages.map(message => (
+            {loadingOlderMessages ? (
+                <div className="chat-messages-load-older" role="status">
+                    Loading older messages...
+                </div>
+            ) : null}
+            {messages.map(message => (
                 <MessageItem
                     key={message.id}
                     message={message}

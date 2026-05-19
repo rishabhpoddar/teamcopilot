@@ -40,6 +40,10 @@ import {
     buildAvailableSkillsPrompt,
     buildCurrentTimePrompt,
 } from "../utils/chat-prompt-context";
+import {
+    fetchOpencodeSessionMessagesPage,
+    parseSessionMessagesPageQuery,
+} from "../utils/session-messages-page";
 
 const router = express.Router({ mergeParams: true });
 const USER_INSTRUCTIONS_FILENAME = "USER_INSTRUCTIONS.md";
@@ -928,7 +932,7 @@ router.delete('/sessions/:id', apiHandler(async (req, res) => {
 }, true));
 */
 
-// GET /api/chat/sessions/:id/messages - Get messages
+// GET /api/chat/sessions/:id/messages - Get messages (paginated)
 router.get('/sessions/:id/messages', apiHandler(async (req, res) => {
     const id = req.params.id as string;
 
@@ -946,27 +950,25 @@ router.get('/sessions/:id/messages', apiHandler(async (req, res) => {
         };
     }
 
+    const pageQuery = parseSessionMessagesPageQuery(req.query);
+    const page = await fetchOpencodeSessionMessagesPage(session.opencode_session_id, pageQuery);
+
     const client = await getOpencodeClient();
-    const result = await client.session.messages({
-        path: { id: session.opencode_session_id }
-    });
-
-    if (result.error) {
-        throw new Error(getErrorMessage(result.error) || 'Failed to get messages from opencode');
-    }
-
     const statusResult = await client.session.status();
     assertCondition(!statusResult.error, getErrorMessage(statusResult.error));
     const sessionStatusType: SessionStatusType = getSessionStatusTypeForSession(
         statusResult.data as SessionStatusMap,
         session.opencode_session_id
     );
-    const normalizedMessages = normalizeStaleRunningTools(result.data as SessionMessageWire[], sessionStatusType);
+    const normalizedMessages = normalizeStaleRunningTools(page.messages, sessionStatusType);
     const sanitizedMessages = sanitizeFirstUserMessageForClient(normalizedMessages);
 
     res.json({
         messages: sanitizedMessages,
-        session_status: sessionStatusType
+        session_status: sessionStatusType,
+        has_more: page.hasMore,
+        next_cursor: page.nextCursor,
+        page_size: pageQuery.limit,
     });
 }, true));
 

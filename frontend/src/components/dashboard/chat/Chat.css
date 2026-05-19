@@ -97,6 +97,14 @@
     display: none;
 }
 
+.chat-messages-load-older {
+    padding: 0.5rem 0.75rem;
+    margin-bottom: 0.5rem;
+    text-align: center;
+    font-size: 0.8125rem;
+    color: #9ca3af;
+}
+
 .session-list {
     flex: 1;
     overflow-y: auto;
