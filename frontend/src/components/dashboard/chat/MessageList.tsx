@@ -37,6 +37,7 @@ function MessageList({
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
     const pendingScrollRestoreRef = useRef<number | null>(null);
+    const needsInitialScrollToBottomRef = useRef(true);
     const previousSessionKeyRef = useRef(sessionKey);
     const partsByMessageId = useMemo(() => {
         const grouped = new Map<string, Part[]>();
@@ -59,13 +60,19 @@ function MessageList({
         return distanceFromBottom <= BOTTOM_THRESHOLD_PX;
     }, []);
 
-    const handleScroll = useCallback(() => {
-        const container = messagesContainerRef.current;
-        if (!container) {
+    const handleScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
+        const container = event.currentTarget;
+
+        if (event.isTrusted) {
+            setShouldAutoScroll(isAtBottom());
+        }
+
+        // Only load older messages from real user scrolls. Programmatic scroll/layout
+        // can fire scroll events at scrollTop=0 and incorrectly prepend history.
+        if (!event.isTrusted) {
             return;
         }
 
-        setShouldAutoScroll(isAtBottom());
         if (container.scrollTop > TOP_LOAD_THRESHOLD_PX || !hasMoreOlderMessages || loadingOlderMessages) {
             return;
         }
@@ -81,19 +88,28 @@ function MessageList({
 
         previousSessionKeyRef.current = sessionKey;
         pendingScrollRestoreRef.current = null;
+        needsInitialScrollToBottomRef.current = true;
         setShouldAutoScroll(true);
     }, [sessionKey]);
 
     useLayoutEffect(() => {
-        const previousScrollHeight = pendingScrollRestoreRef.current;
         const container = messagesContainerRef.current;
-        if (previousScrollHeight === null || !container) {
+        if (!container) {
             return;
         }
 
-        const nextScrollHeight = container.scrollHeight;
-        container.scrollTop += nextScrollHeight - previousScrollHeight;
-        pendingScrollRestoreRef.current = null;
+        const previousScrollHeight = pendingScrollRestoreRef.current;
+        if (previousScrollHeight !== null) {
+            const nextScrollHeight = container.scrollHeight;
+            container.scrollTop += nextScrollHeight - previousScrollHeight;
+            pendingScrollRestoreRef.current = null;
+            return;
+        }
+
+        if (needsInitialScrollToBottomRef.current && messages.length > 0) {
+            container.scrollTop = container.scrollHeight;
+            needsInitialScrollToBottomRef.current = false;
+        }
     }, [messages.length, parts.length]);
 
     useEffect(() => {
