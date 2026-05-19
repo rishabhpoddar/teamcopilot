@@ -15,6 +15,9 @@ interface SessionSidebarProps {
     onToggle: () => void;
     // onDeleteSession: (sessionId: string) => void;
     loading: boolean;
+    hasOlderSessions: boolean;
+    showAllSessions: boolean;
+    onShowAllSessions: () => void;
 }
 
 export default function SessionSidebar({
@@ -26,7 +29,10 @@ export default function SessionSidebar({
     isOpen,
     onToggle,
     // onDeleteSession,
-    loading
+    loading,
+    hasOlderSessions,
+    showAllSessions,
+    onShowAllSessions,
 }: SessionSidebarProps) {
     // const handleDelete = (e: React.MouseEvent, sessionId: string) => {
     //     e.stopPropagation();
@@ -74,7 +80,11 @@ export default function SessionSidebar({
             <div className="session-list" id="chat-session-list">
                 {sessions.length === 0 ? (
                     <div className="no-sessions">
-                        {loading ? 'Loading...' : 'No sessions yet'}
+                        {loading
+                            ? 'Loading...'
+                            : hasOlderSessions && !showAllSessions
+                                ? 'No sessions in the last 10 days'
+                                : 'No sessions yet'}
                     </div>
                 ) : (
                     sessions.map(session => {
@@ -119,6 +129,16 @@ export default function SessionSidebar({
                         );
                     })
                 )}
+                {!showAllSessions && hasOlderSessions ? (
+                    <button
+                        type="button"
+                        className="show-all-sessions-btn"
+                        onClick={onShowAllSessions}
+                        disabled={loading}
+                    >
+                        Show all sessions
+                    </button>
+                ) : null}
             </div>
         </aside>
     );

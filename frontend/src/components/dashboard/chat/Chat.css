@@ -72,6 +72,39 @@
     font-size: 0.875rem;
 }
 
+.show-all-sessions-btn {
+    width: 100%;
+    margin-top: 0.5rem;
+    padding: 0.625rem 0.75rem;
+    border: 1px solid #444;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    font-size: 0.8125rem;
+    cursor: pointer;
+}
+
+.show-all-sessions-btn:hover:not(:disabled) {
+    background: #2a2a2a;
+}
+
+.show-all-sessions-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.chat-sidebar.collapsed .show-all-sessions-btn {
+    display: none;
+}
+
+.chat-messages-load-older {
+    padding: 0.5rem 0.75rem;
+    margin-bottom: 0.5rem;
+    text-align: center;
+    font-size: 0.8125rem;
+    color: #9ca3af;
+}
+
 .session-list {
     flex: 1;
     overflow-y: auto;

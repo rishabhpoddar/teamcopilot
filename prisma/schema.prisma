@@ -112,6 +112,7 @@ model chat_sessions {
   cronjobRuns         cronjob_runs[]
   user                users                      @relation(fields: [user_id], references: [id], onDelete: Cascade)
   @@index([visible_to_user])
+  @@index([user_id, visible_to_user, updated_at])
 }
 
 model cronjobs {

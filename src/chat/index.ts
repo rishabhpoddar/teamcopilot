@@ -40,9 +40,32 @@ import {
     buildAvailableSkillsPrompt,
     buildCurrentTimePrompt,
 } from "../utils/chat-prompt-context";
+import {
+    fetchOpencodeSessionMessagesPage,
+    parseSessionMessagesPageQuery,
+} from "../utils/session-messages-page";
 
 const router = express.Router({ mergeParams: true });
 const USER_INSTRUCTIONS_FILENAME = "USER_INSTRUCTIONS.md";
+const LATEST_ASSISTANT_MESSAGE_FETCH_LIMIT = 20;
+const RECENT_SESSION_WINDOW_MS = 10 * 24 * 60 * 60 * 1000;
+
+type SessionListTimeMode = "recent" | "all";
+
+function parseSessionListTimeMode(rawTime: unknown): SessionListTimeMode {
+    if (rawTime === undefined || rawTime === "recent") {
+        return "recent";
+    }
+
+    if (rawTime === "all") {
+        return "all";
+    }
+
+    throw {
+        status: 400,
+        message: 'time must be "recent" or "all"'
+    };
+}
 
 function getErrorMessage(error: unknown): string {
     if (error && typeof error === 'object' && 'detail' in error) {
@@ -414,10 +437,12 @@ function getLatestAssistantMessageId(messages: unknown): string | null {
 
 async function loadLatestAssistantMessageIdForSession(
     client: Awaited<ReturnType<typeof getOpencodeClient>>,
-    opencodeSessionId: string
+    opencodeSessionId: string,
+    limit: number = LATEST_ASSISTANT_MESSAGE_FETCH_LIMIT
 ): Promise<string | null> {
     const result = await client.session.messages({
-        path: { id: opencodeSessionId }
+        path: { id: opencodeSessionId },
+        query: { limit }
     });
 
     if (result.error) {
@@ -477,16 +502,41 @@ function getSessionState(args: {
 
 // GET /api/chat/sessions - List user's sessions
 router.get('/sessions', apiHandler(async (req, res) => {
+    const timeMode = parseSessionListTimeMode(req.query.time);
+    const sessionWhere = {
+        user_id: req.userId!,
+        visible_to_user: true,
+    } as {
+        user_id: string;
+        visible_to_user: boolean;
+        updated_at?: { gte: bigint };
+    };
+
+    let recentCutoff: bigint | null = null;
+    if (timeMode === "recent") {
+        recentCutoff = BigInt(Date.now() - RECENT_SESSION_WINDOW_MS);
+        sessionWhere.updated_at = { gte: recentCutoff };
+    }
+
     const sessions = await prisma.chat_sessions.findMany({
-        where: {
-            user_id: req.userId!,
-            visible_to_user: true,
-        },
+        where: sessionWhere,
         orderBy: { updated_at: 'desc' }
     });
 
+    let hasOlderSessions = false;
+    if (timeMode === "recent") {
+        const olderSessionCount = await prisma.chat_sessions.count({
+            where: {
+                user_id: req.userId!,
+                visible_to_user: true,
+                updated_at: { lt: recentCutoff! },
+            }
+        });
+        hasOlderSessions = olderSessionCount > 0;
+    }
+
     if (sessions.length === 0) {
-        res.json({ sessions });
+        res.json({ sessions, has_older_sessions: hasOlderSessions });
         return;
     }
 
@@ -591,7 +641,7 @@ router.get('/sessions', apiHandler(async (req, res) => {
         };
     }));
 
-    res.json({ sessions: enrichedSessions });
+    res.json({ sessions: enrichedSessions, has_older_sessions: hasOlderSessions });
 }, true));
 
 // GET /api/chat/file-suggestions - Search workspace files/folders for @mentions
@@ -882,7 +932,7 @@ router.delete('/sessions/:id', apiHandler(async (req, res) => {
 }, true));
 */
 
-// GET /api/chat/sessions/:id/messages - Get messages
+// GET /api/chat/sessions/:id/messages - Get messages (paginated)
 router.get('/sessions/:id/messages', apiHandler(async (req, res) => {
     const id = req.params.id as string;
 
@@ -900,27 +950,25 @@ router.get('/sessions/:id/messages', apiHandler(async (req, res) => {
         };
     }
 
+    const pageQuery = parseSessionMessagesPageQuery(req.query);
+    const page = await fetchOpencodeSessionMessagesPage(session.opencode_session_id, pageQuery);
+
     const client = await getOpencodeClient();
-    const result = await client.session.messages({
-        path: { id: session.opencode_session_id }
-    });
-
-    if (result.error) {
-        throw new Error(getErrorMessage(result.error) || 'Failed to get messages from opencode');
-    }
-
     const statusResult = await client.session.status();
     assertCondition(!statusResult.error, getErrorMessage(statusResult.error));
     const sessionStatusType: SessionStatusType = getSessionStatusTypeForSession(
         statusResult.data as SessionStatusMap,
         session.opencode_session_id
     );
-    const normalizedMessages = normalizeStaleRunningTools(result.data as SessionMessageWire[], sessionStatusType);
+    const normalizedMessages = normalizeStaleRunningTools(page.messages, sessionStatusType);
     const sanitizedMessages = sanitizeFirstUserMessageForClient(normalizedMessages);
 
     res.json({
         messages: sanitizedMessages,
-        session_status: sessionStatusType
+        session_status: sessionStatusType,
+        has_more: page.hasMore,
+        next_cursor: page.nextCursor,
+        page_size: pageQuery.limit,
     });
 }, true));
 

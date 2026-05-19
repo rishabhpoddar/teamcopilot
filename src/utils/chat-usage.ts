@@ -39,6 +39,13 @@ type OpencodeSessionMessage = {
     info: OpencodeUserMessageInfo | OpencodeAssistantMessageInfo;
 };
 
+type UsageSyncPage = {
+    messages: OpencodeSessionMessage[];
+    nextCursor: string | null;
+};
+
+const USAGE_SYNC_PAGE_LIMIT = 100;
+
 function assertNonNegativeNumber(value: unknown, label: string): asserts value is number {
     assertCondition(typeof value === "number" && Number.isFinite(value) && value >= 0, `${label} must be a non-negative number`);
 }
@@ -81,10 +88,17 @@ function assertSessionMessages(value: unknown): asserts value is OpencodeSession
     }
 }
 
-export async function syncChatSessionUsage(chatSessionId: string, opencodeSessionId: string): Promise<void> {
-    const client = await getOpencodeClient();
+async function fetchUsageSyncPage(
+    client: Awaited<ReturnType<typeof getOpencodeClient>>,
+    opencodeSessionId: string,
+    before?: string
+): Promise<UsageSyncPage> {
     const result = await client.session.messages({
-        path: { id: opencodeSessionId }
+        path: { id: opencodeSessionId },
+        query: {
+            limit: USAGE_SYNC_PAGE_LIMIT,
+            ...(before ? { before } : {}),
+        } as { limit: number; before?: string },
     });
 
     if (result.error) {
@@ -92,23 +106,62 @@ export async function syncChatSessionUsage(chatSessionId: string, opencodeSessio
     }
 
     assertSessionMessages(result.data);
-    const messages = result.data;
+
+    return {
+        messages: result.data,
+        nextCursor: result.response.headers.get("x-next-cursor") || null,
+    };
+}
+
+export async function syncChatSessionUsage(chatSessionId: string, opencodeSessionId: string): Promise<void> {
+    const client = await getOpencodeClient();
     const existingUsage = await prisma.chat_session_usage.findUnique({
         where: {
             chat_session_id: chatSessionId,
         }
     });
+    const canResumeFromCursor = existingUsage !== null && existingUsage.last_synced_message_id !== null;
 
-    let startIndex = 0;
-    if (existingUsage) {
-        const lastSyncedIndex = messages.findIndex((message) => (
-            message.info.role === "assistant"
-            && message.info.id === existingUsage.last_synced_message_id
-        ));
-        if (lastSyncedIndex === -1) {
-            return;
+    const fetchedPages: UsageSyncPage[] = [];
+    let before: string | undefined;
+    let cursorPageIndex = -1;
+    let cursorMessageIndex = -1;
+    if (canResumeFromCursor) {
+        while (true) {
+            const page = await fetchUsageSyncPage(client, opencodeSessionId, before);
+            const currentPageIndex = fetchedPages.length;
+            fetchedPages.push(page);
+
+            const lastSyncedIndex = page.messages.findIndex((message) => (
+                message.info.role === "assistant"
+                && message.info.id === existingUsage.last_synced_message_id
+            ));
+            if (lastSyncedIndex !== -1) {
+                cursorPageIndex = currentPageIndex;
+                cursorMessageIndex = lastSyncedIndex;
+                break;
+            }
+
+            if (!page.nextCursor) {
+                return;
+            }
+
+            before = page.nextCursor;
         }
-        startIndex = lastSyncedIndex + 1;
+    } else {
+        const result = await client.session.messages({
+            path: { id: opencodeSessionId }
+        });
+
+        if (result.error) {
+            throw new Error("Failed to load session messages for usage sync");
+        }
+
+        assertSessionMessages(result.data);
+        fetchedPages.push({
+            messages: result.data,
+            nextCursor: null,
+        });
     }
 
     let deltaInputTokens = 0;
@@ -118,10 +171,13 @@ export async function syncChatSessionUsage(chatSessionId: string, opencodeSessio
     let latestProcessedProviderId: string | null = null;
     let latestProcessedModelId: string | null = null;
 
-    for (const message of messages.slice(startIndex)) {
+    const processMessage = (message: OpencodeSessionMessage): void => {
         const info = message.info;
         if (info.role !== "assistant") {
-            continue;
+            return;
+        }
+        if (info.time.completed === undefined) {
+            return;
         }
 
         deltaInputTokens += info.tokens.input;
@@ -130,6 +186,30 @@ export async function syncChatSessionUsage(chatSessionId: string, opencodeSessio
         latestProcessedAssistantMessageId = info.id;
         latestProcessedProviderId = info.providerID;
         latestProcessedModelId = info.modelID;
+    };
+
+    if (canResumeFromCursor) {
+        assertCondition(cursorPageIndex !== -1, "Usage sync cursor page is missing");
+
+        const pagesInChronologicalOrder = [...fetchedPages].reverse();
+        const cursorPageChronologicalIndex = pagesInChronologicalOrder.length - 1 - cursorPageIndex;
+
+        const cursorPage = pagesInChronologicalOrder[cursorPageChronologicalIndex];
+        for (const message of cursorPage.messages.slice(cursorMessageIndex + 1)) {
+            processMessage(message);
+        }
+
+        for (let pageIndex = cursorPageChronologicalIndex + 1; pageIndex < pagesInChronologicalOrder.length; pageIndex += 1) {
+            for (const message of pagesInChronologicalOrder[pageIndex].messages) {
+                processMessage(message);
+            }
+        }
+    } else {
+        for (const page of [...fetchedPages].reverse()) {
+            for (const message of page.messages) {
+                processMessage(message);
+            }
+        }
     }
 
     if (

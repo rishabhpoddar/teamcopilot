@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { toast } from 'react-toastify';
 import { AxiosError, CanceledError } from 'axios';
-import { axiosInstance, assertMessagesPayload, assertSessionStatus } from '../../../utils';
+import { axiosInstance, assertSessionMessagesPageResponse } from '../../../utils';
 import { useAuth } from '../../../lib/auth';
 import type {
     ChatSession,
@@ -147,6 +147,8 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
     const MOBILE_BREAKPOINT_PX = 820;
     const auth = useAuth();
     const [sessions, setSessions] = useState<ChatSession[]>([]);
+    const [showAllSessions, setShowAllSessions] = useState(false);
+    const [hasOlderSessions, setHasOlderSessions] = useState(false);
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
     const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
         if (typeof window === 'undefined') {
@@ -189,6 +191,10 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
     const previousSessionsRef = useRef<Record<string, ChatSession>>({});
     const readingSessionIdsRef = useRef<Set<string>>(new Set());
     const messagesAbortControllerRef = useRef<AbortController | null>(null);
+    const olderMessagesAbortControllerRef = useRef<AbortController | null>(null);
+    const [olderMessagesCursor, setOlderMessagesCursor] = useState<string | null>(null);
+    const [hasMoreOlderMessages, setHasMoreOlderMessages] = useState(false);
+    const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
     const pendingPermissionsAbortControllerRef = useRef<AbortController | null>(null);
     const sessionDiffAbortControllerRef = useRef<AbortController | null>(null);
 
@@ -210,6 +216,8 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
     const abortSessionDataRequests = useCallback(() => {
         messagesAbortControllerRef.current?.abort();
         messagesAbortControllerRef.current = null;
+        olderMessagesAbortControllerRef.current?.abort();
+        olderMessagesAbortControllerRef.current = null;
         pendingPermissionsAbortControllerRef.current?.abort();
         pendingPermissionsAbortControllerRef.current = null;
         sessionDiffAbortControllerRef.current?.abort();
@@ -228,9 +236,72 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
         setExpandedDiffPaths([]);
         setUsageSyncWarning(null);
         setIsStreaming(false);
+        setOlderMessagesCursor(null);
+        setHasMoreOlderMessages(false);
+        setLoadingOlderMessages(false);
         completedAssistantMessageIdsRef.current = new Set();
         syncedUsageMessageIdsRef.current = new Set();
     }, [abortSessionDataRequests]);
+
+    const applyMessagesPageToState = useCallback((
+        page: ReturnType<typeof assertSessionMessagesPageResponse>,
+        mode: 'replace' | 'prepend'
+    ) => {
+        const loadedMessages: Message[] = [];
+        const loadedParts: Part[] = [];
+
+        page.messages.forEach((item) => {
+            loadedMessages.push(item.info);
+            loadedParts.push(...item.parts);
+        });
+
+        if (mode === 'replace') {
+            setMessages(loadedMessages);
+            setParts(loadedParts);
+            completedAssistantMessageIdsRef.current = new Set(
+                loadedMessages
+                    .filter((message) => message.role === 'assistant' && Boolean(message.time.completed))
+                    .map((message) => message.id)
+            );
+            syncedUsageMessageIdsRef.current = new Set(completedAssistantMessageIdsRef.current);
+        } else {
+            setMessages((prev) => {
+                const existingIds = new Set(prev.map((message) => message.id));
+                const newMessages = loadedMessages.filter((message) => !existingIds.has(message.id));
+                return [...newMessages, ...prev];
+            });
+            setParts((prev) => {
+                const existingIds = new Set(prev.map((part) => part.id));
+                const newParts = loadedParts.filter((part) => !existingIds.has(part.id));
+                return [...newParts, ...prev];
+            });
+            for (const message of loadedMessages) {
+                if (message.role === 'assistant' && message.time.completed) {
+                    completedAssistantMessageIdsRef.current.add(message.id);
+                }
+            }
+        }
+
+        setOlderMessagesCursor(page.next_cursor);
+        setHasMoreOlderMessages(page.has_more);
+
+        const isSessionBusy = page.session_status === 'busy' || page.session_status === 'retry';
+        if (mode === 'replace') {
+            if (!isSessionBusy) {
+                setIsStreaming(false);
+            } else {
+                const hasActiveAssistantMessage = loadedMessages.some(
+                    (message) => message.role === 'assistant' && !message.time.completed
+                );
+                const hasRunningTool = loadedParts.some(
+                    (part) => part.type === 'tool' && (part.state.status === 'running' || part.state.status === 'pending')
+                );
+                setIsStreaming(hasActiveAssistantMessage || hasRunningTool);
+            }
+        }
+
+        return loadedMessages;
+    }, []);
 
     const token = auth.loading ? null : auth.token;
     const activeSession = sessions.find((session) => session.id === activeSessionId) ?? null;
@@ -557,10 +628,24 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
             if (isInitialLoad) {
                 setLoading(true);
             }
+            // The session sidebar normally polls only recent sessions so users with
+            // long chat history do not pay the cost of enriching every old session
+            // every two seconds. A deep link such as /?tab=ai&session=<id> can point
+            // at an older session that is outside that recent window, though. In
+            // that case, do one full session-list load until the selectedSessionId
+            // has been found and opened by the effect below. After
+            // handledSelectedSessionIdRef is set, polling falls back to the cheap
+            // recent list while the active older session is preserved from the
+            // previous full load.
+            const shouldLoadAllForDeepLink = Boolean(selectedSessionId)
+                && handledSelectedSessionIdRef.current !== selectedSessionId;
+            const sessionListTime = showAllSessions || shouldLoadAllForDeepLink ? 'all' : 'recent';
             const response = await axiosInstance.get('/api/chat/sessions', {
-                headers: { Authorization: `Bearer ${token}` }
+                headers: { Authorization: `Bearer ${token}` },
+                params: { time: sessionListTime },
             });
             const nextSessions = Array.isArray(response.data?.sessions) ? response.data.sessions as ChatSession[] : [];
+            setHasOlderSessions(response.data?.has_older_sessions === true);
             const previousSessions = previousSessionsRef.current;
 
             if (!isInitialLoad) {
@@ -626,13 +711,24 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                 }
             }
 
-            previousSessionsRef.current = nextSessions.reduce<Record<string, ChatSession>>((acc, session) => {
+            let displaySessions = nextSessions;
+            if (!showAllSessions && activeSessionId && activeSessionId !== PENDING_SESSION_ID) {
+                const activeInList = nextSessions.some((session) => session.id === activeSessionId);
+                if (!activeInList) {
+                    const previousActive = previousSessionsRef.current[activeSessionId];
+                    if (previousActive) {
+                        displaySessions = [...nextSessions, previousActive];
+                    }
+                }
+            }
+
+            previousSessionsRef.current = displaySessions.reduce<Record<string, ChatSession>>((acc, session) => {
                 acc[session.id] = session;
                 return acc;
             }, {});
-            setSessions(nextSessions);
+            setSessions(displaySessions);
             if (activeSessionId && activeSessionId !== PENDING_SESSION_ID) {
-                const stillExists = nextSessions.some((session) => session.id === activeSessionId);
+                const stillExists = displaySessions.some((session) => session.id === activeSessionId);
                 if (!stillExists) {
                     resetSessionViewState();
                     setActiveSessionId(null);
@@ -649,7 +745,11 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                 setLoading(false);
             }
         }
-    }, [activeSessionId, attentionStateBySessionId, loading, markAttentionSessionAsSeen, resetSessionViewState, token, updateAttentionState]);
+    }, [activeSessionId, attentionStateBySessionId, loading, markAttentionSessionAsSeen, resetSessionViewState, selectedSessionId, showAllSessions, token, updateAttentionState]);
+
+    const handleShowAllSessions = useCallback(() => {
+        setShowAllSessions(true);
+    }, []);
 
     const markActiveAttentionAsSeenIfVisible = useCallback(() => {
         if (!activeSession || activeSession.id === PENDING_SESSION_ID) {
@@ -671,6 +771,8 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
         if (!token) return;
 
         messagesAbortControllerRef.current?.abort();
+        olderMessagesAbortControllerRef.current?.abort();
+        olderMessagesAbortControllerRef.current = null;
         const controller = new AbortController();
         messagesAbortControllerRef.current = controller;
         try {
@@ -682,40 +784,12 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                 return;
             }
 
-            const data = assertMessagesPayload(response.data.messages);
-            const sessionStatus = assertSessionStatus(response.data.session_status);
-            // The API returns an array of { info: Message, parts: Part[] } objects
-            const loadedMessages: Message[] = [];
-            const loadedParts: Part[] = [];
-
-            data.forEach((item) => {
-                loadedMessages.push(item.info);
-                loadedParts.push(...item.parts);
-            });
-
-            setMessages(loadedMessages);
-            setParts(loadedParts);
-            completedAssistantMessageIdsRef.current = new Set(
-                loadedMessages
-                    .filter((message) => message.role === 'assistant' && Boolean(message.time.completed))
-                    .map((message) => message.id)
-            );
-            syncedUsageMessageIdsRef.current = new Set(completedAssistantMessageIdsRef.current);
-            if (loadedMessages.some((message) => message.role === 'assistant' && Boolean(message.time.completed))) {
-                void syncUsageForSession(sessionId);
-            }
-            const isSessionBusy = sessionStatus === 'busy' || sessionStatus === 'retry';
-            if (!isSessionBusy) {
-                setIsStreaming(false);
-            } else {
-                const hasActiveAssistantMessage = loadedMessages.some(
-                    (message) => message.role === 'assistant' && !message.time.completed
-                );
-                const hasRunningTool = loadedParts.some(
-                    (part) => part.type === 'tool' && (part.state.status === 'running' || part.state.status === 'pending')
-                );
-                setIsStreaming(hasActiveAssistantMessage || hasRunningTool);
-            }
+            const page = assertSessionMessagesPageResponse(response.data);
+            applyMessagesPageToState(page, 'replace');
+            // Usage sync scans the full session on the backend, so it should run
+            // whenever a session is opened instead of depending on the first page
+            // containing a completed assistant message.
+            void syncUsageForSession(sessionId);
         } catch (err: unknown) {
             if (err instanceof CanceledError) {
                 return;
@@ -729,7 +803,56 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                 messagesAbortControllerRef.current = null;
             }
         }
-    }, [syncUsageForSession, token]);
+    }, [applyMessagesPageToState, syncUsageForSession, token]);
+
+    const loadOlderMessages = useCallback(async () => {
+        if (!token || !activeSessionId || activeSessionId === PENDING_SESSION_ID) {
+            return;
+        }
+        if (!hasMoreOlderMessages || !olderMessagesCursor || loadingOlderMessages) {
+            return;
+        }
+
+        olderMessagesAbortControllerRef.current?.abort();
+        const controller = new AbortController();
+        olderMessagesAbortControllerRef.current = controller;
+        setLoadingOlderMessages(true);
+        try {
+            const response = await axiosInstance.get(`/api/chat/sessions/${activeSessionId}/messages`, {
+                headers: { Authorization: `Bearer ${token}` },
+                params: {
+                    before: olderMessagesCursor,
+                },
+                signal: controller.signal,
+            });
+            if (olderMessagesAbortControllerRef.current !== controller || controller.signal.aborted) {
+                return;
+            }
+
+            const page = assertSessionMessagesPageResponse(response.data);
+            applyMessagesPageToState(page, 'prepend');
+        } catch (err: unknown) {
+            if (err instanceof CanceledError) {
+                return;
+            }
+            const errorMessage = err instanceof AxiosError
+                ? err.response?.data?.message || err.response?.data || err.message
+                : 'Failed to load older messages';
+            toast.error(errorMessage);
+        } finally {
+            if (olderMessagesAbortControllerRef.current === controller) {
+                olderMessagesAbortControllerRef.current = null;
+                setLoadingOlderMessages(false);
+            }
+        }
+    }, [
+        activeSessionId,
+        applyMessagesPageToState,
+        hasMoreOlderMessages,
+        loadingOlderMessages,
+        olderMessagesCursor,
+        token,
+    ]);
 
     const loadPendingPermissions = useCallback(async (sessionId: string) => {
         if (!token) return;
@@ -1384,6 +1507,9 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                     isOpen={isSidebarOpen}
                     onToggle={() => setIsSidebarOpen((prev) => !prev)}
                     loading={loading}
+                    hasOlderSessions={hasOlderSessions}
+                    showAllSessions={showAllSessions}
+                    onShowAllSessions={handleShowAllSessions}
                 />
             )}
             <div className="chat-main">
@@ -1463,6 +1589,7 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                     <div className="chat-workspace without-diff">
                         <div className="chat-column chat-column-main">
                             <MessageList
+                                key={activeSessionId}
                                 sessionKey={activeSessionId}
                                 messages={messages}
                                 parts={parts}
@@ -1472,6 +1599,11 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                                 pendingPermissions={pendingPermissions}
                                 onPermissionRespond={sendPermissionResponse}
                                 respondingPermissionIds={respondingPermissionIds}
+                                hasMoreOlderMessages={hasMoreOlderMessages}
+                                loadingOlderMessages={loadingOlderMessages}
+                                onLoadOlderMessages={() => {
+                                    void loadOlderMessages();
+                                }}
                             />
                             {readOnly ? null : (
                                 <ChatInput
