@@ -993,12 +993,15 @@ router.post('/sessions/:id/messages', apiHandler(async (req, res) => {
             status: { in: ["success", "failed", "terminated", "skipped"] },
         },
         orderBy: { started_at: "desc" },
-        select: { status: true },
+        select: {
+            status: true,
+            session: { select: { visible_to_user: true } },
+        },
     });
-    if (terminalCronjobRun) {
+    if (terminalCronjobRun && !terminalCronjobRun.session?.visible_to_user) {
         throw {
             status: 409,
-            message: `This cronjob chat is closed because the run is ${terminalCronjobRun.status}. Start a new chat or rerun the cronjob.`
+            message: `This cronjob chat is closed because the run is ${terminalCronjobRun.status}. Move it to chat from the cronjob run page, or rerun the cronjob.`
         };
     }
 

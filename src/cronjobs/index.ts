@@ -182,6 +182,7 @@ function serializeRun(run: {
         workflow_slug: string | null;
         workflow_input_json: string | null;
     } | null;
+    session?: { visible_to_user: boolean } | null;
 }) {
     const targetType = run.workflow_run_id ? "workflow" : run.cronjob?.target_type ?? "prompt";
     const workflowInputJson = run.workflowRun?.args ?? run.cronjob?.workflow_input_json ?? null;
@@ -200,6 +201,7 @@ function serializeRun(run: {
         session_id: run.session_id,
         opencode_session_id: run.opencode_session_id,
         error_message: run.error_message,
+        reveal_in_chat: run.session?.visible_to_user ?? false,
     };
 }
 
@@ -663,12 +665,63 @@ router.get("/runs/:id", apiHandler(async (req, res) => {
         include: {
             workflowRun: { select: { workflow_slug: true, args: true } },
             cronjob: { select: { target_type: true, prompt: true, workflow_slug: true, workflow_input_json: true } },
+            session: { select: { visible_to_user: true } },
         },
     });
     if (!run) {
         throw { status: 404, message: "Cronjob run not found" };
     }
     res.json({ run: serializeRun(run) });
+}, true));
+
+router.post("/runs/:id/reveal-in-chat", apiHandler(async (req, res) => {
+    // we intentionally don't allow skipped runs to be revealed in chat
+    const FINISHED_CRONJOB_RUN_STATUSES = ["success", "failed", "terminated"] as const;
+
+    function isFinishedCronjobRunStatus(status: string): boolean {
+        return (FINISHED_CRONJOB_RUN_STATUSES as readonly string[]).includes(status);
+    }
+    const id = req.params.id as string;
+    const run = await prisma.cronjob_runs.findFirst({
+        where: {
+            id,
+            cronjob: { user_id: req.userId! },
+        },
+        select: {
+            id: true,
+            status: true,
+            session_id: true,
+            cronjob: { select: { target_type: true } },
+            session: { select: { visible_to_user: true } },
+        },
+    });
+    if (!run) {
+        throw { status: 404, message: "Cronjob run not found" };
+    }
+    if (run.cronjob.target_type !== "prompt" || !run.session_id) {
+        throw {
+            status: 400,
+            message: "Only prompt cronjob runs with a chat session can be moved to chat.",
+        };
+    }
+    if (!isFinishedCronjobRunStatus(run.status)) {
+        throw {
+            status: 400,
+            message: `Only finished cronjob runs can be moved to chat. Current status is: ${run.status}`,
+        };
+    }
+    if (run.session?.visible_to_user) {
+        res.json({ success: true, reveal_in_chat: true });
+        return;
+    }
+    await prisma.chat_sessions.update({
+        where: { id: run.session_id },
+        data: {
+            visible_to_user: true,
+            updated_at: Date.now(),
+        },
+    });
+    res.json({ success: true, reveal_in_chat: true });
 }, true));
 
 router.post("/runs/:id/interrupt", apiHandler(async (req, res) => {

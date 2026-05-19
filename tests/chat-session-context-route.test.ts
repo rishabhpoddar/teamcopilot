@@ -116,6 +116,10 @@ async function main(): Promise<void> {
                 updated_at: now,
             },
         });
+        await prisma.chat_sessions.update({
+            where: { id: sessionId },
+            data: { visible_to_user: false },
+        });
         await prisma.cronjob_runs.create({
             data: {
                 cronjob_id: cronjob.id,
@@ -132,8 +136,21 @@ async function main(): Promise<void> {
             .send({ parts: [{ type: "text", text: "Can you keep going?" }] })
             .expect(409)
             .expect((response) => {
-                assert.equal(response.body.message, "This cronjob chat is closed because the run is terminated. Start a new chat or rerun the cronjob.");
+                assert.equal(
+                    response.body.message,
+                    "This cronjob chat is closed because the run is terminated. Move it to chat from the cronjob run page, or rerun the cronjob."
+                );
             });
+
+        await prisma.chat_sessions.update({
+            where: { id: sessionId },
+            data: { visible_to_user: true },
+        });
+        await request(app)
+            .post(`/api/chat/sessions/${sessionId}/messages`)
+            .set("Authorization", `Bearer ${authSession.opencode_session_id}`)
+            .send({ parts: [{ type: "text", text: "Continue after reveal" }] })
+            .expect(200);
 
         console.log("Chat session context route tests passed");
     } finally {

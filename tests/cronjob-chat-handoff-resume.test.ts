@@ -201,7 +201,7 @@ async function main(): Promise<void> {
                     user_id: user.id,
                     opencode_session_id: rememberSessionId(`cronjob-handoff-terminal-${status}`),
                     title: `Terminal ${status}`,
-                    visible_to_user: true,
+                    visible_to_user: false,
                     created_at: now,
                     updated_at: now + BigInt(10 + index),
                 },
@@ -294,7 +294,7 @@ async function main(): Promise<void> {
         });
         for (const terminal of terminalSessions) {
             const listed = sessions.find((session) => session.id === terminal.sessionId);
-            assert.equal(listed?.cronjob_control, null, `Terminal ${terminal.status} run should not expose cron controls`);
+            assert.equal(listed, undefined, `Hidden terminal ${terminal.status} run should not appear in chat sessions`);
         }
         const workflowListed = sessions.find((session) => session.id === workflowSession.id);
         assert.equal(workflowListed?.cronjob_control, null, "Workflow cronjob chats should not expose prompt cron controls");
@@ -307,10 +307,57 @@ async function main(): Promise<void> {
                 .send({ parts: [{ type: "text", text: "Can you continue?" }] })
                 .expect(409)
                 .expect((response) => {
-                    assert.equal(response.body.message, `This cronjob chat is closed because the run is ${terminal.status}. Start a new chat or rerun the cronjob.`);
+                    assert.equal(
+                        response.body.message,
+                        `This cronjob chat is closed because the run is ${terminal.status}. Move it to chat from the cronjob run page, or rerun the cronjob.`
+                    );
                 });
         }
-        assert.equal(promptCalls.length, 0, "Terminal cronjob chat messages must not be forwarded to OpenCode");
+        assert.equal(promptCalls.length, 0, "Hidden terminal cronjob chat messages must not be forwarded to OpenCode");
+
+        const hiddenTerminalSession = await prisma.chat_sessions.create({
+            data: {
+                user_id: user.id,
+                opencode_session_id: rememberSessionId("cronjob-handoff-hidden-terminal"),
+                title: "Hidden terminal",
+                visible_to_user: false,
+                created_at: now,
+                updated_at: now + 120n,
+            },
+        });
+        const hiddenTerminalRun = await prisma.cronjob_runs.create({
+            data: {
+                cronjob_id: promptCronjob.id,
+                status: "success",
+                started_at: now + 120n,
+                completed_at: now + 121n,
+                opencode_session_id: hiddenTerminalSession.opencode_session_id,
+                session_id: hiddenTerminalSession.id,
+            },
+        });
+        await request(app)
+            .post(`/api/cronjobs/runs/${hiddenTerminalRun.id}/reveal-in-chat`)
+            .set(auth)
+            .expect(200)
+            .expect((response) => {
+                assert.equal(response.body.success, true);
+                assert.equal(response.body.reveal_in_chat, true);
+            });
+        const hiddenTerminalSessionAfter = await prisma.chat_sessions.findUniqueOrThrow({
+            where: { id: hiddenTerminalSession.id },
+        });
+        assert.equal(hiddenTerminalSessionAfter.visible_to_user, true);
+        const hiddenTerminalRunAfter = await prisma.cronjob_runs.findUniqueOrThrow({
+            where: { id: hiddenTerminalRun.id },
+        });
+        assert.equal(hiddenTerminalRunAfter.status, "success");
+
+        await request(app)
+            .post(`/api/chat/sessions/${hiddenTerminalSession.id}/messages`)
+            .set(auth)
+            .send({ parts: [{ type: "text", text: "Follow up after reveal" }] })
+            .expect(200);
+        assert.equal(promptCalls.length, 1, "Revealed terminal cronjob chat messages should be forwarded to OpenCode");
 
         await request(app)
             .post(`/api/chat/sessions/${runningSession.id}/abort`)
