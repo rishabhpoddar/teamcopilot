@@ -106,7 +106,7 @@ async function main(): Promise<void> {
             .set(auth)
             .expect(200);
 
-        assert.equal(firstPage.body.page_size, 25);
+        assert.equal(firstPage.body.page_size, 10);
         assert.equal(firstPage.body.has_more, true);
         assert.equal(firstPage.body.next_cursor, "cursor-older");
         assert.equal(firstPage.body.messages.length, 3);
@@ -119,7 +119,7 @@ async function main(): Promise<void> {
             .set(auth)
             .expect(200);
 
-        assert.equal(secondPage.body.page_size, 25);
+        assert.equal(secondPage.body.page_size, 10);
         assert.equal(secondPage.body.has_more, false);
         assert.equal(secondPage.body.next_cursor, null);
         assert.equal(secondPage.body.messages.length, 2);

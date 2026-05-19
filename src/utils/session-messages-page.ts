@@ -1,7 +1,7 @@
 import { getOpencodeClient } from "./opencode-client";
 import type { SessionMessageWire } from "./chat-session";
 
-const DEFAULT_MESSAGE_PAGE_LIMIT = 25;
+const DEFAULT_MESSAGE_PAGE_LIMIT = 10;
 
 type SessionMessagesPageQuery = {
     limit: number;
