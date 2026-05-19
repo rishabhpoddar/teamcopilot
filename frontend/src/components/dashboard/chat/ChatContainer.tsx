@@ -785,10 +785,11 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
             }
 
             const page = assertSessionMessagesPageResponse(response.data);
-            const loadedMessages = applyMessagesPageToState(page, 'replace');
-            if (loadedMessages.some((message) => message.role === 'assistant' && Boolean(message.time.completed))) {
-                void syncUsageForSession(sessionId);
-            }
+            applyMessagesPageToState(page, 'replace');
+            // Usage sync scans the full session on the backend, so it should run
+            // whenever a session is opened instead of depending on the first page
+            // containing a completed assistant message.
+            void syncUsageForSession(sessionId);
         } catch (err: unknown) {
             if (err instanceof CanceledError) {
                 return;
