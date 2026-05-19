@@ -43,6 +43,7 @@ import {
 
 const router = express.Router({ mergeParams: true });
 const USER_INSTRUCTIONS_FILENAME = "USER_INSTRUCTIONS.md";
+const LATEST_ASSISTANT_MESSAGE_FETCH_LIMIT = 20;
 
 function getErrorMessage(error: unknown): string {
     if (error && typeof error === 'object' && 'detail' in error) {
@@ -414,10 +415,12 @@ function getLatestAssistantMessageId(messages: unknown): string | null {
 
 async function loadLatestAssistantMessageIdForSession(
     client: Awaited<ReturnType<typeof getOpencodeClient>>,
-    opencodeSessionId: string
+    opencodeSessionId: string,
+    limit: number = LATEST_ASSISTANT_MESSAGE_FETCH_LIMIT
 ): Promise<string | null> {
     const result = await client.session.messages({
-        path: { id: opencodeSessionId }
+        path: { id: opencodeSessionId },
+        query: { limit }
     });
 
     if (result.error) {
