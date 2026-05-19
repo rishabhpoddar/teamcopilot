@@ -32,21 +32,21 @@ attachAuthRedirectInterceptor(axiosUploadInstance)
 type SessionStatus = 'busy' | 'retry' | 'idle'
 type MessagesPayload = Array<{ info: Message; parts: Part[] }>
 
-export function assertSessionStatus(value: unknown): SessionStatus {
+function assertSessionStatus(value: unknown): SessionStatus {
     if (value === 'busy' || value === 'retry' || value === 'idle') {
         return value
     }
     throw new Error(`Invalid session_status from /messages: ${String(value)}`)
 }
 
-export function assertMessagesPayload(value: unknown): MessagesPayload {
+function assertMessagesPayload(value: unknown): MessagesPayload {
     if (Array.isArray(value)) {
         return value as MessagesPayload
     }
     throw new Error('Invalid messages payload from /messages')
 }
 
-export type SessionMessagesPageResponse = {
+type SessionMessagesPageResponse = {
     messages: MessagesPayload;
     session_status: SessionStatus;
     has_more: boolean;

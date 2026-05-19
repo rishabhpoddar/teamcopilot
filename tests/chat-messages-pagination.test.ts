@@ -3,7 +3,6 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import request from "supertest";
-import { DEFAULT_MESSAGE_PAGE_LIMIT } from "../src/utils/session-messages-page";
 
 async function main(): Promise<void> {
     const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "teamcopilot-chat-msg-page-"));
@@ -107,7 +106,7 @@ async function main(): Promise<void> {
             .set(auth)
             .expect(200);
 
-        assert.equal(firstPage.body.page_size, DEFAULT_MESSAGE_PAGE_LIMIT);
+        assert.equal(firstPage.body.page_size, 25);
         assert.equal(firstPage.body.has_more, true);
         assert.equal(firstPage.body.next_cursor, "cursor-older");
         assert.equal(firstPage.body.messages.length, 3);
@@ -120,7 +119,7 @@ async function main(): Promise<void> {
             .set(auth)
             .expect(200);
 
-        assert.equal(secondPage.body.page_size, DEFAULT_MESSAGE_PAGE_LIMIT);
+        assert.equal(secondPage.body.page_size, 25);
         assert.equal(secondPage.body.has_more, false);
         assert.equal(secondPage.body.next_cursor, null);
         assert.equal(secondPage.body.messages.length, 2);

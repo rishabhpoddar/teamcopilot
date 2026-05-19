@@ -1,14 +1,14 @@
 import { getOpencodeClient } from "./opencode-client";
 import type { SessionMessageWire } from "./chat-session";
 
-export const DEFAULT_MESSAGE_PAGE_LIMIT = 25;
+const DEFAULT_MESSAGE_PAGE_LIMIT = 25;
 
-export type SessionMessagesPageQuery = {
+type SessionMessagesPageQuery = {
     limit: number;
     before?: string;
 };
 
-export type SessionMessagesPageResult = {
+type SessionMessagesPageResult = {
     messages: SessionMessageWire[];
     nextCursor: string | null;
     hasMore: boolean;
