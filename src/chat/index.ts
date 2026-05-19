@@ -34,7 +34,6 @@ import {
 } from "../utils/chat-session-file-diff";
 import { syncChatSessionUsage } from "../utils/chat-usage";
 import { interruptCronjobRun } from "../cronjobs/scheduler";
-import { FINISHED_CRONJOB_RUN_STATUSES } from "../cronjobs/run-lifecycle";
 import {
     ACTUAL_USER_MESSAGE_MARKER,
     buildAvailableSecretsPrompt,
@@ -991,7 +990,7 @@ router.post('/sessions/:id/messages', apiHandler(async (req, res) => {
         where: {
             session_id: id,
             cronjob: { target_type: "prompt" },
-            status: { in: [...FINISHED_CRONJOB_RUN_STATUSES] },
+            status: { in: ["success", "failed", "terminated", "skipped"] },
         },
         orderBy: { started_at: "desc" },
         select: {
