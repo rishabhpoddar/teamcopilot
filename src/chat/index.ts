@@ -44,6 +44,24 @@ import {
 const router = express.Router({ mergeParams: true });
 const USER_INSTRUCTIONS_FILENAME = "USER_INSTRUCTIONS.md";
 const LATEST_ASSISTANT_MESSAGE_FETCH_LIMIT = 20;
+const RECENT_SESSION_WINDOW_MS = 10 * 24 * 60 * 60 * 1000;
+
+type SessionListTimeMode = "recent" | "all";
+
+function parseSessionListTimeMode(rawTime: unknown): SessionListTimeMode {
+    if (rawTime === undefined || rawTime === "recent") {
+        return "recent";
+    }
+
+    if (rawTime === "all") {
+        return "all";
+    }
+
+    throw {
+        status: 400,
+        message: 'time must be "recent" or "all"'
+    };
+}
 
 function getErrorMessage(error: unknown): string {
     if (error && typeof error === 'object' && 'detail' in error) {
@@ -480,16 +498,41 @@ function getSessionState(args: {
 
 // GET /api/chat/sessions - List user's sessions
 router.get('/sessions', apiHandler(async (req, res) => {
+    const timeMode = parseSessionListTimeMode(req.query.time);
+    const sessionWhere = {
+        user_id: req.userId!,
+        visible_to_user: true,
+    } as {
+        user_id: string;
+        visible_to_user: boolean;
+        updated_at?: { gte: bigint };
+    };
+
+    let recentCutoff: bigint | null = null;
+    if (timeMode === "recent") {
+        recentCutoff = BigInt(Date.now() - RECENT_SESSION_WINDOW_MS);
+        sessionWhere.updated_at = { gte: recentCutoff };
+    }
+
     const sessions = await prisma.chat_sessions.findMany({
-        where: {
-            user_id: req.userId!,
-            visible_to_user: true,
-        },
+        where: sessionWhere,
         orderBy: { updated_at: 'desc' }
     });
 
+    let hasOlderSessions = false;
+    if (timeMode === "recent") {
+        const olderSessionCount = await prisma.chat_sessions.count({
+            where: {
+                user_id: req.userId!,
+                visible_to_user: true,
+                updated_at: { lt: recentCutoff! },
+            }
+        });
+        hasOlderSessions = olderSessionCount > 0;
+    }
+
     if (sessions.length === 0) {
-        res.json({ sessions });
+        res.json({ sessions, has_older_sessions: hasOlderSessions });
         return;
     }
 
@@ -594,7 +637,7 @@ router.get('/sessions', apiHandler(async (req, res) => {
         };
     }));
 
-    res.json({ sessions: enrichedSessions });
+    res.json({ sessions: enrichedSessions, has_older_sessions: hasOlderSessions });
 }, true));
 
 // GET /api/chat/file-suggestions - Search workspace files/folders for @mentions

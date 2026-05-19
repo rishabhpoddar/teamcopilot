@@ -147,6 +147,8 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
     const MOBILE_BREAKPOINT_PX = 820;
     const auth = useAuth();
     const [sessions, setSessions] = useState<ChatSession[]>([]);
+    const [showAllSessions, setShowAllSessions] = useState(false);
+    const [hasOlderSessions, setHasOlderSessions] = useState(false);
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
     const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
         if (typeof window === 'undefined') {
@@ -557,10 +559,13 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
             if (isInitialLoad) {
                 setLoading(true);
             }
+            const sessionListTime = showAllSessions ? 'all' : 'recent';
             const response = await axiosInstance.get('/api/chat/sessions', {
-                headers: { Authorization: `Bearer ${token}` }
+                headers: { Authorization: `Bearer ${token}` },
+                params: { time: sessionListTime },
             });
             const nextSessions = Array.isArray(response.data?.sessions) ? response.data.sessions as ChatSession[] : [];
+            setHasOlderSessions(response.data?.has_older_sessions === true);
             const previousSessions = previousSessionsRef.current;
 
             if (!isInitialLoad) {
@@ -626,13 +631,24 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                 }
             }
 
-            previousSessionsRef.current = nextSessions.reduce<Record<string, ChatSession>>((acc, session) => {
+            let displaySessions = nextSessions;
+            if (!showAllSessions && activeSessionId && activeSessionId !== PENDING_SESSION_ID) {
+                const activeInList = nextSessions.some((session) => session.id === activeSessionId);
+                if (!activeInList) {
+                    const previousActive = previousSessionsRef.current[activeSessionId];
+                    if (previousActive) {
+                        displaySessions = [...nextSessions, previousActive];
+                    }
+                }
+            }
+
+            previousSessionsRef.current = displaySessions.reduce<Record<string, ChatSession>>((acc, session) => {
                 acc[session.id] = session;
                 return acc;
             }, {});
-            setSessions(nextSessions);
+            setSessions(displaySessions);
             if (activeSessionId && activeSessionId !== PENDING_SESSION_ID) {
-                const stillExists = nextSessions.some((session) => session.id === activeSessionId);
+                const stillExists = displaySessions.some((session) => session.id === activeSessionId);
                 if (!stillExists) {
                     resetSessionViewState();
                     setActiveSessionId(null);
@@ -649,7 +665,11 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                 setLoading(false);
             }
         }
-    }, [activeSessionId, attentionStateBySessionId, loading, markAttentionSessionAsSeen, resetSessionViewState, token, updateAttentionState]);
+    }, [activeSessionId, attentionStateBySessionId, loading, markAttentionSessionAsSeen, resetSessionViewState, showAllSessions, token, updateAttentionState]);
+
+    const handleShowAllSessions = useCallback(() => {
+        setShowAllSessions(true);
+    }, []);
 
     const markActiveAttentionAsSeenIfVisible = useCallback(() => {
         if (!activeSession || activeSession.id === PENDING_SESSION_ID) {
@@ -1384,6 +1404,9 @@ export default function ChatContainer({ initialDraftMessage, forceNewChat, onDra
                     isOpen={isSidebarOpen}
                     onToggle={() => setIsSidebarOpen((prev) => !prev)}
                     loading={loading}
+                    hasOlderSessions={hasOlderSessions}
+                    showAllSessions={showAllSessions}
+                    onShowAllSessions={handleShowAllSessions}
                 />
             )}
             <div className="chat-main">
