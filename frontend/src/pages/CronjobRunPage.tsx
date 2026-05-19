@@ -24,7 +24,10 @@ interface CronjobRun {
     session_id: string | null;
     opencode_session_id: string | null;
     error_message: string | null;
+    reveal_in_chat: boolean;
 }
+
+const FINISHED_PROMPT_RUN_STATUSES = new Set(['success', 'failed', 'terminated']);
 
 function getErrorMessage(err: unknown, fallback: string): string {
     if (err instanceof AxiosError) {
@@ -116,6 +119,22 @@ export default function CronjobRunPage() {
         };
     }, [run]);
 
+    const moveToChat = async () => {
+        if (!token || !run) return;
+        setActing('reveal-in-chat');
+        try {
+            await axiosInstance.post(`/api/cronjobs/runs/${run.id}/reveal-in-chat`, {}, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            toast.success('Cronjob moved to chat');
+            await loadRun({ showLoading: false });
+        } catch (err: unknown) {
+            toast.error(getErrorMessage(err, 'Failed to move cronjob to chat'));
+        } finally {
+            setActing(null);
+        }
+    };
+
     const runAction = async (action: 'interrupt' | 'resume' | 'terminate') => {
         if (!token || !run) return;
         setActing(action);
@@ -149,6 +168,9 @@ export default function CronjobRunPage() {
         return <div className="cronjob-run-state error">{error ?? 'Cronjob run not found'}</div>;
     }
 
+    const isFinishedPromptRun = run.target_type_snapshot === 'prompt' && FINISHED_PROMPT_RUN_STATUSES.has(run.status);
+    const canChatWithFinishedRun = isFinishedPromptRun && run.reveal_in_chat;
+
     return (
         <main className="cronjob-run-page">
             <div className="cronjob-run-topbar">
@@ -169,17 +191,22 @@ export default function CronjobRunPage() {
                 <div className="cronjob-run-status-card">
                     <span>Status</span>
                     <strong>{statusLabel(run.status)}</strong>
-                    {run.target_type_snapshot === 'prompt' && run.status === 'running' && (
+                    {isFinishedPromptRun && !run.reveal_in_chat ? (
+                        <button className="cronjob-run-ai-btn" onClick={moveToChat} disabled={acting !== null}>
+                            {acting === 'reveal-in-chat' ? 'Moving...' : 'Move to chat'}
+                        </button>
+                    ) : null}
+                    {!isFinishedPromptRun && run.target_type_snapshot === 'prompt' && run.status === 'running' && (
                         <button className="cronjob-run-stop-btn" onClick={() => runAction('interrupt')} disabled={acting !== null}>
                             {acting === 'interrupt' ? 'Interrupting...' : 'Interrupt'}
                         </button>
                     )}
-                    {run.target_type_snapshot === 'prompt' && run.status === 'paused' && (
+                    {!isFinishedPromptRun && run.target_type_snapshot === 'prompt' && run.status === 'paused' && (
                         <button className="cronjob-run-ai-btn" onClick={() => runAction('resume')} disabled={acting !== null}>
                             {acting === 'resume' ? 'Resuming...' : 'Resume'}
                         </button>
                     )}
-                    {((run.target_type_snapshot === 'prompt' && ['running', 'paused'].includes(run.status)) || (run.target_type_snapshot === 'workflow' && run.status === 'running')) && (
+                    {!isFinishedPromptRun && ((run.target_type_snapshot === 'prompt' && ['running', 'paused'].includes(run.status)) || (run.target_type_snapshot === 'workflow' && run.status === 'running')) && (
                         <button className="cronjob-run-stop-btn" onClick={() => runAction('terminate')} disabled={acting !== null}>
                             {acting === 'terminate' ? 'Terminating...' : 'Terminate'}
                         </button>
@@ -230,7 +257,7 @@ export default function CronjobRunPage() {
                     forceNewChat={false}
                     onDraftHandled={() => {}}
                     fixedSession={fixedSession}
-                    readOnly
+                    readOnly={!canChatWithFinishedRun}
                 />
             ) : (
                 <div className="cronjob-run-state">

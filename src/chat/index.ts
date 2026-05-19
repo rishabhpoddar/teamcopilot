@@ -34,6 +34,7 @@ import {
 } from "../utils/chat-session-file-diff";
 import { syncChatSessionUsage } from "../utils/chat-usage";
 import { interruptCronjobRun } from "../cronjobs/scheduler";
+import { FINISHED_CRONJOB_RUN_STATUSES } from "../cronjobs/run-lifecycle";
 import {
     ACTUAL_USER_MESSAGE_MARKER,
     buildAvailableSecretsPrompt,
@@ -990,15 +991,18 @@ router.post('/sessions/:id/messages', apiHandler(async (req, res) => {
         where: {
             session_id: id,
             cronjob: { target_type: "prompt" },
-            status: { in: ["success", "failed", "terminated", "skipped"] },
+            status: { in: [...FINISHED_CRONJOB_RUN_STATUSES] },
         },
         orderBy: { started_at: "desc" },
-        select: { status: true },
+        select: {
+            status: true,
+            session: { select: { visible_to_user: true } },
+        },
     });
-    if (terminalCronjobRun) {
+    if (terminalCronjobRun && !terminalCronjobRun.session?.visible_to_user) {
         throw {
             status: 409,
-            message: `This cronjob chat is closed because the run is ${terminalCronjobRun.status}. Start a new chat or rerun the cronjob.`
+            message: `This cronjob chat is closed because the run is ${terminalCronjobRun.status}. Move it to chat from the cronjob run page, or rerun the cronjob.`
         };
     }
 
