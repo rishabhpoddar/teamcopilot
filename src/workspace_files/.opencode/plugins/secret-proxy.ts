@@ -25,6 +25,8 @@ const SECRET_ENV_REFERENCE_PATTERN = /\$\{__TEAMCOPILOT_RUNTIME_SECRET_([A-Z][A-
 const AGENT_VISIBLE_SECRET_ENV_REFERENCE_PATTERN = /__TEAMCOPILOT_RUNTIME_SECRET_[A-Z][A-Z0-9_]*/
 const SECRET_ENV_PREFIX = "__TEAMCOPILOT_RUNTIME_SECRET_"
 const SHELL_CONTROL_TOKENS = new Set(["&&", "||", ";", "|"])
+const SHELL_REDIRECTION_PATTERN = /^(\d+)?(?:>>?|<<?|<<<)$/
+const SHELL_REDIRECTION_DUPLICATION_PATTERN = /^(\d+)?[<>]&\d+$/
 const CURL_SAFE_VALUE_OPTIONS = new Set([
   "-H",
   "--header",
@@ -160,6 +162,35 @@ type CommandToken = {
   end: number
 }
 
+function readShellRedirectionToken(command: string, start: number): string | null {
+  let index = start
+  while (/\d/.test(command[index] ?? "")) {
+    index += 1
+  }
+
+  if (command[index] !== ">" && command[index] !== "<") {
+    if (command[start] !== "&" || command[start + 1] !== ">") {
+      return null
+    }
+    index = start + 2
+  } else {
+    const operator = command[index]
+    index += 1
+    while (command[index] === operator && index - start < 4) {
+      index += 1
+    }
+  }
+
+  if (command[index] === "&") {
+    index += 1
+    while (/\d/.test(command[index] ?? "")) {
+      index += 1
+    }
+  }
+
+  return command.slice(start, index)
+}
+
 function tokenizeCommand(command: string): CommandToken[] {
   const tokens: CommandToken[] = []
   const length = command.length
@@ -192,6 +223,13 @@ function tokenizeCommand(command: string): CommandToken[] {
     if (char === ";" || char === "|") {
       index += 1
       tokens.push({ raw: command.slice(start, index), start, end: index })
+      continue
+    }
+
+    const redirectionToken = readShellRedirectionToken(command, start)
+    if (redirectionToken !== null) {
+      index += redirectionToken.length
+      tokens.push({ raw: redirectionToken, start, end: index })
       continue
     }
 
@@ -240,6 +278,10 @@ function tokenizeCommand(command: string): CommandToken[] {
       }
 
       if (current === "|" || current === ";") {
+        break
+      }
+
+      if (current === ">" || current === "<") {
         break
       }
 
@@ -328,6 +370,16 @@ function isGitExecutableToken(rawToken: string): boolean {
   const { inner } = unwrapToken(rawToken)
   const base = inner.split("/").pop() ?? inner
   return base === "git"
+}
+
+function isShellRedirectionToken(rawToken: string): boolean {
+  const { inner } = unwrapToken(rawToken)
+  return SHELL_REDIRECTION_PATTERN.test(inner) || SHELL_REDIRECTION_DUPLICATION_PATTERN.test(inner) || inner === "&>"
+}
+
+function redirectionConsumesNextToken(rawToken: string): boolean {
+  const { inner } = unwrapToken(rawToken)
+  return !SHELL_REDIRECTION_DUPLICATION_PATTERN.test(inner)
 }
 
 function getLongOptionName(inner: string): string | null {
@@ -701,6 +753,13 @@ export const SecretProxyPlugin: Plugin = async ({ client }) => {
           break
         }
 
+        if (isShellRedirectionToken(segmentToken.raw)) {
+          if (redirectionConsumesNextToken(segmentToken.raw)) {
+            j += 1
+          }
+          continue
+        }
+
         const { inner } = unwrapToken(segmentToken.raw)
 
         if (expectedValueKind !== null) {
@@ -834,6 +893,13 @@ export const SecretProxyPlugin: Plugin = async ({ client }) => {
           break
         }
 
+        if (isShellRedirectionToken(segmentToken.raw)) {
+          if (redirectionConsumesNextToken(segmentToken.raw)) {
+            j += 1
+          }
+          continue
+        }
+
         const rewritten = rewriteGitRawToken(segmentToken.raw)
         if (rewritten.rewritten !== segmentToken.raw) {
           replacements.push({
@@ -879,41 +945,25 @@ export const SecretProxyPlugin: Plugin = async ({ client }) => {
       assertNoAgentAuthoredSecretEnvReference(input.arguments)
 
       const commandCache = new Map<string, { rewritten: string; referencedKeys: string[] }>()
-      if (typeof input.command === "string" && input.command.includes("{{SECRET:")) {
-        if ((isCurlExecutableToken(input.command) || isGitExecutableToken(input.command)) && typeof input.arguments === "string") {
-          const fullCommand = input.arguments.trim().length > 0
-            ? `${input.command} ${input.arguments}`
-            : input.command
-          const rewritten = isCurlExecutableToken(input.command)
-            ? substitutePlaceholdersInCurlShellString(fullCommand)
-            : substitutePlaceholdersInGitShellString(fullCommand)
-          const prefix = `${input.command} `
-          if (rewritten.rewritten.startsWith(prefix)) {
-            input.arguments = rewritten.rewritten.slice(prefix.length)
-          } else {
-            input.command = rewritten.rewritten
-            input.arguments = ""
-          }
+      const commandHasPlaceholder = typeof input.command === "string" && input.command.includes("{{SECRET:")
+      const argumentsHasPlaceholder = typeof input.arguments === "string" && input.arguments.includes("{{SECRET:")
+      if (commandHasPlaceholder || argumentsHasPlaceholder) {
+        const originalCommand = typeof input.command === "string" ? input.command : ""
+        const originalArguments = typeof input.arguments === "string" ? input.arguments : ""
+        const fullCommand = originalArguments.trim().length > 0
+          ? `${originalCommand} ${originalArguments}`
+          : originalCommand
+        const rewritten = await maybeRewriteSupportedString(fullCommand, commandCache)
+        const prefix = `${originalCommand} `
+
+        if (rewritten.rewritten === fullCommand) {
+          input.command = originalCommand
+          input.arguments = originalArguments
+        } else if ((isCurlExecutableToken(originalCommand) || isGitExecutableToken(originalCommand)) && rewritten.rewritten.startsWith(prefix)) {
+          input.arguments = rewritten.rewritten.slice(prefix.length)
         } else {
-          const rewritten = await maybeRewriteSupportedString(input.command, commandCache)
           input.command = rewritten.rewritten
-        }
-      }
-      if (typeof input.arguments === "string" && input.arguments.includes("{{SECRET:")) {
-        if (isCurlExecutableToken(input.command) || isGitExecutableToken(input.command)) {
-          const fullCommand = input.arguments.trim().length > 0
-            ? `${input.command} ${input.arguments}`
-            : input.command
-          const rewritten = isCurlExecutableToken(input.command)
-            ? substitutePlaceholdersInCurlShellString(fullCommand)
-            : substitutePlaceholdersInGitShellString(fullCommand)
-          const prefix = `${input.command} `
-          if (rewritten.rewritten.startsWith(prefix)) {
-            input.arguments = rewritten.rewritten.slice(prefix.length)
-          }
-        } else {
-          const rewritten = await maybeRewriteSupportedString(input.arguments, commandCache)
-          input.arguments = rewritten.rewritten
+          input.arguments = ""
         }
       }
 

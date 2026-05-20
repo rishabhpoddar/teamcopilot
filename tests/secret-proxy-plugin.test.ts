@@ -595,6 +595,216 @@ async function main(): Promise<void> {
     assert.equal((mixedCurlAndGitCommand.output as ToolCase["output"]).args.command, expectedWrappedCommand("curl -H \"X-Api-Key: ${__TEAMCOPILOT_RUNTIME_SECRET_OPENAI_API_KEY}\" https://example.com && git clone https://x-access-token:${__TEAMCOPILOT_RUNTIME_SECRET_GITHUB_TOKEN}@github.com/acme/private-repo.git")); assertions += 1;
     assertFetchKeys(mixedCurlAndGitCommand, ["GITHUB_TOKEN", "OPENAI_API_KEY"], "injects env for mixed curl and git shell segments"); assertions += 1;
 
+    const chainedCurlAndCurlCommand = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "1p-curl-curl", args: { command: "curl -H 'Authorization: Bearer {{SECRET:FIRST_TOKEN}}' https://first.example.com && curl -H 'X-Api-Key: {{SECRET:SECOND_TOKEN}}' https://second.example.com" } },
+        output: { args: { command: "curl -H 'Authorization: Bearer {{SECRET:FIRST_TOKEN}}' https://first.example.com && curl -H 'X-Api-Key: {{SECRET:SECOND_TOKEN}}' https://second.example.com" } },
+    });
+    assert.equal((chainedCurlAndCurlCommand.output as ToolCase["output"]).args.command, expectedWrappedCommand("curl -H \"Authorization: Bearer ${__TEAMCOPILOT_RUNTIME_SECRET_FIRST_TOKEN}\" https://first.example.com && curl -H \"X-Api-Key: ${__TEAMCOPILOT_RUNTIME_SECRET_SECOND_TOKEN}\" https://second.example.com")); assertions += 1;
+    assertFetchKeys(chainedCurlAndCurlCommand, ["FIRST_TOKEN", "SECOND_TOKEN"], "injects env for both curl commands joined with &&"); assertions += 1;
+    assert.deepEqual(chainedCurlAndCurlCommand.shellEnv, {
+        __TEAMCOPILOT_RUNTIME_SECRET_FIRST_TOKEN: "resolved-first_token",
+        __TEAMCOPILOT_RUNTIME_SECRET_SECOND_TOKEN: "resolved-second_token",
+    }); assertions += 1;
+
+    const chainedCurlSameKeyDeduped = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "1p-curl-dedupe", args: { command: "curl -H 'Authorization: Bearer {{SECRET:API_TOKEN}}' https://one.example.com && curl -u user:{{SECRET:API_TOKEN}} https://two.example.com" } },
+        output: { args: { command: "curl -H 'Authorization: Bearer {{SECRET:API_TOKEN}}' https://one.example.com && curl -u user:{{SECRET:API_TOKEN}} https://two.example.com" } },
+    });
+    assert.equal((chainedCurlSameKeyDeduped.output as ToolCase["output"]).args.command, expectedWrappedCommand("curl -H \"Authorization: Bearer ${__TEAMCOPILOT_RUNTIME_SECRET_API_TOKEN}\" https://one.example.com && curl -u user:${__TEAMCOPILOT_RUNTIME_SECRET_API_TOKEN} https://two.example.com")); assertions += 1;
+    assertFetchKeys(chainedCurlSameKeyDeduped, ["API_TOKEN"], "dedupes repeated secret keys across chained curl commands"); assertions += 1;
+
+    const chainedCurlWithOrAndSemicolon = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "1p-curl-controls", args: { command: "curl --oauth2-bearer {{SECRET:PRIMARY_TOKEN}} https://primary.example.com || curl --cookie 'sid={{SECRET:FALLBACK_COOKIE}}' https://fallback.example.com; curl --data-urlencode token={{SECRET:THIRD_TOKEN}} https://third.example.com" } },
+        output: { args: { command: "curl --oauth2-bearer {{SECRET:PRIMARY_TOKEN}} https://primary.example.com || curl --cookie 'sid={{SECRET:FALLBACK_COOKIE}}' https://fallback.example.com; curl --data-urlencode token={{SECRET:THIRD_TOKEN}} https://third.example.com" } },
+    });
+    assert.equal((chainedCurlWithOrAndSemicolon.output as ToolCase["output"]).args.command, expectedWrappedCommand("curl --oauth2-bearer ${__TEAMCOPILOT_RUNTIME_SECRET_PRIMARY_TOKEN} https://primary.example.com || curl --cookie \"sid=${__TEAMCOPILOT_RUNTIME_SECRET_FALLBACK_COOKIE}\" https://fallback.example.com; curl --data-urlencode token=${__TEAMCOPILOT_RUNTIME_SECRET_THIRD_TOKEN} https://third.example.com")); assertions += 1;
+    assertFetchKeys(chainedCurlWithOrAndSemicolon, ["FALLBACK_COOKIE", "PRIMARY_TOKEN", "THIRD_TOKEN"], "injects env for curl commands split by || and semicolon"); assertions += 1;
+
+    const pipedCurlAndCurlCommand = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "1p-curl-pipe", args: { command: "curl -H 'Authorization: Bearer {{SECRET:FIRST_TOKEN}}' https://first.example.com | curl -H 'X-Api-Key: {{SECRET:SECOND_TOKEN}}' https://second.example.com" } },
+        output: { args: { command: "curl -H 'Authorization: Bearer {{SECRET:FIRST_TOKEN}}' https://first.example.com | curl -H 'X-Api-Key: {{SECRET:SECOND_TOKEN}}' https://second.example.com" } },
+    });
+    assert.equal((pipedCurlAndCurlCommand.output as ToolCase["output"]).args.command, expectedWrappedCommand("curl -H \"Authorization: Bearer ${__TEAMCOPILOT_RUNTIME_SECRET_FIRST_TOKEN}\" https://first.example.com | curl -H \"X-Api-Key: ${__TEAMCOPILOT_RUNTIME_SECRET_SECOND_TOKEN}\" https://second.example.com")); assertions += 1;
+    assertFetchKeys(pipedCurlAndCurlCommand, ["FIRST_TOKEN", "SECOND_TOKEN"], "injects env for curl commands split by a pipe"); assertions += 1;
+
+    const chainedUnsupportedThenCurlCommand = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "1p-unsupported-curl", args: { command: "echo {{SECRET:SHOULD_NOT_RESOLVE}} && curl -H 'Authorization: Bearer {{SECRET:API_TOKEN}}' https://example.com" } },
+        output: { args: { command: "echo {{SECRET:SHOULD_NOT_RESOLVE}} && curl -H 'Authorization: Bearer {{SECRET:API_TOKEN}}' https://example.com" } },
+    });
+    assert.equal((chainedUnsupportedThenCurlCommand.output as ToolCase["output"]).args.command, expectedWrappedCommand("echo {{SECRET:SHOULD_NOT_RESOLVE}} && curl -H \"Authorization: Bearer ${__TEAMCOPILOT_RUNTIME_SECRET_API_TOKEN}\" https://example.com")); assertions += 1;
+    assertFetchKeys(chainedUnsupportedThenCurlCommand, ["API_TOKEN"], "does not inject env for unsupported command placeholders before a supported curl segment"); assertions += 1;
+
+    const chainedCurlThenUnsupportedCommand = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "1p-curl-unsupported", args: { command: "curl -H 'Authorization: Bearer {{SECRET:API_TOKEN}}' https://example.com && echo {{SECRET:SHOULD_NOT_RESOLVE}}" } },
+        output: { args: { command: "curl -H 'Authorization: Bearer {{SECRET:API_TOKEN}}' https://example.com && echo {{SECRET:SHOULD_NOT_RESOLVE}}" } },
+    });
+    assert.equal((chainedCurlThenUnsupportedCommand.output as ToolCase["output"]).args.command, expectedWrappedCommand("curl -H \"Authorization: Bearer ${__TEAMCOPILOT_RUNTIME_SECRET_API_TOKEN}\" https://example.com && echo {{SECRET:SHOULD_NOT_RESOLVE}}")); assertions += 1;
+    assertFetchKeys(chainedCurlThenUnsupportedCommand, ["API_TOKEN"], "does not inject env for unsupported command placeholders after a supported curl segment"); assertions += 1;
+
+    const quotedControlTokensInCurlArguments = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "1p-quoted-controls", args: { command: "curl -H 'Authorization: Bearer {{SECRET:FIRST_TOKEN}}' 'https://example.com/path?next=a&&b=c;pipe=x|y' && curl --data 'token={{SECRET:SECOND_TOKEN}}&literal=a&&b' https://example.com/post" } },
+        output: { args: { command: "curl -H 'Authorization: Bearer {{SECRET:FIRST_TOKEN}}' 'https://example.com/path?next=a&&b=c;pipe=x|y' && curl --data 'token={{SECRET:SECOND_TOKEN}}&literal=a&&b' https://example.com/post" } },
+    });
+    assert.equal((quotedControlTokensInCurlArguments.output as ToolCase["output"]).args.command, expectedWrappedCommand("curl -H \"Authorization: Bearer ${__TEAMCOPILOT_RUNTIME_SECRET_FIRST_TOKEN}\" 'https://example.com/path?next=a&&b=c;pipe=x|y' && curl --data \"token=${__TEAMCOPILOT_RUNTIME_SECRET_SECOND_TOKEN}&literal=a&&b\" https://example.com/post")); assertions += 1;
+    assertFetchKeys(quotedControlTokensInCurlArguments, ["FIRST_TOKEN", "SECOND_TOKEN"], "does not split quoted curl arguments containing shell control characters"); assertions += 1;
+
+    const commandHookCurlArgumentsChainedCurl = runHookCase({
+        kind: "command",
+        input: { command: "curl", arguments: "-H 'Authorization: Bearer {{SECRET:FIRST_TOKEN}}' https://first.example.com && curl -H 'X-Api-Key: {{SECRET:SECOND_TOKEN}}' https://second.example.com", sessionID: "child-session" },
+        output: { parts: [] },
+    });
+    assert.equal((commandHookCurlArgumentsChainedCurl.input as CommandCase["input"]).command, "curl"); assertions += 1;
+    assert.equal((commandHookCurlArgumentsChainedCurl.input as CommandCase["input"]).arguments, expectedWrappedArguments("curl -H \"Authorization: Bearer ${__TEAMCOPILOT_RUNTIME_SECRET_FIRST_TOKEN}\" https://first.example.com && curl -H \"X-Api-Key: ${__TEAMCOPILOT_RUNTIME_SECRET_SECOND_TOKEN}\" https://second.example.com")); assertions += 1;
+    assertFetchKeys(commandHookCurlArgumentsChainedCurl, ["FIRST_TOKEN", "SECOND_TOKEN"], "command hook injects env for chained curl segments in arguments"); assertions += 1;
+
+    const commandHookSplitChainedCurlCommandAndArguments = runHookCase({
+        kind: "command",
+        input: { command: "curl -H 'Authorization: Bearer {{SECRET:FIRST_TOKEN}}' https://first.example.com", arguments: "&& curl -H 'X-Api-Key: {{SECRET:SECOND_TOKEN}}' https://second.example.com", sessionID: "child-session" },
+        output: { parts: [] },
+    });
+    assert.equal((commandHookSplitChainedCurlCommandAndArguments.input as CommandCase["input"]).command, expectedWrappedCommand("curl -H \"Authorization: Bearer ${__TEAMCOPILOT_RUNTIME_SECRET_FIRST_TOKEN}\" https://first.example.com && curl -H \"X-Api-Key: ${__TEAMCOPILOT_RUNTIME_SECRET_SECOND_TOKEN}\" https://second.example.com")); assertions += 1;
+    assert.equal((commandHookSplitChainedCurlCommandAndArguments.input as CommandCase["input"]).arguments, ""); assertions += 1;
+    assertFetchKeys(commandHookSplitChainedCurlCommandAndArguments, ["FIRST_TOKEN", "SECOND_TOKEN"], "command hook rewrites both curl segments when command contains the first segment and arguments contain the chained second segment"); assertions += 1;
+
+    const commandHookSplitCurlFirstSecretOnlySecondSecretInArguments = runHookCase({
+        kind: "command",
+        input: { command: "curl -H 'Authorization: Bearer {{SECRET:FIRST_TOKEN}}' https://first.example.com", arguments: "&& curl -H 'X-Api-Key: {{SECRET:SECOND_TOKEN}}' https://second.example.com && echo {{SECRET:SHOULD_NOT_RESOLVE}}", sessionID: "child-session" },
+        output: { parts: [] },
+    });
+    assert.equal((commandHookSplitCurlFirstSecretOnlySecondSecretInArguments.input as CommandCase["input"]).command, expectedWrappedCommand("curl -H \"Authorization: Bearer ${__TEAMCOPILOT_RUNTIME_SECRET_FIRST_TOKEN}\" https://first.example.com && curl -H \"X-Api-Key: ${__TEAMCOPILOT_RUNTIME_SECRET_SECOND_TOKEN}\" https://second.example.com && echo {{SECRET:SHOULD_NOT_RESOLVE}}")); assertions += 1;
+    assert.equal((commandHookSplitCurlFirstSecretOnlySecondSecretInArguments.input as CommandCase["input"]).arguments, ""); assertions += 1;
+    assertFetchKeys(commandHookSplitCurlFirstSecretOnlySecondSecretInArguments, ["FIRST_TOKEN", "SECOND_TOKEN"], "command hook leaves unsupported placeholders unresolved when rewriting split chained curl commands"); assertions += 1;
+
+    const commandHookSplitChainedGitCommandAndArguments = runHookCase({
+        kind: "command",
+        input: { command: "git -c 'http.extraHeader=Authorization: Bearer {{SECRET:GITHUB_TOKEN}}' fetch origin main", arguments: "&& git clone https://oauth2:{{SECRET:GITLAB_TOKEN}}@gitlab.com/acme/private-repo.git", sessionID: "child-session" },
+        output: { parts: [] },
+    });
+    assert.equal((commandHookSplitChainedGitCommandAndArguments.input as CommandCase["input"]).command, expectedWrappedCommand("git -c \"http.extraHeader=Authorization: Bearer ${__TEAMCOPILOT_RUNTIME_SECRET_GITHUB_TOKEN}\" fetch origin main && git clone https://oauth2:${__TEAMCOPILOT_RUNTIME_SECRET_GITLAB_TOKEN}@gitlab.com/acme/private-repo.git")); assertions += 1;
+    assert.equal((commandHookSplitChainedGitCommandAndArguments.input as CommandCase["input"]).arguments, ""); assertions += 1;
+    assertFetchKeys(commandHookSplitChainedGitCommandAndArguments, ["GITHUB_TOKEN", "GITLAB_TOKEN"], "command hook rewrites split chained git commands"); assertions += 1;
+
+    const commandHookShellCommandChainedCurl = runHookCase({
+        kind: "command",
+        input: { command: "sh -c 'curl -H \"Authorization: Bearer {{SECRET:SHOULD_NOT_RESOLVE}}\" https://nested.example.com' && curl -H 'X-Api-Key: {{SECRET:API_TOKEN}}' https://top.example.com", arguments: "", sessionID: "child-session" },
+        output: { parts: [] },
+    });
+    assert.equal((commandHookShellCommandChainedCurl.input as CommandCase["input"]).command, expectedWrappedCommand("sh -c 'curl -H \"Authorization: Bearer {{SECRET:SHOULD_NOT_RESOLVE}}\" https://nested.example.com' && curl -H \"X-Api-Key: ${__TEAMCOPILOT_RUNTIME_SECRET_API_TOKEN}\" https://top.example.com")); assertions += 1;
+    assertFetchKeys(commandHookShellCommandChainedCurl, ["API_TOKEN"], "command hook does not rewrite nested shell text but rewrites later top-level curl segment"); assertions += 1;
+
+    const commandHookEchoThenCurlInArguments = runHookCase({
+        kind: "command",
+        input: { command: "echo ready", arguments: "&& curl -H 'Authorization: Bearer {{SECRET:API_TOKEN}}' https://example.com", sessionID: "child-session" },
+        output: { parts: [] },
+    });
+    assert.equal((commandHookEchoThenCurlInArguments.input as CommandCase["input"]).command, expectedWrappedCommand("echo ready && curl -H \"Authorization: Bearer ${__TEAMCOPILOT_RUNTIME_SECRET_API_TOKEN}\" https://example.com")); assertions += 1;
+    assert.equal((commandHookEchoThenCurlInArguments.input as CommandCase["input"]).arguments, ""); assertions += 1;
+    assertFetchKeys(commandHookEchoThenCurlInArguments, ["API_TOKEN"], "command hook rewrites supported curl segment even when input.command has no placeholder"); assertions += 1;
+
+    const commandHookUnsafeCurlOptionThenSafeChainedCurl = runHookCase({
+        kind: "command",
+        input: { command: "curl", arguments: "--output {{SECRET:OUTPUT_PATH}} https://download.example.com && curl -H 'Authorization: Bearer {{SECRET:API_TOKEN}}' https://api.example.com", sessionID: "child-session" },
+        output: { parts: [] },
+    });
+    assert.equal((commandHookUnsafeCurlOptionThenSafeChainedCurl.input as CommandCase["input"]).command, "curl"); assertions += 1;
+    assert.equal((commandHookUnsafeCurlOptionThenSafeChainedCurl.input as CommandCase["input"]).arguments, expectedWrappedArguments("curl --output {{SECRET:OUTPUT_PATH}} https://download.example.com && curl -H \"Authorization: Bearer ${__TEAMCOPILOT_RUNTIME_SECRET_API_TOKEN}\" https://api.example.com")); assertions += 1;
+    assertFetchKeys(commandHookUnsafeCurlOptionThenSafeChainedCurl, ["API_TOKEN"], "command hook leaves unsafe curl option placeholders unresolved but still rewrites later supported curl segment"); assertions += 1;
+
+    const commandSubstitutionCurlIsNotTopLevel = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "1p-command-substitution", args: { command: "echo $(curl -H 'Authorization: Bearer {{SECRET:SHOULD_NOT_RESOLVE}}' https://nested.example.com) && curl -H 'Authorization: Bearer {{SECRET:API_TOKEN}}' https://top.example.com" } },
+        output: { args: { command: "echo $(curl -H 'Authorization: Bearer {{SECRET:SHOULD_NOT_RESOLVE}}' https://nested.example.com) && curl -H 'Authorization: Bearer {{SECRET:API_TOKEN}}' https://top.example.com" } },
+    });
+    assert.equal((commandSubstitutionCurlIsNotTopLevel.output as ToolCase["output"]).args.command, expectedWrappedCommand("echo $(curl -H 'Authorization: Bearer {{SECRET:SHOULD_NOT_RESOLVE}}' https://nested.example.com) && curl -H \"Authorization: Bearer ${__TEAMCOPILOT_RUNTIME_SECRET_API_TOKEN}\" https://top.example.com")); assertions += 1;
+    assertFetchKeys(commandSubstitutionCurlIsNotTopLevel, ["API_TOKEN"], "does not rewrite curl embedded inside command substitution"); assertions += 1;
+
+    const envAssignmentBeforeCurlNotRewritten = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "1p-env-assignment", args: { command: "TOKEN={{SECRET:SHOULD_NOT_RESOLVE}} curl -H 'Authorization: Bearer {{SECRET:API_TOKEN}}' https://example.com" } },
+        output: { args: { command: "TOKEN={{SECRET:SHOULD_NOT_RESOLVE}} curl -H 'Authorization: Bearer {{SECRET:API_TOKEN}}' https://example.com" } },
+    });
+    assert.equal((envAssignmentBeforeCurlNotRewritten.output as ToolCase["output"]).args.command, "TOKEN={{SECRET:SHOULD_NOT_RESOLVE}} curl -H 'Authorization: Bearer {{SECRET:API_TOKEN}}' https://example.com"); assertions += 1;
+    assertNoFetch(envAssignmentBeforeCurlNotRewritten, "does not rewrite curl commands preceded by shell env assignment tokens"); assertions += 1;
+
+    const subshellCurlIsNotTopLevel = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "1p-subshell", args: { command: "( curl -H 'Authorization: Bearer {{SECRET:SHOULD_NOT_RESOLVE}}' https://nested.example.com ) && curl -H 'Authorization: Bearer {{SECRET:API_TOKEN}}' https://top.example.com" } },
+        output: { args: { command: "( curl -H 'Authorization: Bearer {{SECRET:SHOULD_NOT_RESOLVE}}' https://nested.example.com ) && curl -H 'Authorization: Bearer {{SECRET:API_TOKEN}}' https://top.example.com" } },
+    });
+    assert.equal((subshellCurlIsNotTopLevel.output as ToolCase["output"]).args.command, expectedWrappedCommand("( curl -H 'Authorization: Bearer {{SECRET:SHOULD_NOT_RESOLVE}}' https://nested.example.com ) && curl -H \"Authorization: Bearer ${__TEAMCOPILOT_RUNTIME_SECRET_API_TOKEN}\" https://top.example.com")); assertions += 1;
+    assertFetchKeys(subshellCurlIsNotTopLevel, ["API_TOKEN"], "does not rewrite curl inside a subshell group but rewrites later top-level curl"); assertions += 1;
+
+    const curlRedirectionTargetIsNotCurlArgument = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "1p-redirection-output", args: { command: "curl https://example.com > {{SECRET:SHOULD_NOT_RESOLVE}}" } },
+        output: { args: { command: "curl https://example.com > {{SECRET:SHOULD_NOT_RESOLVE}}" } },
+    });
+    assert.equal((curlRedirectionTargetIsNotCurlArgument.output as ToolCase["output"]).args.command, "curl https://example.com > {{SECRET:SHOULD_NOT_RESOLVE}}"); assertions += 1;
+    assertNoFetch(curlRedirectionTargetIsNotCurlArgument, "does not rewrite output redirection targets after curl"); assertions += 1;
+
+    const curlAppendRedirectionThenChainedCurl = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "1p-redirection-chain", args: { command: "curl https://example.com >> {{SECRET:SHOULD_NOT_RESOLVE}} && curl -H 'Authorization: Bearer {{SECRET:API_TOKEN}}' https://api.example.com" } },
+        output: { args: { command: "curl https://example.com >> {{SECRET:SHOULD_NOT_RESOLVE}} && curl -H 'Authorization: Bearer {{SECRET:API_TOKEN}}' https://api.example.com" } },
+    });
+    assert.equal((curlAppendRedirectionThenChainedCurl.output as ToolCase["output"]).args.command, expectedWrappedCommand("curl https://example.com >> {{SECRET:SHOULD_NOT_RESOLVE}} && curl -H \"Authorization: Bearer ${__TEAMCOPILOT_RUNTIME_SECRET_API_TOKEN}\" https://api.example.com")); assertions += 1;
+    assertFetchKeys(curlAppendRedirectionThenChainedCurl, ["API_TOKEN"], "does not rewrite append redirection target but rewrites later chained curl"); assertions += 1;
+
+    const curlStderrRedirectionTargetIsNotCurlArgument = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "1p-redirection-stderr", args: { command: "curl https://example.com 2> {{SECRET:SHOULD_NOT_RESOLVE}}" } },
+        output: { args: { command: "curl https://example.com 2> {{SECRET:SHOULD_NOT_RESOLVE}}" } },
+    });
+    assert.equal((curlStderrRedirectionTargetIsNotCurlArgument.output as ToolCase["output"]).args.command, "curl https://example.com 2> {{SECRET:SHOULD_NOT_RESOLVE}}"); assertions += 1;
+    assertNoFetch(curlStderrRedirectionTargetIsNotCurlArgument, "does not rewrite stderr redirection targets after curl"); assertions += 1;
+
+    const gitRedirectionTargetIsNotGitArgument = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "1p-git-redirection", args: { command: "git status > {{SECRET:SHOULD_NOT_RESOLVE}}" } },
+        output: { args: { command: "git status > {{SECRET:SHOULD_NOT_RESOLVE}}" } },
+    });
+    assert.equal((gitRedirectionTargetIsNotGitArgument.output as ToolCase["output"]).args.command, "git status > {{SECRET:SHOULD_NOT_RESOLVE}}"); assertions += 1;
+    assertNoFetch(gitRedirectionTargetIsNotGitArgument, "does not rewrite git redirection targets"); assertions += 1;
+
+    const curlInlineRedirectionTargetIsNotCurlArgument = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "1p-redirection-inline", args: { command: "curl https://example.com>{{SECRET:SHOULD_NOT_RESOLVE}}" } },
+        output: { args: { command: "curl https://example.com>{{SECRET:SHOULD_NOT_RESOLVE}}" } },
+    });
+    assert.equal((curlInlineRedirectionTargetIsNotCurlArgument.output as ToolCase["output"]).args.command, "curl https://example.com>{{SECRET:SHOULD_NOT_RESOLVE}}"); assertions += 1;
+    assertNoFetch(curlInlineRedirectionTargetIsNotCurlArgument, "does not rewrite output redirection targets when redirection has no whitespace"); assertions += 1;
+
+    const curlInputRedirectionTargetIsNotCurlArgument = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "1p-redirection-input", args: { command: "curl --data @- https://example.com < {{SECRET:SHOULD_NOT_RESOLVE}}" } },
+        output: { args: { command: "curl --data @- https://example.com < {{SECRET:SHOULD_NOT_RESOLVE}}" } },
+    });
+    assert.equal((curlInputRedirectionTargetIsNotCurlArgument.output as ToolCase["output"]).args.command, "curl --data @- https://example.com < {{SECRET:SHOULD_NOT_RESOLVE}}"); assertions += 1;
+    assertNoFetch(curlInputRedirectionTargetIsNotCurlArgument, "does not rewrite input redirection targets after curl"); assertions += 1;
+
+    const curlRedirectionBeforeSafeHeader = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "1p-redirection-before-header", args: { command: "curl > {{SECRET:SHOULD_NOT_RESOLVE}} -H 'Authorization: Bearer {{SECRET:API_TOKEN}}' https://example.com" } },
+        output: { args: { command: "curl > {{SECRET:SHOULD_NOT_RESOLVE}} -H 'Authorization: Bearer {{SECRET:API_TOKEN}}' https://example.com" } },
+    });
+    assert.equal((curlRedirectionBeforeSafeHeader.output as ToolCase["output"]).args.command, expectedWrappedCommand("curl > {{SECRET:SHOULD_NOT_RESOLVE}} -H \"Authorization: Bearer ${__TEAMCOPILOT_RUNTIME_SECRET_API_TOKEN}\" https://example.com")); assertions += 1;
+    assertFetchKeys(curlRedirectionBeforeSafeHeader, ["API_TOKEN"], "skips redirection target but still rewrites later safe curl header"); assertions += 1;
+
+    const curlFdDuplicationThenSafeHeader = runHookCase({
+        kind: "tool",
+        input: { tool: "bash", sessionID: "child-session", callID: "1p-redirection-fd-dup", args: { command: "curl 2>&1 -H 'Authorization: Bearer {{SECRET:API_TOKEN}}' https://example.com" } },
+        output: { args: { command: "curl 2>&1 -H 'Authorization: Bearer {{SECRET:API_TOKEN}}' https://example.com" } },
+    });
+    assert.equal((curlFdDuplicationThenSafeHeader.output as ToolCase["output"]).args.command, expectedWrappedCommand("curl 2>&1 -H \"Authorization: Bearer ${__TEAMCOPILOT_RUNTIME_SECRET_API_TOKEN}\" https://example.com")); assertions += 1;
+    assertFetchKeys(curlFdDuplicationThenSafeHeader, ["API_TOKEN"], "handles fd duplication redirection without skipping the following safe curl option"); assertions += 1;
+
     const multilineGitCommand = runHookCase({
         kind: "tool",
         input: {
