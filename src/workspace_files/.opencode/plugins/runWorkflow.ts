@@ -1,4 +1,5 @@
 import { type Plugin, tool } from "@opencode-ai/plugin"
+import type { OpencodeClient } from "@opencode-ai/sdk"
 
 function getApiBaseUrl(): string {
   const port = process.env.TEAMCOPILOT_PORT?.trim()
@@ -64,11 +65,41 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-interface SessionLookupResponse {
-  error?: unknown
-  data?: {
-    id?: string
-    parentID?: string
+async function rejectIfLatestMessageAlreadyRunningWorkflow(
+  client: Pick<OpencodeClient, "session">,
+  sessionID: string,
+  currentCallID: string
+): Promise<void> {
+  const response = await client.session.messages({
+    path: {
+      id: sessionID,
+    },
+    query: {
+      limit: 1,
+    },
+  })
+
+  if (response.error) {
+    throw new Error("Failed to load session messages while checking workflow concurrency.")
+  }
+
+  const latestMessage = response.data?.[0] ?? null
+  if (!latestMessage || latestMessage.info.role !== "assistant") {
+    return
+  }
+
+  const hasAnotherActiveRunWorkflow = latestMessage.parts.some((part) => {
+    if (part.type !== "tool" || part.tool !== "runWorkflow") {
+      return false
+    }
+    if (part.callID === currentCallID) {
+      return false
+    }
+    return true
+  })
+
+  if (hasAnotherActiveRunWorkflow) {
+    throw new Error("You cannot run multiple workflows at the same time. Run them one by one, after each one completes.")
   }
 }
 
@@ -81,7 +112,7 @@ export const RunWorkflowPlugin: Plugin = async ({ client }) => {
         path: {
           id: currentSessionID,
         },
-      })) as SessionLookupResponse
+      }))
       if (response.error) {
         throw new Error(`Failed to resolve root session for ${currentSessionID}`)
       }
@@ -130,6 +161,8 @@ export const RunWorkflowPlugin: Plugin = async ({ client }) => {
           if (!callId) {
             throw new Error("Could not determine call id from tool context.")
           }
+
+          await rejectIfLatestMessageAlreadyRunningWorkflow(client, authSessionID, callId)
 
           const startResponse = await fetch(`${getApiBaseUrl()}/api/workflows/execute`, {
             method: "POST",

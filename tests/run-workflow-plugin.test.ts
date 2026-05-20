@@ -37,6 +37,7 @@ const hooks = await mod.RunWorkflowPlugin({
         }
         return { data: { id: path.id, parentID: null } };
       },
+      messages: async () => ({ data: [] }),
     },
   },
 });
@@ -135,6 +136,30 @@ const hooks = await mod.RunWorkflowPlugin({
         }
         return { data: { id: path.id, parentID: null } };
       },
+      messages: async ({ path }) => {
+        if (path.id !== "root-session") {
+          return { data: [] };
+        }
+        return {
+          data: [
+            {
+              info: {
+                id: "msg-1",
+                role: "assistant",
+                time: { created: 1, completed: 2 },
+              },
+              parts: [
+                {
+                  type: "tool",
+                  tool: "runWorkflow",
+                  callID: "call-1",
+                  state: { status: "running", input: {} },
+                },
+              ],
+            },
+          ],
+        };
+      },
     },
   },
 });
@@ -190,6 +215,236 @@ try {
     return JSON.parse(jsonLine) as PluginResult;
 }
 
+function runWithCurrentRunWorkflowOnly(): PluginResult {
+    const pluginFile = path.resolve(process.cwd(), "src/workspace_files/.opencode/plugins/runWorkflow.ts");
+    const pluginUrl = pathToFileURL(pluginFile).href;
+
+    const script = `
+const pluginPath = process.env.RUN_WORKFLOW_PLUGIN_PATH;
+const mod = await import(pluginPath);
+let fetchCalled = false;
+
+function jsonResponse(body, status = 200) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => body,
+    text: async () => JSON.stringify(body),
+  };
+}
+
+globalThis.fetch = async (url) => {
+  fetchCalled = true;
+  const urlString = String(url);
+  if (urlString.endsWith("/api/workflows/execute")) {
+    return jsonResponse({ execution_id: "exec-1" });
+  }
+  if (urlString.endsWith("/api/workflows/execute/exec-1")) {
+    return jsonResponse({ status: "success", output: "ok" });
+  }
+  throw new Error("Unexpected fetch: " + urlString);
+};
+
+const hooks = await mod.RunWorkflowPlugin({
+  directory: process.cwd(),
+  worktree: process.cwd(),
+  project: {},
+  $: {},
+  serverUrl: new URL("http://localhost"),
+  client: {
+    session: {
+      get: async ({ path }) => {
+        if (path.id === "child-session") {
+          return { data: { id: "child-session", parentID: "root-session" } };
+        }
+        return { data: { id: path.id, parentID: null } };
+      },
+      messages: async ({ path }) => {
+        if (path.id !== "root-session") {
+          return { data: [] };
+        }
+        return {
+          data: [
+            {
+              info: {
+                id: "msg-1",
+                role: "assistant",
+                time: { created: 1, completed: 2 },
+              },
+              parts: [
+                {
+                  type: "tool",
+                  tool: "runWorkflow",
+                  callID: "call-1",
+                  state: { status: "running", input: {} },
+                },
+              ],
+            },
+          ],
+        };
+      },
+    },
+  },
+});
+
+try {
+  const output = await hooks.tool.runWorkflow.execute(
+    {
+      slug: "example-workflow",
+      inputs: {},
+    },
+    {
+      directory: process.cwd(),
+      sessionID: "child-session",
+      messageID: "msg-1",
+      callID: "call-1",
+    }
+  );
+  console.log(JSON.stringify({ fetchCalled, output }));
+} catch (err) {
+  console.log(JSON.stringify({
+    fetchCalled,
+    error: err instanceof Error ? err.message : String(err),
+  }));
+}
+`;
+
+    const result = spawnSync(
+        process.execPath,
+        ["--loader", "ts-node/esm/transpile-only", "--input-type=module", "-e", script],
+        {
+            encoding: "utf8",
+            env: {
+                ...process.env,
+                TEAMCOPILOT_PORT: "5124",
+                RUN_WORKFLOW_PLUGIN_PATH: pluginUrl,
+            },
+        },
+    );
+
+    if (result.status !== 0) {
+        throw new Error(
+            `Subprocess failed (${result.status}).\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+        );
+    }
+
+    const lines = (result.stdout || "")
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean);
+    const jsonLine = [...lines].reverse().find((line) => line.startsWith("{") && line.endsWith("}"));
+    assert.ok(jsonLine, `Missing JSON output from subprocess.\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
+
+    return JSON.parse(jsonLine) as PluginResult;
+}
+
+function runWithConcurrentRunWorkflow(): PluginResult {
+    const pluginFile = path.resolve(process.cwd(), "src/workspace_files/.opencode/plugins/runWorkflow.ts");
+    const pluginUrl = pathToFileURL(pluginFile).href;
+
+    const script = `
+const pluginPath = process.env.RUN_WORKFLOW_PLUGIN_PATH;
+const mod = await import(pluginPath);
+let fetchCalled = false;
+
+globalThis.fetch = async () => {
+  fetchCalled = true;
+  throw new Error("fetch should not be called when a workflow is already active");
+};
+
+const hooks = await mod.RunWorkflowPlugin({
+  directory: process.cwd(),
+  worktree: process.cwd(),
+  project: {},
+  $: {},
+  serverUrl: new URL("http://localhost"),
+  client: {
+    session: {
+      get: async ({ path }) => {
+        if (path.id === "child-session") {
+          return { data: { id: "child-session", parentID: "root-session" } };
+        }
+        return { data: { id: path.id, parentID: null } };
+      },
+      messages: async ({ path }) => {
+        if (path.id !== "root-session") {
+          return { data: [] };
+        }
+        return {
+          data: [
+            {
+              info: {
+                id: "msg-1",
+                role: "assistant",
+                time: { created: 1, completed: 2 },
+              },
+              parts: [
+                {
+                  type: "tool",
+                  tool: "runWorkflow",
+                  callID: "call-1",
+                  state: { status: "running", input: {} },
+                },
+              ],
+            },
+          ],
+        };
+      },
+    },
+  },
+});
+
+try {
+  await hooks.tool.runWorkflow.execute(
+    {
+      slug: "example-workflow",
+      inputs: {},
+    },
+    {
+      directory: process.cwd(),
+      sessionID: "child-session",
+      messageID: "msg-2",
+      callID: "call-2",
+    }
+  );
+  console.log(JSON.stringify({ fetchCalled }));
+} catch (err) {
+  console.log(JSON.stringify({
+    fetchCalled,
+    error: err instanceof Error ? err.message : String(err),
+  }));
+}
+`;
+
+    const result = spawnSync(
+        process.execPath,
+        ["--loader", "ts-node/esm/transpile-only", "--input-type=module", "-e", script],
+        {
+            encoding: "utf8",
+            env: {
+                ...process.env,
+                TEAMCOPILOT_PORT: "5124",
+                RUN_WORKFLOW_PLUGIN_PATH: pluginUrl,
+            },
+        },
+    );
+
+    if (result.status !== 0) {
+        throw new Error(
+            `Subprocess failed (${result.status}).\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+        );
+    }
+
+    const lines = (result.stdout || "")
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean);
+    const jsonLine = [...lines].reverse().find((line) => line.startsWith("{") && line.endsWith("}"));
+    assert.ok(jsonLine, `Missing JSON output from subprocess.\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
+
+    return JSON.parse(jsonLine) as PluginResult;
+}
+
 function main(): void {
     const result = runWithoutInputs();
 
@@ -206,6 +461,22 @@ function main(): void {
         emptyInputsResult.output,
         JSON.stringify({ status: "success", output: "ok" }),
         "runWorkflow should return the mocked success payload when inputs is {}",
+    );
+
+    const currentRunWorkflowResult = runWithCurrentRunWorkflowOnly();
+    assert.equal(currentRunWorkflowResult.error, undefined, "runWorkflow should allow the current workflow call when it is the only runWorkflow tool in the latest message");
+    assert.equal(currentRunWorkflowResult.fetchCalled, true, "runWorkflow should proceed when only the current workflow call exists");
+    assert.equal(
+        currentRunWorkflowResult.output,
+        JSON.stringify({ status: "success", output: "ok" }),
+        "runWorkflow should return the mocked success payload when the current call is the only workflow",
+    );
+
+    const concurrentRunWorkflowResult = runWithConcurrentRunWorkflow();
+    assert.equal(concurrentRunWorkflowResult.fetchCalled, false, "runWorkflow should fail before any network request when another workflow is already active");
+    assert.equal(
+        concurrentRunWorkflowResult.error,
+        "You cannot run multiple workflows at the same time. Run them one by one, after each one completes.",
     );
 
     console.log("Run workflow plugin tests passed");

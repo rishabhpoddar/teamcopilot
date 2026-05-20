@@ -31,11 +31,13 @@ Use this whenever changing `opencode-ai`, `@opencode-ai/sdk`, `@opencode-ai/plug
 - [ ] `src/utils/session-abort.ts`: pending question replies, pending permission rejects, custom permission cleanup, and `session.abort`.
 - [ ] `src/utils/chat-usage.ts`: `session.messages()` shape, assistant `tokens`, `providerID`, `modelID`, `time.completed`, and last-synced message behavior.
 - [ ] `src/utils/chat-session.ts`: message part types, tool state statuses, pending input detection, and stale running tool normalization.
+- [ ] Pagination API for `session.messages()` in `src/utils/session-messages-page.ts`
 
 ## OpenCode Message And Permission Shapes
 
 - [ ] Confirm `SessionStatusMap` still maps session id to `{ type: "busy" | "retry" | "idle" }`.
 - [ ] Confirm message containers still look like `{ info, parts }` for `session.messages()`.
+- [ ] Confirm `session.messages({ query: { limit: 1 } })` still returns the latest message first.
 - [ ] Confirm `ToolPart` still has `tool`, `callID`, `messageID`, and `state.status`.
 - [ ] Confirm tool states still use `pending`, `running`, `completed`, and `error`.
 - [ ] Confirm pending questions still expose `id`, `sessionID`, `questions`, and optional `tool.messageID` / `tool.callID`.
@@ -77,6 +79,7 @@ Known risky areas:
 - [ ] `python-protection.ts`: `command.execute.before`, `tool.execute.before`, `command`, `arguments`, `workdir`, `cwd`, `directory`, and `worktree`.
 - [ ] `honeytoken-protection.ts`: `tool.execute.before`, `tool.execute.after`, output shape, metadata shape, title shape, and input args visibility.
 - [ ] `skill-command-guard.ts`: `tool.execute.before`, `task` tool id, `command` arg shape, root session resolution, and backend skill metadata response.
+- [ ] `runWorkflow.ts`: latest-message concurrency guard, `client.session.messages({ limit: 1 })`, `runWorkflow` tool-part detection, and same-`callID` allowance.
 - [ ] Custom tools in `.opencode/plugins/*.ts`: `tool()` definition shape, `execute(args, context)`, return type, `context.sessionID`, `context.messageID`, `context.callID`, `context.ask`, `context.metadata`, and backend fetch behavior.
 
 ## Custom TeamCopilot Tools To Smoke Test
@@ -116,6 +119,8 @@ Known risky areas:
 - [ ] Trigger a custom TeamCopilot permission prompt and approve/reject it.
 - [ ] Run a prompt cronjob through planning, todo execution, user attention, resume, completion, and failure.
 - [ ] Run a workflow via `runWorkflow`.
+- [ ] Try one `runWorkflow` call and confirm it is allowed.
+- [ ] Try two `runWorkflow` calls in the same latest assistant message and confirm the second one is rejected.
 - [ ] Verify secret placeholder rewriting in shell commands without exposing plaintext in model-visible output.
 - [ ] Abort an active session and verify pending questions/permissions are cleaned up.
 - [ ] Sync usage and confirm token/cost rows are updated.
