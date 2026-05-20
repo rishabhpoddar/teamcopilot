@@ -1,0 +1,4 @@
+interface:
+  display_name: "Remote Workspace Clone"
+  short_description: "Clone a remote workspace locally for debugging"
+  default_prompt: "Use $remote-workspace-clone to clone a remote workspace locally and set it up for debugging."
