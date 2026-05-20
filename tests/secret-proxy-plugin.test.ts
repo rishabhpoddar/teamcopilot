@@ -321,10 +321,15 @@ function assertNoFetch(result: HookResult, label: string): void {
     assert.deepEqual(result.fetchCalls, [], label);
 }
 
-function assertFetchKeys(result: HookResult, expectedKeys: string[], label: string): void {
+function assertFetchKeys(
+    result: HookResult,
+    expectedKeys: string[],
+    label: string,
+    expectedAuthorization = "Bearer root-session",
+): void {
     assert.deepEqual(
         result.fetchCalls,
-        [{ authorization: "Bearer root-session", keys: expectedKeys }],
+        [{ authorization: expectedAuthorization, keys: expectedKeys }],
         label,
     );
 }
@@ -1042,6 +1047,242 @@ async function main(): Promise<void> {
         expectedWrappedArguments("curl -sS \\\n  -H \"Authorization: Bearer ${__TEAMCOPILOT_RUNTIME_SECRET_API_TOKEN}\" \\\n  https://example.com"),
     ); assertions += 1;
     assertFetchKeys(commandHookMultilineCurl, ["API_TOKEN"], "preserves multiline curl formatting in command hook arguments"); assertions += 1;
+
+    const newlineSeparatedAssignmentThenCurl = runHookCase({
+        kind: "tool",
+        input: {
+            tool: "bash",
+            sessionID: "session-a",
+            callID: "newline-assignment-tool",
+            args: {
+                command: "POLICY_JSON='{\"policies\":[{\"id\":\"alpha-1\",\"policy_text\":\"first policy text\"},{\"id\":\"beta-2\",\"policy_text\":\"second policy text\"}]}'\ncurl -sS -X POST \"https://example.test/policies/update\" \\\n  -H \"Content-Type: application/json\" \\\n  -H \"Authorization: Bearer {{SECRET:POLICY_API_KEY}}\" \\\n  -d \"$POLICY_JSON\"",
+            },
+        },
+        output: {
+            args: {
+                command: "POLICY_JSON='{\"policies\":[{\"id\":\"alpha-1\",\"policy_text\":\"first policy text\"},{\"id\":\"beta-2\",\"policy_text\":\"second policy text\"}]}'\ncurl -sS -X POST \"https://example.test/policies/update\" \\\n  -H \"Content-Type: application/json\" \\\n  -H \"Authorization: Bearer {{SECRET:POLICY_API_KEY}}\" \\\n  -d \"$POLICY_JSON\"",
+            },
+        },
+    });
+    assert.equal(
+        (newlineSeparatedAssignmentThenCurl.output as ToolCase["output"]).args.command,
+        expectedWrappedCommand("POLICY_JSON='{\"policies\":[{\"id\":\"alpha-1\",\"policy_text\":\"first policy text\"},{\"id\":\"beta-2\",\"policy_text\":\"second policy text\"}]}'\ncurl -sS -X POST \"https://example.test/policies/update\" \\\n  -H \"Content-Type: application/json\" \\\n  -H \"Authorization: Bearer ${__TEAMCOPILOT_RUNTIME_SECRET_POLICY_API_KEY}\" \\\n  -d \"$POLICY_JSON\""),
+    ); assertions += 1;
+    assertFetchKeys(newlineSeparatedAssignmentThenCurl, ["POLICY_API_KEY"], "treats newline-separated assignments as a boundary before a top-level curl command", "Bearer session-a"); assertions += 1;
+
+    const newlineSeparatedAssignmentThenCurlCommandHook = runHookCase({
+        kind: "command",
+        input: {
+            command: "POLICY_JSON='{\"policies\":[{\"id\":\"alpha-1\",\"policy_text\":\"first policy text\"},{\"id\":\"beta-2\",\"policy_text\":\"second policy text\"}]}'",
+            arguments: "\ncurl -sS -X POST \"https://example.test/policies/update\" -H \"Authorization: Bearer {{SECRET:POLICY_API_KEY}}\" -d \"$POLICY_JSON\"",
+            sessionID: "session-b",
+        },
+        output: { parts: [] },
+    });
+    assert.equal(
+        (newlineSeparatedAssignmentThenCurlCommandHook.input as CommandCase["input"]).command,
+        expectedWrappedCommand("POLICY_JSON='{\"policies\":[{\"id\":\"alpha-1\",\"policy_text\":\"first policy text\"},{\"id\":\"beta-2\",\"policy_text\":\"second policy text\"}]}' \ncurl -sS -X POST \"https://example.test/policies/update\" -H \"Authorization: Bearer ${__TEAMCOPILOT_RUNTIME_SECRET_POLICY_API_KEY}\" -d \"$POLICY_JSON\""),
+    ); assertions += 1;
+    assert.equal((newlineSeparatedAssignmentThenCurlCommandHook.input as CommandCase["input"]).arguments, ""); assertions += 1;
+    assertFetchKeys(newlineSeparatedAssignmentThenCurlCommandHook, ["POLICY_API_KEY"], "rewrites newline-separated assignment plus curl in command.execute.before", "Bearer session-b"); assertions += 1;
+
+    const newlineAfterAndThenCurl = runHookCase({
+        kind: "tool",
+        input: {
+            tool: "bash",
+            sessionID: "session-c",
+            callID: "newline-and-tool",
+            args: {
+                command: "echo ready &&\n  curl -H 'Authorization: Bearer {{SECRET:POLICY_API_KEY}}' https://example.test/policies/update",
+            },
+        },
+        output: {
+            args: {
+                command: "echo ready &&\n  curl -H 'Authorization: Bearer {{SECRET:POLICY_API_KEY}}' https://example.test/policies/update",
+            },
+        },
+    });
+    assert.equal(
+        (newlineAfterAndThenCurl.output as ToolCase["output"]).args.command,
+        expectedWrappedCommand("echo ready &&\n  curl -H \"Authorization: Bearer ${__TEAMCOPILOT_RUNTIME_SECRET_POLICY_API_KEY}\" https://example.test/policies/update"),
+    ); assertions += 1;
+    assertFetchKeys(newlineAfterAndThenCurl, ["POLICY_API_KEY"], "treats && followed by a newline as a command boundary", "Bearer session-c"); assertions += 1;
+
+    const newlineAfterOrThenCurl = runHookCase({
+        kind: "tool",
+        input: {
+            tool: "bash",
+            sessionID: "session-d",
+            callID: "newline-or-tool",
+            args: {
+                command: "echo first ||\n  curl -H 'Authorization: Bearer {{SECRET:POLICY_API_KEY}}' https://example.test/policies/update",
+            },
+        },
+        output: {
+            args: {
+                command: "echo first ||\n  curl -H 'Authorization: Bearer {{SECRET:POLICY_API_KEY}}' https://example.test/policies/update",
+            },
+        },
+    });
+    assert.equal(
+        (newlineAfterOrThenCurl.output as ToolCase["output"]).args.command,
+        expectedWrappedCommand("echo first ||\n  curl -H \"Authorization: Bearer ${__TEAMCOPILOT_RUNTIME_SECRET_POLICY_API_KEY}\" https://example.test/policies/update"),
+    ); assertions += 1;
+    assertFetchKeys(newlineAfterOrThenCurl, ["POLICY_API_KEY"], "treats || followed by a newline as a command boundary", "Bearer session-d"); assertions += 1;
+
+    const newlineAfterSemicolonThenCurl = runHookCase({
+        kind: "tool",
+        input: {
+            tool: "bash",
+            sessionID: "session-e",
+            callID: "newline-semicolon-tool",
+            args: {
+                command: "echo first;\n  curl -H 'Authorization: Bearer {{SECRET:POLICY_API_KEY}}' https://example.test/policies/update",
+            },
+        },
+        output: {
+            args: {
+                command: "echo first;\n  curl -H 'Authorization: Bearer {{SECRET:POLICY_API_KEY}}' https://example.test/policies/update",
+            },
+        },
+    });
+    assert.equal(
+        (newlineAfterSemicolonThenCurl.output as ToolCase["output"]).args.command,
+        expectedWrappedCommand("echo first;\n  curl -H \"Authorization: Bearer ${__TEAMCOPILOT_RUNTIME_SECRET_POLICY_API_KEY}\" https://example.test/policies/update"),
+    ); assertions += 1;
+    assertFetchKeys(newlineAfterSemicolonThenCurl, ["POLICY_API_KEY"], "treats semicolon followed by a newline as a command boundary", "Bearer session-e"); assertions += 1;
+
+    const newlineAfterPipeThenCurl = runHookCase({
+        kind: "tool",
+        input: {
+            tool: "bash",
+            sessionID: "session-f",
+            callID: "newline-pipe-tool",
+            args: {
+                command: "echo first |\n  curl -H 'Authorization: Bearer {{SECRET:POLICY_API_KEY}}' https://example.test/policies/update",
+            },
+        },
+        output: {
+            args: {
+                command: "echo first |\n  curl -H 'Authorization: Bearer {{SECRET:POLICY_API_KEY}}' https://example.test/policies/update",
+            },
+        },
+    });
+    assert.equal(
+        (newlineAfterPipeThenCurl.output as ToolCase["output"]).args.command,
+        expectedWrappedCommand("echo first |\n  curl -H \"Authorization: Bearer ${__TEAMCOPILOT_RUNTIME_SECRET_POLICY_API_KEY}\" https://example.test/policies/update"),
+    ); assertions += 1;
+    assertFetchKeys(newlineAfterPipeThenCurl, ["POLICY_API_KEY"], "treats pipe followed by a newline as a command boundary", "Bearer session-f"); assertions += 1;
+
+    const commentLineThenCurl = runHookCase({
+        kind: "tool",
+        input: {
+            tool: "bash",
+            sessionID: "session-g",
+            callID: "comment-line-tool",
+            args: {
+                command: "# prepare request\ncurl -H 'Authorization: Bearer {{SECRET:POLICY_API_KEY}}' https://example.test/policies/update",
+            },
+        },
+        output: {
+            args: {
+                command: "# prepare request\ncurl -H 'Authorization: Bearer {{SECRET:POLICY_API_KEY}}' https://example.test/policies/update",
+            },
+        },
+    });
+    assert.equal(
+        (commentLineThenCurl.output as ToolCase["output"]).args.command,
+        expectedWrappedCommand("# prepare request\ncurl -H \"Authorization: Bearer ${__TEAMCOPILOT_RUNTIME_SECRET_POLICY_API_KEY}\" https://example.test/policies/update"),
+    ); assertions += 1;
+    assertFetchKeys(commentLineThenCurl, ["POLICY_API_KEY"], "treats a newline after a shell comment as the start of a new curl command", "Bearer session-g"); assertions += 1;
+
+    const escapedNewlineBeforeCurl = runHookCase({
+        kind: "tool",
+        input: {
+            tool: "bash",
+            sessionID: "session-h",
+            callID: "escaped-newline-tool",
+            args: {
+                command: "POLICY_JSON='{\"id\":\"alpha-1\"}' \\\n  curl -H 'Authorization: Bearer {{SECRET:POLICY_API_KEY}}' https://example.test/policies/update",
+            },
+        },
+        output: {
+            args: {
+                command: "POLICY_JSON='{\"id\":\"alpha-1\"}' \\\n  curl -H 'Authorization: Bearer {{SECRET:POLICY_API_KEY}}' https://example.test/policies/update",
+            },
+        },
+    });
+    assert.equal(
+        (escapedNewlineBeforeCurl.output as ToolCase["output"]).args.command,
+        "POLICY_JSON='{\"id\":\"alpha-1\"}' \\\n  curl -H 'Authorization: Bearer {{SECRET:POLICY_API_KEY}}' https://example.test/policies/update",
+    ); assertions += 1;
+    assertNoFetch(escapedNewlineBeforeCurl, "does not treat backslash-newline as a command boundary before curl"); assertions += 1;
+
+    const blankLineBeforeGit = runHookCase({
+        kind: "tool",
+        input: {
+            tool: "bash",
+            sessionID: "session-i",
+            callID: "blank-line-git-tool",
+            args: {
+                command: "echo prepare\n\ngit clone https://token:{{SECRET:GITHUB_TOKEN}}@example.test/repo.git",
+            },
+        },
+        output: {
+            args: {
+                command: "echo prepare\n\ngit clone https://token:{{SECRET:GITHUB_TOKEN}}@example.test/repo.git",
+            },
+        },
+    });
+    assert.equal(
+        (blankLineBeforeGit.output as ToolCase["output"]).args.command,
+        expectedWrappedCommand("echo prepare\n\ngit clone https://token:${__TEAMCOPILOT_RUNTIME_SECRET_GITHUB_TOKEN}@example.test/repo.git"),
+    ); assertions += 1;
+    assertFetchKeys(blankLineBeforeGit, ["GITHUB_TOKEN"], "treats blank lines as command boundaries before git", "Bearer session-i"); assertions += 1;
+
+    const curlThenBlankLineThenGit = runHookCase({
+        kind: "tool",
+        input: {
+            tool: "bash",
+            sessionID: "session-j",
+            callID: "curl-blank-git-tool",
+            args: {
+                command: "curl -H 'Authorization: Bearer {{SECRET:API_TOKEN}}' https://example.test/api\n\ngit push https://token:{{SECRET:GITHUB_TOKEN}}@example.test/repo.git main",
+            },
+        },
+        output: {
+            args: {
+                command: "curl -H 'Authorization: Bearer {{SECRET:API_TOKEN}}' https://example.test/api\n\ngit push https://token:{{SECRET:GITHUB_TOKEN}}@example.test/repo.git main",
+            },
+        },
+    });
+    assert.equal(
+        (curlThenBlankLineThenGit.output as ToolCase["output"]).args.command,
+        expectedWrappedCommand("curl -H \"Authorization: Bearer ${__TEAMCOPILOT_RUNTIME_SECRET_API_TOKEN}\" https://example.test/api\n\ngit push https://token:${__TEAMCOPILOT_RUNTIME_SECRET_GITHUB_TOKEN}@example.test/repo.git main"),
+    ); assertions += 1;
+    assertFetchKeys(curlThenBlankLineThenGit, ["API_TOKEN", "GITHUB_TOKEN"], "treats blank lines as boundaries between curl and git commands", "Bearer session-j"); assertions += 1;
+
+    const newlineSeparatedCurlThenGit = runHookCase({
+        kind: "tool",
+        input: {
+            tool: "bash",
+            sessionID: "session-k",
+            callID: "newline-curl-git-tool",
+            args: {
+                command: "curl -H 'Authorization: Bearer {{SECRET:API_TOKEN}}' https://example.test/api\n git clone https://token:{{SECRET:GITHUB_TOKEN}}@example.test/repo.git",
+            },
+        },
+        output: {
+            args: {
+                command: "curl -H 'Authorization: Bearer {{SECRET:API_TOKEN}}' https://example.test/api\n git clone https://token:{{SECRET:GITHUB_TOKEN}}@example.test/repo.git",
+            },
+        },
+    });
+    assert.equal(
+        (newlineSeparatedCurlThenGit.output as ToolCase["output"]).args.command,
+        expectedWrappedCommand("curl -H \"Authorization: Bearer ${__TEAMCOPILOT_RUNTIME_SECRET_API_TOKEN}\" https://example.test/api\n git clone https://token:${__TEAMCOPILOT_RUNTIME_SECRET_GITHUB_TOKEN}@example.test/repo.git"),
+    ); assertions += 1;
+    assertFetchKeys(newlineSeparatedCurlThenGit, ["API_TOKEN", "GITHUB_TOKEN"], "treats a newline-separated curl then git sequence as two top-level commands", "Bearer session-k"); assertions += 1;
 
     const multiPlaceholderAllowedHeader = runHookCase({
         kind: "tool",

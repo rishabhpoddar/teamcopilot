@@ -24,7 +24,7 @@ const SECRET_PLACEHOLDER_PATTERN = /\{\{SECRET:([A-Za-z_][A-Za-z0-9_]*)\}\}/g
 const SECRET_ENV_REFERENCE_PATTERN = /\$\{__TEAMCOPILOT_RUNTIME_SECRET_([A-Z][A-Z0-9_]*)\}/g
 const AGENT_VISIBLE_SECRET_ENV_REFERENCE_PATTERN = /__TEAMCOPILOT_RUNTIME_SECRET_[A-Z][A-Z0-9_]*/
 const SECRET_ENV_PREFIX = "__TEAMCOPILOT_RUNTIME_SECRET_"
-const SHELL_CONTROL_TOKENS = new Set(["&&", "||", ";", "|"])
+const SHELL_CONTROL_TOKENS = new Set(["&&", "||", ";", "|", "\n"])
 const SHELL_REDIRECTION_PATTERN = /^(\d+)?(?:>>?|<<?|<<<)$/
 const SHELL_REDIRECTION_DUPLICATION_PATTERN = /^(\d+)?[<>]&\d+$/
 const CURL_SAFE_VALUE_OPTIONS = new Set([
@@ -191,6 +191,16 @@ function readShellRedirectionToken(command: string, start: number): string | nul
   return command.slice(start, index)
 }
 
+function isEscapedLineContinuation(command: string, newlineIndex: number): boolean {
+  let backslashCount = 0
+  let index = newlineIndex - 1
+  while (index >= 0 && command[index] === "\\") {
+    backslashCount += 1
+    index -= 1
+  }
+  return backslashCount % 2 === 1
+}
+
 function tokenizeCommand(command: string): CommandToken[] {
   const tokens: CommandToken[] = []
   const length = command.length
@@ -203,6 +213,9 @@ function tokenizeCommand(command: string): CommandToken[] {
     }
 
     if (/\s/.test(char)) {
+      if (char === "\n" && !isEscapedLineContinuation(command, index)) {
+        tokens.push({ raw: "\n", start: index, end: index + 1 })
+      }
       index += 1
       continue
     }
