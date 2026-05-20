@@ -33,7 +33,7 @@ async function main(): Promise<void> {
             },
         });
 
-        const slug = "route-validation-skill";
+        const slug = `route-validation-skill-${Date.now()}`;
         await createSkill({
             slug,
             createdByUserId: user.id,
@@ -62,7 +62,7 @@ async function main(): Promise<void> {
         assert.ok(typeof baseEtag === "string" && baseEtag.length > 0);
 
         const undeclaredPlaceholderContent = `---
-name: "route-validation-skill"
+name: "${slug}"
 description: "Route validation test"
 required_secrets: []
 ---
@@ -86,7 +86,7 @@ Use this skill with {{SECRET:GITHUB_TOKEN}}.
         );
 
         const malformedRequiredSecretsContent = `---
-name: "route-validation-skill"
+name: "${slug}"
 description: "Route validation test"
 required_secrets: ["GITHUB_TOKEN",
 ---
@@ -110,7 +110,7 @@ Use this skill safely.
         );
 
         const duplicateRequiredSecretsContent = `---
-name: "route-validation-skill"
+name: "${slug}"
 description: "Route validation test"
 required_secrets:
   - GITHUB_TOKEN
@@ -136,7 +136,7 @@ Use this skill safely.
         );
 
         const invalidRequiredSecretsContent = `---
-name: "route-validation-skill"
+name: "${slug}"
 description: "Route validation test"
 required_secrets:
   - bad-key
@@ -161,7 +161,7 @@ Use this skill safely.
         );
 
         const validContent = `---
-name: "route-validation-skill"
+name: "${slug}"
 description: "Route validation test"
 required_secrets:
   - GITHUB_TOKEN
@@ -200,7 +200,7 @@ Use this skill with {{SECRET:GITHUB_TOKEN}}.
                 relative_path: "SKILL.md",
                 content_kind: "text",
                 text_content: `---
-name: "route-validation-skill"
+name: "${slug}"
 description: "Route validation test"
 required_secrets:
   - GITHUB_TOKEN
