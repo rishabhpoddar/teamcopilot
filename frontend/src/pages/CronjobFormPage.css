@@ -2,6 +2,7 @@
   max-width: 1180px;
   width: 100%;
   margin: 0 auto;
+  min-width: 0;
 }
 
 .cronjob-back-btn {
@@ -13,6 +14,7 @@
   grid-template-columns: minmax(280px, 0.82fr) minmax(0, 1.45fr);
   gap: 1rem;
   align-items: start;
+  min-width: 0;
 }
 
 .cronjob-builder-aside,
@@ -20,6 +22,7 @@
   border: 1px solid #333;
   border-radius: 12px;
   background: #1a1a1a;
+  min-width: 0;
 }
 
 .cronjob-builder-aside {
@@ -38,6 +41,7 @@
 .cronjob-builder-aside>p {
   margin: 0.75rem 0 1rem;
   color: #aaa;
+  overflow-wrap: anywhere;
 }
 
 
@@ -88,6 +92,7 @@
   margin: 0.25rem 0 0;
   color: #999;
   font-size: 0.9rem;
+  overflow-wrap: anywhere;
 }
 
 .cronjob-form-grid {
@@ -101,12 +106,14 @@
   flex-direction: column;
   gap: 0.4rem;
   margin-top: 0.85rem;
+  min-width: 0;
 }
 
 .cronjob-field span {
   color: #888;
   font-size: 0.8rem;
   font-weight: 700;
+  overflow-wrap: anywhere;
 }
 
 .cronjob-field input,
@@ -213,6 +220,7 @@
   margin: 0.2rem 0 0;
   color: #888;
   font-size: 0.8rem;
+  overflow-wrap: anywhere;
 }
 
 .cronjob-step-add,
@@ -418,6 +426,7 @@
 .cronjob-switch-row small {
   margin-top: 0.2rem;
   color: #888;
+  overflow-wrap: anywhere;
 }
 
 .cronjob-workflow-target,
@@ -440,6 +449,7 @@
   margin: 0;
   color: #888;
   font-size: 0.82rem;
+  overflow-wrap: anywhere;
 }
 
 .cronjob-inline-error {
@@ -455,6 +465,7 @@
   padding: 0.9rem;
   background: #141414;
   color: #aaa;
+  overflow-wrap: anywhere;
 }
 
 .cronjob-day-picker {
@@ -485,6 +496,7 @@
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 0.6rem;
   align-items: center;
+  min-width: 0;
 }
 
 .cronjob-inline-field small {
@@ -549,12 +561,68 @@
 }
 
 @media (max-width: 620px) {
+  .cronjob-form-page {
+    padding-inline: 0.1rem;
+  }
+
+  .cronjob-builder-aside,
+  .cronjob-form-panel {
+    border-radius: 10px;
+  }
+
+  .cronjob-builder-aside {
+    padding: 0.95rem;
+  }
+
+  .cronjob-form-panel {
+    padding: 0.85rem;
+  }
 
   .cronjob-form-grid {
     grid-template-columns: 1fr;
   }
 
+  .cronjob-panel-heading {
+    gap: 0.65rem;
+  }
+
+  .cronjob-panel-heading>span {
+    width: 1.75rem;
+    height: 1.75rem;
+  }
+
+  .cronjob-panel-heading h2 {
+    font-size: 1rem;
+  }
+
+  .cronjob-panel-heading p {
+    font-size: 0.84rem;
+  }
+
+  .cronjob-switch-row {
+    padding: 0.8rem;
+  }
+
+  .cronjob-inline-field {
+    grid-template-columns: 1fr;
+    align-items: start;
+    gap: 0.35rem;
+  }
+
+  .cronjob-short-field {
+    max-width: none;
+  }
+
+  .cronjob-day-picker button {
+    flex: 1 1 calc(50% - 0.5rem);
+    min-width: 0;
+  }
+
   .cronjob-builder-actions {
     flex-direction: column-reverse;
+  }
+
+  .cronjob-builder-actions button {
+    width: 100%;
   }
 }

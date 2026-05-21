@@ -119,6 +119,67 @@ function minutesToTime(minutes: number | null): string {
     return `${hours}:${mins}`;
 }
 
+function parseCronFieldNumber(value: string, min: number, max: number): number | null {
+    if (!/^\d+$/.test(value)) return null;
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed < min || parsed > max) return null;
+    return parsed;
+}
+
+function parseCronExpressionForBuilder(cronExpression: string): Pick<CronjobFormState, 'builderFrequency' | 'time' | 'days_of_week' | 'day_of_month'> | null {
+    const parts = cronExpression.trim().split(/\s+/);
+    const normalizedParts = parts.length === 6 && parts[0] === '0' ? parts.slice(1) : parts;
+    if (normalizedParts.length !== 5) return null;
+
+    const [minutePart, hourPart, dayOfMonthPart, monthPart, dayOfWeekPart] = normalizedParts;
+    if (monthPart !== '*') return null;
+
+    const minute = parseCronFieldNumber(minutePart, 0, 59);
+    const hour = parseCronFieldNumber(hourPart, 0, 23);
+    if (minute === null || hour === null) return null;
+
+    const time = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+
+    if (dayOfMonthPart === '*' && dayOfWeekPart === '*') {
+        return {
+            builderFrequency: 'daily',
+            time,
+            days_of_week: [1, 2, 3, 4, 5],
+            day_of_month: 1,
+        };
+    }
+
+    if (dayOfMonthPart !== '*' && dayOfWeekPart === '*') {
+        const dayOfMonth = parseCronFieldNumber(dayOfMonthPart, 1, 31);
+        if (dayOfMonth === null) return null;
+        return {
+            builderFrequency: 'monthly',
+            time,
+            days_of_week: [1, 2, 3, 4, 5],
+            day_of_month: dayOfMonth,
+        };
+    }
+
+    if (dayOfMonthPart === '*' && dayOfWeekPart !== '*') {
+        const days = dayOfWeekPart.split(',').map((day) => {
+            const parsed = parseCronFieldNumber(day, 0, 7);
+            if (parsed === null) return null;
+            return parsed === 7 ? 0 : parsed;
+        });
+        if (days.some((day) => day === null)) return null;
+        const uniqueDays = Array.from(new Set(days as number[])).sort((a, b) => a - b);
+        if (uniqueDays.length === 0) return null;
+        return {
+            builderFrequency: 'weekly',
+            time,
+            days_of_week: uniqueDays,
+            day_of_month: 1,
+        };
+    }
+
+    return null;
+}
+
 function formatMonitorTimeout(value: number, unit: MonitorTimeoutUnit): string {
     const label = value === 1 ? unit.slice(0, -1) : unit;
     return `${value} ${label}`;
@@ -135,6 +196,34 @@ function buildCronExpressionFromBuilder(form: CronjobFormState): string {
         return `${minute} ${hour} * * ${form.days_of_week.join(',')}`;
     }
     return `${minute} ${hour} * * *`;
+}
+
+function updateScheduleMode(form: CronjobFormState, nextMode: ScheduleMode): CronjobFormState {
+    if (nextMode === form.scheduleMode) {
+        return form;
+    }
+
+    if (nextMode === 'cron') {
+        return {
+            ...form,
+            scheduleMode: 'cron',
+            cron_expression: buildCronExpressionFromBuilder(form),
+        };
+    }
+
+    const parsedBuilderSchedule = parseCronExpressionForBuilder(form.cron_expression);
+    if (!parsedBuilderSchedule) {
+        return {
+            ...form,
+            scheduleMode: 'builder',
+        };
+    }
+
+    return {
+        ...form,
+        scheduleMode: 'builder',
+        ...parsedBuilderSchedule,
+    };
 }
 
 function createExecutionStepId(): string {
@@ -237,6 +326,7 @@ function getErrorMessage(err: unknown, fallback: string): string {
 
 function formFromCronjob(cronjob: Cronjob): CronjobFormState {
     const parsedPrompt = cronjobPrompt.parse(cronjob.prompt);
+    const parsedSchedule = parseCronExpressionForBuilder(cronjob.schedule.cron_expression);
     return {
         name: cronjob.name,
         targetMode: cronjob.target?.target_type ?? 'prompt',
@@ -248,13 +338,13 @@ function formFromCronjob(cronjob: Cronjob): CronjobFormState {
         monitor_timeout_unit: cronjob.monitor_timeout_unit,
         workflow_slug: cronjob.target?.workflow_slug ?? '',
         workflow_inputs: {},
-        scheduleMode: 'cron',
+        scheduleMode: parsedSchedule ? 'builder' : 'cron',
         cron_expression: cronjob.schedule.cron_expression,
         timezone: cronjob.schedule.timezone,
-        builderFrequency: 'daily',
-        time: minutesToTime(null),
-        days_of_week: [1, 2, 3, 4, 5],
-        day_of_month: 1,
+        builderFrequency: parsedSchedule?.builderFrequency ?? 'daily',
+        time: parsedSchedule?.time ?? minutesToTime(null),
+        days_of_week: parsedSchedule?.days_of_week ?? [1, 2, 3, 4, 5],
+        day_of_month: parsedSchedule?.day_of_month ?? 1,
     };
 }
 
@@ -753,7 +843,7 @@ export default function CronjobFormPage() {
                                 <div className="cronjob-select-wrap">
                                     <select
                                         value={form.scheduleMode}
-                                        onChange={(event) => setForm((prev) => ({ ...prev, scheduleMode: event.target.value as ScheduleMode }))}
+                                        onChange={(event) => setForm((prev) => updateScheduleMode(prev, event.target.value as ScheduleMode))}
                                     >
                                         <option value="builder">Schedule builder</option>
                                         <option value="cron">Cron expression</option>
