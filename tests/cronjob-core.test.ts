@@ -65,20 +65,37 @@ async function main(): Promise<void> {
         "prompt parsing should tolerate an empty saved todo section",
     );
 
-    assert.equal(
-        cronjobPrompt.buildWithExecutionSteps("Check repo health", [
-            "Inspect git status",
-            "Run relevant tests",
-            "Summarize failures",
-        ]),
-        [
-            "Check repo health. Todo steps to follow:",
-            "- Inspect git status",
-            "- Run relevant tests",
-            "- Summarize failures",
-        ].join("\n"),
-        "prompt serialization should keep execution steps in the order they were provided",
+    const serializedPrompt = cronjobPrompt.buildWithExecutionSteps("Check repo health", [
+        "Inspect git status",
+        "Run relevant tests\n- keep this bullet together",
+        "Summarize failures\n\nAnd keep blank lines too",
+    ]);
+    assert.ok(
+        serializedPrompt.startsWith("Check repo health.\n\n<!-- TEAMCOPILOT_CRONJOB_TODO_STEPS:v1:"),
+        "prompt serialization should store execution steps in the encoded suffix",
     );
+    assert.deepEqual(
+        cronjobPrompt.parse(serializedPrompt),
+        {
+            prompt: "Check repo health.",
+            executionSteps: [
+                "Inspect git status",
+                "Run relevant tests\n- keep this bullet together",
+                "Summarize failures\n\nAnd keep blank lines too",
+            ],
+        },
+        "prompt serialization should round-trip multiline execution steps without splitting them",
+    );
+    assert.equal(
+        serializedPrompt.includes(cronjobPrompt.LEGACY_TODO_STEP_MARKER),
+        false,
+        "new prompt serialization should not use the legacy line-based todo marker",
+    );
+
+    const parsedPrompt = cronjobPrompt.parse(serializedPrompt);
+    assert.equal(parsedPrompt.executionSteps.length, 3, "each array item should remain a distinct execution step");
+    assert.equal(parsedPrompt.executionSteps[1], "Run relevant tests\n- keep this bullet together");
+    assert.equal(parsedPrompt.executionSteps[2], "Summarize failures\n\nAnd keep blank lines too");
 
     const fixedDate = new Date("2026-05-12T10:30:45.000Z");
     const timePrompt = buildCurrentTimePrompt(fixedDate);
