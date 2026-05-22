@@ -35,7 +35,7 @@ export function createApp(): express.Express {
     const app = express();
     const frontendDistDirectory = getFrontendDistDirectory();
 
-    app.use(express.json());
+    app.use(express.json({ limit: "10mb" }));
 
     // Logging middleware
     // app.use((req, res, next) => {
