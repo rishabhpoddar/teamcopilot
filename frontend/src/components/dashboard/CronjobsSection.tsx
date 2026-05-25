@@ -4,7 +4,7 @@ import { AxiosError } from 'axios';
 import { toast } from 'react-toastify';
 import { axiosInstance } from '../../utils';
 import { useAuth } from '../../lib/auth';
-import { cronjobRunSummaryText } from '../../utils/cronjob-format';
+import { cronjobRunSummaryText, formatCronjobSchedule, formatCronjobTimestamp } from '../../utils/cronjob-format';
 import { cronjobPrompt } from '../../../../src/utils/cronjob-prompt';
 import './WorkflowsSection.css';
 import './CronjobsSection.css';
@@ -65,26 +65,6 @@ function getErrorMessage(err: unknown, fallback: string): string {
         return err.message || fallback;
     }
     return err instanceof Error ? err.message : fallback;
-}
-
-function ordinalSuffix(day: number): string {
-    if (day >= 11 && day <= 13) {
-        return 'th';
-    }
-    const lastDigit = day % 10;
-    if (lastDigit === 1) return 'st';
-    if (lastDigit === 2) return 'nd';
-    if (lastDigit === 3) return 'rd';
-    return 'th';
-}
-
-function formatTimestamp(value: number | null): string {
-    if (value === null) return 'Not scheduled';
-    const date = new Date(value);
-    const day = date.getDate();
-    const month = new Intl.DateTimeFormat('en-GB', { month: 'long' }).format(date);
-    const year = date.getFullYear();
-    return `${day}${ordinalSuffix(day)} ${month}, ${year}`;
 }
 
 function targetLabel(cronjob: Cronjob): string {
@@ -293,9 +273,12 @@ export default function CronjobsSection() {
                             </div>
 
                             <div className="cronjob-metrics">
-                                <div>
-                                    <span>Next run</span>
-                                    <strong>{formatTimestamp(cronjob.next_run_at)}</strong>
+                                <div className="cronjob-schedule-metric">
+                                    <span>Schedule</span>
+                                    <strong>{formatCronjobSchedule(cronjob.schedule)}</strong>
+                                    <small>
+                                        {cronjob.schedule.timezone} · Next run: {formatCronjobTimestamp(cronjob.next_run_at)}
+                                    </small>
                                 </div>
                                 <div>
                                     <span>Job timeout</span>
@@ -309,7 +292,7 @@ export default function CronjobsSection() {
                                     <span>Latest run</span>
                                     <strong>
                                         {cronjob.latest_run
-                                            ? `${statusLabel(cronjob.latest_run.status)} at ${formatTimestamp(cronjob.latest_run.started_at)}`
+                                            ? `${statusLabel(cronjob.latest_run.status)} at ${formatCronjobTimestamp(cronjob.latest_run.started_at)}`
                                             : 'Never run'}
                                     </strong>
                                 </div>
@@ -396,7 +379,7 @@ export default function CronjobsSection() {
                                     >
                                         <div>
                                             <strong>{statusLabel(run.status)}</strong>
-                                            <span>{formatTimestamp(run.started_at)}</span>
+                                            <span>{formatCronjobTimestamp(run.started_at)}</span>
                                         </div>
                                         <p>{cronjobRunSummaryText(run.summary)}</p>
                                     </button>

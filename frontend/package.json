@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "axios": "^1.13.5",
+    "cronstrue": "^3.14.0",
     "monaco-editor": "^0.52.2",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
@@ -30,9 +31,9 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
+    "ts-prune": "^0.10.3",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.4",
-    "ts-prune": "^0.10.3",
     "vite": "^7.2.4"
   }
 }

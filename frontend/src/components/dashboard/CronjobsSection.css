@@ -183,6 +183,18 @@
   font-size: 0.88rem;
 }
 
+.cronjob-schedule-metric strong {
+  font-size: 0.95rem;
+}
+
+.cronjob-schedule-metric small {
+  display: block;
+  margin-top: 0.35rem;
+  color: #8f8f8f;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
 .cronjob-run-summary {
   display: grid;
   grid-template-columns: auto 1fr;
