@@ -1,3 +1,4 @@
+import type { ComponentPropsWithoutRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Part, PermissionRequest } from '../../../types/chat';
@@ -23,6 +24,14 @@ type DirectoryTranscript = {
     path: string;
     entries: string[];
     totalCount: number;
+};
+
+const markdownComponents = {
+    table: ({ children, ...props }: ComponentPropsWithoutRef<'table'>) => (
+        <div className="markdown-table-scroll">
+            <table {...props}>{children}</table>
+        </div>
+    )
 };
 
 function stripToolCallNarration(text: string): string {
@@ -154,7 +163,7 @@ export default function MessagePart({
             return (
                 <div className="markdown-content">
                     {remainingText && (
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                             {remainingText}
                         </ReactMarkdown>
                     )}
@@ -177,7 +186,7 @@ export default function MessagePart({
 
         return (
             <div className="markdown-content">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                     {sanitizedText}
                 </ReactMarkdown>
             </div>
@@ -194,7 +203,7 @@ export default function MessagePart({
             if (!message) return null;
             return (
                 <div className="markdown-content">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                         {message}
                     </ReactMarkdown>
                 </div>
