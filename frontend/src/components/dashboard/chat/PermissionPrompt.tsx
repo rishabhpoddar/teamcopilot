@@ -23,7 +23,15 @@ export default function PermissionPrompt({ permission, submitting, onRespond }: 
                     onClick={() => onRespond("once")}
                     disabled={submitting}
                 >
-                    Allow Once
+                    Allow once
+                </button>
+                <button
+                    type="button"
+                    className="permission-btn allow-always"
+                    onClick={() => onRespond("always")}
+                    disabled={submitting}
+                >
+                    Allow always in this session
                 </button>
                 <button
                     type="button"

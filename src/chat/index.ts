@@ -1340,12 +1340,32 @@ router.post('/sessions/:id/permission-response', apiHandler(async (req, res) => 
     });
 
     if (customPendingPermission) {
-        // Update our custom permission status
-        await prisma.tool_execution_permissions.update({
-            where: { id: customPendingPermission.id },
-            data: {
-                status: response === 'reject' ? 'rejected' : 'approved',
-                responded_at: BigInt(Date.now())
+        await prisma.$transaction(async (tx) => {
+            await tx.tool_execution_permissions.update({
+                where: { id: customPendingPermission.id },
+                data: {
+                    status: response === 'reject' ? 'rejected' : 'approved',
+                    responded_at: BigInt(Date.now())
+                }
+            });
+
+            if (response === 'always' && customPendingPermission.workflow_slug) {
+                await tx.workflow_session_allowed_runs.upsert({
+                    where: {
+                        opencode_session_id_workflow_slug: {
+                            opencode_session_id: session.opencode_session_id,
+                            workflow_slug: customPendingPermission.workflow_slug
+                        }
+                    },
+                    create: {
+                        opencode_session_id: session.opencode_session_id,
+                        workflow_slug: customPendingPermission.workflow_slug,
+                        created_at: BigInt(Date.now())
+                    },
+                    update: {
+                        created_at: BigInt(Date.now())
+                    }
+                });
             }
         });
 

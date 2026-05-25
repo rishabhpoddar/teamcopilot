@@ -7,6 +7,7 @@ import prisma from "../prisma/client";
 import { isWorkflowSessionInterrupted } from "./workflow-interruption";
 import { normalizeSecretKeyList, resolveGlobalSecrets, resolveSecretsForUser } from "./secrets";
 import { validateWorkflowSecretContract } from "./secret-contract-validation";
+import { isWorkflowAllowedAlwaysInSession } from "./workflow-session-allowlist";
 
 const MAX_OUTPUT_CHARS = 300_000;
 const SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -161,10 +162,20 @@ function inputsToArgs(inputs: Record<string, string | number | boolean>): string
     return args;
 }
 
-async function requestWorkflowPermission(opencodeSessionId: string, messageId: string, callId: string): Promise<void> {
+async function requestWorkflowPermission(
+    opencodeSessionId: string,
+    workflowSlug: string,
+    messageId: string,
+    callId: string
+): Promise<void> {
+    if (await isWorkflowAllowedAlwaysInSession(opencodeSessionId, workflowSlug)) {
+        return;
+    }
+
     const permission = await prisma.tool_execution_permissions.create({
         data: {
             opencode_session_id: opencodeSessionId,
+            workflow_slug: workflowSlug,
             message_id: messageId,
             call_id: callId,
             status: "pending",
@@ -369,7 +380,7 @@ export async function startWorkflowRunViaBackend(options: {
     await assertPathExists(getVenvPythonPath(workflowPath));
 
     if (options.requirePermissionPrompt) {
-        await requestWorkflowPermission(options.sessionId, options.messageId, options.callId);
+        await requestWorkflowPermission(options.sessionId, options.slug, options.messageId, options.callId);
     }
 
     const workflowJsonContent = await fsp.readFile(path.join(workflowPath, "workflow.json"), "utf-8");
