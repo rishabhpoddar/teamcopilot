@@ -553,6 +553,7 @@ export default function ToolCallDisplay({
                             key={permission.id}
                             permission={permission}
                             submitting={Boolean(respondingPermissionIds[permission.id])}
+                            canAlwaysAllow={typeof permission.workflow_slug === 'string' && permission.workflow_slug.length > 0}
                             onRespond={(response) => onPermissionRespond(permission.id, response)}
                         />
                     ))}

@@ -214,6 +214,7 @@ model chat_session_tracked_files {
 model tool_execution_permissions {
   id                  String  @id @default(uuid())
   opencode_session_id String
+  workflow_slug       String?
   message_id          String
   call_id             String
   status              String // "pending" | "approved" | "rejected"
@@ -222,6 +223,16 @@ model tool_execution_permissions {
 
   @@unique([opencode_session_id, message_id, call_id])
   @@index([opencode_session_id, status])
+  @@index([opencode_session_id, workflow_slug])
+}
+
+model workflow_session_allowed_runs {
+  opencode_session_id String
+  workflow_slug       String
+  created_at          BigInt
+
+  @@id([opencode_session_id, workflow_slug])
+  @@index([workflow_slug])
 }
 
 model resource_metadata {
