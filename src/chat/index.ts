@@ -1164,6 +1164,7 @@ router.get('/sessions/:id/pending-permission', apiHandler(async (req, res) => {
         patterns: string[];
         metadata: Record<string, unknown>;
         always: string[];
+        workflow_slug?: string;
         tool: {
             messageID: string;
             callID: string;
@@ -1208,6 +1209,7 @@ router.get('/sessions/:id/pending-permission', apiHandler(async (req, res) => {
             patterns: [],
             metadata: {},
             always: [],
+            workflow_slug: customPendingPermission.workflow_slug ?? undefined,
             tool: {
                 messageID: customPendingPermission.message_id,
                 callID: customPendingPermission.call_id
@@ -1340,6 +1342,13 @@ router.post('/sessions/:id/permission-response', apiHandler(async (req, res) => 
     });
 
     if (customPendingPermission) {
+        if (response === 'always' && !customPendingPermission.workflow_slug) {
+            throw {
+                status: 400,
+                message: 'Allow always in this session is only supported for workflow run permissions'
+            };
+        }
+
         await prisma.$transaction(async (tx) => {
             await tx.tool_execution_permissions.update({
                 where: { id: customPendingPermission.id },
@@ -1379,6 +1388,12 @@ router.post('/sessions/:id/permission-response', apiHandler(async (req, res) => 
     }
 
     // Otherwise treat it as an opencode-native permission ID and reply directly.
+    if (response === 'always') {
+        throw {
+            status: 400,
+            message: 'Allow always in this session is only supported for workflow run permissions'
+        };
+    }
     await replyToPendingPermission(session.opencode_session_id, permission_id, response);
 
     await prisma.chat_sessions.update({

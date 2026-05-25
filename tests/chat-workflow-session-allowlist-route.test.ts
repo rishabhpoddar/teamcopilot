@@ -105,6 +105,33 @@ async function main(): Promise<void> {
         assert.equal(allowlistEntry?.opencode_session_id, session.opencode_session_id);
         assert.equal(allowlistEntry?.workflow_slug, workflowSlug);
 
+        const customPermission = await prisma.tool_execution_permissions.create({
+            data: {
+                opencode_session_id: session.opencode_session_id,
+                message_id: `message-custom-${Date.now()}`,
+                call_id: `call-custom-${Date.now()}`,
+                status: "pending",
+                created_at: now,
+            },
+        });
+
+        await request(app)
+            .post(`/api/chat/sessions/${session.id}/permission-response`)
+            .set("Authorization", `Bearer ${session.opencode_session_id}`)
+            .send({
+                permission_id: customPermission.id,
+                response: "always",
+            })
+            .expect(400)
+            .expect((response) => {
+                assert.equal(response.body.message, "Allow always in this session is only supported for workflow run permissions");
+            });
+
+        const unchangedCustomPermission = await prisma.tool_execution_permissions.findUnique({
+            where: { id: customPermission.id },
+        });
+        assert.equal(unchangedCustomPermission?.status, "pending");
+
         console.log("Chat workflow session allowlist route tests passed");
     } finally {
         await prisma.$disconnect();

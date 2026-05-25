@@ -4,9 +4,10 @@ interface PermissionPromptProps {
     permission: PermissionRequest;
     submitting: boolean;
     onRespond: (response: "once" | "always" | "reject") => void;
+    canAlwaysAllow: boolean;
 }
 
-export default function PermissionPrompt({ permission, submitting, onRespond }: PermissionPromptProps) {
+export default function PermissionPrompt({ permission, submitting, onRespond, canAlwaysAllow }: PermissionPromptProps) {
     const hasPatterns = permission.patterns.length > 0;
     const description = hasPatterns
         ? `${permission.permission} permission requested for ${permission.patterns.join(", ")}`
@@ -25,14 +26,16 @@ export default function PermissionPrompt({ permission, submitting, onRespond }: 
                 >
                     Allow once
                 </button>
-                <button
-                    type="button"
-                    className="permission-btn allow-always"
-                    onClick={() => onRespond("always")}
-                    disabled={submitting}
-                >
-                    Allow always in this session
-                </button>
+                {canAlwaysAllow && (
+                    <button
+                        type="button"
+                        className="permission-btn allow-always"
+                        onClick={() => onRespond("always")}
+                        disabled={submitting}
+                    >
+                        Allow always in this session
+                    </button>
+                )}
                 <button
                     type="button"
                     className="permission-btn deny"

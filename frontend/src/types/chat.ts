@@ -289,6 +289,7 @@ export interface PermissionRequest {
     patterns: string[];
     metadata: Record<string, unknown>;
     always: string[];
+    workflow_slug?: string;
     tool: {
         messageID: string;
         callID: string;
