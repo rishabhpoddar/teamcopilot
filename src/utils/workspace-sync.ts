@@ -7,6 +7,7 @@ import crypto from "crypto";
 import { assertEnv } from "./assert";
 import { getPackageRoot, getPrismaSchemaPath, getWorkspaceTemplateDirectory } from "./runtime-paths";
 import { PrismaClient } from "../../prisma/generated/client";
+import { OPENCODE_AI_TARBALL_URL } from "./opencode-release";
 
 interface IgnoreRuleSet {
     basePath: string;
@@ -270,7 +271,7 @@ async function initializeWorkspaceNodeDependencies(workspaceDir: string): Promis
         : {};
     const dependencies = {
         ...(existingPackageJson.dependencies ?? {}),
-        "opencode-ai": "1.3.7",
+        "opencode-ai": OPENCODE_AI_TARBALL_URL,
     };
     const opencodeModelProvider = (assertEnv("OPENCODE_MODEL").split("/")[0] ?? "").toLowerCase();
     if (opencodeModelProvider === "azure-openai") {

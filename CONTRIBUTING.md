@@ -19,7 +19,9 @@ npm install
 cd ..
 ```
 
-If you are setting up the local OpenCode fork used by TeamCopilot, clone and build it separately too:
+TeamCopilot installs its forked OpenCode runtime from GitHub release tarballs, so you do not need any extra OpenCode setup for normal app development.
+
+If you are working on the OpenCode runtime itself, clone and build the local fork separately too:
 
 ```bash
 git clone https://github.com/rishabhpoddar/opencode.git opencode-fork
@@ -47,13 +49,15 @@ Default values in `.env.example`:
 
 Adjust these if needed before starting the app.
 
-If you are using the repo-local OpenCode fork, set `OPENCODE_BIN_PATH` in `.env` to:
+If you are using the repo-local OpenCode fork while developing the runtime, set `OPENCODE_BIN_PATH` in `.env` to:
 
 ```bash
 OPENCODE_BIN_PATH=/Users/rishabhpoddar/Desktop/trythisapp/teamcopilot/opencode-fork/packages/opencode/dist/opencode-darwin-arm64/bin/opencode
 ```
 
 `opencode-fork/` is ignored by git in this repo, so it stays local to your machine.
+
+The TeamCopilot runtime itself is pinned to the release assets in `src/utils/opencode-release.ts`, so normal installs use the published GitHub tarballs automatically.
 
 ### Run in development mode
 
