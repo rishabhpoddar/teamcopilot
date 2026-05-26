@@ -429,32 +429,6 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value)
 }
 
-function collectReferencedEnvKeys(value: unknown, found: Set<string>): void {
-  if (typeof value === "string") {
-    let match: RegExpExecArray | null
-    SECRET_ENV_REFERENCE_PATTERN.lastIndex = 0
-    while ((match = SECRET_ENV_REFERENCE_PATTERN.exec(value)) !== null) {
-      found.add(match[1]!)
-    }
-    return
-  }
-
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      collectReferencedEnvKeys(item, found)
-    }
-    return
-  }
-
-  if (!isPlainObject(value)) {
-    return
-  }
-
-  for (const nestedValue of Object.values(value)) {
-    collectReferencedEnvKeys(nestedValue, found)
-  }
-}
-
 function assertNoAgentAuthoredSecretEnvReference(value: unknown): void {
   if (typeof value === "string") {
         if (AGENT_VISIBLE_SECRET_ENV_REFERENCE_PATTERN.test(value)) {
@@ -566,41 +540,6 @@ export const SecretProxyPlugin: Plugin = async ({ client }) => {
     return payload.secret_map ?? {}
   }
 
-  async function rewriteStringFieldsInPlace(
-    value: unknown,
-    cache: Map<string, { rewritten: string; referencedKeys: string[] }>,
-  ): Promise<void> {
-    if (typeof value === "string") {
-      return
-    }
-
-    if (Array.isArray(value)) {
-      for (let index = 0; index < value.length; index += 1) {
-        const item = value[index]
-        if (typeof item === "string") {
-          const rewritten = await maybeRewriteSupportedString(item, cache)
-          value[index] = rewritten.rewritten
-          continue
-        }
-        await rewriteStringFieldsInPlace(item, cache)
-      }
-      return
-    }
-
-    if (!isPlainObject(value)) {
-      return
-    }
-
-    for (const [key, nestedValue] of Object.entries(value)) {
-      if (typeof nestedValue === "string") {
-        const rewritten = await maybeRewriteSupportedString(nestedValue, cache)
-        value[key] = rewritten.rewritten
-        continue
-      }
-      await rewriteStringFieldsInPlace(nestedValue, cache)
-    }
-  }
-
   async function maybeRewriteSupportedString(
     text: string,
     cache: Map<string, { rewritten: string; referencedKeys: string[] }>,
@@ -625,6 +564,30 @@ export const SecretProxyPlugin: Plugin = async ({ client }) => {
     }
     cache.set(text, rewritten)
     return rewritten
+  }
+
+  async function rewriteShellCommandAndArgs(
+    command: string,
+    args: string[],
+    cache: Map<string, { rewritten: string; referencedKeys: string[] }>,
+  ): Promise<{ command: string; args: string[]; referencedKeys: string[] }> {
+    const rewrittenCommand = await maybeRewriteSupportedString(command, cache)
+    const rewrittenArgs: string[] = []
+    const referencedKeys = new Set(rewrittenCommand.referencedKeys)
+
+    for (const arg of args) {
+      const rewritten = await maybeRewriteSupportedString(arg, cache)
+      rewrittenArgs.push(rewritten.rewritten)
+      for (const key of rewritten.referencedKeys) {
+        referencedKeys.add(key)
+      }
+    }
+
+    return {
+      command: rewrittenCommand.rewritten,
+      args: rewrittenArgs,
+      referencedKeys: Array.from(referencedKeys).sort(),
+    }
   }
 
   function rewriteTokenInner(inner: string): { rewrittenInner: string; referencedKeys: string[] } {
@@ -948,66 +911,26 @@ export const SecretProxyPlugin: Plugin = async ({ client }) => {
   }
 
   return {
-    "command.execute.before": async (input) => {
+    "shell.command.before": async (input, output) => {
       const sessionID = typeof input.sessionID === "string" ? input.sessionID.trim() : ""
       if (!sessionID) {
         return
       }
 
       assertNoAgentAuthoredSecretEnvReference(input.command)
-      assertNoAgentAuthoredSecretEnvReference(input.arguments)
+      assertNoAgentAuthoredSecretEnvReference(input.args)
 
       const commandCache = new Map<string, { rewritten: string; referencedKeys: string[] }>()
-      const commandHasPlaceholder = typeof input.command === "string" && input.command.includes("{{SECRET:")
-      const argumentsHasPlaceholder = typeof input.arguments === "string" && input.arguments.includes("{{SECRET:")
-      if (commandHasPlaceholder || argumentsHasPlaceholder) {
-        const originalCommand = typeof input.command === "string" ? input.command : ""
-        const originalArguments = typeof input.arguments === "string" ? input.arguments : ""
-        const fullCommand = originalArguments.trim().length > 0
-          ? `${originalCommand} ${originalArguments}`
-          : originalCommand
-        const rewritten = await maybeRewriteSupportedString(fullCommand, commandCache)
-        const prefix = `${originalCommand} `
+      const rewritten = await rewriteShellCommandAndArgs(input.command, input.args, commandCache)
+      output.command = rewritten.command
+      output.args = rewritten.args
 
-        if (rewritten.rewritten === fullCommand) {
-          input.command = originalCommand
-          input.arguments = originalArguments
-        } else if ((isCurlExecutableToken(originalCommand) || isGitExecutableToken(originalCommand)) && rewritten.rewritten.startsWith(prefix)) {
-          input.arguments = rewritten.rewritten.slice(prefix.length)
-        } else {
-          input.command = rewritten.rewritten
-          input.arguments = ""
-        }
-      }
-
-      const fullCommand = input.arguments.trim().length > 0
-        ? `${input.command} ${input.arguments}`
-        : input.command
-      const referencedKeys = new Set<string>()
-      collectReferencedEnvKeys(fullCommand, referencedKeys)
-      rememberPendingEnvKeysForSession(sessionID, Array.from(referencedKeys).sort())
-    },
-    "tool.execute.before": async (input, output) => {
-      if (input.tool !== "bash") {
+      if (input.callID) {
+        rememberPendingEnvKeysForCall(input.callID, rewritten.referencedKeys)
         return
       }
 
-      const sessionID = typeof input.sessionID === "string" ? input.sessionID.trim() : ""
-      if (!sessionID) {
-        return
-      }
-
-      assertNoAgentAuthoredSecretEnvReference(input.args)
-      assertNoAgentAuthoredSecretEnvReference(output.args)
-
-      const cache = new Map<string, { rewritten: string; referencedKeys: string[] }>()
-      await rewriteStringFieldsInPlace(output.args, cache)
-      await rewriteStringFieldsInPlace(input.args, cache)
-
-      const referencedKeys = new Set<string>()
-      collectReferencedEnvKeys(input.args, referencedKeys)
-      collectReferencedEnvKeys(output.args, referencedKeys)
-      rememberPendingEnvKeysForCall(input.callID, Array.from(referencedKeys).sort())
+      rememberPendingEnvKeysForSession(sessionID, rewritten.referencedKeys)
     },
     "shell.env": async (input, output) => {
       const sessionID = typeof input.sessionID === "string" ? input.sessionID.trim() : ""
