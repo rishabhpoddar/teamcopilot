@@ -19,6 +19,16 @@ npm install
 cd ..
 ```
 
+If you are setting up the local OpenCode fork used by TeamCopilot, clone and build it separately too:
+
+```bash
+git clone https://github.com/rishabhpoddar/opencode.git opencode-fork
+cd opencode-fork
+bun install
+bun run --cwd packages/opencode build
+cd ..
+```
+
 ### Configure the environment
 
 Create a local `.env` in the repo root:
@@ -36,6 +46,14 @@ Default values in `.env.example`:
 - `OPENCODE_MODEL=openai/gpt-5.3-codex`
 
 Adjust these if needed before starting the app.
+
+If you are using the repo-local OpenCode fork, set `OPENCODE_BIN_PATH` in `.env` to:
+
+```bash
+OPENCODE_BIN_PATH=/Users/rishabhpoddar/Desktop/trythisapp/teamcopilot/opencode-fork/packages/opencode/dist/opencode-darwin-arm64/bin/opencode
+```
+
+`opencode-fork/` is ignored by git in this repo, so it stays local to your machine.
 
 ### Run in development mode
 
