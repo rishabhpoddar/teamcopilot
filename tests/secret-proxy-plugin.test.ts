@@ -14,6 +14,7 @@ type ShellCommandCase = {
     output: {
         command: string;
         args: string[];
+        env: Record<string, string>;
     };
 };
 
@@ -119,6 +120,7 @@ const hooks = await mod.SecretProxyPlugin({
 const shellOutput = {
   command: payload.input.command,
   args: [...payload.input.args],
+  env: {},
 };
 
 try {
@@ -132,27 +134,18 @@ try {
     },
     shellOutput,
   );
-  const shellEnv = { env: {} };
-  await hooks["shell.env"](
-    {
-      sessionID: payload.input.sessionID,
-      cwd: payload.input.cwd,
-      callID: payload.input.callID,
-    },
-    shellEnv,
-  );
   console.log(JSON.stringify({
     input: payload.input,
     output: shellOutput,
     fetchCalls,
-    shellEnv: shellEnv.env,
+    shellEnv: shellOutput.env,
   }));
 } catch (err) {
   console.log(JSON.stringify({
     input: payload.input,
     output: shellOutput,
     fetchCalls,
-    shellEnv: {},
+    shellEnv: shellOutput.env,
     error: err instanceof Error ? err.message : String(err),
   }));
 }
@@ -254,8 +247,8 @@ for (const hookCase of payload) {
   const shellOutput = {
     command: hookCase.input.command,
     args: [...hookCase.input.args],
+    env: {},
   };
-  const shellEnv = { env: {} };
   try {
     await hooks["shell.command.before"](
       {
@@ -267,24 +260,16 @@ for (const hookCase of payload) {
       },
       shellOutput,
     );
-    await hooks["shell.env"](
-      {
-        sessionID: hookCase.input.sessionID,
-        cwd: hookCase.input.cwd,
-        callID: hookCase.input.callID,
-      },
-      shellEnv,
-    );
     steps.push({
       input: hookCase.input,
       output: shellOutput,
-      shellEnv: shellEnv.env,
+      shellEnv: shellOutput.env,
     });
   } catch (err) {
     steps.push({
       input: hookCase.input,
       output: shellOutput,
-      shellEnv: shellEnv.env,
+      shellEnv: shellOutput.env,
       error: err instanceof Error ? err.message : String(err),
     });
   }
@@ -372,6 +357,7 @@ function shellCase(
         output: {
             command: expectedCommand,
             args: expectedArgs,
+            env: {},
         },
         expectedCommand,
         expectedArgs,
@@ -1040,24 +1026,15 @@ const shellCommand = {
   sessionID: "child-session",
   callID: "exec-1",
 };
-const shellOutput = { command: shellCommand.command, args: shellCommand.args };
+const shellOutput = { command: shellCommand.command, args: shellCommand.args, env: {} };
 
 await hooks["shell.command.before"](shellCommand, shellOutput);
-const shellEnv = { env: {} };
-await hooks["shell.env"](
-  {
-    sessionID: "child-session",
-    cwd: process.cwd(),
-    callID: "exec-1",
-  },
-  shellEnv,
-);
 
 const executionResult = await new Promise((resolve, reject) => {
   const child = spawn("bash", ["-lc", shellOutput.command], {
     env: {
       ...process.env,
-      ...shellEnv.env,
+      ...shellOutput.env,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -1079,7 +1056,7 @@ await new Promise((resolve, reject) => server.close((error) => error ? reject(er
 
 console.log(JSON.stringify({
   rewrittenCommand: shellOutput.command,
-  shellEnv: shellEnv.env,
+  shellEnv: shellOutput.env,
   stdout: executionResult.stdout,
   stderr: executionResult.stderr,
   status: executionResult.status,

@@ -456,35 +456,6 @@ function assertNoAgentAuthoredSecretEnvReference(value: unknown): void {
 }
 
 export const SecretProxyPlugin: Plugin = async ({ client }) => {
-  const pendingEnvKeysByCall = new Map<string, string[]>()
-  const pendingEnvKeysBySession = new Map<string, string[]>()
-
-  function rememberPendingEnvKeysForCall(callID: string, keys: string[]): void {
-    if (keys.length === 0) {
-      return
-    }
-    pendingEnvKeysByCall.set(callID, keys)
-  }
-
-  function consumePendingEnvKeysForCall(callID: string): string[] {
-    const keys = pendingEnvKeysByCall.get(callID) ?? []
-    pendingEnvKeysByCall.delete(callID)
-    return keys
-  }
-
-  function rememberPendingEnvKeysForSession(sessionID: string, keys: string[]): void {
-    if (keys.length === 0) {
-      return
-    }
-    pendingEnvKeysBySession.set(sessionID, keys)
-  }
-
-  function consumePendingEnvKeysForSession(sessionID: string): string[] {
-    const keys = pendingEnvKeysBySession.get(sessionID) ?? []
-    pendingEnvKeysBySession.delete(sessionID)
-    return keys
-  }
-
   async function resolveRootSessionID(sessionID: string): Promise<string> {
     let currentSessionID = sessionID
 
@@ -925,41 +896,16 @@ export const SecretProxyPlugin: Plugin = async ({ client }) => {
       output.command = rewritten.command
       output.args = rewritten.args
 
-      if (input.callID) {
-        rememberPendingEnvKeysForCall(input.callID, rewritten.referencedKeys)
+      if (rewritten.referencedKeys.length === 0) {
         return
       }
 
-      rememberPendingEnvKeysForSession(sessionID, rewritten.referencedKeys)
-    },
-    "shell.env": async (input, output) => {
-      const sessionID = typeof input.sessionID === "string" ? input.sessionID.trim() : ""
-      if (!sessionID) {
-        return
-      }
-
-      const referencedKeys = new Set<string>()
-      const callID = typeof input.callID === "string" ? input.callID.trim() : ""
-      if (callID) {
-        for (const key of consumePendingEnvKeysForCall(callID)) {
-          referencedKeys.add(key)
-        }
-      }
-      if (referencedKeys.size === 0) {
-        for (const key of consumePendingEnvKeysForSession(sessionID)) {
-          referencedKeys.add(key)
-        }
-      }
-
-      if (referencedKeys.size === 0) {
-        return
-      }
-
-      const resolvedSecretMap = await resolveSecretMapForKeys(sessionID, Array.from(referencedKeys).sort())
+      const resolvedSecretMap = await resolveSecretMapForKeys(sessionID, rewritten.referencedKeys)
       for (const [key, value] of Object.entries(resolvedSecretMap)) {
         output.env[`${SECRET_ENV_PREFIX}${key}`] = value
       }
     },
+    "shell.env": async () => {},
   }
 }
 
