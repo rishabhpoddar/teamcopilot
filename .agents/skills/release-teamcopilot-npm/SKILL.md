@@ -7,6 +7,10 @@ description: Release TeamCopilot together with a new OpenCode fork asset update.
 
 Use this skill when the task is to ship a new TeamCopilot release.
 
+The preferred entry point is now:
+
+`npm run release:teamcopilot`
+
 There are two release modes:
 
 1. Release without any `opencode-fork` changes.
@@ -29,18 +33,18 @@ Workflow:
 1. Read `package.json` and confirm the current TeamCopilot `name` and `version`.
 2. Make sure the working tree is suitable for release. Do not hide or discard unrelated user changes.
 3. Verify the pinned OpenCode release URLs in `src/utils/opencode-release.ts` still point to the intended existing release tag.
-4. Regenerate lockfiles if TeamCopilot dependency pins changed:
-   - `npm install --package-lock-only`
-   - `cd src/workspace_files && npm install --package-lock-only`
-5. Run the normal TeamCopilot verification:
-   - `npm run test`
-   - `npm run build`
+4. Use `npm run release:teamcopilot` to refresh the lockfiles, run the checks, and publish the TeamCopilot package when ready.
+5. If you need to dry-run only, use `npm run release:teamcopilot -- --dry-run`.
 6. If the checks pass and the user wants the real release, publish the TeamCopilot package with npm.
 7. Create the matching git tag and GitHub release notes for the TeamCopilot release.
 
 Useful commands:
 - Check the release version:
   `node -p "require('./package.json').version"`
+- Run the TeamCopilot release workflow:
+  `npm run release:teamcopilot`
+- Run the TeamCopilot release workflow without publishing:
+  `npm run release:teamcopilot -- --dry-run`
 - Regenerate the root lockfile after dependency edits:
   `npm install --package-lock-only`
 - Regenerate the workspace lockfile after dependency edits:
@@ -76,30 +80,36 @@ Workflow:
 4. Build the OpenCode fork packages:
    - `bun run --cwd opencode-fork/packages/sdk/js build`
    - `bun run --cwd opencode-fork/packages/opencode build`
-5. Pack the release assets from the fork and upload them to the `rishabhpoddar/opencode` GitHub release tag used by TeamCopilot.
-6. Update the TeamCopilot release URL constants in `src/utils/opencode-release.ts` if the fork release tag changes.
-7. Update the root dependencies in `package.json` to point at the new GitHub tarball URLs for `@opencode-ai/sdk` and `opencode-ai`.
-8. Update the workspace bootstrap in `src/utils/workspace-sync.ts` and the workspace template in `src/workspace_files/package.json`.
-9. Regenerate the lockfiles:
+5. Prefer the repo-local release script instead of packing the tarballs by hand:
+   - `npm run release:opencode-fork`
+   - optional flags:
+     - `npm run release:opencode-fork -- --skip-teamcopilot`
+     - `npm run release:opencode-fork -- --skip-publish`
+     - `npm run release:opencode-fork -- --dry-run`
+6. If you are doing the release manually for any reason, pack the release assets from the fork and upload them to the `rishabhpoddar/opencode` GitHub release tag used by TeamCopilot.
+7. Update the TeamCopilot release URL constants in `src/utils/opencode-release.ts` if the fork release tag changes.
+8. Update the root dependencies in `package.json` to point at the new GitHub tarball URLs for `@opencode-ai/sdk` and `opencode-ai`.
+9. Update the workspace bootstrap in `src/utils/workspace-sync.ts` and the workspace template in `src/workspace_files/package.json`.
+10. Regenerate the lockfiles:
    - `npm install --package-lock-only`
    - `cd src/workspace_files && npm install --package-lock-only`
-10. Run the normal TeamCopilot verification:
+11. Run the normal TeamCopilot verification:
    - `npm run test`
    - `npm run build`
-11. If the checks pass and the user wants the real release, publish the TeamCopilot package with npm.
-12. Create the matching git tag and GitHub release notes for the TeamCopilot release.
+12. If the checks pass and the user wants the real release, publish the TeamCopilot package with npm.
+13. Create the matching git tag and GitHub release notes for the TeamCopilot release.
 
 Useful commands:
 - Build the OpenCode SDK package:
   `bun run --cwd opencode-fork/packages/sdk/js build`
 - Build the OpenCode CLI/runtime package:
   `bun run --cwd opencode-fork/packages/opencode build`
-- Pack the OpenCode SDK tarball:
-  `cd opencode-fork/packages/sdk/js && npm pack`
-- Pack the OpenCode runtime tarball:
-  `cd opencode-fork/packages/opencode && npm pack`
-- Upload release assets to GitHub:
-  `gh release create <tag> <opencode-ai.tgz> <opencode-ai-sdk.tgz> --repo rishabhpoddar/opencode --target teamcopilot-1.3.7-changes`
+- Run the full fork+TeamCopilot release flow:
+  `npm run release:teamcopilot -- --with-opencode-fork`
+- Run the fork release packaging flow only:
+  `npm run release:opencode-fork`
+- Run the fork release packaging flow without publishing the GitHub release yet:
+  `npm run release:opencode-fork -- --dry-run`
 - Regenerate the TeamCopilot root lockfile:
   `npm install --package-lock-only`
 - Regenerate the TeamCopilot workspace lockfile:
@@ -117,6 +127,8 @@ What to verify:
 - `@opencode-ai/sdk` in the root lockfile should resolve to the GitHub tarball URL.
 - `opencode-ai` in the root lockfile should resolve to the GitHub tarball URL.
 - `src/workspace_files/package-lock.json` should also resolve `opencode-ai` from the GitHub tarball URL.
+- `npm run release:teamcopilot -- --with-opencode-fork` should create the GitHub release assets and update TeamCopilot in one pass.
+- `npm run release:opencode-fork` should still create the GitHub release assets without leaving stale tarballs in the fork checkout.
 - `npm run build` must pass before publishing TeamCopilot.
 - `npm run test` must pass before publishing TeamCopilot.
 
@@ -124,6 +136,7 @@ What to verify:
 
 - Treat the TeamCopilot `package.json` version as the source of truth for the TeamCopilot release version.
 - Treat the OpenCode fork release tag as the source of truth only when a new fork build is being shipped.
+- Prefer `npm run release:teamcopilot` over manual lockfile regeneration and manifest updates.
 - Stop if `package-lock.json` top-level `version` or `packages[""].version` does not match `package.json`.
 - Prefer updating `src/utils/opencode-release.ts` instead of scattering release URLs through the codebase.
 - Do not leave stale npm registry URLs for `@opencode-ai/sdk` or `opencode-ai` in any lockfile or manifest.
