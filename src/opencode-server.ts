@@ -28,6 +28,12 @@ async function loadCreateOpencodeServer() {
     return sdk.createOpencodeServer;
 }
 
+function forceStableOpencodeDatabasePath(): void {
+    // Keep OpenCode on the workspace-wide database file even if a forked build
+    // embeds a non-latest channel string.
+    process.env.OPENCODE_DISABLE_CHANNEL_DB = "1";
+}
+
 async function killProcessOnPort(port: number): Promise<void> {
     try {
         const { stdout } = await execAsync(`lsof -ti:${port}`);
@@ -49,6 +55,7 @@ export async function startOpencodeServer() {
     }
 
     await syncManagedProviderConfiguration();
+    forceStableOpencodeDatabasePath();
 
     // Ensure plugins running inside opencode can resolve backend base URL from TEAMCOPILOT_PORT.
     process.env.TEAMCOPILOT_PORT = assertEnv("TEAMCOPILOT_PORT");

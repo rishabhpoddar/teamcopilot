@@ -139,6 +139,8 @@ function releaseForkIfRequested(repoRoot, args) {
     "notes",
     "release-dir",
     "release-tag",
+    "skip-publish",
+    "skip-teamcopilot",
   ];
   for (const flag of passthroughFlags) {
     if (args[flag] !== undefined) {

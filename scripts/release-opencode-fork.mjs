@@ -66,6 +66,29 @@ function copyFile(source, target) {
   fs.copyFileSync(source, target);
 }
 
+function rewriteSdkPackageForPack(packageJsonPath) {
+  const original = readJson(packageJsonPath);
+  const next = JSON.parse(JSON.stringify(original));
+
+  function transformExports(exports) {
+    for (const [key, value] of Object.entries(exports)) {
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        transformExports(value);
+      } else if (typeof value === "string") {
+        const file = value.replace("./src/", "./dist/").replace(/\.ts$/, "");
+        exports[key] = {
+          import: `${file}.js`,
+          types: `${file}.d.ts`,
+        };
+      }
+    }
+  }
+
+  transformExports(next.exports);
+  writeJson(packageJsonPath, next);
+  return original;
+}
+
 function listTgzFiles(dir) {
   return fs.readdirSync(dir).filter((entry) => entry.endsWith(".tgz"));
 }
@@ -111,7 +134,13 @@ try {
   console.log("Building OpenCode SDK package...");
   run("bun", ["run", "--cwd", sdkDir, "build"], repoRoot);
   cleanupTgzFiles(sdkDir);
-  run("npm", ["pack"], sdkDir);
+  const sdkPackageJsonPath = path.join(sdkDir, "package.json");
+  const sdkPackageJsonBackup = rewriteSdkPackageForPack(sdkPackageJsonPath);
+  try {
+    run("npm", ["pack"], sdkDir);
+  } finally {
+    writeJson(sdkPackageJsonPath, sdkPackageJsonBackup);
+  }
   const sdkTarballName = findSingleTgzFile(sdkDir);
   const sdkReleaseName = "opencode-ai-sdk.tgz";
   const sdkReleasePath = path.join(releaseDir, sdkReleaseName);
