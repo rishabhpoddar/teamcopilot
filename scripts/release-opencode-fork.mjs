@@ -196,7 +196,6 @@ try {
     },
     version: runtimeVersion,
     license: readJson(path.join(opencodeDir, "package.json")).license,
-    optionalDependencies: {},
   };
 
   copyFile(path.join(opencodeDir, "bin", "opencode"), path.join(runtimeReleaseDir, "bin", "opencode"));
@@ -214,17 +213,6 @@ try {
     cleanupPaths.add(path.join(fullPlatformDir, tarballName));
   }
 
-  runtimePackageJson.optionalDependencies = Object.fromEntries(
-    platformDirs.map((platformDir) => {
-      const tarballName = createdArtifacts
-        .map((filePath) => path.basename(filePath))
-        .find((entry) => entry.startsWith(`${platformDir}-`) && entry.endsWith(".tgz"));
-      if (!tarballName) {
-        throw new Error(`Missing tarball for ${platformDir}`);
-      }
-      return [platformDir, `file:./${tarballName}`];
-    }),
-  );
   writeJson(path.join(runtimeReleaseDir, "package.json"), runtimePackageJson);
 
   for (const artifactPath of createdArtifacts.filter((filePath) => path.basename(filePath) !== sdkReleaseName)) {
