@@ -104,6 +104,22 @@ function ensureWorkspacePackageMatchesLockfile(packageJsonPath, packageLockPath)
   }
 }
 
+function ensureHttpsOpenCodeDependencies(packageJsonPath, workspacePackageJsonPath) {
+  const packageJson = readJson(packageJsonPath);
+  const workspacePackageJson = readJson(workspacePackageJsonPath);
+  const urls = [
+    ["root @opencode-ai/sdk", packageJson.dependencies?.["@opencode-ai/sdk"]],
+    ["root opencode-ai", packageJson.dependencies?.["opencode-ai"]],
+    ["workspace opencode-ai", workspacePackageJson.dependencies?.["opencode-ai"]],
+  ];
+
+  for (const [label, url] of urls) {
+    if (typeof url !== "string" || !url.startsWith("https://github.com/")) {
+      throw new Error(`${label} must point at a published https://github.com release tarball, got ${url ?? "missing"}`);
+    }
+  }
+}
+
 function refreshLockfiles(repoRoot) {
   console.log("Refreshing TeamCopilot lockfiles...");
   run("npm", ["install", "--package-lock-only"], repoRoot);
@@ -201,6 +217,7 @@ if (args["with-opencode-fork"] === "true") {
 
 ensureRootPackageMatchesLockfile(rootPackageJsonPath, rootPackageLockPath);
 ensureWorkspacePackageMatchesLockfile(workspacePackageJsonPath, workspacePackageLockPath);
+ensureHttpsOpenCodeDependencies(rootPackageJsonPath, workspacePackageJsonPath);
 
 if (args["skip-checks"] !== "true") {
   if (args["skip-publish"] !== "true" && args["dry-run"] !== "true") {

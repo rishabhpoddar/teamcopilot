@@ -19,6 +19,7 @@ There are two release modes:
 Do not invent or bump versions inside this skill unless the user explicitly asks for that.
 
 The TeamCopilot release must stop if `package.json` and `package-lock.json` do not match.
+For a real release, all OpenCode references must stay on published `https://github.com/...` tarball URLs. Never leave a `file:` OpenCode dependency in a release manifest or lockfile.
 
 ## Mode 1: Release Without OpenCode Fork Changes
 
@@ -62,6 +63,7 @@ What to verify:
 - `src/workspace_files/package-lock.json` should keep `opencode-ai` pointed at the currently pinned GitHub tarball URL.
 - `npm run build` must pass before publishing TeamCopilot.
 - `npm run test` must pass before publishing TeamCopilot.
+- Fresh installs and existing workspace migrations should rely on the launcher cache fallback. Do not recommend manual unpacking of the platform tarball into `node_modules`.
 
 ## Mode 2: Release With OpenCode Fork Changes
 
@@ -129,6 +131,7 @@ What to verify:
 - `src/workspace_files/package-lock.json` should also resolve `opencode-ai` from the GitHub tarball URL.
 - `npm run release:teamcopilot -- --with-opencode-fork` should create the GitHub release assets and update TeamCopilot in one pass.
 - `npm run release:opencode-fork` should still create the GitHub release assets without leaving stale tarballs in the fork checkout.
+- A TeamCopilot release should not point at local `file:` OpenCode artifacts. If you need to test with a local bundle, keep that outside the release path and never commit it.
 - `npm run build` must pass before publishing TeamCopilot.
 - `npm run test` must pass before publishing TeamCopilot.
 
@@ -140,6 +143,7 @@ What to verify:
 - Stop if `package-lock.json` top-level `version` or `packages[""].version` does not match `package.json`.
 - Prefer updating `src/utils/opencode-release.ts` instead of scattering release URLs through the codebase.
 - Do not leave stale npm registry URLs for `@opencode-ai/sdk` or `opencode-ai` in any lockfile or manifest.
+- Do not leave local `file:` OpenCode URLs in any release manifest or lockfile.
 - Do not use the local `opencode-fork` checkout as a release artifact path.
 - Do not publish if tests fail.
 - Do not publish if build fails.
