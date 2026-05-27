@@ -1,6 +1,6 @@
 {
   "dependencies": {
-    "opencode-ai": "https://github.com/rishabhpoddar/opencode/releases/download/teamcopilot-1.3.7-changes-202605261122/opencode-ai.tgz"
+    "opencode-ai": "https://github.com/rishabhpoddar/opencode/releases/download/teamcopilot-1.3.7-changes-202605271531/opencode-ai.tgz"
   },
   "devDependencies": {},
   "scripts": {}
