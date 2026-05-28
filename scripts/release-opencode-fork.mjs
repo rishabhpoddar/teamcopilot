@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 function parseArgs(argv) {
@@ -46,6 +46,88 @@ function run(command, args, cwd) {
     cwd,
     stdio: "inherit",
     env: process.env,
+  });
+}
+
+function runUntilStarted(command, args, cwd, readyPatterns, timeoutMs = 120000) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd,
+      env: process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let collectedOutput = "";
+    let readyCount = 0;
+    let settled = false;
+    let killed = false;
+    const readySeen = new Set();
+
+    const finish = (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      child.stdout?.off("data", onStdoutData);
+      child.stderr?.off("data", onStderrData);
+      child.off("error", onError);
+      child.off("exit", onExit);
+      if (error) reject(error);
+      else resolve();
+    };
+
+    const onStdoutData = (chunk) => {
+      const text = chunk.toString();
+      process.stdout.write(text);
+      collectedOutput += text;
+      for (const pattern of readyPatterns) {
+        if (!readySeen.has(pattern) && collectedOutput.includes(pattern)) {
+          readySeen.add(pattern);
+          readyCount++;
+        }
+      }
+      if (readyCount === readyPatterns.length && !killed) {
+        killed = true;
+        child.kill("SIGINT");
+      }
+    };
+
+    const onStderrData = (chunk) => {
+      process.stderr.write(chunk);
+    };
+
+    const onError = (error) => {
+      finish(error);
+    };
+
+    const onExit = (code, signal) => {
+      if (readyCount === readyPatterns.length) {
+        if (code === 0 || signal === "SIGINT") {
+          finish();
+          return;
+        }
+        finish(new Error(`Command ${command} exited unexpectedly after startup with code ${code ?? "null"} signal ${signal ?? "null"}`));
+        return;
+      }
+
+      finish(
+        new Error(
+          `Command ${command} exited before startup completed with code ${code ?? "null"} signal ${signal ?? "null"}.\n\nOutput:\n${collectedOutput}`,
+        ),
+      );
+    };
+
+    const timeout = setTimeout(() => {
+      if (!killed) {
+        killed = true;
+        child.kill("SIGINT");
+      }
+      finish(new Error(`Timed out waiting for ${readyPatterns.join(" and ")} after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    child.stdout?.on("data", onStdoutData);
+    child.stderr?.on("data", onStderrData);
+    child.on("error", onError);
+    child.on("exit", onExit);
   });
 }
 
@@ -290,6 +372,14 @@ try {
     console.log("Regenerating TeamCopilot lockfiles...");
     run("npm", ["install", "--package-lock-only"], repoRoot);
     run("npm", ["install", "--package-lock-only"], path.join(repoRoot, "src/workspace_files"));
+
+    console.log("Smoke testing TeamCopilot dev startup...");
+    await runUntilStarted(
+      "npm",
+      ["run", "dev"],
+      repoRoot,
+      ["Opencode server running at", "Server running at http://"],
+    );
   } else {
     console.log("Skipping TeamCopilot URL and lockfile updates");
   }

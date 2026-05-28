@@ -55,6 +55,18 @@ function runCapture(command, args, cwd) {
   }).trim();
 }
 
+function ensureGitPreflight(repoRoot) {
+  const branch = runCapture("git", ["branch", "--show-current"], repoRoot);
+  if (branch !== "main") {
+    throw new Error(`TeamCopilot releases must be cut from main, but current branch is ${branch || "(detached HEAD)"}`);
+  }
+
+  const status = runCapture("git", ["status", "--porcelain"], repoRoot);
+  if (status.length > 0) {
+    throw new Error(`TeamCopilot release requires a clean git status. Current changes:\n${status}`);
+  }
+}
+
 function ensureRootPackageMatchesLockfile(packageJsonPath, packageLockPath) {
   const packageJson = readJson(packageJsonPath);
   const packageLock = readJson(packageLockPath);
@@ -223,6 +235,7 @@ dotenv.config({ path: path.join(repoRoot, ".env") });
 console.log(`TeamCopilot release root: ${repoRoot}`);
 console.log(`TeamCopilot version: ${readJson(rootPackageJsonPath).version}`);
 
+ensureGitPreflight(repoRoot);
 configureNpmAuth(repoRoot);
 
 if (args["with-opencode-fork"] === "true") {
