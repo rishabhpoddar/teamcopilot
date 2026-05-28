@@ -10,3 +10,5 @@ prisma/generated/
 marketing_docs
 .DS_Store
 .playwright-mcp
+opencode-fork
+teamcopilot-*.*.*.tgz

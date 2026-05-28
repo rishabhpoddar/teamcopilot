@@ -19,6 +19,18 @@ npm install
 cd ..
 ```
 
+TeamCopilot installs its forked OpenCode runtime from GitHub release tarballs, so you do not need any extra OpenCode setup for normal app development.
+
+If you are working on the OpenCode runtime itself, clone and build the local fork separately too:
+
+```bash
+git clone https://github.com/rishabhpoddar/opencode.git opencode-fork
+cd opencode-fork
+bun install
+bun run --cwd packages/opencode build
+cd ..
+```
+
 ### Configure the environment
 
 Create a local `.env` in the repo root:
@@ -36,6 +48,16 @@ Default values in `.env.example`:
 - `OPENCODE_MODEL=openai/gpt-5.3-codex`
 
 Adjust these if needed before starting the app.
+
+If you are using the repo-local OpenCode fork while developing the runtime, set `OPENCODE_BIN_PATH` in `.env` to:
+
+```bash
+OPENCODE_BIN_PATH=/Users/rishabhpoddar/Desktop/trythisapp/teamcopilot/opencode-fork/packages/opencode/dist/opencode-darwin-arm64/bin/opencode
+```
+
+`opencode-fork/` is ignored by git in this repo, so it stays local to your machine.
+
+The TeamCopilot runtime itself is pinned to the release assets in `src/utils/opencode-release.ts`, so normal installs use the published GitHub tarballs automatically.
 
 ### Run in development mode
 
@@ -119,7 +141,25 @@ Use /release-teamcopilot-npm to dry-run the next npm release.
 Use /release-teamcopilot-npm to publish the current package.json version to npm, then create the matching GitHub release.
 ```
 
-The skill enforces these release checks:
+The preferred command is now:
+
+```bash
+npm run release:teamcopilot
+```
+
+Add `--with-opencode-fork` when the release includes a new OpenCode fork build:
+
+```bash
+npm run release:teamcopilot -- --with-opencode-fork
+```
+
+Use `--dry-run` to exercise the full release flow without publishing:
+
+```bash
+npm run release:teamcopilot -- --dry-run
+```
+
+The command handles the lockfile refresh, test/build checks, and npm publish step for you. The skill still enforces these release checks:
 
 - `package.json` and `package-lock.json` versions must match
 - `npm whoami` must return `trythisapp`
@@ -127,7 +167,13 @@ The skill enforces these release checks:
 - `npm run build` must pass
 - `npm pack --json` must succeed
 
-For the `trythisapp` npm account, the recommended release flow is a full dry run first, then a second publish step with `--skip-checks --otp <fresh-code>` so the TOTP code is still valid when `npm publish` runs.
+For the `trythisapp` npm account, the recommended release flow is a full dry run first, then a second publish step with:
+
+```bash
+npm run release:teamcopilot -- --skip-checks --otp <fresh-code>
+```
+
+That keeps the TOTP code fresh for the final publish step while still using the same release wrapper.
 
 After a successful npm publish, the skill also creates a GitHub tag matching the package version and uses `gh` to create the GitHub release notes from changes since the previous release.
 

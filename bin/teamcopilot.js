@@ -4,6 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const { execFileSync, spawn } = require("child_process");
 const { createInterface } = require("node:readline/promises");
+const { pathToFileURL } = require("url");
 const dotenv = require("dotenv");
 
 const packageRoot = path.resolve(__dirname, "..");
@@ -139,8 +140,53 @@ function parseExistingPackageJson() {
     return JSON.parse(fs.readFileSync(localPackageJsonPath, "utf-8"));
 }
 
-function ensureLocalPackagePinned() {
+function findPackageLockPath(startDirectory) {
+    let currentDirectory = startDirectory;
+    while (true) {
+        const packageLockPath = path.join(currentDirectory, "package-lock.json");
+        if (fs.existsSync(packageLockPath)) {
+            return packageLockPath;
+        }
+
+        const nestedPackageLockPath = path.join(currentDirectory, "node_modules", ".package-lock.json");
+        if (fs.existsSync(nestedPackageLockPath)) {
+            return nestedPackageLockPath;
+        }
+
+        const parentDirectory = path.dirname(currentDirectory);
+        if (parentDirectory === currentDirectory) {
+            return null;
+        }
+        currentDirectory = parentDirectory;
+    }
+}
+
+function getTeamCopilotInstallSpec(startDirectory = packageRoot) {
     const cliPackage = getCliPackageMetadata();
+    const packageLockPath = findPackageLockPath(startDirectory);
+    if (!packageLockPath) {
+        return cliPackage.version;
+    }
+
+    const packageLock = JSON.parse(fs.readFileSync(packageLockPath, "utf-8"));
+    const resolved = packageLock.packages?.["node_modules/teamcopilot"]?.resolved;
+    if (typeof resolved !== "string" || resolved.trim().length === 0) {
+        return cliPackage.version;
+    }
+
+    if (!resolved.startsWith("file:")) {
+        return cliPackage.version;
+    }
+
+    const filePath = resolved.slice("file:".length);
+    const absolutePath = path.isAbsolute(filePath)
+        ? filePath
+        : path.resolve(path.dirname(packageLockPath), filePath);
+    return pathToFileURL(absolutePath).href;
+}
+
+function ensureLocalPackagePinned() {
+    const installSpec = getTeamCopilotInstallSpec();
     const existingPackageJson = parseExistingPackageJson();
     const nextPackageJson = existingPackageJson ?? {
         name: path.basename(currentDirectory) || "teamcopilot-workspace",
@@ -149,7 +195,7 @@ function ensureLocalPackagePinned() {
     const existingDependencies = nextPackageJson.dependencies ?? {};
     nextPackageJson.dependencies = {
         ...existingDependencies,
-        teamcopilot: cliPackage.version,
+        teamcopilot: installSpec,
     };
 
     fs.writeFileSync(localPackageJsonPath, `${JSON.stringify(nextPackageJson, null, 2)}\n`, "utf-8");
@@ -291,7 +337,7 @@ async function runInit(argv) {
     const values = await promptForEnvValues(defaultValues, existingValues, flags);
     upsertEnvFile(values);
     ensureLocalPackagePinned();
-    console.log(`Init completed. Pinned teamcopilot@${getCliPackageMetadata().version} locally. Please run "npx teamcopilot start" to start the service`);
+    console.log(`Init completed. Pinned teamcopilot@${getTeamCopilotInstallSpec()} locally. Please run "npx teamcopilot start" to start the service`);
 }
 
 async function main() {
@@ -325,5 +371,6 @@ if (require.main === module) {
 
 module.exports = {
     REQUIRED_RUNTIME_ENV_KEYS,
+    getTeamCopilotInstallSpec,
     loadAndValidateLocalEnv,
 };

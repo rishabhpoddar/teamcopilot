@@ -13,7 +13,7 @@ Use this whenever changing `opencode-ai`, `@opencode-ai/sdk`, `@opencode-ai/plug
 
 ## Version Pins And Workspace Bootstrap
 
-- [ ] Update root dependencies in `package.json`: `opencode-ai` and `@opencode-ai/sdk`.
+- [ ] Update root dependencies in `package.json`: `opencode-ai` and `@opencode-ai/sdk` release tarball URLs.
 - [ ] Update workspace package generation in `src/utils/workspace-sync.ts`, including the hardcoded `opencode-ai` version and provider package versions.
 - [ ] Update `src/workspace_files/package.json` and `src/workspace_files/package-lock.json`.
 - [ ] Update `.opencode` plugin runtime pins in `src/workspace_files/.opencode/package.json` and `src/workspace_files/.opencode/package-lock.json`, especially `@opencode-ai/plugin`.
