@@ -910,6 +910,7 @@ async function main(): Promise<void> {
             output: {
                 command: "curl -H \"X-Api-Key: ${__TEAMCOPILOT_RUNTIME_SECRET_MISSING_KEY}\" https://example.com",
                 args: [],
+                env: {},
             },
         },
         {
@@ -923,6 +924,7 @@ async function main(): Promise<void> {
             output: {
                 command: "echo hello-world",
                 args: [],
+                env: {},
             },
         },
     ]);
