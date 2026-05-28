@@ -5,6 +5,7 @@ import path from "node:path";
 import process from "node:process";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import dotenv from "dotenv";
 
 function parseArgs(argv) {
   const args = {};
@@ -133,6 +134,19 @@ function validateNpmAuth(repoRoot) {
   }
 }
 
+function configureNpmAuth(repoRoot) {
+  const token = process.env.NPM_TOKEN ?? process.env.NODE_AUTH_TOKEN;
+  if (!token) {
+    throw new Error(
+      `Missing npm auth token. Set NPM_TOKEN or NODE_AUTH_TOKEN in ${path.relative(process.cwd(), path.join(repoRoot, ".env"))} or the environment.`,
+    );
+  }
+
+  const npmrcPath = path.join(os.tmpdir(), `teamcopilot-npmrc-${process.pid}`);
+  fs.writeFileSync(npmrcPath, `//registry.npmjs.org/:_authToken=${token}\n`);
+  process.env.NPM_CONFIG_USERCONFIG = npmrcPath;
+}
+
 function validatePack(repoRoot) {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "teamcopilot-pack-"));
   try {
@@ -204,8 +218,12 @@ const rootPackageLockPath = path.join(repoRoot, "package-lock.json");
 const workspacePackageJsonPath = path.join(repoRoot, "src/workspace_files/package.json");
 const workspacePackageLockPath = path.join(repoRoot, "src/workspace_files/package-lock.json");
 
+dotenv.config({ path: path.join(repoRoot, ".env") });
+
 console.log(`TeamCopilot release root: ${repoRoot}`);
 console.log(`TeamCopilot version: ${readJson(rootPackageJsonPath).version}`);
+
+configureNpmAuth(repoRoot);
 
 if (args["with-opencode-fork"] === "true") {
   releaseForkIfRequested(repoRoot, args);
