@@ -14,8 +14,8 @@ The minimal foundation is:
 Everything else should be a protocol on top of those primitives:
 
 - Structured workflow results.
-- Agent-mediated user conversations with rerun args.
-- Workflow-to-workflow composition with rerun args.
+- Blocking workflow helper calls for agent-mediated user conversations.
+- Blocking workflow helper calls for workflow-to-workflow composition.
 - Agent-authored draft resources.
 
 This avoids a large provider-specific monitor framework while still allowing WhatsApp bots, log monitors, GitHub bots, internal APIs, polling jobs, and approval workflows.
@@ -123,18 +123,18 @@ Examples:
 - Generate a report.
 - Send a Slack message.
 
-Workflows keep using args the same way they do today. If a workflow needs the user, it returns `ask_user(instruction_to_agent, user_id)` with a plain-English instruction that tells the agent what to ask and how to rerun the workflow with updated args.
+Workflows keep using args the same way they do today. If a workflow needs the user, it calls `ask_user(instruction_to_agent, user_id)` and blocks until the user replies. If a workflow needs another workflow, it calls `call_workflow(slug, args)` and blocks until that workflow finishes.
 
-This version does not add a separate workflow state file or file-path argument. The workflow contract stays on args plus the structured `ask_user` / `success` / `fail` outputs.
+This version does not add a separate workflow state file, file-path argument, or continuation args. The Python process keeps its local call stack while helper calls wait.
 
 ## Workflow Composition
 
-A workflow should be able to start another workflow, stop itself, and then continue later with the child workflow's terminal result.
+A workflow should be able to call another workflow and consume its terminal result while preserving local Python context.
 
 Minimal helper:
 
 ```python
-workflow.call_workflow("child-workflow-slug", {
+result = workflow.call_workflow("child-workflow-slug", {
     "customer_id": "123",
     "order_id": "456"
 })
@@ -142,32 +142,29 @@ workflow.call_workflow("child-workflow-slug", {
 
 Behavior:
 
-- The current workflow process stops immediately.
+- The current workflow process stays alive.
 - TeamCopilot starts the child workflow with the provided args.
 - If the child workflow returns `ask_user`, TeamCopilot handles that interaction and continues the child until it reaches a terminal state.
-- When the child workflow reaches a terminal state, TeamCopilot reruns the parent workflow.
-- The parent workflow receives the child result in a reserved continuation argument.
+- The parent workflow helper polls TeamCopilot until the child reaches a terminal state.
+- The helper returns the child result to the parent workflow.
+- TeamCopilot stores the intermediate child result in the DB while the parent is waiting.
+- TeamCopilot clears the intermediate child result after the parent workflow finishes.
 
 The child workflow's terminal result is one of:
 
 - `success`
 - `failed`
 
-The parent workflow never receives a live child process handle. It only receives the final result payload after TeamCopilot restarts it.
-
-Reserved continuation argument format:
+Returned result format:
 
 ```json
 {
-  "type": "workflow_call_result",
   "call_id": "call_123",
   "called_workflow_slug": "child-workflow-slug",
   "called_run_id": "run_456",
-  "result": {
-    "status": "success",
-    "output": {
-      "label": "billing"
-    }
+  "status": "success",
+  "output": {
+    "label": "billing"
   }
 }
 ```
@@ -176,34 +173,29 @@ Failed child result:
 
 ```json
 {
-  "type": "workflow_call_result",
   "call_id": "call_123",
   "called_workflow_slug": "child-workflow-slug",
   "called_run_id": "run_456",
-  "result": {
-    "status": "failed",
-    "error": "Could not classify message"
-  }
+  "status": "failed",
+  "error": "Could not classify message"
 }
 ```
 
 Parent workflow shape:
 
 ```python
-continuation = workflow.call_args().get("__teamcopilot_continuation")
+result = workflow.call_workflow("child-workflow-slug", {"message": text})
 
-if continuation:
-    result = continuation["result"]
-    if result["status"] == "success":
-        label = result["output"]["label"]
-        ...
-    else:
-        workflow.fail(result["error"])
+if result["status"] == "success":
+    label = result["output"]["label"]
+    ...
 else:
-    workflow.call_workflow("child-workflow-slug", {"message": text})
+    workflow.fail(result["error"])
 ```
 
-This keeps composition explicit and lets workflows build on each other without introducing a synchronous return API.
+This keeps workflow code natural. Loops, local variables, and exception handling stay intact because the parent process is not restarted.
+
+Intermediate child workflow results are runtime bookkeeping, not durable workflow output. They should be deleted after the parent workflow reaches `success` or `failed`.
 
 ## Primitive 4: Durable State
 
@@ -252,7 +244,7 @@ The namespace should be implicit from the caller, for example `service:whatsapp-
 
 ## Workflow Result Protocol
 
-All workflows should be able to return one of these structured results:
+Workflow terminal results should be structured:
 
 ```ts
 type WorkflowResult =
@@ -263,11 +255,6 @@ type WorkflowResult =
   | {
       status: "failed";
       error: string;
-    }
-  | {
-      status: "ask_user";
-      user_id: string;
-      instruction_to_agent: string;
     };
 ```
 
@@ -280,48 +267,52 @@ from teamcopilot import workflow
 
 ctx = workflow.context()
 
-workflow.ask_user("""
+reply = workflow.ask_user("""
 Ask the user what reply should be sent.
-After they answer, rerun this workflow with:
-{
-  "from": "+15551234567",
-  "message": "Can you check my order?",
-  "replacement_reply": "<user answer>"
-}
 """, user_id="user_123")
+
+child_result = workflow.call_workflow("classify-message", {
+    "message": reply
+})
+
 workflow.success({"ok": True})
 workflow.fail("Could not process request")
 ```
 
 ## Ask User
 
-When a workflow returns `ask_user`, TeamCopilot stores the instruction, opens or reuses an agent chat session for the specified user, and stops the workflow process.
+When a workflow calls `ask_user`, TeamCopilot stores the instruction in the DB, opens or reuses an agent chat session for the specified user, and the workflow helper polls until the user replies.
 
-The workflow does not need to manage pause state itself. The workflow should encode everything the agent needs to know in `instruction_to_agent`, including:
+The workflow should encode everything the agent needs to know in `instruction_to_agent`, including:
 
 - The question the agent should ask the user.
 - The user id of the person the agent should ask.
-- The exact rerun args to use after the user answers.
 - Any context the agent needs to continue correctly.
 - Any branch-specific instructions for the user reply.
 
-Suggested run status:
+Suggested parent run status while blocked:
 
 ```text
-paused
+waiting_for_user
 ```
 
-Continuation:
+Behavior:
 
 ```text
-workflow returns ask_user
-  -> TeamCopilot stores the instruction on the workflow run
+workflow calls ask_user
+  -> TeamCopilot stores the instruction in the DB
   -> agent asks the user identified by the instruction
   -> user replies in the agent chat
-  -> agent reruns the workflow with the args specified in the instruction
+  -> TeamCopilot stores the reply in the DB
+  -> workflow helper polling sees the reply
+  -> workflow helper returns the reply string to the script
+  -> workflow script continues from the same stack frame
+  -> TeamCopilot clears the intermediate reply after the workflow finishes
 ```
 
-This is durable and restart-safe.
+This preserves local Python state. It is less restart-durable than the previous state-machine design, but it is much simpler for workflow authors.
+
+Intermediate user replies are runtime bookkeeping, not durable workflow output. They should be deleted after the workflow reaches `success` or `failed`.
 
 ## Hosted Service API
 
@@ -383,7 +374,7 @@ The agent creates:
 
 - `services/whatsapp-listener/` for the webhook.
 - `workflows/process-whatsapp-message/` for processing.
-- Workflow logic that returns `ask_user` with rerun args when the user needs to be involved.
+- Workflow logic that calls `ask_user` when the user needs to be involved.
 - Workflow logic that includes the target `user_id` in `ask_user`.
 - State usage for dedupe and external thread mapping.
 - Required secret declarations.
@@ -399,7 +390,7 @@ The agent creates:
 - A cronjob.
 - A workflow that scans logs.
 - State usage for last log offset.
-- Workflow logic that returns `ask_user` with rerun args when the alert needs user confirmation.
+- Workflow logic that calls `ask_user` when the alert needs user confirmation.
 - Workflow logic that includes the target `user_id` in `ask_user`.
 - Required secret declarations.
 
@@ -421,7 +412,7 @@ Rules:
 - Workflows need approval before unattended execution.
 - Cronjobs need approval before scheduled execution.
 - Required secrets must be present before execution.
-- Workflows can only ask the user through `ask_user`; the agent handles the conversation and rerun.
+- Workflows can only ask the user through `ask_user`; the agent handles the conversation and returns the reply to the blocked workflow helper.
 
 ## Use Cases
 
@@ -435,11 +426,11 @@ hosted service receives WhatsApp webhook
   -> service dedupes message id with durable state
   -> service runs process-whatsapp-message workflow
   -> workflow drafts a reply
-  -> workflow returns ask_user with instructions for the agent
+  -> workflow calls ask_user with instructions for the agent
   -> TeamCopilot opens or reuses an agent chat session
   -> agent asks the user what should happen next
   -> user replies in chat
-  -> agent reruns the workflow with the args from the instruction
+  -> workflow receives the reply and continues
 ```
 
 Primitives used:
@@ -447,7 +438,7 @@ Primitives used:
 - Hosted service for webhook.
 - Workflow for message processing.
 - Durable state for dedupe and thread mapping.
-- Agent chat for user interaction and rerun.
+- Agent chat for user interaction.
 
 2. Server log monitor
 
@@ -457,7 +448,7 @@ cronjob runs every 5 minutes
   -> workflow fetches new logs over SSH or HTTP
   -> workflow updates last offset
   -> workflow returns success if no issue
-  -> workflow returns ask_user if the agent should confirm an alert or ask for a next step
+  -> workflow calls ask_user if the agent should confirm an alert or ask for a next step
 ```
 
 Primitives used:
@@ -474,9 +465,9 @@ hosted service receives GitHub webhook
   -> service dedupes delivery id with durable state
   -> service runs review-pr workflow
   -> workflow checks changed files and runs tests
-  -> workflow returns ask_user with instructions for the review conversation
+  -> workflow calls ask_user with instructions for the review conversation
   -> user replies in the agent chat
-  -> agent reruns the workflow or posts the comment as instructed
+  -> workflow receives the reply and continues
 ```
 
 Primitives used:
@@ -492,7 +483,7 @@ Primitives used:
 cronjob runs every morning
   -> workflow queries database/API
   -> workflow generates report
-  -> workflow returns ask_user if the agent should confirm the report or ask where to send it
+  -> workflow calls ask_user if the agent should confirm the report or ask where to send it
 ```
 
 Primitives used:
@@ -509,7 +500,7 @@ hosted service receives Stripe webhook
   -> service dedupes event id with durable state
   -> service runs payment-failure workflow
   -> workflow checks customer context
-  -> workflow either returns success or ask_user with instructions for the follow-up conversation
+  -> workflow either returns success or calls ask_user with instructions for the follow-up conversation
 ```
 
 Primitives used:
@@ -546,7 +537,7 @@ cronjob runs hourly
   -> workflow compares against expected schema in repo
   -> workflow stores last seen drift hash in state
   -> workflow returns success if unchanged
-  -> workflow returns ask_user if the agent should confirm creating an issue
+  -> workflow calls ask_user if the agent should confirm creating an issue
 ```
 
 Primitives used:
@@ -582,10 +573,10 @@ hosted service exposes upload endpoint
   -> user/system uploads a file
   -> service writes file into workspace or managed storage
   -> service runs process-upload workflow
-  -> workflow extracts data and returns ask_user if ambiguous
+  -> workflow extracts data and calls ask_user if ambiguous
   -> agent asks the user for clarification
   -> user replies
-  -> agent reruns the workflow with the clarified args
+  -> workflow receives the clarification and continues
 ```
 
 Primitives used:
@@ -602,10 +593,10 @@ hosted service receives monitoring webhook
   -> service dedupes alert fingerprint with durable state
   -> service runs incident-assessment workflow
   -> workflow checks logs, metrics, and recent deploys
-  -> workflow returns ask_user if it needs an operator decision
+  -> workflow calls ask_user if it needs an operator decision
   -> agent asks the user
   -> user answers in chat
-  -> agent reruns the workflow or triggers the next step
+  -> workflow receives the answer and continues
 ```
 
 Primitives used:
@@ -618,9 +609,9 @@ Primitives used:
 ## Implementation Order
 
 1. Add structured workflow results.
-2. Add `ask_user` handling and agent rerun flow.
+2. Add blocking `ask_user` handling with helper polling and DB-backed intermediate replies.
 3. Add `automation_state`.
-4. Add `call_workflow` continuation handling and reserved continuation args.
+4. Add blocking `call_workflow` handling with helper polling and DB-backed intermediate child results.
 5. Add a minimal workflow helper library with `call_workflow`, `ask_user`, `success`, and `fail`.
 6. Add user lookup tools for the agent.
 7. Add hosted service resource loading from `services/<slug>/service.json`.
@@ -634,8 +625,8 @@ Primitives used:
 The smallest useful slice is:
 
 - Structured workflow results.
-- `ask_user` and agent rerun flow.
-- `call_workflow` and parent workflow continuation.
+- Blocking `ask_user`.
+- Blocking `call_workflow`.
 - Durable state.
 
 The next slice is:
