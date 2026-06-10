@@ -122,7 +122,9 @@ Examples:
 - Generate a report.
 - Send a Slack message.
 
-Workflows keep using args the same way they do today. If a workflow needs the user, it returns `ask_user` with a plain-English instruction that tells the agent what to ask and how to rerun the workflow with updated args.
+Workflows keep using args the same way they do today. If a workflow needs the user, it returns `ask_user(instruction_to_agent, user_id)` with a plain-English instruction that tells the agent what to ask and how to rerun the workflow with updated args.
+
+This version does not add a separate workflow state file or file-path argument. The workflow contract stays on args plus the structured `ask_user` / `success` / `fail` outputs.
 
 ## Primitive 4: Durable State
 
@@ -185,6 +187,7 @@ type WorkflowResult =
     }
   | {
       status: "ask_user";
+      user_id: string;
       instruction_to_agent: string;
     };
 ```
@@ -206,18 +209,19 @@ After they answer, rerun this workflow with:
   "message": "Can you check my order?",
   "replacement_reply": "<user answer>"
 }
-""")
+""", user_id="user_123")
 workflow.success({"ok": True})
 workflow.fail("Could not process request")
 ```
 
 ## Ask User
 
-When a workflow returns `ask_user`, TeamCopilot stores the instruction, opens or reuses an agent chat session, and stops the workflow process.
+When a workflow returns `ask_user`, TeamCopilot stores the instruction, opens or reuses an agent chat session for the specified user, and stops the workflow process.
 
 The workflow does not need to manage pause state itself. The workflow should encode everything the agent needs to know in `instruction_to_agent`, including:
 
 - The question the agent should ask the user.
+- The user id of the person the agent should ask.
 - The exact rerun args to use after the user answers.
 - Any context the agent needs to continue correctly.
 - Any branch-specific instructions for the user reply.
@@ -233,7 +237,7 @@ Continuation:
 ```text
 workflow returns ask_user
   -> TeamCopilot stores the instruction on the workflow run
-  -> agent asks the user the question from the instruction
+  -> agent asks the user identified by the instruction
   -> user replies in the agent chat
   -> agent reruns the workflow with the args specified in the instruction
 ```
@@ -283,6 +287,13 @@ def webhook(request):
 
 The AI agent composes these primitives.
 
+It also needs a user lookup tool so it can resolve the `user_id` before writing a workflow that calls `ask_user`.
+
+Minimum agent-facing user tools:
+
+- `list_users`: list users in TeamCopilot with id, name, email, and role.
+- `find_user`: search users by name or email and return matching ids.
+
 For:
 
 ```text
@@ -294,6 +305,7 @@ The agent creates:
 - `services/whatsapp-listener/` for the webhook.
 - `workflows/process-whatsapp-message/` for processing.
 - Workflow logic that returns `ask_user` with rerun args when the user needs to be involved.
+- Workflow logic that includes the target `user_id` in `ask_user`.
 - State usage for dedupe and external thread mapping.
 - Required secret declarations.
 
@@ -309,6 +321,7 @@ The agent creates:
 - A workflow that scans logs.
 - State usage for last log offset.
 - Workflow logic that returns `ask_user` with rerun args when the alert needs user confirmation.
+- Workflow logic that includes the target `user_id` in `ask_user`.
 - Required secret declarations.
 
 Agent-authored resources start as drafts. They become runnable only after validation, missing-secret checks, and approval.
@@ -529,11 +542,12 @@ Primitives used:
 2. Add `ask_user` handling and agent rerun flow.
 3. Add `automation_state`.
 4. Add a minimal workflow helper library with `ask_user`, `success`, and `fail`.
-5. Add hosted service resource loading from `services/<slug>/service.json`.
-6. Add service process manager with manual start, stop, restart, logs, approval checks, and secret injection.
-7. Add reverse proxy routing for approved services.
-8. Add minimal service helper API: `run_workflow`, `state.get`, `state.set`.
-9. Let the agent create service, workflow, and cronjob drafts.
+5. Add user lookup tools for the agent.
+6. Add hosted service resource loading from `services/<slug>/service.json`.
+7. Add service process manager with manual start, stop, restart, logs, approval checks, and secret injection.
+8. Add reverse proxy routing for approved services.
+9. Add minimal service helper API: `run_workflow`, `state.get`, `state.set`.
+10. Let the agent create service, workflow, and cronjob drafts.
 
 ## First Slice
 
