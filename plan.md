@@ -15,6 +15,7 @@ Everything else should be a protocol on top of those primitives:
 
 - Structured workflow results.
 - Agent-mediated user conversations with rerun args.
+- Workflow-to-workflow composition with rerun args.
 - Agent-authored draft resources.
 
 This avoids a large provider-specific monitor framework while still allowing WhatsApp bots, log monitors, GitHub bots, internal APIs, polling jobs, and approval workflows.
@@ -125,6 +126,84 @@ Examples:
 Workflows keep using args the same way they do today. If a workflow needs the user, it returns `ask_user(instruction_to_agent, user_id)` with a plain-English instruction that tells the agent what to ask and how to rerun the workflow with updated args.
 
 This version does not add a separate workflow state file or file-path argument. The workflow contract stays on args plus the structured `ask_user` / `success` / `fail` outputs.
+
+## Workflow Composition
+
+A workflow should be able to start another workflow, stop itself, and then continue later with the child workflow's terminal result.
+
+Minimal helper:
+
+```python
+workflow.call_workflow("child-workflow-slug", {
+    "customer_id": "123",
+    "order_id": "456"
+})
+```
+
+Behavior:
+
+- The current workflow process stops immediately.
+- TeamCopilot starts the child workflow with the provided args.
+- If the child workflow returns `ask_user`, TeamCopilot handles that interaction and continues the child until it reaches a terminal state.
+- When the child workflow reaches a terminal state, TeamCopilot reruns the parent workflow.
+- The parent workflow receives the child result in a reserved continuation argument.
+
+The child workflow's terminal result is one of:
+
+- `success`
+- `failed`
+
+The parent workflow never receives a live child process handle. It only receives the final result payload after TeamCopilot restarts it.
+
+Reserved continuation argument format:
+
+```json
+{
+  "type": "workflow_call_result",
+  "call_id": "call_123",
+  "called_workflow_slug": "child-workflow-slug",
+  "called_run_id": "run_456",
+  "result": {
+    "status": "success",
+    "output": {
+      "label": "billing"
+    }
+  }
+}
+```
+
+Failed child result:
+
+```json
+{
+  "type": "workflow_call_result",
+  "call_id": "call_123",
+  "called_workflow_slug": "child-workflow-slug",
+  "called_run_id": "run_456",
+  "result": {
+    "status": "failed",
+    "error": "Could not classify message"
+  }
+}
+```
+
+Parent workflow shape:
+
+```python
+continuation = workflow.call_args().get("__teamcopilot_continuation")
+
+if continuation:
+    result = continuation["result"]
+    if result["status"] == "success":
+        label = result["output"]["label"]
+        ...
+    else:
+        workflow.fail(result["error"])
+else:
+    workflow.call_workflow("child-workflow-slug", {"message": text})
+```
+
+This keeps composition explicit and lets workflows build on each other without introducing a synchronous return API.
 
 ## Primitive 4: Durable State
 
@@ -541,13 +620,14 @@ Primitives used:
 1. Add structured workflow results.
 2. Add `ask_user` handling and agent rerun flow.
 3. Add `automation_state`.
-4. Add a minimal workflow helper library with `ask_user`, `success`, and `fail`.
-5. Add user lookup tools for the agent.
-6. Add hosted service resource loading from `services/<slug>/service.json`.
-7. Add service process manager with manual start, stop, restart, logs, approval checks, and secret injection.
-8. Add reverse proxy routing for approved services.
-9. Add minimal service helper API: `run_workflow`, `state.get`, `state.set`.
-10. Let the agent create service, workflow, and cronjob drafts.
+4. Add `call_workflow` continuation handling and reserved continuation args.
+5. Add a minimal workflow helper library with `call_workflow`, `ask_user`, `success`, and `fail`.
+6. Add user lookup tools for the agent.
+7. Add hosted service resource loading from `services/<slug>/service.json`.
+8. Add service process manager with manual start, stop, restart, logs, approval checks, and secret injection.
+9. Add reverse proxy routing for approved services.
+10. Add minimal service helper API: `run_workflow`, `state.get`, `state.set`.
+11. Let the agent create service, workflow, and cronjob drafts.
 
 ## First Slice
 
@@ -555,6 +635,7 @@ The smallest useful slice is:
 
 - Structured workflow results.
 - `ask_user` and agent rerun flow.
+- `call_workflow` and parent workflow continuation.
 - Durable state.
 
 The next slice is:
