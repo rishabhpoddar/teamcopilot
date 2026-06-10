@@ -49,10 +49,48 @@ Examples:
 Scheduled jobs should be able to:
 
 - Run a workflow.
-- Prompt an agent.
+- Run an agent session with the existing todo-driven cronjob loop.
 - Call a hosted service.
 
 We should reuse the existing cronjob system rather than building a new scheduler.
+
+Cronjobs should keep two first-class target modes:
+
+```text
+workflow target:
+  deterministic scheduled code
+
+agent target:
+  scheduled OpenCode agent session with the custom todo protocol and user handoff
+```
+
+The current `target_type = "prompt"` path maps to the agent target. It should remain because it supports scheduled autonomous agent work, todo planning, hidden sessions, `askCronjobUser`, reveal-to-user, pause, resume, and final review.
+
+The main cleanup needed is saved todos. Today initial todo steps are encoded into the prompt text. Replace that with real database rows.
+
+Suggested table:
+
+```prisma
+model cronjob_todo_templates {
+  id          String @id @default(uuid())
+  cronjob_id  String
+  content     String
+  position    Int
+  created_at  BigInt
+  updated_at  BigInt
+
+  @@index([cronjob_id, position])
+}
+```
+
+Behavior:
+
+- `cronjobs.prompt` stores only the user-facing task prompt.
+- `cronjob_todo_templates` stores saved initial todo steps for future runs.
+- When an agent cronjob run starts, TeamCopilot copies templates into `cronjob_run_todos`.
+- Runtime todo changes still live in `cronjob_run_todos`.
+- Existing base64/encoded todo prompts should be migrated into `cronjob_todo_templates` and then removed from the prompt.
+- New cronjob create/update APIs should accept `initial_todos` as a structured array, not as encoded prompt content.
 
 ## Primitive 2: Hosted Services
 
@@ -614,11 +652,12 @@ Primitives used:
 4. Add blocking `call_workflow` handling with helper polling and DB-backed intermediate child results.
 5. Add a minimal workflow helper library with `call_workflow`, `ask_user`, `success`, and `fail`.
 6. Add user lookup tools for the agent.
-7. Add hosted service resource loading from `services/<slug>/service.json`.
-8. Add service process manager with manual start, stop, restart, logs, approval checks, and secret injection.
-9. Add reverse proxy routing for approved services.
-10. Add minimal service helper API: `run_workflow`, `state.get`, `state.set`.
-11. Let the agent create service, workflow, and cronjob drafts.
+7. Add `cronjob_todo_templates` and migrate encoded prompt todos into structured rows.
+8. Add hosted service resource loading from `services/<slug>/service.json`.
+9. Add service process manager with manual start, stop, restart, logs, approval checks, and secret injection.
+10. Add reverse proxy routing for approved services.
+11. Add minimal service helper API: `run_workflow`, `state.get`, `state.set`.
+12. Let the agent create service, workflow, and cronjob drafts.
 
 ## First Slice
 
