@@ -1,281 +1,314 @@
-# Event Ingress, External Actions, and Resumable Workflows
+# Generic Automation Primitives
 
 ## Goal
 
-Introduce a clean way for TeamCopilot to receive external events, process them with static code, workflows, or AI agents, and perform external side effects such as sending WhatsApp replies with user approval when needed.
+TeamCopilot should let users build complex automations by talking to the AI agent, without the platform needing a special first-class abstraction for every integration.
 
-Primary use cases:
+The platform should expose a small set of powerful primitives:
 
-- Receive incoming WhatsApp messages.
-- Process events with normal code, workflows, or AI.
-- Ask a TeamCopilot user for approval before risky outbound actions.
-- Ask the user for replacement input when an action is rejected.
-- Continue the original automation from persisted state after the user replies.
-- Avoid creating a new visible user-agent chat session for every inbound event.
+- Scheduled jobs: run something later or repeatedly.
+- Hosted services: keep code running and reachable on an HTTP port.
+- Workflow runs: run finite scripts to completion.
+- Durable state: remember data across services, workflows, cron runs, restarts, and resumes.
+- Platform events and actions: let primitives communicate with TeamCopilot, users, and each other.
+
+Higher-level behavior such as WhatsApp monitors, log monitors, GitHub bots, internal webhooks, approval flows, and resumable workflows should be built out of these primitives.
 
 ## Design Principles
 
-- TeamCopilot owns the HTTP ingress surface. Do not start with arbitrary user-hosted servers.
-- External events are persisted before processing.
-- Workflows and agents are execution targets, not webhook endpoints themselves.
-- External side effects go through explicit pending action records.
-- User-facing chat sessions are created or revealed only when needed.
-- Workflow continuation is durable and restart-safe. Do not keep workflow processes alive while waiting for a user.
-- Filesystem-first resources remain the source of truth for handler definitions.
-- Secrets are declared and resolved by the platform, not embedded in workflow or handler files.
+- Keep the platform primitives small, generic, and composable.
+- Keep resources filesystem-first so the agent can create and modify them as normal files.
+- Require approval before newly authored code can run automatically or receive external traffic.
+- Inject secrets at runtime from declared contracts. Do not store secret values in resource files.
+- Make long waits durable. Do not keep workflow processes alive while waiting for a human.
+- Make side effects explicit through platform actions when approval or auditability matters.
+- Reuse the existing workflow, cronjob, chat, approval, and secret systems where they fit.
 
-## High-Level Architecture
+## Primitive 1: Scheduled Jobs
 
-```text
-External event
-  -> TeamCopilot managed ingress endpoint
-  -> verify auth/signature
-  -> normalize and persist event delivery
-  -> dispatch to event handler target
-      -> static handler
-      -> workflow run
-      -> AI agent processing
-  -> optional pending external action
-  -> optional user approval or user input
-  -> continuation from persisted state
-  -> external action execution
-```
+Scheduled jobs already exist as cronjobs. Keep them as the primitive for repeated or delayed execution.
 
-## Resource Model
-
-Add a new filesystem resource type:
+Purpose:
 
 ```text
-event-handlers/
-  whatsapp-inbound/
-    handler.json
-    run.py
-    README.md
+Run code on a schedule.
 ```
 
-Example `handler.json`:
+Examples:
+
+- Check server logs every 5 minutes.
+- Poll an API every hour.
+- Run a daily report.
+- Reconcile stale workflow runs.
+
+Scheduled jobs should be able to trigger:
+
+- A workflow run.
+- An agent prompt.
+- An HTTP call to a hosted service.
+- A platform event.
+
+The existing cronjob implementation can remain the user-facing scheduled-job feature. Over time, its internals can be simplified around the same platform event/action protocol described below.
+
+## Primitive 2: Hosted Services
+
+Hosted services are long-running processes managed by TeamCopilot.
+
+Purpose:
+
+```text
+Keep user-authored code running and optionally expose it through TeamCopilot HTTP routing.
+```
+
+Filesystem shape:
+
+```text
+services/
+  whatsapp-listener/
+    service.json
+    server.py
+    requirements.txt
+```
+
+Example `service.json`:
 
 ```json
 {
-  "name": "WhatsApp Inbound",
-  "trigger": {
-    "type": "webhook",
-    "path": "whatsapp/inbound",
-    "auth": {
-      "type": "hmac",
-      "secret": "WHATSAPP_WEBHOOK_SECRET"
-    }
+  "name": "WhatsApp Listener",
+  "entrypoint": "server.py",
+  "runtime": "python",
+  "port": 7001,
+  "http": {
+    "public_path": "/services/whatsapp-listener"
   },
-  "target": {
-    "type": "workflow",
-    "workflow_slug": "process-whatsapp-message"
-  },
-  "handoff": {
-    "create_session": "when_needed",
-    "approval_required_for": ["send_whatsapp_message"],
-    "auto_visible_on": ["rejected_action", "agent_question", "failed_processing"]
-  },
-  "required_secrets": ["WHATSAPP_ACCESS_TOKEN"],
-  "dedupe_key": "{{provider}}:{{message_id}}"
+  "required_secrets": ["WHATSAPP_WEBHOOK_SECRET", "WHATSAPP_ACCESS_TOKEN"],
+  "healthcheck": {
+    "path": "/health",
+    "interval_seconds": 30
+  }
 }
 ```
 
-Supported target types:
+TeamCopilot responsibilities:
 
-- `workflow`: run an existing workflow with normalized event input.
-- `agent`: process with a persistent hidden agent session for the external thread.
-- `static`: run handler-local code for deterministic processing.
-- `hybrid`: static code normalizes/routes, then starts a workflow or agent.
+- Allocate or validate a port.
+- Start, stop, and restart the service.
+- Inject declared secrets.
+- Capture logs.
+- Run healthchecks.
+- Reverse-proxy public paths to the local service.
+- Enforce approval before a service can start or receive external traffic.
+- Stop services when code changes invalidate approval.
 
-## Managed Webhook Ingress
+This unlocks:
 
-Add a backend route:
+- Webhook receivers.
+- Provider callback handlers.
+- Small internal APIs.
+- Long-running sync processes.
+- Custom protocol adapters.
+
+## Primitive 3: Workflow Runs
+
+Workflow runs already exist and should remain the primitive for finite code execution.
+
+Purpose:
 
 ```text
-POST /api/ingress/webhooks/:handlerSlug
+Run code now, finish, and return a structured result.
 ```
 
-Responsibilities:
+Examples:
 
-- Load and validate `event-handlers/<slug>/handler.json`.
-- Verify webhook auth or provider signature.
-- Normalize the provider payload into a TeamCopilot event shape.
-- Find or create the external thread.
-- Create an event delivery row.
-- Return quickly to the provider.
-- Dispatch processing asynchronously.
+- Process one incoming WhatsApp message.
+- Scan logs and classify errors.
+- Generate a report.
+- Send a Slack message.
+- Transform files in the workspace.
 
-The webhook request should not block on full processing. It should only verify, persist, enqueue, and return.
+Workflow runs should support a platform context file:
 
-## Persistent External Threads
+```text
+TEAMCOPILOT_CONTEXT_FILE=/tmp/teamcopilot-context-abc.json
+```
 
-External conversations should be tracked separately from TeamCopilot chat sessions.
+Example initial context:
 
-For WhatsApp, an external thread is usually one phone number or provider conversation id.
-
-```prisma
-model external_threads {
-  id                  String @id @default(uuid())
-  provider            String
-  external_thread_id  String
-  assigned_user_id    String?
-  session_id          String?
-  opencode_session_id String?
-  created_at          BigInt
-  updated_at          BigInt
-
-  @@unique([provider, external_thread_id])
+```json
+{
+  "mode": "initial",
+  "input": {
+    "message": "Can you check my order?",
+    "from": "+15551234567"
+  },
+  "source": {
+    "type": "service",
+    "slug": "whatsapp-listener",
+    "event_id": "evt_123"
+  }
 }
 ```
 
-Rules:
+Example resume context:
 
-- One `external_threads` row per external conversation.
-- At most one linked TeamCopilot chat session per external thread.
-- Inbound messages do not automatically create visible TeamCopilot sessions.
-- A hidden session may be created for agent memory.
-- The session becomes visible only when human input, approval, rejection handling, or failure escalation is needed.
+```json
+{
+  "mode": "resume",
+  "input": {
+    "message": "Can you check my order?",
+    "from": "+15551234567"
+  },
+  "resume": {
+    "wait_id": "wait_123",
+    "state": {
+      "step": "waiting_for_replacement_reply",
+      "to": "+15551234567",
+      "draft_reply": "Your order arrives tomorrow."
+    },
+    "user_input": "Tell them the order is delayed by one day."
+  }
+}
+```
 
-## Event Deliveries
+## Primitive 4: Durable State
 
-Each inbound or outbound provider event gets a durable record.
+Durable state is a small namespaced key-value store available to hosted services, workflows, cronjobs, and platform tools.
+
+Purpose:
+
+```text
+Remember data between runs and across restarts.
+```
+
+Examples:
+
+- Last log offset.
+- Last seen provider event id.
+- OAuth cursor.
+- Thread mapping.
+- Dedupe key.
+- Workflow resume state.
+- Service-local configuration.
+
+Suggested table:
 
 ```prisma
-model event_deliveries {
-  id                  String @id @default(uuid())
-  thread_id            String
-  handler_slug         String
-  provider             String
-  provider_event_id    String?
-  direction            String
-  payload_json         String
-  normalized_json      String?
-  status              String
-  processing_run_id    String?
-  workflow_run_id      String?
-  session_id           String?
-  opencode_session_id  String?
-  error_message        String?
-  received_at          BigInt
-  completed_at         BigInt?
+model automation_state {
+  namespace  String
+  key        String
+  value_json String
+  created_at BigInt
+  updated_at BigInt
 
-  @@unique([handler_slug, provider_event_id])
-  @@index([thread_id, received_at])
+  @@id([namespace, key])
+  @@index([namespace])
+}
+```
+
+Suggested helper API:
+
+```text
+state.get(namespace, key)
+state.set(namespace, key, value)
+state.delete(namespace, key)
+state.list(namespace, prefix)
+```
+
+Namespaces should map to resources:
+
+```text
+service:whatsapp-listener
+workflow:process-whatsapp-message
+cronjob:prod-log-check
+session:<chat-session-id>
+```
+
+The state store should be available through a platform helper library and internal authenticated APIs.
+
+## Primitive 5: Platform Events And Actions
+
+Events and actions are the communication protocol between primitives.
+
+Events describe something that happened:
+
+```json
+{
+  "type": "whatsapp.message.received",
+  "source": "service:whatsapp-listener",
+  "correlation_id": "whatsapp:+15551234567:wamid.123",
+  "payload": {
+    "from": "+15551234567",
+    "text": "Can you check my order?",
+    "message_id": "wamid.123"
+  }
+}
+```
+
+Actions request that TeamCopilot do something:
+
+```json
+{
+  "type": "send_whatsapp_message",
+  "approval": "required",
+  "payload": {
+    "to": "+15551234567",
+    "message": "Your order arrives tomorrow."
+  }
+}
+```
+
+Suggested tables:
+
+```prisma
+model automation_events {
+  id             String @id @default(uuid())
+  type           String
+  source         String
+  correlation_id String?
+  payload_json   String
+  status         String
+  created_at     BigInt
+  completed_at   BigInt?
+  error_message  String?
+
+  @@index([type])
+  @@index([source])
+  @@index([correlation_id])
+  @@index([status])
+}
+
+model automation_actions {
+  id                    String @id @default(uuid())
+  type                  String
+  source                String
+  status                String
+  approval              String
+  payload_json          String
+  resume_state_json     String?
+  session_id            String?
+  opencode_session_id   String?
+  created_at            BigInt
+  responded_by_user_id  String?
+  responded_at          BigInt?
+  executed_at           BigInt?
+  error_message         String?
+
+  @@index([type])
+  @@index([source])
   @@index([status])
 }
 ```
 
-Suggested statuses:
+Suggested event statuses:
 
-- `received`
+- `queued`
 - `processing`
 - `success`
 - `failed`
 - `waiting_for_user`
 - `waiting_for_approval`
 
-## Processing Runs
-
-An event delivery may create a processing run.
-
-```prisma
-model processing_runs {
-  id                  String @id @default(uuid())
-  thread_id            String
-  delivery_id          String
-  handler_slug         String
-  workflow_slug        String?
-  mode                String
-  status              String
-  session_id           String?
-  opencode_session_id  String?
-  started_at           BigInt
-  completed_at         BigInt?
-  error_message        String?
-}
-```
-
-Suggested modes:
-
-- `static`
-- `workflow`
-- `agent`
-
-Suggested statuses:
-
-- `running`
-- `success`
-- `failed`
-- `waiting_for_user`
-- `waiting_for_approval`
-
-## Persistent Hidden Agent Sessions
-
-For agent-based processing, prefer one persistent hidden OpenCode session per external thread.
-
-```text
-WhatsApp contact +15551234567
-  -> external_thread row
-  -> one hidden chat_session/opencode_session
-  -> all inbound messages are appended to that same session
-  -> session becomes visible only when needed
-```
-
-This avoids creating a new visible user-agent chat for every WhatsApp message while preserving conversation context.
-
-When escalation is needed:
-
-```text
-if external_thread.session_id exists:
-  reuse it
-else:
-  create hidden TeamCopilot chat session
-  save session_id and opencode_session_id on external_threads
-
-if user input is needed:
-  set chat_sessions.visible_to_user = true
-```
-
-## External Actions
-
-The AI or workflow should not directly perform risky external side effects. It should propose an external action.
-
-Example action:
-
-```json
-{
-  "action_type": "send_whatsapp_message",
-  "payload": {
-    "to": "+15551234567",
-    "message": "Your order is expected to arrive tomorrow by 6 PM."
-  }
-}
-```
-
-Add a generic pending action table:
-
-```prisma
-model pending_external_actions {
-  id                    String @id @default(uuid())
-  delivery_id            String?
-  processing_run_id      String?
-  session_id             String?
-  opencode_session_id    String?
-  action_type            String
-  status                String
-  title                 String
-  payload_json           String
-  resume_state_json      String?
-  created_by            String
-  created_at            BigInt
-  responded_by_user_id   String?
-  responded_at          BigInt?
-  executed_at           BigInt?
-  error_message         String?
-}
-```
-
-Suggested statuses:
+Suggested action statuses:
 
 - `pending`
 - `approved`
@@ -283,101 +316,9 @@ Suggested statuses:
 - `executed`
 - `failed`
 
-For the first implementation, support one action type:
+## Workflow Result Protocol
 
-```text
-send_whatsapp_message
-```
-
-Later this can generalize to:
-
-- `send_email`
-- `post_slack_message`
-- `create_github_issue`
-- `update_database_record`
-- `run_workflow`
-
-## Approval Flow
-
-When a workflow or agent proposes a WhatsApp reply:
-
-```text
-create pending_external_action
-mark processing_run waiting_for_approval
-mark event_delivery waiting_for_approval
-notify or reveal assigned user
-```
-
-Approve path:
-
-```text
-POST /api/external-actions/:id/approve
-```
-
-Backend should:
-
-- Mark the action as `approved`.
-- Execute it server-side using resolved secrets.
-- Send the WhatsApp message through the provider API.
-- Mark the action as `executed`.
-- Mark processing run and event delivery as `success` if no further work is needed.
-- Append a system note to the linked agent session if one exists.
-
-Reject path:
-
-```text
-POST /api/external-actions/:id/reject
-```
-
-Backend should:
-
-- Mark the action as `rejected`.
-- Create a workflow or automation wait for replacement user input.
-- Reveal the linked TeamCopilot session.
-- Ask the user what to send instead.
-
-## User Input Waits
-
-When processing needs human input, create a durable wait record.
-
-```prisma
-model workflow_waits {
-  id                  String @id @default(uuid())
-  processing_run_id    String?
-  workflow_run_id      String?
-  workflow_slug        String
-  thread_id            String?
-  delivery_id          String?
-  session_id           String?
-  opencode_session_id  String?
-  wait_type            String
-  status              String
-  question_to_user     String
-  prompt_to_ai         String?
-  resume_state_json    String
-  created_at           BigInt
-  resumed_at           BigInt?
-}
-```
-
-Suggested `wait_type` values:
-
-- `user_input`
-- `approval_rejected`
-- `agent_question`
-
-Suggested statuses:
-
-- `waiting`
-- `resumed`
-- `cancelled`
-- `expired`
-
-The platform state tracks the wait. The workflow-owned `resume_state_json` is opaque to TeamCopilot and is passed back into the workflow on resume.
-
-## Structured Workflow Result Protocol
-
-Introduce explicit structured outputs for workflows.
+All workflows should be able to return structured results.
 
 ```ts
 type WorkflowResult =
@@ -397,327 +338,251 @@ type WorkflowResult =
     }
   | {
       status: "needs_approval";
-      action_type: string;
-      action_payload: Record<string, unknown>;
+      action: {
+        type: string;
+        payload: Record<string, unknown>;
+      };
       resume_state: Record<string, unknown>;
     };
 ```
 
-Existing stdout/stderr logs should continue to be captured, but workflow control should be based on a structured result envelope.
+Existing stdout/stderr logs should still be captured, but workflow control should use this structured result.
 
-Example result:
-
-```json
-{
-  "status": "needs_user_input",
-  "question_to_user": "What should I reply with?",
-  "prompt_to_ai": "Ask the user what WhatsApp reply should be sent. Do not send anything directly.",
-  "resume_state": {
-    "step": "waiting_for_replacement_reply",
-    "to": "+15551234567",
-    "incoming_message": "Can you check my order?",
-    "draft_reply": "Your order arrives tomorrow.",
-    "event_delivery_id": "evt_123"
-  }
-}
-```
-
-## Workflow Continuation
-
-Continuation should not resume the same OS process.
-
-Instead:
-
-```text
-workflow returns wait result
-  -> TeamCopilot stores resume_state
-  -> workflow process exits
-  -> user replies later
-  -> TeamCopilot starts a new workflow run in resume mode
-  -> workflow receives resume_state and user input
-```
-
-This is restart-safe and works across deploys, timeouts, and crashes.
-
-The workflow is a resumable state machine:
-
-```text
-initial(input)
-  -> success
-  -> failed
-  -> needs_approval(resume_state)
-  -> needs_user_input(resume_state)
-
-resume(resume_state, user_input or approval_result)
-  -> success
-  -> failed
-  -> needs_approval(new_resume_state)
-  -> needs_user_input(new_resume_state)
-```
-
-The workflow owns the meaning of `resume_state.step`.
-
-## Workflow Context File
-
-Do not pass complex event and resume state through CLI flags.
-
-Add a reserved context file:
-
-```text
-TEAMCOPILOT_CONTEXT_FILE=/tmp/teamcopilot-context-abc.json
-```
-
-Initial context:
-
-```json
-{
-  "mode": "initial",
-  "input": {
-    "incoming_message": {
-      "from": "+15551234567",
-      "text": "Can you check my order?"
-    }
-  },
-  "event": {
-    "delivery_id": "evt_123",
-    "thread_id": "thread_123",
-    "provider": "whatsapp"
-  }
-}
-```
-
-Resume context:
-
-```json
-{
-  "mode": "resume",
-  "input": {
-    "incoming_message": {
-      "from": "+15551234567",
-      "text": "Can you check my order?"
-    }
-  },
-  "resume": {
-    "wait_id": "wait_123",
-    "state": {
-      "step": "waiting_for_replacement_reply",
-      "to": "+15551234567",
-      "draft_reply": "Your order arrives tomorrow."
-    },
-    "user_input": "Tell them the order is delayed by one day."
-  }
-}
-```
-
-## Workflow Helper API
-
-Ship a small helper package available inside workflow virtual environments.
-
-Example Python API:
+Provide a small helper package for workflow authors:
 
 ```python
 from teamcopilot import workflow
 
 ctx = workflow.context()
 
-workflow.success({"message": "done"})
-workflow.fail("Could not process the request")
+workflow.success({"ok": True})
+workflow.fail("Could not process request")
 workflow.need_user_input(
     question="What should I reply with?",
-    prompt_to_ai="Ask the user for the replacement WhatsApp reply.",
-    resume_state={
-        "step": "waiting_for_replacement_reply",
-        "to": "+15551234567"
-    },
+    resume_state={"step": "waiting_for_reply"}
 )
-workflow.needs_approval(
-    action_type="send_whatsapp_message",
-    action_payload={
-        "to": "+15551234567",
-        "message": "Your order arrives tomorrow."
+workflow.need_approval(
+    action={
+        "type": "send_whatsapp_message",
+        "payload": {
+            "to": "+15551234567",
+            "message": "Your order arrives tomorrow."
+        }
     },
-    resume_state={
-        "step": "waiting_for_send_approval",
-        "to": "+15551234567",
-        "message": "Your order arrives tomorrow."
-    },
+    resume_state={"step": "waiting_for_send_approval"}
 )
 ```
 
-The helper should only read the context file and emit structured result JSON. The backend owns waits, approvals, secret resolution, and external action execution.
+## Waits And Resume
 
-## Example Workflow Script
+When a workflow needs a user, TeamCopilot stores a durable wait and stops the workflow process.
+
+Suggested table:
+
+```prisma
+model automation_waits {
+  id                  String @id @default(uuid())
+  source              String
+  workflow_run_id      String?
+  workflow_slug        String?
+  session_id           String?
+  opencode_session_id  String?
+  status              String
+  question_to_user     String
+  prompt_to_ai         String?
+  resume_state_json    String
+  created_at           BigInt
+  resumed_at           BigInt?
+
+  @@index([source])
+  @@index([session_id, status])
+  @@index([status])
+}
+```
+
+Continuation is:
+
+```text
+workflow returns needs_user_input
+  -> TeamCopilot stores resume_state
+  -> workflow process exits
+  -> user replies later
+  -> TeamCopilot starts a new workflow run in resume mode
+  -> workflow receives resume_state and user_input
+```
+
+This makes pauses restart-safe and independent of process lifetime.
+
+## Hosted Service Protocol
+
+Hosted services need a small internal API or helper library to call back into TeamCopilot.
+
+Minimum capabilities:
+
+```text
+emit_event(type, payload, correlation_id=None)
+run_workflow(slug, input)
+create_action(type, payload, approval)
+get_state(key)
+set_state(key, value)
+append_log(message)
+```
+
+For Python services:
 
 ```python
-from teamcopilot import workflow
+from teamcopilot import service
 
-def create_draft_reply(incoming):
-    return "Your order is expected to arrive tomorrow by 6 PM."
+app = service.create_app()
 
-def main():
-    ctx = workflow.context()
-
-    if ctx.mode == "resume":
-        state = ctx.resume["state"]
-        user_input = ctx.resume["user_input"]
-
-        if state["step"] == "waiting_for_replacement_reply":
-            workflow.needs_approval(
-                action_type="send_whatsapp_message",
-                action_payload={
-                    "to": state["to"],
-                    "message": user_input,
-                },
-                resume_state={
-                    **state,
-                    "step": "waiting_for_send_approval",
-                    "replacement_reply": user_input,
-                },
-            )
-            return
-
-        workflow.fail(f"Unknown resume step: {state['step']}")
-        return
-
-    incoming = ctx.input["incoming_message"]
-    draft_reply = create_draft_reply(incoming)
-
-    workflow.needs_approval(
-        action_type="send_whatsapp_message",
-        action_payload={
-            "to": incoming["from"],
-            "message": draft_reply,
-        },
-        resume_state={
-            "step": "waiting_for_send_approval",
-            "to": incoming["from"],
-            "incoming_message": incoming["text"],
-            "draft_reply": draft_reply,
-        },
+@app.post("/webhook")
+def webhook(request):
+    event = parse_provider_payload(request)
+    service.emit_event(
+        "whatsapp.message.received",
+        event,
+        correlation_id=f"whatsapp:{event['from']}:{event['message_id']}",
     )
-
-if __name__ == "__main__":
-    main()
+    service.run_workflow("process-whatsapp-message", event)
+    return {"ok": True}
 ```
 
-## User Reply Handling
+The helper should use an internal service token injected by TeamCopilot. Users should not manage that token manually.
 
-When a user sends a message in a TeamCopilot chat session:
+## Agent-Authored Automation
+
+The AI agent should create automations by composing the primitives.
+
+Example request:
 
 ```text
-POST /api/chat/sessions/:id/messages
+When I get a new WhatsApp message, process it. If you think I need to approve the reply, message me first.
 ```
 
-The backend should check whether the session has an active wait:
+The agent can create:
+
+- `services/whatsapp-listener/` to receive the webhook.
+- `workflows/process-whatsapp-message/` to process each message.
+- Required secret declarations for WhatsApp.
+- Structured workflow outputs for approval and resume.
+- Durable state keys for dedupe and conversation mapping.
+
+Example request:
 
 ```text
-find workflow_waits where session_id = :id and status = waiting
+Check the logs in my server periodically. If there is this type of error, send me a Slack message.
 ```
 
-If there is no active wait, handle the message as normal chat.
+The agent can create:
 
-If there is an active wait:
+- A cronjob that runs every few minutes.
+- A workflow that connects to the server and scans logs.
+- Durable state for the last log offset.
+- An action request for `send_slack_message`.
+- Required secret declarations for SSH and Slack.
 
-- Send the user's message to the linked agent session if needed.
-- Mark the wait as `resumed`.
-- Mark the processing run as `running`.
-- Start a new workflow run in resume mode with:
-  - original input
-  - `resume_state_json`
-  - user input
-  - wait id
-- Process the new structured workflow result.
+Agent-authored resources should start as drafts. They become active only after validation, secret checks, and approval.
 
-## WhatsApp End-to-End Flow
+## Approval And Safety
+
+Use the existing resource approval snapshot model for new resource kinds:
 
 ```text
-WhatsApp inbound webhook
-  -> /api/ingress/webhooks/whatsapp-inbound
-  -> verify Meta signature
-  -> normalize payload
-  -> find/create external_thread
-  -> create event_delivery
-  -> start processing_run
-  -> run workflow
-  -> workflow returns needs_approval(send_whatsapp_message)
-  -> create pending_external_action
-  -> user approves or rejects
+resource_kind = "service"
+resource_kind = "workflow"
+resource_kind = "cronjob"
 ```
 
-Approve:
+Before automatic execution:
 
-```text
-user approves
-  -> backend sends WhatsApp message with global/user secret
-  -> pending_external_action executed
-  -> processing_run success
-  -> event_delivery success
-```
-
-Reject:
-
-```text
-user rejects
-  -> pending_external_action rejected
-  -> create workflow_wait with resume_state
-  -> reveal or create linked TeamCopilot session
-  -> ask user what to send instead
-  -> user replies
-  -> rerun workflow in resume mode
-  -> workflow proposes new send_whatsapp_message action
-  -> user approves
-  -> backend sends message
-```
-
-## Approval and Resource Safety
-
-Event handlers should use existing resource approval concepts with:
-
-```text
-resource_kind = "event-handler"
-resource_slug = handler slug
-```
-
-Before a handler can process production events:
-
-- The handler filesystem snapshot must be approved.
+- Hosted service code must be approved before it can start or receive traffic.
+- Workflow code must be approved before it can run from cronjobs or services.
+- Cronjob definitions must be approved before they can run unattended.
 - Required secrets must be present.
-- The target workflow or static code must be approved.
-- The external action type must be allowed for the handler.
+- External actions with `approval = "required"` must wait for user approval.
+
+Hosted services need stricter controls:
+
+- Port allocation and reverse proxy ownership.
+- Process lifecycle management.
+- Log capture.
+- Healthchecks.
+- Restart policy.
+- Code-change invalidation.
+- Secret injection.
+- Optional resource limits.
+
+## Examples
+
+WhatsApp monitor:
+
+```text
+hosted service receives Meta webhook
+  -> emits whatsapp.message.received
+  -> runs process-whatsapp-message workflow
+  -> workflow returns needs_approval(send_whatsapp_message)
+  -> user approves or rejects
+  -> approved action sends WhatsApp reply
+  -> rejected action creates wait
+  -> user replies in chat
+  -> workflow resumes with resume_state and user_input
+```
+
+Server log monitor:
+
+```text
+cronjob runs every 5 minutes
+  -> workflow reads last offset from durable state
+  -> workflow checks server logs
+  -> workflow updates last offset
+  -> workflow returns success if nothing matters
+  -> workflow returns needs_approval(send_slack_message) if alert should be sent
+```
+
+GitHub bot:
+
+```text
+hosted service receives GitHub webhook
+  -> emits github.pull_request.opened
+  -> runs review workflow or starts agent session
+  -> workflow proposes comment action
+  -> user approval controls whether comment is posted
+```
 
 ## Implementation Phases
 
-1. Add `event_deliveries`, `external_threads`, `processing_runs`, `pending_external_actions`, and `workflow_waits` schema.
-2. Add `event-handlers/<slug>/handler.json` loader and validation.
-3. Add `/api/ingress/webhooks/:handlerSlug` route.
-4. Add generic processing dispatcher.
-5. Add structured workflow result parsing.
-6. Add `TEAMCOPILOT_CONTEXT_FILE` support to workflow runner.
-7. Add workflow resume mode.
-8. Add pending external action APIs and UI.
-9. Add WhatsApp provider verification and send action executor.
-10. Add user reply continuation handling in chat message endpoint.
-11. Add event handler and delivery history UI.
-12. Add retry and replay support for failed deliveries.
+1. Add `automation_state`, `automation_events`, `automation_actions`, and `automation_waits` schema.
+2. Add workflow structured result parsing while preserving existing stdout/stderr logs.
+3. Add `TEAMCOPILOT_CONTEXT_FILE` support to the workflow runner.
+4. Add workflow resume mode from `automation_waits`.
+5. Add action approval APIs and UI.
+6. Add a minimal platform helper library for workflows.
+7. Add hosted service resource loading from `services/<slug>/service.json`.
+8. Add service process manager with start, stop, restart, logs, healthcheck, and approval checks.
+9. Add reverse proxy routing for approved hosted services.
+10. Add internal service API/helper token for state, events, actions, and workflow runs.
+11. Extend cronjobs so scheduled jobs can emit events or call workflows with context.
+12. Add agent-facing tools to create service, workflow, and cronjob drafts.
+13. Add validation commands that report missing secrets, approval state, ports, and manifest errors.
+14. Add examples/templates for WhatsApp webhook and server log monitoring.
 
 ## Non-Goals For First Version
 
-- Arbitrary long-running user-hosted servers.
-- Keeping workflow processes alive while waiting for humans.
-- Refactoring cronjobs into the event handler system.
-- Supporting many provider-specific action types upfront.
-- Complex visual workflow builders.
+- A large provider-specific monitor framework.
+- A visual workflow builder.
+- Full container isolation.
+- Migrating existing cronjobs into a new data model.
+- Supporting every outbound action type upfront.
 
-## Future Direction
+## First Slice
 
-Once event handlers are stable, cronjobs can become another trigger type in the same automation model:
+The smallest useful version is:
 
-```text
-trigger.type = "cron"
-trigger.type = "webhook"
-trigger.type = "manual"
-trigger.type = "email"
-trigger.type = "polling"
-```
+- Structured workflow results.
+- Durable waits and resume.
+- Generic actions with approval.
+- Hosted services with manual start/stop and logs.
+- Reverse proxy for approved hosted services.
+- Agent-created draft resources.
 
-This should happen after webhook/event delivery semantics, waits, actions, and resumable workflows are proven with WhatsApp.
+With that slice, WhatsApp and log monitoring become compositions of the primitives rather than new platform categories.
