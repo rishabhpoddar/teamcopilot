@@ -1,32 +1,39 @@
-# Generic Automation Primitives
+# Minimal Automation Primitives
 
 ## Goal
 
-TeamCopilot should let users build complex automations by talking to the AI agent, without the platform needing a special first-class abstraction for every integration.
+TeamCopilot should let users build complex automations by talking to the AI agent, while keeping the platform primitives small enough to stay understandable.
 
-The platform should expose a small set of powerful primitives:
+The minimal foundation is:
 
 - Scheduled jobs: run something later or repeatedly.
-- Hosted services: keep code running and reachable on an HTTP port.
+- Hosted services: keep code running and optionally expose HTTP endpoints.
 - Workflow runs: run finite scripts to completion.
-- Durable state: remember data across services, workflows, cron runs, restarts, and resumes.
-- Platform events and actions: let primitives communicate with TeamCopilot, users, and each other.
+- Durable state: remember data across runs, services, restarts, and resumes.
 
-Higher-level behavior such as WhatsApp monitors, log monitors, GitHub bots, internal webhooks, approval flows, and resumable workflows should be built out of these primitives.
+Everything else should be a protocol on top of those primitives:
 
-## Design Principles
+- Structured workflow results.
+- Workflow pauses and resume for deterministic code that needs user input.
+- Approval-gated actions.
+- Agent-mediated approval conversations.
+- Agent-authored draft resources.
 
-- Keep the platform primitives small, generic, and composable.
-- Keep resources filesystem-first so the agent can create and modify them as normal files.
-- Require approval before newly authored code can run automatically or receive external traffic.
-- Inject secrets at runtime from declared contracts. Do not store secret values in resource files.
-- Make long waits durable. Do not keep workflow processes alive while waiting for a human.
-- Make side effects explicit through platform actions when approval or auditability matters.
-- Reuse the existing workflow, cronjob, chat, approval, and secret systems where they fit.
+This avoids a large provider-specific monitor framework while still allowing WhatsApp bots, log monitors, GitHub bots, internal APIs, polling jobs, and approval workflows.
+
+## What To Minimize
+
+Do not introduce a generic event bus as a first version primitive.
+
+For v1, services and cronjobs can directly call workflows or create approval actions. Durable state is enough for cursors, dedupe keys, thread ids, and resume state. If we later need fanout, subscriptions, replay, or cross-resource event routing, we can add an event log then.
+
+Do not introduce provider-specific abstractions like `whatsapp_monitor`, `slack_monitor`, or `event_handler`.
+
+The agent should build those as compositions of services, cronjobs, workflows, and state.
 
 ## Primitive 1: Scheduled Jobs
 
-Scheduled jobs already exist as cronjobs. Keep them as the primitive for repeated or delayed execution.
+Scheduled jobs already exist as cronjobs.
 
 Purpose:
 
@@ -39,16 +46,14 @@ Examples:
 - Check server logs every 5 minutes.
 - Poll an API every hour.
 - Run a daily report.
-- Reconcile stale workflow runs.
 
-Scheduled jobs should be able to trigger:
+Scheduled jobs should be able to:
 
-- A workflow run.
-- An agent prompt.
-- An HTTP call to a hosted service.
-- A platform event.
+- Run a workflow.
+- Prompt an agent.
+- Call a hosted service.
 
-The existing cronjob implementation can remain the user-facing scheduled-job feature. Over time, its internals can be simplified around the same platform event/action protocol described below.
+We should reuse the existing cronjob system rather than building a new scheduler.
 
 ## Primitive 2: Hosted Services
 
@@ -57,7 +62,7 @@ Hosted services are long-running processes managed by TeamCopilot.
 Purpose:
 
 ```text
-Keep user-authored code running and optionally expose it through TeamCopilot HTTP routing.
+Keep user-authored code running and optionally reachable over HTTP.
 ```
 
 Filesystem shape:
@@ -75,95 +80,86 @@ Example `service.json`:
 ```json
 {
   "name": "WhatsApp Listener",
-  "entrypoint": "server.py",
   "runtime": "python",
+  "entrypoint": "server.py",
   "port": 7001,
-  "http": {
-    "public_path": "/services/whatsapp-listener"
-  },
-  "required_secrets": ["WHATSAPP_WEBHOOK_SECRET", "WHATSAPP_ACCESS_TOKEN"],
-  "healthcheck": {
-    "path": "/health",
-    "interval_seconds": 30
-  }
+  "public_path": "/services/whatsapp-listener",
+  "required_secrets": ["WHATSAPP_WEBHOOK_SECRET", "WHATSAPP_ACCESS_TOKEN"]
 }
 ```
 
 TeamCopilot responsibilities:
 
-- Allocate or validate a port.
-- Start, stop, and restart the service.
-- Inject declared secrets.
+- Start, stop, restart.
 - Capture logs.
-- Run healthchecks.
-- Reverse-proxy public paths to the local service.
-- Enforce approval before a service can start or receive external traffic.
-- Stop services when code changes invalidate approval.
+- Inject declared secrets.
+- Reverse-proxy `public_path` to the local port.
+- Require approved code before start or public exposure.
+- Stop or block restart when approved code changes.
 
-This unlocks:
+Defer for later unless needed:
 
-- Webhook receivers.
-- Provider callback handlers.
-- Small internal APIs.
-- Long-running sync processes.
-- Custom protocol adapters.
+- Healthchecks.
+- Restart policies.
+- Resource limits.
+- Multiple replicas.
+- Container isolation.
+
+Those are useful, but they are not needed to prove the primitive.
 
 ## Primitive 3: Workflow Runs
 
-Workflow runs already exist and should remain the primitive for finite code execution.
+Workflows already exist and remain the primitive for finite execution.
 
 Purpose:
 
 ```text
-Run code now, finish, and return a structured result.
+Run code now, finish, and return a result.
 ```
 
 Examples:
 
-- Process one incoming WhatsApp message.
-- Scan logs and classify errors.
+- Process one WhatsApp message.
+- Scan logs and decide whether to alert.
 - Generate a report.
 - Send a Slack message.
-- Transform files in the workspace.
 
-Workflow runs should support a platform context file:
+Add a context file for richer inputs and resume:
 
 ```text
-TEAMCOPILOT_CONTEXT_FILE=/tmp/teamcopilot-context-abc.json
+TEAMCOPILOT_CONTEXT_FILE=/tmp/teamcopilot-context.json
 ```
 
-Example initial context:
+Example:
 
 ```json
 {
   "mode": "initial",
   "input": {
-    "message": "Can you check my order?",
-    "from": "+15551234567"
+    "from": "+15551234567",
+    "message": "Can you check my order?"
   },
   "source": {
     "type": "service",
-    "slug": "whatsapp-listener",
-    "event_id": "evt_123"
+    "slug": "whatsapp-listener"
   }
 }
 ```
 
-Example resume context:
+Resume example for a workflow pause:
 
 ```json
 {
   "mode": "resume",
   "input": {
-    "message": "Can you check my order?",
-    "from": "+15551234567"
+    "from": "+15551234567",
+    "message": "Can you check my order?"
   },
   "resume": {
-    "wait_id": "wait_123",
+    "pause_id": "pause_123",
     "state": {
       "step": "waiting_for_replacement_reply",
-      "to": "+15551234567",
-      "draft_reply": "Your order arrives tomorrow."
+      "to": "+15551234567"
     },
     "user_input": "Tell them the order is delayed by one day."
   }
@@ -172,23 +168,22 @@ Example resume context:
 
 ## Primitive 4: Durable State
 
-Durable state is a small namespaced key-value store available to hosted services, workflows, cronjobs, and platform tools.
+Durable state is a generic namespaced key-value store.
 
 Purpose:
 
 ```text
-Remember data between runs and across restarts.
+Remember data between runs.
 ```
 
 Examples:
 
 - Last log offset.
-- Last seen provider event id.
-- OAuth cursor.
-- Thread mapping.
-- Dedupe key.
-- Workflow resume state.
-- Service-local configuration.
+- Last seen webhook id.
+- Dedupe keys.
+- External thread mapping.
+- OAuth cursors.
+- Service configuration.
 
 Suggested table:
 
@@ -205,120 +200,20 @@ model automation_state {
 }
 ```
 
-Suggested helper API:
+API:
 
 ```text
-state.get(namespace, key)
-state.set(namespace, key, value)
-state.delete(namespace, key)
-state.list(namespace, prefix)
+state.get(key)
+state.set(key, value)
+state.delete(key)
+state.list(prefix)
 ```
 
-Namespaces should map to resources:
-
-```text
-service:whatsapp-listener
-workflow:process-whatsapp-message
-cronjob:prod-log-check
-session:<chat-session-id>
-```
-
-The state store should be available through a platform helper library and internal authenticated APIs.
-
-## Primitive 5: Platform Events And Actions
-
-Events and actions are the communication protocol between primitives.
-
-Events describe something that happened:
-
-```json
-{
-  "type": "whatsapp.message.received",
-  "source": "service:whatsapp-listener",
-  "correlation_id": "whatsapp:+15551234567:wamid.123",
-  "payload": {
-    "from": "+15551234567",
-    "text": "Can you check my order?",
-    "message_id": "wamid.123"
-  }
-}
-```
-
-Actions request that TeamCopilot do something:
-
-```json
-{
-  "type": "send_whatsapp_message",
-  "approval": "required",
-  "payload": {
-    "to": "+15551234567",
-    "message": "Your order arrives tomorrow."
-  }
-}
-```
-
-Suggested tables:
-
-```prisma
-model automation_events {
-  id             String @id @default(uuid())
-  type           String
-  source         String
-  correlation_id String?
-  payload_json   String
-  status         String
-  created_at     BigInt
-  completed_at   BigInt?
-  error_message  String?
-
-  @@index([type])
-  @@index([source])
-  @@index([correlation_id])
-  @@index([status])
-}
-
-model automation_actions {
-  id                    String @id @default(uuid())
-  type                  String
-  source                String
-  status                String
-  approval              String
-  payload_json          String
-  resume_state_json     String?
-  session_id            String?
-  opencode_session_id   String?
-  created_at            BigInt
-  responded_by_user_id  String?
-  responded_at          BigInt?
-  executed_at           BigInt?
-  error_message         String?
-
-  @@index([type])
-  @@index([source])
-  @@index([status])
-}
-```
-
-Suggested event statuses:
-
-- `queued`
-- `processing`
-- `success`
-- `failed`
-- `waiting_for_user`
-- `waiting_for_approval`
-
-Suggested action statuses:
-
-- `pending`
-- `approved`
-- `rejected`
-- `executed`
-- `failed`
+The namespace should be implicit from the caller, for example `service:whatsapp-listener` or `workflow:process-message`. That keeps scripts simple and avoids making users pass namespace strings everywhere.
 
 ## Workflow Result Protocol
 
-All workflows should be able to return structured results.
+All workflows should be able to return one of these structured results:
 
 ```ts
 type WorkflowResult =
@@ -333,7 +228,6 @@ type WorkflowResult =
   | {
       status: "needs_user_input";
       question_to_user: string;
-      prompt_to_ai?: string;
       resume_state: Record<string, unknown>;
     }
   | {
@@ -342,13 +236,13 @@ type WorkflowResult =
         type: string;
         payload: Record<string, unknown>;
       };
-      resume_state: Record<string, unknown>;
+      resume_state?: Record<string, unknown>;
     };
 ```
 
-Existing stdout/stderr logs should still be captured, but workflow control should use this structured result.
+Existing stdout/stderr logs should still be captured. The structured result is only for platform control flow.
 
-Provide a small helper package for workflow authors:
+Python helper:
 
 ```python
 from teamcopilot import workflow
@@ -373,62 +267,122 @@ workflow.need_approval(
 )
 ```
 
-## Waits And Resume
+## Workflow Pauses
 
-When a workflow needs a user, TeamCopilot stores a durable wait and stops the workflow process.
+When a workflow returns `needs_user_input`, TeamCopilot stores a pause point and stops the workflow process.
+
+This should only be used when deterministic workflow code must resume after the user answers. It is not required for normal approval chat. If an action is rejected and the agent can ask the user what to do next, the agent session should handle that continuation directly.
 
 Suggested table:
 
 ```prisma
-model automation_waits {
+model workflow_pauses {
   id                  String @id @default(uuid())
-  source              String
-  workflow_run_id      String?
-  workflow_slug        String?
-  session_id           String?
-  opencode_session_id  String?
+  workflow_run_id      String
+  workflow_slug        String
   status              String
   question_to_user     String
-  prompt_to_ai         String?
   resume_state_json    String
+  session_id           String?
+  opencode_session_id  String?
   created_at           BigInt
   resumed_at           BigInt?
 
-  @@index([source])
+  @@index([workflow_run_id])
   @@index([session_id, status])
   @@index([status])
 }
 ```
 
-Continuation is:
+Continuation:
 
 ```text
 workflow returns needs_user_input
-  -> TeamCopilot stores resume_state
+  -> TeamCopilot stores resume_state in workflow_pauses
   -> workflow process exits
   -> user replies later
-  -> TeamCopilot starts a new workflow run in resume mode
+  -> TeamCopilot starts a new workflow run with mode = resume
   -> workflow receives resume_state and user_input
 ```
 
-This makes pauses restart-safe and independent of process lifetime.
+This is durable and restart-safe.
 
-## Hosted Service Protocol
+## Actions
 
-Hosted services need a small internal API or helper library to call back into TeamCopilot.
+Actions are approval-gated side effects. The approval conversation should happen through an agent chat session by default.
 
-Minimum capabilities:
+Suggested table:
 
-```text
-emit_event(type, payload, correlation_id=None)
-run_workflow(slug, input)
-create_action(type, payload, approval)
-get_state(key)
-set_state(key, value)
-append_log(message)
+```prisma
+model workflow_actions {
+  id                    String @id @default(uuid())
+  workflow_run_id        String?
+  workflow_slug          String?
+  type                  String
+  status                String
+  payload_json           String
+  resume_state_json      String?
+  session_id             String?
+  opencode_session_id    String?
+  created_at             BigInt
+  responded_by_user_id   String?
+  responded_at           BigInt?
+  executed_at            BigInt?
+  error_message          String?
+
+  @@index([workflow_run_id])
+  @@index([type])
+  @@index([status])
+}
 ```
 
-For Python services:
+Statuses:
+
+```text
+pending
+approved
+rejected
+executed
+failed
+```
+
+For v1, actions can be created only by workflow results. Hosted services that need approval should call a workflow, and the workflow can return `needs_approval`. That avoids creating a second action API too early.
+
+Later, services can create actions directly if that becomes necessary.
+
+Rejection behavior:
+
+```text
+action rejected
+  -> TeamCopilot opens or reuses an agent chat session
+  -> agent asks the user what should happen instead
+  -> user replies
+  -> agent may propose a new action or run another workflow
+```
+
+This does not require a workflow pause unless the original workflow needs to continue with the user's answer.
+
+## Hosted Service API
+
+Hosted services need only a small internal API for v1:
+
+```text
+run_workflow(slug, input)
+state.get(key)
+state.set(key, value)
+```
+
+Optional later:
+
+```text
+create_action(type, payload)
+append_log(message)
+emit_event(type, payload)
+```
+
+Start with the minimal API. A webhook service can receive a request, dedupe with state, and run a workflow.
+
+Example:
 
 ```python
 from teamcopilot import service
@@ -438,54 +392,52 @@ app = service.create_app()
 @app.post("/webhook")
 def webhook(request):
     event = parse_provider_payload(request)
-    service.emit_event(
-        "whatsapp.message.received",
-        event,
-        correlation_id=f"whatsapp:{event['from']}:{event['message_id']}",
-    )
+    dedupe_key = f"message:{event['message_id']}"
+    if service.state.get(dedupe_key):
+        return {"ok": True}
+
+    service.state.set(dedupe_key, True)
     service.run_workflow("process-whatsapp-message", event)
     return {"ok": True}
 ```
 
-The helper should use an internal service token injected by TeamCopilot. Users should not manage that token manually.
-
 ## Agent-Authored Automation
 
-The AI agent should create automations by composing the primitives.
+The AI agent composes these primitives.
 
-Example request:
-
-```text
-When I get a new WhatsApp message, process it. If you think I need to approve the reply, message me first.
-```
-
-The agent can create:
-
-- `services/whatsapp-listener/` to receive the webhook.
-- `workflows/process-whatsapp-message/` to process each message.
-- Required secret declarations for WhatsApp.
-- Structured workflow outputs for approval and resume.
-- Durable state keys for dedupe and conversation mapping.
-
-Example request:
+For:
 
 ```text
-Check the logs in my server periodically. If there is this type of error, send me a Slack message.
+When I get a new WhatsApp message, process it. If approval is needed, message me first.
 ```
 
-The agent can create:
+The agent creates:
 
-- A cronjob that runs every few minutes.
-- A workflow that connects to the server and scans logs.
-- Durable state for the last log offset.
-- An action request for `send_slack_message`.
-- Required secret declarations for SSH and Slack.
+- `services/whatsapp-listener/` for the webhook.
+- `workflows/process-whatsapp-message/` for processing.
+- Workflow result logic for `needs_approval` and `needs_user_input`.
+- State usage for dedupe and external thread mapping.
+- Required secret declarations.
 
-Agent-authored resources should start as drafts. They become active only after validation, secret checks, and approval.
+For:
+
+```text
+Check the logs in my server periodically. If this error appears, send me a Slack message.
+```
+
+The agent creates:
+
+- A cronjob.
+- A workflow that scans logs.
+- State usage for last log offset.
+- Workflow result logic for `needs_approval(send_slack_message)`.
+- Required secret declarations.
+
+Agent-authored resources start as drafts. They become runnable only after validation, missing-secret checks, and approval.
 
 ## Approval And Safety
 
-Use the existing resource approval snapshot model for new resource kinds:
+Use the existing resource approval snapshot model for:
 
 ```text
 resource_kind = "service"
@@ -493,96 +445,241 @@ resource_kind = "workflow"
 resource_kind = "cronjob"
 ```
 
-Before automatic execution:
+Rules:
 
-- Hosted service code must be approved before it can start or receive traffic.
-- Workflow code must be approved before it can run from cronjobs or services.
-- Cronjob definitions must be approved before they can run unattended.
-- Required secrets must be present.
-- External actions with `approval = "required"` must wait for user approval.
+- Services need approval before start or public routing.
+- Workflows need approval before unattended execution.
+- Cronjobs need approval before scheduled execution.
+- Required secrets must be present before execution.
+- `needs_approval` actions must wait for user approval before execution.
 
-Hosted services need stricter controls:
+## Use Cases
 
-- Port allocation and reverse proxy ownership.
-- Process lifecycle management.
-- Log capture.
-- Healthchecks.
-- Restart policy.
-- Code-change invalidation.
-- Secret injection.
-- Optional resource limits.
+These examples are intentionally different from each other. The point is to verify that the primitive set is generic enough without introducing a dedicated platform abstraction for each domain.
 
-## Examples
-
-WhatsApp monitor:
+1. WhatsApp reply approval
 
 ```text
-hosted service receives Meta webhook
-  -> emits whatsapp.message.received
-  -> runs process-whatsapp-message workflow
+hosted service receives WhatsApp webhook
+  -> service verifies provider signature
+  -> service dedupes message id with durable state
+  -> service runs process-whatsapp-message workflow
+  -> workflow drafts a reply
   -> workflow returns needs_approval(send_whatsapp_message)
-  -> user approves or rejects
-  -> approved action sends WhatsApp reply
-  -> rejected action creates wait
+  -> TeamCopilot opens or reuses an agent chat session for approval
+  -> user approves or rejects in that chat
+  -> approved action sends message
+  -> rejected action routes back to the agent
+  -> agent asks what to send instead
   -> user replies in chat
-  -> workflow resumes with resume_state and user_input
+  -> agent proposes a new send_whatsapp_message action
 ```
 
-Server log monitor:
+Primitives used:
+
+- Hosted service for webhook.
+- Workflow for message processing.
+- Durable state for dedupe and thread mapping.
+- Workflow action for sending the reply.
+- Agent chat for approval and replacement reply conversation.
+
+2. Server log monitor
 
 ```text
 cronjob runs every 5 minutes
-  -> workflow reads last offset from durable state
-  -> workflow checks server logs
+  -> workflow reads last log offset from durable state
+  -> workflow fetches new logs over SSH or HTTP
   -> workflow updates last offset
-  -> workflow returns success if nothing matters
+  -> workflow returns success if no issue
   -> workflow returns needs_approval(send_slack_message) if alert should be sent
 ```
 
-GitHub bot:
+Primitives used:
+
+- Scheduled job for periodic checks.
+- Workflow for log scanning.
+- Durable state for cursor/offset.
+- Workflow action for Slack alert.
+
+3. GitHub PR review bot
 
 ```text
 hosted service receives GitHub webhook
-  -> emits github.pull_request.opened
-  -> runs review workflow or starts agent session
-  -> workflow proposes comment action
-  -> user approval controls whether comment is posted
+  -> service dedupes delivery id with durable state
+  -> service runs review-pr workflow
+  -> workflow checks changed files and runs tests
+  -> workflow returns needs_approval(post_github_comment)
+  -> user approves comment
+  -> action posts review comment
 ```
 
-## Implementation Phases
+Primitives used:
 
-1. Add `automation_state`, `automation_events`, `automation_actions`, and `automation_waits` schema.
-2. Add workflow structured result parsing while preserving existing stdout/stderr logs.
-3. Add `TEAMCOPILOT_CONTEXT_FILE` support to the workflow runner.
-4. Add workflow resume mode from `automation_waits`.
-5. Add action approval APIs and UI.
-6. Add a minimal platform helper library for workflows.
+- Hosted service for GitHub webhook.
+- Workflow for review logic.
+- Durable state for delivery dedupe.
+- Workflow action for posting comments.
+
+4. Daily customer report
+
+```text
+cronjob runs every morning
+  -> workflow queries database/API
+  -> workflow generates report
+  -> workflow returns needs_approval(send_email)
+  -> user approves
+  -> action emails report
+```
+
+Primitives used:
+
+- Scheduled job for daily execution.
+- Workflow for report generation.
+- Workflow action for email.
+- Durable state if the report needs last-run metadata.
+
+5. Stripe payment failure handler
+
+```text
+hosted service receives Stripe webhook
+  -> service dedupes event id with durable state
+  -> service runs payment-failure workflow
+  -> workflow checks customer context
+  -> workflow either returns success or needs_approval(send_email)
+  -> approved action sends customer follow-up
+```
+
+Primitives used:
+
+- Hosted service for webhook.
+- Workflow for business logic.
+- Durable state for webhook dedupe.
+- Workflow action for email or CRM update.
+
+6. Internal support triage API
+
+```text
+hosted service exposes /triage
+  -> internal tool posts support ticket text
+  -> service runs triage-ticket workflow
+  -> workflow classifies urgency and owner
+  -> workflow returns success with structured output
+  -> service responds to caller with classification
+```
+
+Primitives used:
+
+- Hosted service for HTTP API.
+- Workflow for finite classification work.
+- Durable state if prior ticket context is needed.
+
+No new monitor abstraction is required because this is just a small hosted API plus workflow execution.
+
+7. Database drift checker
+
+```text
+cronjob runs hourly
+  -> workflow introspects database schema
+  -> workflow compares against expected schema in repo
+  -> workflow stores last seen drift hash in state
+  -> workflow returns success if unchanged
+  -> workflow returns needs_approval(create_github_issue) for new drift
+```
+
+Primitives used:
+
+- Scheduled job for hourly checks.
+- Workflow for diffing schema.
+- Durable state for suppressing duplicate alerts.
+- Workflow action for creating an issue.
+
+8. OAuth callback and token refresher
+
+```text
+hosted service receives OAuth callback
+  -> service stores non-secret account metadata in durable state
+  -> service uses platform secrets for tokens
+  -> cronjob periodically runs refresh-token workflow
+  -> workflow refreshes token and updates stored metadata
+```
+
+Primitives used:
+
+- Hosted service for callback.
+- Durable state for account/cursor metadata.
+- Scheduled job for refresh.
+- Workflow for token refresh logic.
+
+Secret values should still live in TeamCopilot secrets, not durable state.
+
+9. File drop processor
+
+```text
+hosted service exposes upload endpoint
+  -> user/system uploads a file
+  -> service writes file into workspace or managed storage
+  -> service runs process-upload workflow
+  -> workflow extracts data and returns needs_user_input if ambiguous
+  -> user clarifies
+  -> workflow resumes and produces final output
+```
+
+Primitives used:
+
+- Hosted service for upload endpoint.
+- Workflow for file processing.
+- Durable state for upload metadata.
+- Workflow pause for ambiguity resolution.
+
+10. Incident responder
+
+```text
+hosted service receives monitoring webhook
+  -> service dedupes alert fingerprint with durable state
+  -> service runs incident-assessment workflow
+  -> workflow checks logs, metrics, and recent deploys
+  -> workflow returns needs_user_input if it needs an operator decision
+  -> user answers in chat
+  -> workflow resumes
+  -> workflow returns needs_approval(run_remediation_workflow)
+  -> approved action starts remediation
+```
+
+Primitives used:
+
+- Hosted service for monitoring webhook.
+- Workflow for assessment.
+- Durable state for alert dedupe and incident status.
+- Workflow pause for operator decision.
+- Workflow action for gated remediation.
+
+## Implementation Order
+
+1. Add structured workflow results.
+2. Add `TEAMCOPILOT_CONTEXT_FILE`.
+3. Add `workflow_pauses` and resume mode.
+4. Add `workflow_actions` and approval UI.
+5. Add `automation_state`.
+6. Add a minimal workflow helper library.
 7. Add hosted service resource loading from `services/<slug>/service.json`.
-8. Add service process manager with start, stop, restart, logs, healthcheck, and approval checks.
-9. Add reverse proxy routing for approved hosted services.
-10. Add internal service API/helper token for state, events, actions, and workflow runs.
-11. Extend cronjobs so scheduled jobs can emit events or call workflows with context.
-12. Add agent-facing tools to create service, workflow, and cronjob drafts.
-13. Add validation commands that report missing secrets, approval state, ports, and manifest errors.
-14. Add examples/templates for WhatsApp webhook and server log monitoring.
-
-## Non-Goals For First Version
-
-- A large provider-specific monitor framework.
-- A visual workflow builder.
-- Full container isolation.
-- Migrating existing cronjobs into a new data model.
-- Supporting every outbound action type upfront.
+8. Add service process manager with manual start, stop, restart, logs, approval checks, and secret injection.
+9. Add reverse proxy routing for approved services.
+10. Add minimal service helper API: `run_workflow`, `state.get`, `state.set`.
+11. Let the agent create service, workflow, and cronjob drafts.
 
 ## First Slice
 
-The smallest useful version is:
+The smallest useful slice is:
 
 - Structured workflow results.
-- Durable waits and resume.
-- Generic actions with approval.
-- Hosted services with manual start/stop and logs.
-- Reverse proxy for approved hosted services.
-- Agent-created draft resources.
+- Workflow pauses and resume.
+- Approval actions.
+- Durable state.
 
-With that slice, WhatsApp and log monitoring become compositions of the primitives rather than new platform categories.
+The next slice is:
+
+- Hosted services with manual lifecycle and reverse proxy.
+- Minimal service API.
+- Agent-authored draft services.
+
+This keeps the first implementation focused while still leading to the full generic automation model.
