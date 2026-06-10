@@ -14,9 +14,7 @@ The minimal foundation is:
 Everything else should be a protocol on top of those primitives:
 
 - Structured workflow results.
-- Workflow pauses and resume for deterministic code that needs user input.
-- Approval-gated actions.
-- Agent-mediated approval conversations.
+- Agent-mediated user conversations with rerun args.
 - Agent-authored draft resources.
 
 This avoids a large provider-specific monitor framework while still allowing WhatsApp bots, log monitors, GitHub bots, internal APIs, polling jobs, and approval workflows.
@@ -25,7 +23,7 @@ This avoids a large provider-specific monitor framework while still allowing Wha
 
 Do not introduce a generic event bus as a first version primitive.
 
-For v1, services and cronjobs can directly call workflows or create approval actions. Durable state is enough for cursors, dedupe keys, thread ids, and resume state. If we later need fanout, subscriptions, replay, or cross-resource event routing, we can add an event log then.
+For v1, services and cronjobs can directly call workflows. Durable state is enough for cursors, dedupe keys, thread ids, and other bookkeeping. If we later need fanout, subscriptions, replay, or cross-resource event routing, we can add an event log then.
 
 Do not introduce provider-specific abstractions like `whatsapp_monitor`, `slack_monitor`, or `event_handler`.
 
@@ -124,47 +122,7 @@ Examples:
 - Generate a report.
 - Send a Slack message.
 
-Add a context file for richer inputs and resume:
-
-```text
-TEAMCOPILOT_CONTEXT_FILE=/tmp/teamcopilot-context.json
-```
-
-Example:
-
-```json
-{
-  "mode": "initial",
-  "input": {
-    "from": "+15551234567",
-    "message": "Can you check my order?"
-  },
-  "source": {
-    "type": "service",
-    "slug": "whatsapp-listener"
-  }
-}
-```
-
-Resume example for a workflow pause:
-
-```json
-{
-  "mode": "resume",
-  "input": {
-    "from": "+15551234567",
-    "message": "Can you check my order?"
-  },
-  "resume": {
-    "pause_id": "pause_123",
-    "state": {
-      "step": "waiting_for_replacement_reply",
-      "to": "+15551234567"
-    },
-    "user_input": "Tell them the order is delayed by one day."
-  }
-}
-```
+Workflows keep using args the same way they do today. If a workflow needs the user, it returns `ask_user` with a plain-English instruction that tells the agent what to ask and how to rerun the workflow with updated args.
 
 ## Primitive 4: Durable State
 
@@ -226,17 +184,8 @@ type WorkflowResult =
       error: string;
     }
   | {
-      status: "needs_user_input";
-      question_to_user: string;
-      resume_state: Record<string, unknown>;
-    }
-  | {
-      status: "needs_approval";
-      action: {
-        type: string;
-        payload: Record<string, unknown>;
-      };
-      resume_state?: Record<string, unknown>;
+      status: "ask_user";
+      instruction_to_agent: string;
     };
 ```
 
@@ -249,118 +198,47 @@ from teamcopilot import workflow
 
 ctx = workflow.context()
 
+workflow.ask_user("""
+Ask the user what reply should be sent.
+After they answer, rerun this workflow with:
+{
+  "from": "+15551234567",
+  "message": "Can you check my order?",
+  "replacement_reply": "<user answer>"
+}
+""")
 workflow.success({"ok": True})
 workflow.fail("Could not process request")
-workflow.need_user_input(
-    question="What should I reply with?",
-    resume_state={"step": "waiting_for_reply"}
-)
-workflow.need_approval(
-    action={
-        "type": "send_whatsapp_message",
-        "payload": {
-            "to": "+15551234567",
-            "message": "Your order arrives tomorrow."
-        }
-    },
-    resume_state={"step": "waiting_for_send_approval"}
-)
 ```
 
-## Workflow Pauses
+## Ask User
 
-When a workflow returns `needs_user_input`, TeamCopilot stores a pause point and stops the workflow process.
+When a workflow returns `ask_user`, TeamCopilot stores the instruction, opens or reuses an agent chat session, and stops the workflow process.
 
-This should only be used when deterministic workflow code must resume after the user answers. It is not required for normal approval chat. If an action is rejected and the agent can ask the user what to do next, the agent session should handle that continuation directly.
+The workflow does not need to manage pause state itself. The workflow should encode everything the agent needs to know in `instruction_to_agent`, including:
 
-Suggested table:
+- The question the agent should ask the user.
+- The exact rerun args to use after the user answers.
+- Any context the agent needs to continue correctly.
+- Any branch-specific instructions for the user reply.
 
-```prisma
-model workflow_pauses {
-  id                  String @id @default(uuid())
-  workflow_run_id      String
-  workflow_slug        String
-  status              String
-  question_to_user     String
-  resume_state_json    String
-  session_id           String?
-  opencode_session_id  String?
-  created_at           BigInt
-  resumed_at           BigInt?
+Suggested run status:
 
-  @@index([workflow_run_id])
-  @@index([session_id, status])
-  @@index([status])
-}
+```text
+paused
 ```
 
 Continuation:
 
 ```text
-workflow returns needs_user_input
-  -> TeamCopilot stores resume_state in workflow_pauses
-  -> workflow process exits
-  -> user replies later
-  -> TeamCopilot starts a new workflow run with mode = resume
-  -> workflow receives resume_state and user_input
+workflow returns ask_user
+  -> TeamCopilot stores the instruction on the workflow run
+  -> agent asks the user the question from the instruction
+  -> user replies in the agent chat
+  -> agent reruns the workflow with the args specified in the instruction
 ```
 
 This is durable and restart-safe.
-
-## Actions
-
-Actions are approval-gated side effects. The approval conversation should happen through an agent chat session by default.
-
-Suggested table:
-
-```prisma
-model workflow_actions {
-  id                    String @id @default(uuid())
-  workflow_run_id        String?
-  workflow_slug          String?
-  type                  String
-  status                String
-  payload_json           String
-  resume_state_json      String?
-  session_id             String?
-  opencode_session_id    String?
-  created_at             BigInt
-  responded_by_user_id   String?
-  responded_at           BigInt?
-  executed_at            BigInt?
-  error_message          String?
-
-  @@index([workflow_run_id])
-  @@index([type])
-  @@index([status])
-}
-```
-
-Statuses:
-
-```text
-pending
-approved
-rejected
-executed
-failed
-```
-
-For v1, actions can be created only by workflow results. Hosted services that need approval should call a workflow, and the workflow can return `needs_approval`. That avoids creating a second action API too early.
-
-Later, services can create actions directly if that becomes necessary.
-
-Rejection behavior:
-
-```text
-action rejected
-  -> TeamCopilot opens or reuses an agent chat session
-  -> agent asks the user what should happen instead
-  -> user replies
-  -> agent may propose a new action or run another workflow
-```
-
-This does not require a workflow pause unless the original workflow needs to continue with the user's answer.
 
 ## Hosted Service API
 
@@ -415,7 +293,7 @@ The agent creates:
 
 - `services/whatsapp-listener/` for the webhook.
 - `workflows/process-whatsapp-message/` for processing.
-- Workflow result logic for `needs_approval` and `needs_user_input`.
+- Workflow logic that returns `ask_user` with rerun args when the user needs to be involved.
 - State usage for dedupe and external thread mapping.
 - Required secret declarations.
 
@@ -430,7 +308,7 @@ The agent creates:
 - A cronjob.
 - A workflow that scans logs.
 - State usage for last log offset.
-- Workflow result logic for `needs_approval(send_slack_message)`.
+- Workflow logic that returns `ask_user` with rerun args when the alert needs user confirmation.
 - Required secret declarations.
 
 Agent-authored resources start as drafts. They become runnable only after validation, missing-secret checks, and approval.
@@ -451,7 +329,7 @@ Rules:
 - Workflows need approval before unattended execution.
 - Cronjobs need approval before scheduled execution.
 - Required secrets must be present before execution.
-- `needs_approval` actions must wait for user approval before execution.
+- Workflows can only ask the user through `ask_user`; the agent handles the conversation and rerun.
 
 ## Use Cases
 
@@ -465,14 +343,11 @@ hosted service receives WhatsApp webhook
   -> service dedupes message id with durable state
   -> service runs process-whatsapp-message workflow
   -> workflow drafts a reply
-  -> workflow returns needs_approval(send_whatsapp_message)
-  -> TeamCopilot opens or reuses an agent chat session for approval
-  -> user approves or rejects in that chat
-  -> approved action sends message
-  -> rejected action routes back to the agent
-  -> agent asks what to send instead
+  -> workflow returns ask_user with instructions for the agent
+  -> TeamCopilot opens or reuses an agent chat session
+  -> agent asks the user what should happen next
   -> user replies in chat
-  -> agent proposes a new send_whatsapp_message action
+  -> agent reruns the workflow with the args from the instruction
 ```
 
 Primitives used:
@@ -480,8 +355,7 @@ Primitives used:
 - Hosted service for webhook.
 - Workflow for message processing.
 - Durable state for dedupe and thread mapping.
-- Workflow action for sending the reply.
-- Agent chat for approval and replacement reply conversation.
+- Agent chat for user interaction and rerun.
 
 2. Server log monitor
 
@@ -491,7 +365,7 @@ cronjob runs every 5 minutes
   -> workflow fetches new logs over SSH or HTTP
   -> workflow updates last offset
   -> workflow returns success if no issue
-  -> workflow returns needs_approval(send_slack_message) if alert should be sent
+  -> workflow returns ask_user if the agent should confirm an alert or ask for a next step
 ```
 
 Primitives used:
@@ -499,7 +373,7 @@ Primitives used:
 - Scheduled job for periodic checks.
 - Workflow for log scanning.
 - Durable state for cursor/offset.
-- Workflow action for Slack alert.
+- Agent chat for alert confirmation.
 
 3. GitHub PR review bot
 
@@ -508,9 +382,9 @@ hosted service receives GitHub webhook
   -> service dedupes delivery id with durable state
   -> service runs review-pr workflow
   -> workflow checks changed files and runs tests
-  -> workflow returns needs_approval(post_github_comment)
-  -> user approves comment
-  -> action posts review comment
+  -> workflow returns ask_user with instructions for the review conversation
+  -> user replies in the agent chat
+  -> agent reruns the workflow or posts the comment as instructed
 ```
 
 Primitives used:
@@ -518,7 +392,7 @@ Primitives used:
 - Hosted service for GitHub webhook.
 - Workflow for review logic.
 - Durable state for delivery dedupe.
-- Workflow action for posting comments.
+- Agent chat for review confirmation.
 
 4. Daily customer report
 
@@ -526,16 +400,14 @@ Primitives used:
 cronjob runs every morning
   -> workflow queries database/API
   -> workflow generates report
-  -> workflow returns needs_approval(send_email)
-  -> user approves
-  -> action emails report
+  -> workflow returns ask_user if the agent should confirm the report or ask where to send it
 ```
 
 Primitives used:
 
 - Scheduled job for daily execution.
 - Workflow for report generation.
-- Workflow action for email.
+- Agent chat for report delivery confirmation.
 - Durable state if the report needs last-run metadata.
 
 5. Stripe payment failure handler
@@ -545,8 +417,7 @@ hosted service receives Stripe webhook
   -> service dedupes event id with durable state
   -> service runs payment-failure workflow
   -> workflow checks customer context
-  -> workflow either returns success or needs_approval(send_email)
-  -> approved action sends customer follow-up
+  -> workflow either returns success or ask_user with instructions for the follow-up conversation
 ```
 
 Primitives used:
@@ -554,7 +425,7 @@ Primitives used:
 - Hosted service for webhook.
 - Workflow for business logic.
 - Durable state for webhook dedupe.
-- Workflow action for email or CRM update.
+- Agent chat for the follow-up decision.
 
 6. Internal support triage API
 
@@ -583,7 +454,7 @@ cronjob runs hourly
   -> workflow compares against expected schema in repo
   -> workflow stores last seen drift hash in state
   -> workflow returns success if unchanged
-  -> workflow returns needs_approval(create_github_issue) for new drift
+  -> workflow returns ask_user if the agent should confirm creating an issue
 ```
 
 Primitives used:
@@ -591,7 +462,7 @@ Primitives used:
 - Scheduled job for hourly checks.
 - Workflow for diffing schema.
 - Durable state for suppressing duplicate alerts.
-- Workflow action for creating an issue.
+- Agent chat for issue confirmation.
 
 8. OAuth callback and token refresher
 
@@ -619,9 +490,10 @@ hosted service exposes upload endpoint
   -> user/system uploads a file
   -> service writes file into workspace or managed storage
   -> service runs process-upload workflow
-  -> workflow extracts data and returns needs_user_input if ambiguous
-  -> user clarifies
-  -> workflow resumes and produces final output
+  -> workflow extracts data and returns ask_user if ambiguous
+  -> agent asks the user for clarification
+  -> user replies
+  -> agent reruns the workflow with the clarified args
 ```
 
 Primitives used:
@@ -629,7 +501,7 @@ Primitives used:
 - Hosted service for upload endpoint.
 - Workflow for file processing.
 - Durable state for upload metadata.
-- Workflow pause for ambiguity resolution.
+- Agent chat for ambiguity resolution.
 
 10. Incident responder
 
@@ -638,11 +510,10 @@ hosted service receives monitoring webhook
   -> service dedupes alert fingerprint with durable state
   -> service runs incident-assessment workflow
   -> workflow checks logs, metrics, and recent deploys
-  -> workflow returns needs_user_input if it needs an operator decision
+  -> workflow returns ask_user if it needs an operator decision
+  -> agent asks the user
   -> user answers in chat
-  -> workflow resumes
-  -> workflow returns needs_approval(run_remediation_workflow)
-  -> approved action starts remediation
+  -> agent reruns the workflow or triggers the next step
 ```
 
 Primitives used:
@@ -650,30 +521,26 @@ Primitives used:
 - Hosted service for monitoring webhook.
 - Workflow for assessment.
 - Durable state for alert dedupe and incident status.
-- Workflow pause for operator decision.
-- Workflow action for gated remediation.
+- Agent chat for operator decision.
 
 ## Implementation Order
 
 1. Add structured workflow results.
-2. Add `TEAMCOPILOT_CONTEXT_FILE`.
-3. Add `workflow_pauses` and resume mode.
-4. Add `workflow_actions` and approval UI.
-5. Add `automation_state`.
-6. Add a minimal workflow helper library.
-7. Add hosted service resource loading from `services/<slug>/service.json`.
-8. Add service process manager with manual start, stop, restart, logs, approval checks, and secret injection.
-9. Add reverse proxy routing for approved services.
-10. Add minimal service helper API: `run_workflow`, `state.get`, `state.set`.
-11. Let the agent create service, workflow, and cronjob drafts.
+2. Add `ask_user` handling and agent rerun flow.
+3. Add `automation_state`.
+4. Add a minimal workflow helper library with `ask_user`, `success`, and `fail`.
+5. Add hosted service resource loading from `services/<slug>/service.json`.
+6. Add service process manager with manual start, stop, restart, logs, approval checks, and secret injection.
+7. Add reverse proxy routing for approved services.
+8. Add minimal service helper API: `run_workflow`, `state.get`, `state.set`.
+9. Let the agent create service, workflow, and cronjob drafts.
 
 ## First Slice
 
 The smallest useful slice is:
 
 - Structured workflow results.
-- Workflow pauses and resume.
-- Approval actions.
+- `ask_user` and agent rerun flow.
 - Durable state.
 
 The next slice is:
