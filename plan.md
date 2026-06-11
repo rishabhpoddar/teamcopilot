@@ -440,8 +440,17 @@ This is the reduced tool surface the platform should expose to agents and to the
 
 - `answer_user_request({ request_id: string, answer: string }) -> void`
   Send a user's reply back into a blocked workflow or service request so the waiting script can resume from the exact pause point.
-- `search_users({ query?: string }) -> Array<{ id: string, name: string, email: string, role: string }>`
-  Search team members by name or email so the agent can resolve a `user_id` when it needs to target a specific person.
+- `search_users({ query?: string }) -> Array<{ id: string, name: string, email: string, role: string, title: string | null, description: string | null, slack_user_id: string | null }>`
+  Search team members by name, email, role, title, and profile description so the agent can resolve the right person to ask.
+
+### User Profiles
+
+- Every user should have editable profile metadata for `title` and `description`.
+- `title` should capture the user's role or job title, for example "Head of Support" or "Staff Infrastructure Engineer".
+- `description` should capture what the user owns, knows, or is responsible for, for example "owns SAML/SCIM integrations and enterprise identity issues".
+- Users can add this during signup or update it later from their profile screen.
+- `search_users` should index and return these fields so agents can decide who is likely to know an answer or approve a request.
+- If a user connects Slack, their linked `slack_user_id` should be returned so Slack-based workflows can ask them in Slack.
 
 ### Hosted Service Runtime Tools
 
@@ -609,7 +618,7 @@ It also needs a user lookup tool so it can resolve the `user_id` before writing 
 
 Minimum agent-facing user tool:
 
-- `search_users`: search users in TeamCopilot by name or email and return matching ids.
+- `search_users`: search users in TeamCopilot by name, email, role, title, and description, and return matching ids plus linked external ids such as Slack user id.
 
 For:
 
@@ -885,14 +894,16 @@ Primitives used:
 5. Add blocking `tc.run_agent` handling with helper polling and structured agent results.
 6. Add workflow-only `tc.success` and `tc.fail`.
 7. Add `answer_user_request` for agents to complete user requests.
-8. Add `search_resources` for workflow, skill, service, and cronjob discovery.
-9. Add `cronjob_todo_templates` and migrate encoded prompt todos into structured rows.
-10. Add distinct role/role metadata for agent cronjob chat messages.
-11. Add hosted service resource loading from `services/<slug>/service.json`.
-12. Add creator-scoped runtime secret resolution: user secret first, then global secret.
-13. Add service process manager with manual start, stop, logs, approval checks, and secret injection.
-14. Add reverse proxy routing for approved services.
-15. Let the agent search, create, and run services, workflows, and cronjobs.
+8. Add editable user profile metadata for `title`, `description`, and linked external ids such as `slack_user_id`.
+9. Add `search_users` for agent-authored user targeting.
+10. Add `search_resources` for workflow, skill, service, and cronjob discovery.
+11. Add `cronjob_todo_templates` and migrate encoded prompt todos into structured rows.
+12. Add distinct role/role metadata for agent cronjob chat messages.
+13. Add hosted service resource loading from `services/<slug>/service.json`.
+14. Add creator-scoped runtime secret resolution: user secret first, then global secret.
+15. Add service process manager with manual start, stop, logs, approval checks, and secret injection.
+16. Add reverse proxy routing for approved services.
+17. Let the agent search, create, and run services, workflows, and cronjobs.
 
 ## First Slice
 
