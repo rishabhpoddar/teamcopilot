@@ -394,8 +394,6 @@ This is the reduced tool surface the platform should expose to agents and to the
   Existing tool used by agents to start an approved workflow from a chat session.
 - `permission` prompt responses (`allow_once`, `allow_always`, `deny`)
   Existing OpenCode permission gating for restricted tool use; this is system-managed rather than a normal function call.
-- `interrupt_user({ user_id: string, message: string }) -> string`
-  Attach or reveal the current agent conversation to the specified user, send the message, and return the user's reply.
 
 ### Resource Discovery And Authoring Tools
 
@@ -433,13 +431,13 @@ This is the reduced tool surface the platform should expose to agents and to the
   Mark the cronjob run as fully complete after every todo is done.
 - `markCronjobFailed({ summary: string }) -> { success: true }`
   Mark the cronjob run as failed when it cannot continue.
+- `askCronjobUser({message: string})`
+  Reveals the chat to the user so that they can give inputs during the cronjob run.
 
 ### User And Human Reply Handoff Tools
 
 - `answer_user_request({ request_id: string, answer: string }) -> void`
   Send a user's reply back into a blocked workflow or service request so the waiting script can resume from the exact pause point.
-- `search_users({ query?: string }) -> Array<{ id: string, name: string, email: string, role: string }>`
-  List or search team members when the agent needs a `user_id` for approval, handoff, or authored automation. The `@` symbol search should use this same user index, so `@` can search both paths and users.
 
 ### Hosted Service Runtime Tools
 
@@ -603,12 +601,6 @@ def webhook():
 
 The AI agent composes these primitives.
 
-It also needs a user lookup tool so it can resolve the `user_id` before writing a service or workflow that calls `tc.ask_user`.
-
-Minimum agent-facing user tool:
-
-- `search_users`: list or search users in TeamCopilot with id, name, email, and role.
-
 For:
 
 ```text
@@ -620,7 +612,7 @@ The agent creates:
 - `services/whatsapp-listener/` for the webhook.
 - Service logic that calls `tc.run_agent` to draft or classify the reply.
 - Service logic that calls `tc.ask_user` when approval is needed.
-- Service logic that includes the target `user_id` in `tc.ask_user`.
+- Service logic that passes a configured `user_id` into `tc.ask_user`.
 - Service data directory usage for dedupe and external thread mapping.
 - Required secret declarations.
 
@@ -636,7 +628,7 @@ The agent creates:
 - A workflow that scans logs.
 - Workflow data directory usage for last log offset.
 - Workflow logic that calls `tc.ask_user` when the alert needs user confirmation.
-- Workflow logic that includes the target `user_id` in `tc.ask_user`.
+- Workflow logic that passes a configured `user_id` into `tc.ask_user`.
 - Required secret declarations.
 
 Agent-authored resources start as drafts. They become runnable only after validation, missing-secret checks, and approval.
@@ -882,15 +874,14 @@ Primitives used:
 5. Add blocking `tc.run_agent` handling with helper polling and structured agent results.
 6. Add workflow-only `tc.success` and `tc.fail`.
 7. Add `answer_user_request` for agents to complete user requests.
-8. Add `search_users` for agent-authored user targeting.
-9. Add `search_resources` for workflow, skill, service, and cronjob discovery.
-10. Add `cronjob_todo_templates` and migrate encoded prompt todos into structured rows.
-11. Add distinct role/role metadata for agent cronjob chat messages.
-12. Add hosted service resource loading from `services/<slug>/service.json`.
-13. Add creator-scoped runtime secret resolution: user secret first, then global secret.
-14. Add service process manager with manual start, stop, logs, approval checks, and secret injection.
-15. Add reverse proxy routing for approved services.
-16. Let the agent search, create, and run services, workflows, and cronjobs.
+8. Add `search_resources` for workflow, skill, service, and cronjob discovery.
+9. Add `cronjob_todo_templates` and migrate encoded prompt todos into structured rows.
+10. Add distinct role/role metadata for agent cronjob chat messages.
+11. Add hosted service resource loading from `services/<slug>/service.json`.
+12. Add creator-scoped runtime secret resolution: user secret first, then global secret.
+13. Add service process manager with manual start, stop, logs, approval checks, and secret injection.
+14. Add reverse proxy routing for approved services.
+15. Let the agent search, create, and run services, workflows, and cronjobs.
 
 ## First Slice
 
