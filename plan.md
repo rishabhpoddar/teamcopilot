@@ -76,7 +76,7 @@ agent target:
   scheduled OpenCode agent session with the custom todo protocol and user handoff
 ```
 
-The current `target_type = "prompt"` path maps to the agent target. It should remain because it supports scheduled autonomous agent work, todo planning, hidden sessions, `askCronjobUser`, reveal-to-user, pause, resume, and final review.
+The current `target_type = "prompt"` path maps to the agent target. It should remain because it supports scheduled autonomous agent work, todo planning, hidden sessions, interrupting a user with a message, reveal-to-user, pause, resume, and final review.
 
 Agent cronjob chat messages should be distinguishable from normal assistant chat messages. When the scheduled agent writes into a chat session, TeamCopilot should store or expose those messages with a separate role or role metadata, for example `cronjob_agent`, so the UI and audit trail can tell scheduled automation apart from interactive assistant replies.
 
@@ -393,8 +393,8 @@ This is the full tool surface the platform should expose to agents and to the pl
   Existing tool used by agents to start an approved workflow from a chat session.
 - `permission` prompt responses (`allow_once`, `allow_always`, `deny`)
   Existing OpenCode permission gating for restricted tool use; this is system-managed rather than a normal function call.
-- `askCronjobUser({ message: string }) -> string`
-  Existing cronjob-specific human handoff that reveals the hidden cronjob chat and pauses the cronjob until the user answers.
+- `interrupt_user({ user_id: string, message: string }) -> string`
+  Add this chat to the user id if its not already attached to an existing user id. 
 
 ### Workflow Discovery And Authoring Tools
 
