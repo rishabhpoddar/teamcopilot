@@ -66,6 +66,8 @@ agent target:
 
 The current `target_type = "prompt"` path maps to the agent target. It should remain because it supports scheduled autonomous agent work, todo planning, hidden sessions, `askCronjobUser`, reveal-to-user, pause, resume, and final review.
 
+Agent cronjob chat messages should be distinguishable from normal assistant chat messages. When the scheduled agent writes into a chat session, TeamCopilot should store or expose those messages with a separate role or role metadata, for example `cronjob_agent`, so the UI and audit trail can tell scheduled automation apart from interactive assistant replies.
+
 The main cleanup needed is saved todos. Today initial todo steps are encoded into the prompt text. Replace that with real database rows.
 
 Suggested table:
@@ -357,20 +359,13 @@ Intermediate user replies are runtime bookkeeping, not durable workflow output. 
 Hosted services need only a small internal API for v1:
 
 ```text
-run_workflow(slug, input)
-state.get(key)
-state.set(key, value)
+service.call_workflow(slug, args) -> result
+service.ask_user(instruction_to_agent, user_id) -> user_reply
 ```
 
-Optional later:
+This mirrors the workflow orchestration API, except hosted services do not have `success` or `fail` because they are long-lived processes rather than finite workflow runs.
 
-```text
-create_action(type, payload)
-append_log(message)
-emit_event(type, payload)
-```
-
-Start with the minimal API. A webhook service can receive a request, dedupe with state, and run a workflow.
+Start with the minimal API. A webhook service can receive a request, call a workflow, ask a user when needed, and return an HTTP response.
 
 Example:
 
@@ -382,12 +377,9 @@ app = service.create_app()
 @app.post("/webhook")
 def webhook(request):
     event = parse_provider_payload(request)
-    dedupe_key = f"message:{event['message_id']}"
-    if service.state.get(dedupe_key):
-        return {"ok": True}
-
-    service.state.set(dedupe_key, True)
-    service.run_workflow("process-whatsapp-message", event)
+    result = service.call_workflow("process-whatsapp-message", event)
+    if result["status"] == "failed":
+        return {"ok": False, "error": result["error"]}, 500
     return {"ok": True}
 ```
 
@@ -653,11 +645,12 @@ Primitives used:
 5. Add a minimal workflow helper library with `call_workflow`, `ask_user`, `success`, and `fail`.
 6. Add user lookup tools for the agent.
 7. Add `cronjob_todo_templates` and migrate encoded prompt todos into structured rows.
-8. Add hosted service resource loading from `services/<slug>/service.json`.
-9. Add service process manager with manual start, stop, restart, logs, approval checks, and secret injection.
-10. Add reverse proxy routing for approved services.
-11. Add minimal service helper API: `run_workflow`, `state.get`, `state.set`.
-12. Let the agent create service, workflow, and cronjob drafts.
+8. Add distinct role/role metadata for agent cronjob chat messages.
+9. Add hosted service resource loading from `services/<slug>/service.json`.
+10. Add service process manager with manual start, stop, restart, logs, approval checks, and secret injection.
+11. Add reverse proxy routing for approved services.
+12. Add minimal service helper API: `call_workflow` and `ask_user`.
+13. Let the agent create service, workflow, and cronjob drafts.
 
 ## First Slice
 
