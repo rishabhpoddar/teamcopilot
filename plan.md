@@ -368,6 +368,105 @@ answer = tc.ask_user(
 
 TeamCopilot should wrap these into an agent system prompt with platform metadata such as request id, caller id, expected callback tool, and output expectations.
 
+## Tool Inventory
+
+This is the full tool surface the platform should expose to agents and to the platform runtime. Some tools already exist in the codebase today; others are the shared TeamCopilot SDK we want all agents to use. The list below includes workflow authoring, cronjob management, human handoff, and system-managed chat plumbing so there are no missing primitives.
+
+### Shared TeamCopilot SDK
+
+- `tc.ask_user(instruction_to_agent: str, user_id: string) -> string`
+  Ask a specific user through the agent chat layer and block until their reply is available.
+- `tc.run_agent(instruction: string) -> object`
+  Start a bounded agent task and return its structured result to the caller.
+- `tc.call_workflow(slug: string, args: object) -> object`
+  Run a reusable finite workflow and block until it completes.
+- `tc.success(output: unknown = null) -> void`
+  End a workflow successfully with a structured output payload.
+- `tc.fail(error: string) -> void`
+  End a workflow as failed with a structured error.
+
+### Existing OpenCode / UI Tools
+
+- `question({ questions: Array<{ header: string; id: string; question: string; options: Array<{ label: string; description: string }> }> }) -> string[]`
+  Existing general human-question tool used by normal agent sessions to ask one or more questions.
+- `runWorkflow({ slug: string; inputs: Record<string, unknown> }) -> object`
+  Existing tool used by agents to start an approved workflow from a chat session.
+- `permission` prompt responses (`allow_once`, `allow_always`, `deny`)
+  Existing OpenCode permission gating for restricted tool use; this is system-managed rather than a normal function call.
+- `askCronjobUser({ message: string }) -> string`
+  Existing cronjob-specific human handoff that reveals the hidden cronjob chat and pauses the cronjob until the user answers.
+
+### Workflow Discovery And Authoring Tools
+
+- `listAvailableWorkflows() -> Array<object>`
+  Return the accessible workflow inventory so the agent can inspect what already exists.
+- `findSimilarWorkflow(query: string) -> Array<object>`
+  Semantic search for existing workflows before creating a new one or to locate one to run.
+- `createWorkflow({ slug: string, intent_summary: string, inputs?: object, timeout_seconds?: number }) -> object`
+  Create a new workflow package on disk with its manifest and entrypoint skeleton.
+- `listAvailableSkills() -> Array<object>`
+  Return the editable and approved custom skills the agent is allowed to use.
+- `findSkill(query: string) -> Array<object>`
+  Semantic search for existing skills before creating new instruction logic.
+- `getSkillContent(slug: string) -> object`
+  Read the canonical `SKILL.md` content for a specific approved skill.
+- `listAvailableSecretKeys() -> Array<string>`
+  Return the secret keys the current user can reference when authoring workflows or skills.
+- `createSkill({ slug: string, description: string, content: string }) -> object`
+  Create a new custom skill package when reusable instruction logic does not already exist.
+
+### Cronjob Management Tools
+
+- `listCronjobs() -> Array<object>`
+  List the current user's cronjobs so the agent can inspect, edit, or run existing schedules.
+- `createCronjob({ name: string, enabled: boolean, target_type: "prompt" | "workflow", prompt?: string, workflow_slug?: string, workflow_inputs?: object, cron_expression: string, timezone: string }) -> object`
+  Create and schedule a new cronjob, either prompt-based or workflow-based.
+- `editCronjob({ cronjob_id: string, ...updates }) -> object`
+  Update an existing cronjob's schedule, prompt, workflow target, or enabled state.
+- `runCronjobNow({ cronjob_id: string }) -> object`
+  Trigger an existing cronjob immediately instead of waiting for its next scheduled run.
+
+### Cronjob Runtime Tools
+
+- `getCronjobTodos() -> { todo_list_version: number, todos: Array<object> }`
+  Fetch the current active cronjob todo list and the version token needed for safe edits.
+- `getCurrentCronjobTodo() -> { id: string, content: string } | null`
+  Fetch the single current todo item, if one is active.
+- `addCronjobTodos({ items: string[], index: number, todo_list_version: number }) -> { added_todo_ids: string[], todo_list_version: number, todos: Array<object> }`
+  Insert one or more new todo items into the active cronjob todo list.
+- `clearCronjobTodos({ todo_ids: string[] }) -> { cleared_todo_ids: string[], todo_list_version: number, todos: Array<object> }`
+  Remove one or more todo items from the active cronjob todo list.
+- `finishCurrentCronjobTodo({ completionSummary: string }) -> { success: true, todo_list_version: number }`
+  Mark the current cronjob todo as completed and advance the todo list.
+- `markCronjobCompleted({ summary: string }) -> { success: true }`
+  Mark the cronjob run as fully complete after every todo is done.
+- `markCronjobFailed({ summary: string }) -> { success: true }`
+  Mark the cronjob run as failed when it cannot continue.
+
+### Workflow And Human Reply Handoff Tools
+
+- `answerWorkflowUserRequest({ request_id: string, answer: string }) -> void`
+  Send a user's reply back into a blocked workflow or service request so the waiting script can resume from the exact pause point.
+- `list_users() -> Array<{ id: string, name: string, email: string, role: string }>`
+  Enumerate team members when the agent needs to target a specific person for approval or handoff.
+- `find_user(query: string) -> Array<{ id: string, name: string, email: string, role: string }>`
+  Search for the right `user_id` by name or email while authoring a service, workflow, or cronjob.
+
+### Hosted Service Discovery And Management Tools
+
+- `listAvailableServices() -> Array<object>`
+  Return the hosted services the agent can inspect before creating or modifying one.
+- `findSimilarService(query: string) -> Array<object>`
+  Semantic search for an existing hosted service before creating a new one.
+- `createService({ slug: string, name: string, entrypoint: string, port: number, public_path?: string, required_secrets?: string[], description?: string }) -> object`
+  Create a new hosted service package on disk with its manifest and code skeleton.
+- `startService({ service_slug: string }) -> object`
+  Start an approved hosted service process and make it available to receive traffic.
+- `stopService({ service_slug: string }) -> object`
+  Stop a running hosted service process without deleting its files.
+- `getServiceLogs({ service_slug: string, lines?: number }) -> Array<string> | string`
+  Read recent logs for a hosted service so the agent can debug runtime behavior.
+
 ## Workflow Result Protocol
 
 Workflow terminal results should be structured:
@@ -799,7 +898,7 @@ Primitives used:
 12. Add creator-scoped runtime secret resolution: user secret first, then global secret.
 13. Add service process manager with manual start, stop, restart, logs, approval checks, and secret injection.
 14. Add reverse proxy routing for approved services.
-15. Let the agent create service, workflow, and cronjob drafts.
+15. Let the agent list, create, edit, and run services, workflows, and cronjobs.
 
 ## First Slice
 
