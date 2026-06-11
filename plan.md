@@ -438,7 +438,7 @@ This is the reduced tool surface the platform should expose to agents and to the
 - `answer_user_request({ request_id: string, answer: string }) -> void`
   Send a user's reply back into a blocked workflow or service request so the waiting script can resume from the exact pause point.
 - `search_users({ query?: string }) -> Array<{ id: string, name: string, email: string, role: string }>`
-  List or search team members when the agent needs a `user_id` for approval, handoff, or authored automation.
+  List or search team members when the agent needs a `user_id` for approval, handoff, or authored automation. The `@` symbol search should use this same user index, so `@` can search both paths and users.
 
 ### Hosted Service Runtime Tools
 
