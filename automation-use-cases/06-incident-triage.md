@@ -2,7 +2,7 @@
 
 ## Goal
 
-Receive a monitoring alert, gather context, and ask the on-call engineer before remediation.
+Receive a monitoring alert, gather context, and ask multiple responders before remediation.
 
 This is one hosted service. The monitoring webhook owns the alert lifecycle.
 
@@ -10,7 +10,7 @@ This is one hosted service. The monitoring webhook owns the alert lifecycle.
 
 - Hosted service: receives monitoring webhooks.
 - `tc.run_agent`: gathers diagnostics and proposes next action.
-- `tc.ask_user`: asks on-call before remediation.
+- `tc.ask_user`: asks multiple responders before remediation.
 
 ## Resources
 
@@ -24,6 +24,7 @@ services/incident-triage/
 
 ```python
 import os, requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Flask, request
 from teamcopilot import tc
 
@@ -49,24 +50,47 @@ def alert():
     {alert}
     """)
 
-    decision = tc.ask_user(
-        f"""
-        Incident alert:
-        {alert}
-
-        Diagnostics:
-        {diagnostics}
-
-        Ask the on-call engineer whether to remediate, observe, or escalate.
-        """,
-        user_id=os.environ["ON_CALL_USER_ID"],
-    )
-
     remediation = None
-    if decision.strip().lower() == "remediate":
-        remediation = trigger_remediation(alert["service"], diagnostics["recommended_action"])
+    responders = [
+        os.environ["ON_CALL_USER_ID"],
+        os.environ["SRE_MANAGER_USER_ID"],
+        os.environ["SECURITY_LEAD_USER_ID"],
+    ]
 
-    return {"ok": True, "decision": decision, "diagnostics": diagnostics, "remediation": remediation}
+    prompt = f"""
+    Incident alert:
+    {alert}
+
+    Diagnostics:
+    {diagnostics}
+
+    Ask whether this user wants to remediate, observe, or escalate.
+    If they say remediate, that is enough to trigger remediation.
+    """
+
+    decisions = []
+    with ThreadPoolExecutor(max_workers=len(responders)) as executor:
+        future_to_user = {
+            executor.submit(tc.ask_user, prompt, user_id=user_id): user_id
+            for user_id in responders
+        }
+
+        for future in as_completed(future_to_user):
+            user_id = future_to_user[future]
+            decision = future.result()
+            decisions.append({"user_id": user_id, "decision": decision})
+            if remediation is None and decision.strip().lower() == "remediate":
+                remediation = trigger_remediation(alert["service"], diagnostics["recommended_action"])
+
+    last_decision = decisions[-1]["decision"] if decisions else "observe"
+
+    return {
+        "ok": True,
+        "decisions": decisions,
+        "diagnostics": diagnostics,
+        "last_decision": last_decision,
+        "remediation": remediation,
+    }
 ```
 
 ## Flow
@@ -74,6 +98,6 @@ def alert():
 ```text
 monitoring webhook
   -> service runs agent diagnostics
-  -> service asks on-call
-  -> service triggers remediation if approved
+  -> service asks on-call, SRE manager, and security lead in parallel
+  -> first user to say remediate triggers remediation
 ```

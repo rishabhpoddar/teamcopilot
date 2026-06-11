@@ -570,6 +570,33 @@ Rules:
 - Required secrets must be present before execution.
 - Services and workflows can only ask the user through `tc.ask_user`; the agent handles the conversation and returns the reply to the blocked SDK helper.
 
+## Runtime Secret Resolution
+
+Services, workflows, and cronjobs should declare required environment keys in their manifest or database definition.
+
+At runtime, TeamCopilot should resolve those keys from the creator's profile first, then fall back to global secrets:
+
+```text
+resolve_runtime_secret(resource_creator_user_id, key):
+  1. use the creator user's secret if present
+  2. otherwise use the global secret if present
+  3. otherwise fail the run/start with a missing secret error
+```
+
+This applies to:
+
+- Hosted services started from `services/<slug>/service.json`.
+- Workflow runs started manually, by a service, by another workflow, or by a cronjob.
+- Cronjob executions, including workflow-target cronjobs and agent-target cronjobs.
+
+Ownership rules:
+
+- Every service, workflow, and cronjob must have a `created_by_user_id`.
+- Secret resolution uses the resource creator, not the user who happens to trigger the run.
+- If an agent creates a resource on behalf of a user, that user becomes the resource creator for secret resolution.
+- Runtime env vars should only include declared required secrets.
+- Secret values should be injected into the process environment and should not be written into prompts, logs, files, or resource definitions.
+
 ## Use Cases
 
 These examples are intentionally different from each other. The point is to verify that the primitive set is generic enough without introducing a dedicated platform abstraction for each domain.
@@ -769,9 +796,10 @@ Primitives used:
 9. Add `cronjob_todo_templates` and migrate encoded prompt todos into structured rows.
 10. Add distinct role/role metadata for agent cronjob chat messages.
 11. Add hosted service resource loading from `services/<slug>/service.json`.
-12. Add service process manager with manual start, stop, restart, logs, approval checks, and secret injection.
-13. Add reverse proxy routing for approved services.
-14. Let the agent create service, workflow, and cronjob drafts.
+12. Add creator-scoped runtime secret resolution: user secret first, then global secret.
+13. Add service process manager with manual start, stop, restart, logs, approval checks, and secret injection.
+14. Add reverse proxy routing for approved services.
+15. Let the agent create service, workflow, and cronjob drafts.
 
 ## First Slice
 
