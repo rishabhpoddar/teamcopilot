@@ -147,6 +147,7 @@ TeamCopilot responsibilities:
 - Reverse-proxy `public_path` to the local port.
 - Require approved code before start or public exposure.
 - Stop running services when approved code changes.
+- On server startup, automatically start every approved service that was already running before shutdown.
 
 Defer for later unless needed:
 
@@ -652,6 +653,7 @@ resource_kind = "cronjob"
 
 Rules:
 
+- Services use the same approval process as workflows before they can start or become publicly reachable.
 - Services need approval before start or public routing.
 - Workflows need approval before unattended execution.
 - Cronjobs need approval before scheduled execution.
