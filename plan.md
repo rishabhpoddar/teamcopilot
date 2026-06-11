@@ -180,6 +180,8 @@ Workflows keep using args the same way they do today. If a workflow needs the us
 
 This version does not add a separate workflow state file, file-path argument, or continuation args. The Python process keeps its local call stack while helper calls wait.
 
+Every workflow run that invokes an agent must be visible in the UI, and users should be able to open the run at any time and inspect its full transcript, inputs, outputs, and intermediate messages.
+
 ## Optional Workflow Composition
 
 A workflow or service should be able to call another workflow and consume its terminal result while preserving local Python context. This should not be the default decomposition tool. Use it only when the called workflow is a meaningful reusable automation package with its own approval, audit trail, secrets, and terminal result.
@@ -438,6 +440,8 @@ This is the reduced tool surface the platform should expose to agents and to the
 
 - `answer_user_request({ request_id: string, answer: string }) -> void`
   Send a user's reply back into a blocked workflow or service request so the waiting script can resume from the exact pause point.
+- `search_users({ query?: string }) -> Array<{ id: string, name: string, email: string, role: string }>`
+  Search team members by name or email so the agent can resolve a `user_id` when it needs to target a specific person.
 
 ### Hosted Service Runtime Tools
 
@@ -601,6 +605,12 @@ def webhook():
 
 The AI agent composes these primitives.
 
+It also needs a user lookup tool so it can resolve the `user_id` before writing a service or workflow that calls `tc.ask_user`.
+
+Minimum agent-facing user tool:
+
+- `search_users`: search users in TeamCopilot by name or email and return matching ids.
+
 For:
 
 ```text
@@ -651,6 +661,7 @@ Rules:
 - Cronjobs need approval before scheduled execution.
 - Required secrets must be present before execution.
 - Services and workflows can only ask the user through `tc.ask_user`; the agent handles the conversation and returns the reply to the blocked SDK helper.
+- Workflow runs that involve agents must remain inspectable in the UI after completion, with the full transcript preserved for later review.
 
 ## Runtime Secret Resolution
 
