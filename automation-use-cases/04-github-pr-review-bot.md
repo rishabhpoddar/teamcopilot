@@ -27,7 +27,6 @@ services/github-pr-reviewer/
   "name": "GitHub PR Reviewer",
   "runtime": "python",
   "entrypoint": "server.py",
-  "port": 7002,
   "public_path": "/services/github-pr-reviewer",
   "required_secrets": ["GITHUB_WEBHOOK_SECRET", "GITHUB_TOKEN"]
 }

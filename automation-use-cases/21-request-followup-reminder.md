@@ -61,7 +61,6 @@ The service verifies the provider signature, extracts `request_id` and `reply_to
   "name": "Info Request Reminder",
   "runtime": "python",
   "entrypoint": "server.py",
-  "port": 7110,
   "public_path": "/services/info-request-reminder",
   "required_secrets": [
     "EMAIL_API_URL",

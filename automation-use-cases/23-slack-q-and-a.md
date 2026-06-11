@@ -67,7 +67,6 @@ That prevents unrelated Slack DMs from completing the question.
   "name": "Slack Q&A Ingress",
   "runtime": "python",
   "entrypoint": "server.py",
-  "port": 7120,
   "public_path": "/services/slack-q-and-a",
   "required_secrets": [
     "SLACK_SIGNING_SECRET"

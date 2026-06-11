@@ -133,7 +133,6 @@ Example `service.json`:
   "name": "WhatsApp Listener",
   "runtime": "python",
   "entrypoint": "server.py",
-  "port": 7001,
   "public_path": "/services/whatsapp-listener",
   "required_secrets": ["WHATSAPP_WEBHOOK_SECRET", "WHATSAPP_ACCESS_TOKEN"]
 }
@@ -144,10 +143,43 @@ TeamCopilot responsibilities:
 - Start and stop.
 - Capture logs.
 - Inject declared secrets.
-- Reverse-proxy `public_path` to the local port.
+- Expose service HTTP routes through the existing `TEAMCOPILOT_PORT`; users should not need to open a new firewall port per service.
+- Assign each running service a private Unix socket path on macOS/Linux and inject it as `TC_SERVICE_SOCKET`.
+- Reverse-proxy `public_path` on the main TeamCopilot server to the service's Unix socket.
 - Require approved code before start or public exposure.
 - Stop running services when approved code changes.
 - On server startup, automatically start every approved service that was already running before shutdown.
+
+Service authors should listen for HTTP on the injected Unix socket. Public webhook URLs should always use the existing TeamCopilot origin:
+
+```text
+https://<teamcopilot-host>/services/<service-slug>/...
+```
+
+For local development, the same path should work on:
+
+```text
+http://localhost:<TEAMCOPILOT_PORT>/services/<service-slug>/...
+```
+
+This keeps the hosted service primitive powerful without requiring users to manage firewall rules, DNS records, external port allocations, or private TCP port conflicts. Windows service hosting is out of scope for v1.
+
+Service process convention:
+
+```text
+TC_SERVICE_SOCKET=/path/to/teamcopilot/services/<service-slug>/service.sock
+```
+
+Example Python binding:
+
+```python
+import os
+from waitress import serve
+
+serve(app, unix_socket=os.environ["TC_SERVICE_SOCKET"])
+```
+
+V1 explicitly supports HTTP over Unix sockets. WebSockets, gRPC, HTTP/2, and raw TCP proxying are not required for the first version.
 
 Defer for later unless needed:
 
@@ -479,7 +511,7 @@ This is the reduced tool surface the platform should expose to agents and to the
   Return the secret keys the current user can reference when authoring workflows, services, or skills.
 - `createWorkflow({ slug: string, intent_summary: string, inputs?: object, timeout_seconds?: number }) -> object`
   Create a new workflow package on disk with its manifest and entrypoint skeleton.
-- `createHttpService({ slug: string, name: string, entrypoint: string, port: number, public_path?: string, required_secrets?: string[], description?: string }) -> object`
+- `createHttpService({ slug: string, name: string, entrypoint: string, public_path?: string, required_secrets?: string[], description?: string }) -> object`
   Create a new hosted service package on disk with its manifest and code skeleton.
 - `createSkill({ slug: string, description: string, content: string }) -> object`
   Create a new custom skill package when reusable instruction logic does not already exist.
