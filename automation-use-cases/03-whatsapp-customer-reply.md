@@ -64,14 +64,22 @@ def webhook():
     from_number = message["from"]
     text = message.get("text", {}).get("body", "")
 
-    draft = tc.run_agent(f"""
+    draft_reply = tc.run_agent(f"""
         Draft a concise WhatsApp support reply.
         Customer name: {contact["profile"]["name"]}
         Message text: {text}
 
-        Return JSON: {{"reply_text": "...", "needs_approval": true|false, "reason": "..."}}.
         Set needs_approval=true for refunds, legal commitments, angry customers, outages, or account-specific promises.
-        """)
+        """, schema={
+            "type": "object",
+            "required": ["reply_text", "needs_approval", "reason"],
+            "properties": {
+                "reply_text": {"type": "string"},
+                "needs_approval": {"type": "boolean"},
+                "reason": {"type": "string"},
+            },
+        })
+    draft = draft_reply["data"]
 
     reply_text = draft["reply_text"]
     if draft["needs_approval"]:
@@ -84,12 +92,20 @@ def webhook():
             Draft reply: {reply_text}
             Reason approval is needed: {draft['reason']}
 
-            If approved, reply exactly: approve
-            If rejected, provide the final replacement reply text.
+            Return structured data matching the provided schema.
             """,
             user_id=os.environ["SUPPORT_LEAD_USER_ID"],
+            schema={
+                "type": "object",
+                "required": ["decision", "reply_text"],
+                "properties": {
+                    "decision": {"type": "string", "enum": ["approve", "replace"]},
+                    "reply_text": {"type": "string"},
+                },
+            },
         )
-        reply_text = reply_text if answer.strip().lower() == "approve" else answer
+        answer_data = answer["data"]
+        reply_text = reply_text if answer_data["decision"] == "approve" else answer_data["reply_text"]
 
     send_result = send_whatsapp(from_number, reply_text)
     return {"ok": True, "message_id": message_id, "sent": send_result}

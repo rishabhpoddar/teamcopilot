@@ -149,16 +149,17 @@ Question:
 Context already gathered by the chat agent:
 {args.local_context}
 
-Return JSON:
-{{
-  "can_answer": true|false,
-  "answer": "the answer if known",
-  "confidence": "high|medium|low",
-  "reason": "why you can or cannot answer"
-}}
-
 Only set can_answer=true if the answer is specific, actionable, and does not require guessing.
-""")
+""", schema={
+    "type": "object",
+    "required": ["can_answer", "answer", "confidence", "reason"],
+    "properties": {
+        "can_answer": {"type": "boolean"},
+        "answer": {"type": "string"},
+        "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
+        "reason": {"type": "string"},
+    },
+})["data"]
 
 if local_answer["can_answer"] and local_answer["confidence"] == "high":
     result = {
@@ -190,11 +191,21 @@ Context gathered so far:
 Ask for a concrete answer. If they are not the right person, ask them to name the better owner if they know one, then return that as part of the answer.
 """,
     user_id=args.expert_user_id,
+    schema={
+        "type": "object",
+        "required": ["answer", "better_owner"],
+        "properties": {
+            "answer": {"type": "string"},
+            "better_owner": {"type": ["string", "null"]},
+        },
+    },
 )
+expert_answer_data = expert_answer["data"]
 
 result = {
     "answer_source": "human_expert",
-    "answer": expert_answer,
+    "answer": expert_answer_data["answer"],
+    "better_owner": expert_answer_data["better_owner"],
     "expert_user_id": args.expert_user_id,
     "expert_reason": args.expert_reason,
     "requester_user_id": args.requester_user_id,

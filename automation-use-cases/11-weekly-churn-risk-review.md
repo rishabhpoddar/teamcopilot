@@ -84,12 +84,21 @@ Would it be useful to schedule a short working session this week?
         Suggested message:
         {suggested_message}
 
-        Return approve, skip, or edited outreach text.
+        Return structured data matching the provided schema.
         """,
         user_id=account["owner_user_id"],
+        schema={
+            "type": "object",
+            "required": ["decision", "message"],
+            "properties": {
+                "decision": {"type": "string", "enum": ["approve", "skip", "edit"]},
+                "message": {"type": "string"},
+            },
+        },
     )
+    reply_data = reply["data"]
 
-    if reply.strip().lower() == "approve":
+    if reply_data["decision"] == "approve":
         outreach = requests.post(
             os.environ["CRM_API_URL"] + f"/accounts/{account['id']}/outreach",
             headers={"Authorization": f"Bearer {os.environ['CRM_API_TOKEN']}"},
@@ -97,12 +106,20 @@ Would it be useful to schedule a short working session this week?
             timeout=20,
         )
         outreach.raise_for_status()
+    elif reply_data["decision"] == "edit":
+        outreach = requests.post(
+            os.environ["CRM_API_URL"] + f"/accounts/{account['id']}/outreach",
+            headers={"Authorization": f"Bearer {os.environ['CRM_API_TOKEN']}"},
+            json={"message": reply_data["message"]},
+            timeout=20,
+        )
+        outreach.raise_for_status()
 
     decisions.append({
         "account_id": account["id"],
         "risk_score": account["risk_score"],
-        "reply": reply,
-        "sent": reply.strip().lower() == "approve",
+        "reply": reply_data,
+        "sent": reply_data["decision"] in ["approve", "edit"],
     })
 
 tc.success({"decisions": decisions})

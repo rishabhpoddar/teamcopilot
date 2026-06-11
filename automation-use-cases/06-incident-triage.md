@@ -43,12 +43,22 @@ def trigger_remediation(service_name, action):
 @app.post("/alert")
 def alert():
     alert = request.json
-    diagnostics = tc.run_agent(f"""
-    Investigate this production alert and return JSON with summary, risk, likely_cause, and recommended_action.
+    diagnostics_reply = tc.run_agent(f"""
+    Investigate this production alert.
 
     Alert:
     {alert}
-    """)
+    """, schema={
+        "type": "object",
+        "required": ["summary", "risk", "likely_cause", "recommended_action"],
+        "properties": {
+            "summary": {"type": "string"},
+            "risk": {"type": "string"},
+            "likely_cause": {"type": "string"},
+            "recommended_action": {"type": "string"},
+        },
+    })
+    diagnostics = diagnostics_reply["data"]
 
     remediation = None
     responders = [
@@ -71,18 +81,30 @@ def alert():
     decisions = []
     with ThreadPoolExecutor(max_workers=len(responders)) as executor:
         future_to_user = {
-            executor.submit(tc.ask_user, prompt, user_id=user_id): user_id
+            executor.submit(
+                tc.ask_user,
+                prompt,
+                user_id=user_id,
+                schema={
+                    "type": "object",
+                    "required": ["decision", "reason"],
+                    "properties": {
+                        "decision": {"type": "string", "enum": ["remediate", "observe", "escalate"]},
+                        "reason": {"type": "string"},
+                    },
+                },
+            ): user_id
             for user_id in responders
         }
 
         for future in as_completed(future_to_user):
             user_id = future_to_user[future]
-            decision = future.result()
+            decision = future.result()["data"]
             decisions.append({"user_id": user_id, "decision": decision})
-            if remediation is None and decision.strip().lower() == "remediate":
+            if remediation is None and decision["decision"] == "remediate":
                 remediation = trigger_remediation(alert["service"], diagnostics["recommended_action"])
 
-    last_decision = decisions[-1]["decision"] if decisions else "observe"
+    last_decision = decisions[-1]["decision"] if decisions else {"decision": "observe", "reason": "no response"}
 
     return {
         "ok": True,

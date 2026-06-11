@@ -176,7 +176,7 @@ Examples:
 - Process a manually triggered refund approval.
 - Run a scheduled churn-risk review.
 
-Workflows keep using args the same way they do today. If a workflow needs the user, it calls `tc.ask_user(instruction_to_agent, user_id)` and blocks until the user replies. If a workflow needs another workflow, it calls `tc.call_workflow(slug, args)` and blocks until that workflow finishes. If it needs an agent to do bounded work, it calls `tc.run_agent(instruction)` and blocks until the agent returns a structured result.
+Workflows keep using args the same way they do today. If a workflow needs the user, it calls `tc.ask_user(instruction_to_agent, user_id, schema)` and blocks until the user replies with schema-valid structured data. If a workflow needs another workflow, it calls `tc.call_workflow(slug, args)` and blocks until that workflow finishes. If it needs an agent to do bounded work, it calls `tc.run_agent(instruction, schema)` and blocks until the agent returns schema-valid structured data.
 
 This version does not add a separate workflow state file, file-path argument, or continuation args. The Python process keeps its local call stack while helper calls wait.
 
@@ -304,9 +304,10 @@ from teamcopilot import tc
 Shared functions:
 
 ```text
-tc.ask_user(instruction_to_agent, user_id) -> user_reply
+tc.ask_user(instruction_to_agent, user_id, schema) -> AgentReply
 tc.call_workflow(slug, args) -> result
-tc.run_agent(instruction) -> result
+tc.run_agent(instruction, schema) -> AgentReply
+tc.append_message_to_chat(message, opencode_session_id, schema) -> AgentReply
 tc.success(output)
 tc.fail(error)
 ```
@@ -316,6 +317,7 @@ Runtime behavior:
 - `tc.ask_user` works in workflows and services.
 - `tc.call_workflow` works in workflows and services, but should only be used for a genuinely reusable finite automation boundary.
 - `tc.run_agent` works in workflows and services, and is the clean way to ask an agent to do bounded work like PR review, research, classification, drafting, or investigation.
+- `tc.append_message_to_chat` works in workflows and services, and lets the caller continue an existing OpenCode chat after `tc.ask_user` or `tc.run_agent` returns its `opencode_session_id`.
 - `tc.success` and `tc.fail` are valid only inside workflow runs because only workflows have a terminal run result.
 - In a hosted service request handler, normal Python/HTTP return values are used instead of `tc.success` and `tc.fail`.
 
@@ -332,7 +334,7 @@ Reason:
 - The instruction may include structured context, expected output schema, callback ids, approval ids, or resume instructions.
 - The user-facing chat should stay focused on what the agent asks the human, not the full internal automation payload.
 
-For `tc.run_agent`, the single `instruction` string should include everything the agent needs:
+For `tc.run_agent`, the single `instruction` string should include everything the agent needs, and `schema` defines the exact structured output contract TeamCopilot must validate:
 
 ```python
 review = tc.run_agent(f"""
@@ -342,17 +344,18 @@ Repository: acme/app
 Pull request: 123
 Changed files:
 {changed_files_json}
-
-Return JSON with:
-{{
-  "summary": "...",
-  "approval_recommended": true,
-  "findings": []
-}}
-""")
+""", schema={
+    "type": "object",
+    "required": ["summary", "approval_recommended", "findings"],
+    "properties": {
+        "summary": {"type": "string"},
+        "approval_recommended": {"type": "boolean"},
+        "findings": {"type": "array"},
+    },
+})
 ```
 
-For `tc.ask_user`, `instruction_to_agent` should include everything the agent needs to ask the specific human and return the final answer:
+For `tc.ask_user`, `instruction_to_agent` should include everything the agent needs to ask the specific human, and `schema` defines the exact structured output contract TeamCopilot must validate:
 
 ```python
 answer = tc.ask_user(
@@ -362,14 +365,81 @@ answer = tc.ask_user(
     Refund:
     {refund_json}
 
-    If approved, return exactly: approve
-    Otherwise return the reason or requested changes.
     """,
     user_id=finance_user_id,
+    schema={
+        "type": "object",
+        "required": ["decision", "reason"],
+        "properties": {
+            "decision": {"type": "string", "enum": ["approve", "reject", "needs_changes"]},
+            "reason": {"type": "string"},
+        },
+    },
 )
 ```
 
-TeamCopilot should wrap these into an agent system prompt with platform metadata such as request id, caller id, expected callback tool, and output expectations.
+TeamCopilot should wrap these into an agent system prompt with platform metadata such as request id, caller id, expected callback tool, and output schema.
+
+TeamCopilot must validate the agent's final structured reply against `schema` before returning from `tc.run_agent` or `tc.ask_user`. If validation fails, TeamCopilot should send the validation error back into the same OpenCode session and ask the agent to produce a corrected reply. The SDK call should return only after a schema-valid `data` object is available, or after the retry policy fails with a structured error.
+
+## Agent Reply Protocol
+
+`tc.run_agent`, `tc.ask_user`, and `tc.append_message_to_chat` should all take a schema and return the same shape:
+
+```ts
+type AgentReply = {
+  opencode_session_id: string;
+  data: unknown;
+};
+```
+
+Meaning:
+
+- `opencode_session_id`: the OpenCode session that produced the reply.
+- `data`: required structured JSON returned by the agent.
+
+For `tc.run_agent`, `data` is the structured result requested by the caller.
+
+For `tc.ask_user`, `data` is the structured answer returned by the agent after the user replies.
+
+The agent must always return structured `data` to the workflow or service. Even when the caller only needs text, the result should still be wrapped in an object, for example:
+
+```json
+{
+  "answer": "Use the revised customer reply.",
+  "decision": "approved"
+}
+```
+
+If the agent cannot produce the requested schema, it should return a structured failure object in `data`; the SDK call should not silently degrade to a plain string.
+
+`tc.append_message_to_chat` appends a new message into an existing OpenCode session and waits for the agent's next schema-valid reply:
+
+```python
+reply = tc.ask_user(
+    "Ask the finance lead whether to approve this refund.",
+    user_id=finance_user_id,
+    schema={
+        "type": "object",
+        "required": ["decision"],
+        "properties": {"decision": {"type": "string"}},
+    },
+)
+
+follow_up = tc.append_message_to_chat(
+    message="Ask one follow-up question: what accounting category should this refund use?",
+    opencode_session_id=reply["opencode_session_id"],
+    schema={
+        "type": "object",
+        "required": ["accounting_category"],
+        "properties": {"accounting_category": {"type": "string"}},
+    },
+)
+
+category = follow_up["data"]["accounting_category"]
+```
+
+This makes the continuation explicit without adding workflow state arguments. Intermediate replies and linked session ids are still recorded in the DB for audit and cleanup.
 
 ## Tool Inventory
 
@@ -377,10 +447,12 @@ This is the reduced tool surface the platform should expose to agents and to the
 
 ### Shared TeamCopilot SDK
 
-- `tc.ask_user(instruction_to_agent: str, user_id: string) -> string`
+- `tc.ask_user(instruction_to_agent: str, user_id: string, schema: object) -> AgentReply`
   Ask a specific user through the agent chat layer and block until their reply is available.
-- `tc.run_agent(instruction: string) -> object`
+- `tc.run_agent(instruction: string, schema: object) -> AgentReply`
   Start a bounded agent task and return its structured result to the caller.
+- `tc.append_message_to_chat(message: string, opencode_session_id: string, schema: object) -> AgentReply`
+  Append a message to an existing OpenCode session and return the next agent reply.
 - `tc.call_workflow(slug: string, args: object) -> object`
   Run a reusable finite workflow and block until it completes.
 - `tc.success(output: unknown = null) -> void`
@@ -438,7 +510,7 @@ This is the reduced tool surface the platform should expose to agents and to the
 
 ### User And Human Reply Handoff Tools
 
-- `answer_user_request({ request_id: string, answer: string }) -> void`
+- `answer_user_request({ request_id: string, data: unknown }) -> void`
   Send a user's reply back into a blocked workflow or service request so the waiting script can resume from the exact pause point.
 - `search_users({ query?: string }) -> Array<{ id: string, name: string, email: string, role: string, title: string | null, description: string | null, slack_user_id: string | null }>`
   Search team members by name, email, role, title, and profile description so the agent can resolve the right person to ask.
@@ -494,14 +566,23 @@ from teamcopilot import tc
 
 reply = tc.ask_user("""
 Ask the user what reply should be sent.
-""", user_id="user_123")
+""", user_id="user_123", schema={
+    "type": "object",
+    "required": ["answer"],
+    "properties": {"answer": {"type": "string"}},
+})
 
 child_result = tc.call_workflow("classify-message", {
-    "message": reply
+    "message": reply["data"]["answer"]
 })
 
 agent_result = tc.run_agent(
-    "Review PR 123 in acme/app and return JSON findings."
+    "Review PR 123 in acme/app and return JSON findings.",
+    schema={
+        "type": "object",
+        "required": ["findings"],
+        "properties": {"findings": {"type": "array"}},
+    },
 )
 
 tc.success({"ok": True})
@@ -522,7 +603,7 @@ model automation_user_requests {
   user_id              String
   status               String
   instruction_to_agent  String
-  answer_text           String?
+  answer_data_json      Json?
   session_id            String?
   opencode_session_id   String?
   created_at            BigInt
@@ -546,11 +627,11 @@ TeamCopilot should give the agent a tool to complete the request:
 ```ts
 answer_user_request({
   request_id: string;
-  answer: string;
+  data: unknown;
 })
 ```
 
-The message sent to the agent should include the request id and explicitly instruct the agent to call `answer_user_request` after the user has answered.
+The message sent to the agent should include the request id and explicitly instruct the agent to call `answer_user_request` after the user has answered. The agent must pass structured `data`.
 
 Suggested parent run status while blocked:
 
@@ -566,9 +647,9 @@ script calls tc.ask_user
   -> agent asks the user identified by the instruction
   -> user replies in the agent chat
   -> agent calls answer_user_request
-  -> TeamCopilot stores the reply in automation_user_requests
+  -> TeamCopilot stores structured data in automation_user_requests
   -> SDK helper polling sees the reply
-  -> SDK helper returns the reply string to the script
+  -> SDK helper returns AgentReply to the script
   -> script continues from the same stack frame
   -> TeamCopilot clears the intermediate reply after the caller finishes, or after a service request scope is complete
 ```
@@ -589,25 +670,33 @@ from teamcopilot import tc
 @app.post("/webhook")
 def webhook():
     event = parse_provider_payload(request)
-    draft = tc.run_agent(f"""
+    draft_reply = tc.run_agent(f"""
     Draft a customer-safe reply for this event.
 
     Event:
     {event}
-
-    Return JSON with:
-    {{
-      "reply": "...",
-      "needs_approval": true
-    }}
-    """)
+    """, schema={
+        "type": "object",
+        "required": ["reply", "needs_approval"],
+        "properties": {
+            "reply": {"type": "string"},
+            "needs_approval": {"type": "boolean"},
+        },
+    })
+    draft = draft_reply["data"]
     approval = tc.ask_user(
         "Ask the support lead whether to send this reply: " + draft["reply"],
-        user_id="user_support_lead"
+        user_id="user_support_lead",
+        schema={
+            "type": "object",
+            "required": ["decision"],
+            "properties": {"decision": {"type": "string", "enum": ["approve", "reject"]}},
+        },
     )
-    if approval.strip().lower() == "approve":
+    approval_data = approval["data"]
+    if approval_data["decision"] == "approve":
         send_reply(event, draft["reply"])
-    return {"ok": True, "approval": approval}
+    return {"ok": True, "approval": approval_data}
 ```
 
 ## Agent-Authored Automation

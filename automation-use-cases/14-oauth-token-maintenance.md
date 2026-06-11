@@ -104,8 +104,16 @@ if reauth_needed:
         Include the reconnect URL from the provider dashboard and ask them to confirm after reconnecting.
         """,
         user_id=args.owner_user_id,
+        schema={
+            "type": "object",
+            "required": ["notified", "confirmation"],
+            "properties": {
+                "notified": {"type": "boolean"},
+                "confirmation": {"type": "string"},
+            },
+        },
     )
-    tc.success({"reauth_requested": True, "reply": reply, "refreshed": refreshed})
+    tc.success({"reauth_requested": True, "reply": reply["data"], "refreshed": refreshed})
 
 tc.success({"reauth_requested": False, "refreshed": refreshed})
 ```

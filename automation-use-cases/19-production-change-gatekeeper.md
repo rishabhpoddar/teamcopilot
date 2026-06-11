@@ -48,23 +48,44 @@ def deploy_request():
         Request:
         {payload}
 
-        Return JSON with risk_level, summary, blocking_concerns, and approval_recommendation.
         Consider tests, open incidents, migration risk, touched services, and rollback plan.
-        """)
+        """, schema={
+            "type": "object",
+            "required": ["risk_level", "summary", "blocking_concerns", "approval_recommendation"],
+            "properties": {
+                "risk_level": {"type": "string"},
+                "summary": {"type": "string"},
+                "blocking_concerns": {"type": "array"},
+                "approval_recommendation": {"type": "string"},
+            },
+        })["data"]
+
+    approval_schema = {
+        "type": "object",
+        "required": ["decision", "reason"],
+        "properties": {
+            "decision": {"type": "string", "enum": ["approve", "reject"]},
+            "reason": {"type": "string"},
+        },
+    }
 
     on_call = tc.ask_user(
         f"Ask on-call to approve this deploy:\nRequest: {payload}\nRisk: {risk}",
         user_id=os.environ["ON_CALL_USER_ID"],
+        schema=approval_schema,
     )
-    if on_call.strip().lower() != "approve":
-        return {"ok": True, "deployed": False, "stopped_at": "on_call", "reply": on_call, "risk": risk}
+    on_call_data = on_call["data"]
+    if on_call_data["decision"] != "approve":
+        return {"ok": True, "deployed": False, "stopped_at": "on_call", "reply": on_call_data, "risk": risk}
 
     manager = tc.ask_user(
         f"Ask release manager to approve this deploy:\nRequest: {payload}\nRisk: {risk}",
         user_id=os.environ["RELEASE_MANAGER_USER_ID"],
+        schema=approval_schema,
     )
-    if manager.strip().lower() != "approve":
-        return {"ok": True, "deployed": False, "stopped_at": "release_manager", "reply": manager, "risk": risk}
+    manager_data = manager["data"]
+    if manager_data["decision"] != "approve":
+        return {"ok": True, "deployed": False, "stopped_at": "release_manager", "reply": manager_data, "risk": risk}
 
     deployment = trigger_deploy(payload)
     return {"ok": True, "deployed": True, "risk": risk, "deployment": deployment}

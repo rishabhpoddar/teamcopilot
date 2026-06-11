@@ -51,15 +51,26 @@ def upload():
     file.save(saved_path)
     text = saved_path.read_text(encoding="utf-8", errors="ignore")
 
-    invoice = tc.run_agent(f"""
+    invoice_reply = tc.run_agent(f"""
         Extract invoice fields.
 
         Filename: {file.filename}
         Text:
         {text[:30000]}
-
-        Return JSON with vendor, invoice_number, due_date, currency, amount, confidence, and issues.
-        """)
+        """, schema={
+            "type": "object",
+            "required": ["vendor", "invoice_number", "due_date", "currency", "amount", "confidence", "issues"],
+            "properties": {
+                "vendor": {"type": "string"},
+                "invoice_number": {"type": "string"},
+                "due_date": {"type": "string"},
+                "currency": {"type": "string"},
+                "amount": {"type": "number"},
+                "confidence": {"type": "number"},
+                "issues": {"type": "array"},
+            },
+        })
+    invoice = invoice_reply["data"]
 
     if invoice["confidence"] < 0.9 or invoice["issues"]:
         correction = tc.ask_user(
@@ -69,22 +80,42 @@ def upload():
             Extracted invoice:
             {json.dumps(invoice, indent=2)}
 
-            Return corrected JSON with vendor, invoice_number, due_date, currency, and amount.
+            Return corrected structured data matching the provided schema.
             """,
             user_id=os.environ["ACCOUNTING_USER_ID"],
+            schema={
+                "type": "object",
+                "required": ["vendor", "invoice_number", "due_date", "currency", "amount"],
+                "properties": {
+                    "vendor": {"type": "string"},
+                    "invoice_number": {"type": "string"},
+                    "due_date": {"type": "string"},
+                    "currency": {"type": "string"},
+                    "amount": {"type": "number"},
+                },
+            },
         )
-        invoice.update(json.loads(correction))
+        invoice.update(correction["data"])
 
     approval = tc.ask_user(
         f"Ask the manager to approve this invoice for payment:\n{json.dumps(invoice, indent=2)}",
         user_id=os.environ["MANAGER_USER_ID"],
+        schema={
+            "type": "object",
+            "required": ["decision", "reason"],
+            "properties": {
+                "decision": {"type": "string", "enum": ["approve", "reject"]},
+                "reason": {"type": "string"},
+            },
+        },
     )
+    approval_data = approval["data"]
 
     payment = None
-    if approval.strip().lower() == "approve":
+    if approval_data["decision"] == "approve":
         payment = create_payment(invoice)
 
-    return {"ok": True, "approved": approval.strip().lower() == "approve", "invoice": invoice, "payment": payment}
+    return {"ok": True, "approved": approval_data["decision"] == "approve", "invoice": invoice, "payment": payment}
 ```
 
 ## Flow

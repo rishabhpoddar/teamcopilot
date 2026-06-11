@@ -96,20 +96,29 @@ reply = tc.ask_user(
     {summary}
 
     Ask whether to reassign, page the owner, or escalate to the incident channel.
-    Return clear routing instructions.
+    Return structured data matching the provided schema.
     """,
     user_id=args.support_manager_user_id,
+    schema={
+        "type": "object",
+        "required": ["action", "instructions"],
+        "properties": {
+            "action": {"type": "string", "enum": ["reassign", "page_owner", "escalate", "hold"]},
+            "instructions": {"type": "string"},
+        },
+    },
 )
+reply_data = reply["data"]
 
 routing = requests.post(
     os.environ["SUPPORT_API_URL"] + "/ticket-routing",
     headers={"Authorization": f"Bearer {os.environ['SUPPORT_API_TOKEN']}"},
-    json={"tickets": summary, "instructions": reply},
+    json={"tickets": summary, "instructions": reply_data["instructions"]},
     timeout=20,
 )
 routing.raise_for_status()
 
-tc.success({"risks": len(new_risks), "manager_reply": reply, "routing": routing.json()})
+tc.success({"risks": len(new_risks), "manager_reply": reply_data, "routing": routing.json()})
 ```
 
 ## Flow

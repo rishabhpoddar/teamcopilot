@@ -286,19 +286,20 @@ Otherwise use the search_users tool to find the best TeamCopilot user to ask.
 Question:
 {args.question}
 
-Return JSON:
-{{
-  "can_answer": true|false,
-  "answer": "answer if known",
-  "expert_user_id": "TeamCopilot user id if a human is needed",
-  "expert_slack_user_id": "linked Slack user id if a human is needed",
-  "expert_reason": "why this person is the best expert"
-}}
-
 Only set can_answer=true if the answer is specific and does not require guessing.
 Only choose a human if search_users returns a user with a linked Slack user id.
 Prefer users whose title or description shows ownership of the area in the question.
-""")
+""", schema={
+    "type": "object",
+    "required": ["can_answer", "answer", "expert_user_id", "expert_slack_user_id", "expert_reason"],
+    "properties": {
+        "can_answer": {"type": "boolean"},
+        "answer": {"type": "string"},
+        "expert_user_id": {"type": ["string", "null"]},
+        "expert_slack_user_id": {"type": ["string", "null"]},
+        "expert_reason": {"type": "string"},
+    },
+})["data"]
 
 if decision["can_answer"]:
     post_message(args.original_channel, decision["answer"], thread_ts=args.original_thread_ts)

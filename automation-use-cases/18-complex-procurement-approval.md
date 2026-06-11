@@ -38,14 +38,31 @@ checks = tc.run_agent(f"""
     Request:
     {json.dumps(request, indent=2)}
 
-    Return JSON with budget, security, legal, and overall_risk sections.
     Include concrete blockers and recommended approval conditions.
-    """)
+    """, schema={
+        "type": "object",
+        "required": ["budget", "security", "legal", "overall_risk"],
+        "properties": {
+            "budget": {"type": "object"},
+            "security": {"type": "object"},
+            "legal": {"type": "object"},
+            "overall_risk": {"type": "string"},
+        },
+    })["data"]
 
-finance_reply = tc.ask_user(f"Finance approval requested:\n{request}\nBudget: {checks['budget']}", user_id=args.finance_user_id)
-security_reply = tc.ask_user(f"Security approval requested:\n{request}\nSecurity: {checks['security']}", user_id=args.security_user_id)
-legal_reply = tc.ask_user(f"Legal approval requested:\n{request}\nContract risk: {checks['legal']}", user_id=args.legal_user_id)
-owner_reply = tc.ask_user(f"Department owner approval requested:\n{request}", user_id=args.department_owner_user_id)
+approval_schema = {
+    "type": "object",
+    "required": ["decision", "reason"],
+    "properties": {
+        "decision": {"type": "string", "enum": ["approve", "reject", "needs_changes"]},
+        "reason": {"type": "string"},
+    },
+}
+
+finance_reply = tc.ask_user(f"Finance approval requested:\n{request}\nBudget: {checks['budget']}", user_id=args.finance_user_id, schema=approval_schema)["data"]
+security_reply = tc.ask_user(f"Security approval requested:\n{request}\nSecurity: {checks['security']}", user_id=args.security_user_id, schema=approval_schema)["data"]
+legal_reply = tc.ask_user(f"Legal approval requested:\n{request}\nContract risk: {checks['legal']}", user_id=args.legal_user_id, schema=approval_schema)["data"]
+owner_reply = tc.ask_user(f"Department owner approval requested:\n{request}", user_id=args.department_owner_user_id, schema=approval_schema)["data"]
 
 tc.success({
     "finance": finance_reply,

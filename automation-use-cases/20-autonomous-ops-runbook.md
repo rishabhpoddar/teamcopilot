@@ -46,9 +46,17 @@ def alert():
 
         Alert:
         {alert}
-
-        Return JSON with summary, likely_cause, safe_actions, destructive_actions, and recommendation.
-        """)
+        """, schema={
+            "type": "object",
+            "required": ["summary", "likely_cause", "safe_actions", "destructive_actions", "recommendation"],
+            "properties": {
+                "summary": {"type": "string"},
+                "likely_cause": {"type": "string"},
+                "safe_actions": {"type": "array"},
+                "destructive_actions": {"type": "array"},
+                "recommendation": {"type": "string"},
+            },
+        })["data"]
 
     decision = tc.ask_user(
         f"""
@@ -59,13 +67,22 @@ def alert():
         Ask on-call whether to restart service {alert['service']}, observe, or escalate.
         """,
         user_id=os.environ["ON_CALL_USER_ID"],
+        schema={
+            "type": "object",
+            "required": ["decision", "reason"],
+            "properties": {
+                "decision": {"type": "string", "enum": ["restart", "observe", "escalate"]},
+                "reason": {"type": "string"},
+            },
+        },
     )
+    decision_data = decision["data"]
 
     actions = []
-    if decision.strip().lower() == "restart":
+    if decision_data["decision"] == "restart":
         actions.append({"restart": restart_service(alert["service"])})
 
-    return {"ok": True, "alert": alert, "diagnostics": diagnostics, "decision": decision, "actions": actions}
+    return {"ok": True, "alert": alert, "diagnostics": diagnostics, "decision": decision_data, "actions": actions}
 ```
 
 ## Flow

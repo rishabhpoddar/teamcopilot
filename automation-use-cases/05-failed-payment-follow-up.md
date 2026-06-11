@@ -80,11 +80,20 @@ We can keep service active until {customer['grace_period_ends_at']} while this i
         {draft}
 
         Ask the account owner to approve or edit this message.
-        Return approve or the final edited message text.
+        Return structured data matching the provided schema.
         """,
         user_id=customer["account_owner_user_id"],
+        schema={
+            "type": "object",
+            "required": ["decision", "message"],
+            "properties": {
+                "decision": {"type": "string", "enum": ["approve", "edit"]},
+                "message": {"type": "string"},
+            },
+        },
     )
-    final_message = draft if owner_reply.strip().lower() == "approve" else owner_reply
+    owner_data = owner_reply["data"]
+    final_message = draft if owner_data["decision"] == "approve" else owner_data["message"]
 
     finance_reply = tc.ask_user(
         f"""
@@ -95,13 +104,22 @@ We can keep service active until {customer['grace_period_ends_at']} while this i
         Message:
         {final_message}
 
-        Reply approve, hold, or provide required changes.
+        Return structured data matching the provided schema.
         """,
         user_id=os.environ["FINANCE_USER_ID"],
+        schema={
+            "type": "object",
+            "required": ["decision", "reason"],
+            "properties": {
+                "decision": {"type": "string", "enum": ["approve", "hold", "needs_changes"]},
+                "reason": {"type": "string"},
+            },
+        },
     )
+    finance_data = finance_reply["data"]
 
     sent = False
-    if finance_reply.strip().lower() == "approve":
+    if finance_data["decision"] == "approve":
         send_email(invoice["customer"], f"Payment issue for {customer['name']}", final_message)
         sent = True
 
@@ -109,8 +127,8 @@ We can keep service active until {customer['grace_period_ends_at']} while this i
         "ok": True,
         "customer_id": invoice["customer"],
         "sent": sent,
-        "account_owner_decision": owner_reply,
-        "finance_decision": finance_reply,
+        "account_owner_decision": owner_data,
+        "finance_decision": finance_data,
     }
 ```
 

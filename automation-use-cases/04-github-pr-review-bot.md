@@ -161,7 +161,7 @@ def webhook():
     if not patches:
         return {"ok": True, "skipped": "no_reviewable_patches"}
 
-    review = tc.run_agent(f"""
+    review_reply = tc.run_agent(f"""
         Review this GitHub PR diff. Focus only on concrete correctness, security,
         data-loss, production reliability, and meaningful test-coverage issues.
         Do not comment on style or harmless refactors.
@@ -174,21 +174,16 @@ def webhook():
         Changed files:
         {json.dumps(patches, indent=2)}
 
-        Return JSON with:
-        {{
-          "summary": "short markdown summary",
-          "approval_recommended": true,
-          "findings": [
-            {{
-              "path": "relative/file/path",
-              "line": 123,
-              "severity": "blocking|warning",
-              "message": "specific issue",
-              "suggestion": "specific fix"
-            }}
-          ]
-        }}
-        """)
+        """, schema={
+            "type": "object",
+            "required": ["summary", "approval_recommended", "findings"],
+            "properties": {
+                "summary": {"type": "string"},
+                "approval_recommended": {"type": "boolean"},
+                "findings": {"type": "array"},
+            },
+        })
+    review = review_reply["data"]
 
     action = post_review(owner, repo, pull_number, pr["head"]["sha"], review)
     return {"ok": True, "result": action}

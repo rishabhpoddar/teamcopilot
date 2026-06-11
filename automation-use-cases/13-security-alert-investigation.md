@@ -46,10 +46,16 @@ def alert():
 
         Alert:
         {alert}
-
-        Return JSON with summary, risk_level, recommended_action, and evidence.
-        recommended_action must be one of disable_user, monitor, dismiss, escalate.
-        """)
+        """, schema={
+            "type": "object",
+            "required": ["summary", "risk_level", "recommended_action", "evidence"],
+            "properties": {
+                "summary": {"type": "string"},
+                "risk_level": {"type": "string"},
+                "recommended_action": {"type": "string", "enum": ["disable_user", "monitor", "dismiss", "escalate"]},
+                "evidence": {"type": "array"},
+            },
+        })["data"]
 
     decision = tc.ask_user(
         f"""
@@ -60,13 +66,22 @@ def alert():
         Ask whether to disable the user, monitor, dismiss, or escalate.
         """,
         user_id=os.environ["SECURITY_LEAD_USER_ID"],
+        schema={
+            "type": "object",
+            "required": ["decision", "reason"],
+            "properties": {
+                "decision": {"type": "string", "enum": ["disable_user", "monitor", "dismiss", "escalate"]},
+                "reason": {"type": "string"},
+            },
+        },
     )
+    decision_data = decision["data"]
 
     action_result = None
-    if decision.strip().lower() == "disable_user":
+    if decision_data["decision"] == "disable_user":
         action_result = disable_user(alert["user_id"])
 
-    return {"ok": True, "decision": decision, "investigation": investigation, "action_result": action_result}
+    return {"ok": True, "decision": decision_data, "investigation": investigation, "action_result": action_result}
 ```
 
 ## Flow

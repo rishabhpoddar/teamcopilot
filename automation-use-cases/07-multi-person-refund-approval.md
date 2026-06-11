@@ -39,6 +39,15 @@ workflows/process-refund-request/
 import argparse, json, os, requests
 from teamcopilot import tc
 
+APPROVAL_SCHEMA = {
+    "type": "object",
+    "required": ["decision", "reason"],
+    "properties": {
+        "decision": {"type": "string", "enum": ["approve", "reject"]},
+        "reason": {"type": "string"},
+    },
+}
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--refund_json", required=True)
 parser.add_argument("--support_lead_user_id", required=True)
@@ -68,21 +77,26 @@ if not eligibility["within_refund_window"] or eligibility["already_refunded"]:
 support = tc.ask_user(
     f"Ask support lead to approve refund:\n{json.dumps(refund, indent=2)}\nEligibility: {eligibility}",
     user_id=args.support_lead_user_id,
+    schema=APPROVAL_SCHEMA,
 )
-if "approve" not in support.lower():
-    tc.success({"approved": False, "stopped_at": "support", "reply": support})
+support_data = support["data"]
+if support_data["decision"] != "approve":
+    tc.success({"approved": False, "stopped_at": "support", "reply": support_data})
 
 finance = tc.ask_user(
     f"Ask finance to approve this refund after support approval:\n{json.dumps(refund, indent=2)}",
     user_id=args.finance_user_id,
+    schema=APPROVAL_SCHEMA,
 )
-if "approve" not in finance.lower():
-    tc.success({"approved": False, "stopped_at": "finance", "reply": finance})
+finance_data = finance["data"]
+if finance_data["decision"] != "approve":
+    tc.success({"approved": False, "stopped_at": "finance", "reply": finance_data})
 
 if refund.get("amount", 0) > 1000 and args.ops_user_id:
-    ops = tc.ask_user("Ask operations to approve high-value refund.", user_id=args.ops_user_id)
-    if "approve" not in ops.lower():
-        tc.success({"approved": False, "stopped_at": "ops", "reply": ops})
+    ops = tc.ask_user("Ask operations to approve high-value refund.", user_id=args.ops_user_id, schema=APPROVAL_SCHEMA)
+    ops_data = ops["data"]
+    if ops_data["decision"] != "approve":
+        tc.success({"approved": False, "stopped_at": "ops", "reply": ops_data})
 
 tc.success({"approved": True})
 ```

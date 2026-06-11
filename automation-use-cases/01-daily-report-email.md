@@ -82,18 +82,24 @@ answer = tc.ask_user(
     Report:
     {report}
 
-    If approved, reply exactly: approve
-    If rejected, reply exactly: reject
-    If edits are requested, reply with the complete revised report text.
+    Return structured data matching the provided schema.
     """,
     user_id=args.manager_user_id,
+    schema={
+        "type": "object",
+        "required": ["decision", "final_report"],
+        "properties": {
+            "decision": {"type": "string", "enum": ["approve", "reject", "edit"]},
+            "final_report": {"type": "string"},
+        },
+    },
 )
+answer_data = answer["data"]
 
-normalized_answer = answer.strip().lower()
-if normalized_answer == "reject":
-    tc.success({"sent": False, "manager_response": answer, "metrics_date": metrics["date"]})
+if answer_data["decision"] == "reject":
+    tc.success({"sent": False, "manager_response": answer_data, "metrics_date": metrics["date"]})
 
-final_report = report if normalized_answer == "approve" else answer
+final_report = report if answer_data["decision"] == "approve" else answer_data["final_report"]
 
 if final_report.strip():
     email = EmailMessage()
@@ -108,7 +114,7 @@ if final_report.strip():
 
     tc.success({"sent": True, "report": final_report, "metrics_date": metrics["date"]})
 
-tc.success({"sent": False, "manager_response": answer})
+tc.success({"sent": False, "manager_response": answer_data})
 ```
 
 ## Flow

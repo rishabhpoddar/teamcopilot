@@ -78,14 +78,23 @@ def queue_event():
         Message: {message}
         Account: {account}
 
-        Reply escalate, keep-in-queue, or provide routing instructions.
+        Return structured data matching the provided schema.
         """,
         user_id=os.environ["SUPPORT_MANAGER_USER_ID"],
+        schema={
+            "type": "object",
+            "required": ["decision", "instructions"],
+            "properties": {
+                "decision": {"type": "string", "enum": ["escalate", "keep_in_queue"]},
+                "instructions": {"type": "string"},
+            },
+        },
     )
+    decision_data = decision["data"]
 
-    escalated = decision.strip().lower() == "escalate"
-    ticket = create_escalation(message, urgency, reasons, decision) if escalated else None
-    return {"ok": True, "urgency": urgency, "reasons": reasons, "decision": decision, "ticket": ticket}
+    escalated = decision_data["decision"] == "escalate"
+    ticket = create_escalation(message, urgency, reasons, decision_data["instructions"]) if escalated else None
+    return {"ok": True, "urgency": urgency, "reasons": reasons, "decision": decision_data, "ticket": ticket}
 ```
 
 ## Flow

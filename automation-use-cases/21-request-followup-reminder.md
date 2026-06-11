@@ -218,8 +218,15 @@ Requester:
 Context:
 {json.dumps(context, indent=2)}
 
-Return JSON with subject and body. The body should ask the question directly and mention that the recipient can reply to the email.
-""")
+The body should ask the question directly and mention that the recipient can reply to the email.
+""", schema={
+        "type": "object",
+        "required": ["subject", "body"],
+        "properties": {
+            "subject": {"type": "string"},
+            "body": {"type": "string"},
+        },
+    })["data"]
 
     request_id = uuid.uuid4().hex
     reply_token = secrets.token_urlsafe(24)

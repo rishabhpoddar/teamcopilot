@@ -86,13 +86,22 @@ answer = tc.ask_user(
     {chr(10).join(matches[:20])}
 
     Ask whether to send a Slack incident alert.
-    If approved, reply exactly: approve
-    If not approved, reply with the reason and recommended next step.
+    Return structured data matching the provided schema.
     """,
     user_id=args.on_call_user_id,
+    schema={
+        "type": "object",
+        "required": ["decision", "reason", "next_step"],
+        "properties": {
+            "decision": {"type": "string", "enum": ["approve", "do_not_alert"]},
+            "reason": {"type": "string"},
+            "next_step": {"type": "string"},
+        },
+    },
 )
+answer_data = answer["data"]
 
-if answer.strip().lower() == "approve":
+if answer_data["decision"] == "approve":
     slack = requests.post(
         os.environ["SLACK_WEBHOOK_URL"],
         json={"text": f"{severity.upper()}: {len(matches)} production log errors\n" + "\n".join(matches[:10])},
@@ -101,7 +110,7 @@ if answer.strip().lower() == "approve":
     slack.raise_for_status()
 
 tc.success({
-    "alert_decision": answer,
+    "alert_decision": answer_data,
     "severity": severity,
     "matches": matches,
     "next_offset": next_offset,

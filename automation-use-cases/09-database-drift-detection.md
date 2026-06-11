@@ -89,9 +89,17 @@ hash_path.write_text(drift_hash)
 decision = tc.ask_user(
     f"Database drift detected:\n{diff}\nAsk whether to create an issue.",
     user_id=args.database_owner_user_id,
+    schema={
+        "type": "object",
+        "required": ["decision", "reason"],
+        "properties": {
+            "decision": {"type": "string", "enum": ["create_issue", "ignore"]},
+            "reason": {"type": "string"},
+        },
+    },
 )
 
-tc.success({"drift": True, "decision": decision})
+tc.success({"drift": True, "decision": decision["data"]})
 ```
 
 ## Flow

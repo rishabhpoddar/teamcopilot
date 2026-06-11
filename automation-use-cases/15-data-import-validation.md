@@ -74,11 +74,19 @@ def upload():
             Ask data ops to resolve these ambiguous CSV rows:
             {json.dumps(ambiguous[:20], indent=2)}
 
-            Return JSON with corrected_rows and rejected_lines.
+            Return structured data matching the provided schema.
             """,
             user_id=os.environ["DATA_OPS_USER_ID"],
+            schema={
+                "type": "object",
+                "required": ["corrected_rows", "rejected_lines"],
+                "properties": {
+                    "corrected_rows": {"type": "array"},
+                    "rejected_lines": {"type": "array"},
+                },
+            },
         )
-        resolved = json.loads(resolution)
+        resolved = resolution["data"]
         valid_rows.extend(resolved.get("corrected_rows", []))
         rejected.extend({"line": line, "reason": "rejected_by_data_ops"} for line in resolved.get("rejected_lines", []))
 
