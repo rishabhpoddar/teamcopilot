@@ -336,6 +336,7 @@ from teamcopilot import tc
 Shared functions:
 
 ```text
+tc.getSecretToken(key) -> { token: string | null, error: string | null }
 tc.ask_user(instruction_to_agent, user_id, schema) -> AgentReply
 tc.call_workflow(slug, args) -> result
 tc.run_agent(instruction, schema) -> AgentReply
@@ -347,6 +348,7 @@ tc.fail(error)
 Runtime behavior:
 
 - `tc.ask_user` works in workflows and services.
+- `tc.getSecretToken` works in workflows and services and fetches the current value for a declared secret key on demand.
 - `tc.call_workflow` works in workflows and services, but should only be used for a genuinely reusable finite automation boundary.
 - `tc.run_agent` works in workflows and services, and is the clean way to ask an agent to do bounded work like PR review, research, classification, drafting, or investigation.
 - `tc.append_message_to_chat` works in workflows and services, and lets the caller continue an existing OpenCode chat after `tc.ask_user` or `tc.run_agent` returns its `opencode_session_id`.
@@ -795,9 +797,9 @@ Rules:
 
 ## Runtime Secret Resolution
 
-Services, workflows, and cronjobs should declare required environment keys in their manifest or database definition.
+Services, workflows, and cronjobs should declare required secret keys in their manifest or database definition.
 
-At runtime, TeamCopilot should resolve those keys from the creator's profile first, then fall back to global secrets:
+At runtime, TeamCopilot should resolve those keys from the creator's profile first, then fall back to global secrets. The script should fetch the token only when it needs it:
 
 ```text
 resolve_runtime_secret(resource_creator_user_id, key):
@@ -817,8 +819,103 @@ Ownership rules:
 - Every service, workflow, and cronjob must have a `created_by_user_id`.
 - Secret resolution uses the resource creator, not the user who happens to trigger the run.
 - If an agent creates a resource on behalf of a user, that user becomes the resource creator for secret resolution.
-- Runtime env vars should only include declared required secrets.
-- Secret values should be injected into the process environment and should not be written into prompts, logs, files, or resource definitions.
+- `tc.getSecretToken` returns the resolved token or a structured error if the key is missing, revoked, or expired.
+- Secret values should not be injected into the process environment for workflows or services.
+- Secret values should not be written into prompts, logs, files, or resource definitions.
+
+## OAuth Connections
+
+OAuth is a separate secret-manager capability, not a property of workflows or services.
+
+TeamCopilot should use Nango as an internal implementation detail for OAuth connection management. Users should never need to know that Nango exists, open a Nango dashboard, configure Nango directly, or think in terms of Nango connection ids.
+
+Runtime ownership:
+
+- TeamCopilot starts and supervises the internal Nango service during backend startup, similar to the embedded OpenCode server.
+- TeamCopilot stores internal Nango settings in its own database or key-value table.
+- TeamCopilot talks to Nango over a private local URL or socket.
+- Nango stores and refreshes OAuth tokens.
+- TeamCopilot owns all user-facing connection UI, provider setup UI, permission checks, audit records, and SDK behavior.
+
+Users connect providers from the profile or global secrets UI through a button such as:
+
+```text
+Connect to service by signing in
+```
+
+Provider setup must also happen in TeamCopilot, not in Nango.
+
+For each provider, an admin or user configures:
+
+- Provider key, for example `slack`, `google`, or `github`.
+- OAuth client id.
+- OAuth client secret.
+- Requested scopes.
+- Whether the provider connection can be used as a user-scoped secret, global secret, or both.
+
+The OAuth client id and client secret are stored in TeamCopilot secrets. They are not stored in workflows, services, prompts, or resource files.
+
+Because TeamCopilot is self-hosted, the instance owner must create OAuth apps in each provider using their own TeamCopilot domain. TeamCopilot should show the exact redirect URL to paste into the provider dashboard:
+
+```text
+https://<teamcopilot-host>/api/oauth/callback/<provider>
+```
+
+The flow should work the same way across browser clients:
+
+1. The user clicks the connect button for a specific provider and scope.
+2. TeamCopilot creates a connection request and records the target secret key, provider, scope, user/global owner, and return location.
+3. TeamCopilot asks the internal Nango service to create the provider authorization URL.
+4. The browser is redirected to the provider consent screen.
+5. The provider redirects back to a TeamCopilot callback URL.
+6. TeamCopilot forwards the callback data to the internal Nango service so Nango can complete the code exchange.
+7. Nango stores the access token, refresh token, expiry, and provider metadata internally.
+8. TeamCopilot stores only TeamCopilot connection metadata under the selected secret key.
+9. TeamCopilot redirects the browser back to the originating settings page and shows the connection as active.
+
+Connection metadata shape:
+
+```json
+{
+  "secret_key": "SLACK_CONNECTION",
+  "type": "oauth_connection",
+  "backend": "internal_nango",
+  "provider": "slack",
+  "connection_id": "user_123_slack",
+  "scope": "user",
+  "owner_user_id": "user_123",
+  "status": "active"
+}
+```
+
+For non-browser clients or automation flows:
+
+- The client should surface a link or action that opens the same TeamCopilot connect flow in a browser.
+- If a workflow or service calls `tc.getSecretToken` and the token is missing or expired, TeamCopilot should return a structured error that the caller can turn into a user-facing prompt or approval request.
+- The actual OAuth consent always happens in the browser because the provider needs the user to sign in and grant access.
+
+When a workflow or service calls `tc.getSecretToken` for an OAuth-backed key:
+
+1. TeamCopilot resolves the key using the normal user-secret-first, global-secret-second rule.
+2. TeamCopilot sees that the secret is an `oauth_connection`.
+3. TeamCopilot asks internal Nango for a fresh access token for the stored provider and connection id.
+4. TeamCopilot returns `{ token, error }` to the SDK.
+
+Agents keep using the same `SECRET:...` placeholder path. If the placeholder points to an OAuth-backed key, TeamCopilot resolves it through internal Nango and injects the fresh access token through the existing secret-proxy mechanism.
+
+If a provider is not already configured, the agent or user should create a provider setup draft in TeamCopilot. For standard OAuth2/OIDC providers, this should mostly be provider config data: authorization URL, token URL, scopes, client id secret key, and client secret secret key. If a provider has non-standard OAuth behavior, TeamCopilot may need a small provider adapter, but workflows and services still use only `tc.getSecretToken`.
+
+This keeps token storage centralized while letting workflows, services, and agents request secrets by key without being tied to OAuth protocol details or Nango internals.
+
+Example runtime usage:
+
+```python
+secret = tc.getSecretToken("WHATSAPP_ACCESS_TOKEN")
+if secret["error"]:
+    return {"ok": False, "error": secret["error"]}
+
+access_token = secret["token"]
+```
 
 ## Use Cases
 
@@ -948,24 +1045,25 @@ Primitives used:
 - Workflow data directory for suppressing duplicate alerts.
 - Agent chat for issue confirmation.
 
-8. OAuth callback and token refresher
+8. OAuth-backed connection
 
 ```text
-hosted service receives OAuth callback
-  -> service stores non-secret account metadata in its data directory
-  -> service uses platform secrets for tokens
-  -> cronjob periodically runs refresh-token workflow
-  -> workflow refreshes token and updates stored metadata
+user configures provider in TeamCopilot secret manager
+  -> TeamCopilot shows redirect URL for the user's own domain
+  -> user clicks "Connect to service by signing in"
+  -> provider redirects back to TeamCopilot callback URL
+  -> TeamCopilot completes the exchange through internal Nango
+  -> workflow/service later calls tc.getSecretToken for the OAuth-backed key
 ```
 
 Primitives used:
 
-- Hosted service for callback.
-- Service data directory for account/cursor metadata.
-- Scheduled job for refresh.
-- Workflow for token refresh logic.
+- TeamCopilot secret manager for provider setup and connection ownership.
+- Internal Nango service for OAuth exchange, token storage, and token refresh.
+- `tc.getSecretToken` for workflow/service access to a fresh token.
+- Agent `SECRET:...` placeholder resolution for shell/tool access to the same connection.
 
-Secret values should still live in TeamCopilot secrets, not resource-owned data files.
+Secret values and OAuth tokens should still live in TeamCopilot/Nango-managed stores, not resource-owned data files.
 
 9. File drop processor
 
