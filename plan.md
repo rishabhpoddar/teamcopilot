@@ -18,6 +18,7 @@ Everything else should be a protocol on top of those primitives:
 - Blocking shared SDK calls for bounded agent work.
 - Optional workflow-to-workflow composition for genuinely reusable finite automations.
 - Agent-authored draft resources.
+- MCP servers wrapped as approved skills when users want to add external tool capabilities.
 
 This avoids a large provider-specific monitor framework while still allowing WhatsApp bots, log monitors, GitHub bots, internal APIs, polling jobs, and approval workflows.
 
@@ -41,6 +42,10 @@ For v1, services, cronjobs, and workflows can use the shared `tc` SDK directly. 
 Do not introduce provider-specific abstractions like `whatsapp_monitor`, `slack_monitor`, or `event_handler`.
 
 The agent should build those as compositions of services, cronjobs, workflows, and resource-owned data files.
+
+Do not introduce MCP as a separate platform primitive in every context.
+
+MCP support should be expressed through skills. If a user asks to add an MCP server, the agent should create a skill package that contains the MCP server configuration, invocation instructions, required secrets, and usage examples. Once approved, the skill gives agents a controlled way to use that MCP capability without expanding the core automation model.
 
 ## Primitive 1: Scheduled Jobs
 
@@ -357,6 +362,61 @@ Runtime behavior:
 
 This avoids separate `workflow.` and `service.` namespaces. The SDK can detect its runtime context from environment variables injected by TeamCopilot.
 
+## MCP Support Through Skills
+
+MCP should be supported as an adapter pattern, not as a new first-class automation primitive.
+
+User request:
+
+```text
+Add this MCP and use it when working with Linear issues.
+```
+
+Agent behavior:
+
+1. Inspect the MCP install instructions or package reference supplied by the user.
+2. Create a draft skill under `.agents/skills/<slug>/`.
+3. Write `SKILL.md` describing what the MCP can do, when to use it, and how to invoke it.
+4. Add an MCP config file inside the skill package, for example `mcp.json`.
+5. Declare required secrets in skill metadata using the existing secret placeholder model.
+6. Add minimal smoke-test instructions or a test command when the MCP supports one.
+7. Submit the skill for the normal approval flow before it becomes available to agents.
+
+Example skill shape:
+
+```text
+.agents/skills/linear-mcp/
+  SKILL.md
+  mcp.json
+  README.md
+```
+
+Example `mcp.json`:
+
+```json
+{
+  "servers": {
+    "linear": {
+      "command": "npx",
+      "args": ["-y", "@linear/mcp-server"],
+      "env": {
+        "LINEAR_API_KEY": "{{SECRET:LINEAR_API_KEY}}"
+      }
+    }
+  }
+}
+```
+
+The MCP server should not receive raw secret values in files. It should use the same secret placeholder mechanism as skills and agent shell commands. During execution, TeamCopilot resolves `{{SECRET:...}}` through the existing secret proxy. If the secret key is OAuth-backed, resolution goes through `tc.getSecretToken`/internal Nango behavior behind the scenes.
+
+This gives users an easy instruction path:
+
+```text
+Add the GitHub MCP from this package and make it available to agents.
+```
+
+without making MCP visible in every workflow, service, cronjob, or SDK concept.
+
 ## Agent Prompt Injection
 
 `tc.run_agent` and `tc.ask_user` should pass their instructions to the spawned/reused agent as system-prompt material, not as ordinary user chat messages.
@@ -517,6 +577,8 @@ This is the reduced tool surface the platform should expose to agents and to the
   Create a new hosted service package on disk with its manifest and code skeleton.
 - `createSkill({ slug: string, description: string, content: string }) -> object`
   Create a new custom skill package when reusable instruction logic does not already exist.
+- `createMcpSkill({ slug: string, description: string, mcp_config: object, skill_content: string, required_secrets?: string[] }) -> object`
+  Create a draft skill package that wraps one or more MCP servers behind the normal skill approval and secret-placeholder model.
 
 ### Cronjob Management Tools
 
@@ -774,6 +836,22 @@ The agent creates:
 - Required secret declarations.
 
 Agent-authored resources start as drafts. They become runnable only after validation, missing-secret checks, and approval.
+
+For:
+
+```text
+Add this MCP server and use it whenever you need to search our issue tracker.
+```
+
+The agent creates:
+
+- A draft skill under `.agents/skills/<slug>/`.
+- `SKILL.md` instructions that explain when the MCP-backed capability should be used.
+- `mcp.json` containing the MCP server command, args, and secret placeholders.
+- Required secret declarations.
+- Optional smoke-test instructions if the MCP package supports a harmless test.
+
+After approval, agents can use the skill like any other custom skill. Workflows, services, and cronjobs do not need to know that the capability came from MCP.
 
 ## Approval And Safety
 
@@ -1116,13 +1194,16 @@ Primitives used:
 8. Add editable user profile metadata for `title`, `description`, and linked external ids such as `slack_user_id`.
 9. Add `search_users` for agent-authored user targeting.
 10. Add `search_resources` for workflow, skill, service, and cronjob discovery.
-11. Add `cronjob_todo_templates` and migrate encoded prompt todos into structured rows.
-12. Add distinct role/role metadata for agent cronjob chat messages.
-13. Add hosted service resource loading from `services/<slug>/service.json`.
-14. Add creator-scoped runtime secret resolution: user secret first, then global secret.
-15. Add service process manager with manual start, stop, logs, approval checks, and secret injection.
-16. Add reverse proxy routing for approved services.
-17. Let the agent search, create, and run services, workflows, and cronjobs.
+11. Add `createMcpSkill` so agents can wrap MCP servers as draft skills.
+12. Add `cronjob_todo_templates` and migrate encoded prompt todos into structured rows.
+13. Add distinct role/role metadata for agent cronjob chat messages.
+14. Add hosted service resource loading from `services/<slug>/service.json`.
+15. Add creator-scoped runtime secret resolution: user secret first, then global secret.
+16. Add `tc.getSecretToken` for workflows/services and route agent `SECRET:...` placeholders through the same resolver.
+17. Add internal Nango supervision plus TeamCopilot-owned OAuth provider setup and connection UI.
+18. Add service process manager with manual start, stop, logs, approval checks, and Unix-socket setup.
+19. Add reverse proxy routing from `TEAMCOPILOT_PORT` to approved service Unix sockets.
+20. Let the agent search, create, and run services, workflows, cronjobs, and MCP-backed skills.
 
 ## First Slice
 
