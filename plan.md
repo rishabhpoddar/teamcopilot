@@ -608,9 +608,9 @@ This is the reduced tool surface the platform should expose to agents and to the
 
 - `answer_user_request({ request_id: string, data: unknown }) -> void`
   Send a user's reply back into a blocked workflow or service request so the waiting script can resume from the exact pause point.
-- `getCurrentUser() -> { id: string, name: string, email: string, role: string, title: string | null, description: string | null, slack_user_id: string | null }`
+- `getCurrentUser() -> { id: string, name: string, email: string, role: string, title: string | null, description: string | null }`
   Return the authenticated TeamCopilot user that is currently talking to the agent.
-- `search_users({ query?: string }) -> Array<{ id: string, name: string, email: string, role: string, title: string | null, description: string | null, slack_user_id: string | null }>`
+- `search_users({ query?: string }) -> Array<{ id: string, name: string, email: string, role: string, title: string | null, description: string | null }>`
   Search team members by name, email, role, title, and profile description so the agent can resolve the right person to ask.
 
 ### User Profiles
@@ -620,7 +620,6 @@ This is the reduced tool surface the platform should expose to agents and to the
 - `description` should capture what the user owns, knows, or is responsible for, for example "owns SAML/SCIM integrations and enterprise identity issues".
 - Users can add this during signup or update it later from their profile screen.
 - `search_users` should index and return these fields so agents can decide who is likely to know an answer or approve a request.
-- If a user connects Slack, their linked `slack_user_id` should be returned so Slack-based workflows can ask them in Slack.
 
 ### Hosted Service Runtime Tools
 
@@ -1194,7 +1193,7 @@ Primitives used:
 6. Add workflow-only `tc.success` and `tc.fail`.
 7. Add `answer_user_request` for agents to complete user requests.
 8. Add `getCurrentUser` for the current authenticated user context.
-9. Add editable user profile metadata for `title`, `description`, and linked external ids such as `slack_user_id`.
+9. Add editable user profile metadata for `title` and `description`.
 10. Add `search_users` for agent-authored user targeting.
 11. Add `search_resources` for workflow, skill, service, and cronjob discovery.
 12. Add `createMcpSkill` so agents can wrap MCP servers as draft skills.
