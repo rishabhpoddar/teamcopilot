@@ -608,6 +608,8 @@ This is the reduced tool surface the platform should expose to agents and to the
 
 - `answer_user_request({ request_id: string, data: unknown }) -> void`
   Send a user's reply back into a blocked workflow or service request so the waiting script can resume from the exact pause point.
+- `getCurrentUser() -> { id: string, name: string, email: string, role: string, title: string | null, description: string | null, slack_user_id: string | null }`
+  Return the authenticated TeamCopilot user that is currently talking to the agent.
 - `search_users({ query?: string }) -> Array<{ id: string, name: string, email: string, role: string, title: string | null, description: string | null, slack_user_id: string | null }>`
   Search team members by name, email, role, title, and profile description so the agent can resolve the right person to ask.
 
@@ -1191,19 +1193,20 @@ Primitives used:
 5. Add blocking `tc.run_agent` handling with helper polling and structured agent results.
 6. Add workflow-only `tc.success` and `tc.fail`.
 7. Add `answer_user_request` for agents to complete user requests.
-8. Add editable user profile metadata for `title`, `description`, and linked external ids such as `slack_user_id`.
-9. Add `search_users` for agent-authored user targeting.
-10. Add `search_resources` for workflow, skill, service, and cronjob discovery.
-11. Add `createMcpSkill` so agents can wrap MCP servers as draft skills.
-12. Add `cronjob_todo_templates` and migrate encoded prompt todos into structured rows.
-13. Add distinct role/role metadata for agent cronjob chat messages.
-14. Add hosted service resource loading from `services/<slug>/service.json`.
-15. Add creator-scoped runtime secret resolution: user secret first, then global secret.
-16. Add `tc.getSecretToken` for workflows/services and route agent `SECRET:...` placeholders through the same resolver.
-17. Add internal Nango supervision plus TeamCopilot-owned OAuth provider setup and connection UI.
-18. Add service process manager with manual start, stop, logs, approval checks, and Unix-socket setup.
-19. Add reverse proxy routing from `TEAMCOPILOT_PORT` to approved service Unix sockets.
-20. Let the agent search, create, and run services, workflows, cronjobs, and MCP-backed skills.
+8. Add `getCurrentUser` for the current authenticated user context.
+9. Add editable user profile metadata for `title`, `description`, and linked external ids such as `slack_user_id`.
+10. Add `search_users` for agent-authored user targeting.
+11. Add `search_resources` for workflow, skill, service, and cronjob discovery.
+12. Add `createMcpSkill` so agents can wrap MCP servers as draft skills.
+13. Add `cronjob_todo_templates` and migrate encoded prompt todos into structured rows.
+14. Add distinct role/role metadata for agent cronjob chat messages.
+15. Add hosted service resource loading from `services/<slug>/service.json`.
+16. Add creator-scoped runtime secret resolution: user secret first, then global secret.
+17. Add `tc.getSecretToken` for workflows/services and route agent `SECRET:...` placeholders through the same resolver.
+18. Add internal Nango supervision plus TeamCopilot-owned OAuth provider setup and connection UI.
+19. Add service process manager with manual start, stop, logs, approval checks, and Unix-socket setup.
+20. Add reverse proxy routing from `TEAMCOPILOT_PORT` to approved service Unix sockets.
+21. Let the agent search, create, and run services, workflows, cronjobs, and MCP-backed skills.
 
 ## First Slice
 
