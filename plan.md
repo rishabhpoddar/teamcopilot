@@ -608,6 +608,8 @@ This is the reduced tool surface the platform should expose to agents and to the
 
 - `answer_user_request({ request_id: string, data: unknown }) -> void`
   Send a user's reply back into a blocked workflow or service request so the waiting script can resume from the exact pause point.
+- `askUser({ user_id: string, instruction_to_agent: string, schema: object }) -> { request_id: string, status: "pending" }`
+  Agent-facing tool for any OpenCode agent session to ask another TeamCopilot user for structured input and block or resume the calling agent session when the answer is available.
 - `getCurrentUser() -> { id: string, name: string, email: string, role: string, title: string | null, description: string | null }`
   Return the authenticated TeamCopilot user that is currently talking to the agent.
 - `search_users({ query?: string }) -> Array<{ id: string, name: string, email: string, role: string, title: string | null, description: string | null }>`
@@ -690,6 +692,14 @@ tc.fail("Could not process request")
 
 When a workflow or service calls `tc.ask_user`, TeamCopilot stores the instruction in the DB, opens or reuses an agent chat session for the specified user, and the SDK helper polls until the user replies.
 
+OpenCode agent sessions need the same capability without forcing the caller to write explicit workflow branching. When the user asks an agent to do something like:
+
+```text
+Investigate this bug from the codebase, and ping Priya about it if necessary.
+```
+
+the agent should investigate with its normal tools, decide whether another human is needed, and call `askUser` only if needed. This applies to normal chat agents, cronjob agents, and agents spawned from `tc.run_agent`.
+
 Suggested table:
 
 ```prisma
@@ -753,6 +763,25 @@ script calls tc.ask_user
 
 This preserves normal local Python variables and stack context. It is less restart-durable than the previous state-machine design, but it is much simpler for workflow authors.
 
+Agent-session behavior:
+
+```text
+user or workflow asks agent to investigate and ping someone if necessary
+  -> agent inspects files, runs commands, and forms a hypothesis
+  -> agent decides whether another user is needed
+  -> if not needed, agent answers in the same chat
+  -> if needed, agent calls askUser with target user, instruction, and schema
+  -> TeamCopilot creates automation_user_requests row with caller_type = "opencode_session"
+  -> calling OpenCode session is marked waiting_for_user
+  -> target user's agent chat asks the question
+  -> target user replies
+  -> target user's agent calls answer_user_request with structured data
+  -> TeamCopilot appends the structured answer back into the calling OpenCode session
+  -> original agent continues and returns its structured result or answers the original user
+```
+
+For agent sessions, `askUser` and `tc.ask_user` should share the same storage, validation, answer tool, and cleanup behavior. The difference is only the caller: `tc.ask_user` blocks a Python SDK helper, while `askUser` blocks or resumes an OpenCode agent session.
+
 Intermediate user replies are runtime bookkeeping, not durable workflow output. They should be deleted after the workflow reaches `success` or `failed`, or after a service request scope completes.
 
 ## Hosted Services With Shared SDK
@@ -804,7 +833,7 @@ It also needs a user lookup tool so it can resolve the `user_id` before writing 
 
 Minimum agent-facing user tool:
 
-- `search_users`: search users in TeamCopilot by name, email, role, title, and description, and return matching ids plus linked external ids such as Slack user id.
+- `search_users`: search users in TeamCopilot by name, email, role, title, and description, and return matching user ids.
 
 For:
 
@@ -871,7 +900,7 @@ Rules:
 - Workflows need approval before unattended execution.
 - Cronjobs need approval before scheduled execution.
 - Required secrets must be present before execution.
-- Services and workflows can only ask the user through `tc.ask_user`; the agent handles the conversation and returns the reply to the blocked SDK helper.
+- Services and workflows can ask users either through script-level `tc.ask_user` or through agent-level `askUser` when the human handoff decision belongs inside a spawned agent session.
 - Workflow runs that involve agents must remain inspectable in the UI after completion, with the full transcript preserved for later review.
 
 ## Runtime Secret Resolution
@@ -1192,20 +1221,21 @@ Primitives used:
 5. Add blocking `tc.run_agent` handling with helper polling and structured agent results.
 6. Add workflow-only `tc.success` and `tc.fail`.
 7. Add `answer_user_request` for agents to complete user requests.
-8. Add `getCurrentUser` for the current authenticated user context.
-9. Add editable user profile metadata for `title` and `description`.
-10. Add `search_users` for agent-authored user targeting.
-11. Add `search_resources` for workflow, skill, service, and cronjob discovery.
-12. Add `createMcpSkill` so agents can wrap MCP servers as draft skills.
-13. Add `cronjob_todo_templates` and migrate encoded prompt todos into structured rows.
-14. Add distinct role/role metadata for agent cronjob chat messages.
-15. Add hosted service resource loading from `services/<slug>/service.json`.
-16. Add creator-scoped runtime secret resolution: user secret first, then global secret.
-17. Add `tc.getSecretToken` for workflows/services and route agent `SECRET:...` placeholders through the same resolver.
-18. Add internal Nango supervision plus TeamCopilot-owned OAuth provider setup and connection UI.
-19. Add service process manager with manual start, stop, logs, approval checks, and Unix-socket setup.
-20. Add reverse proxy routing from `TEAMCOPILOT_PORT` to approved service Unix sockets.
-21. Let the agent search, create, and run services, workflows, cronjobs, and MCP-backed skills.
+8. Add `askUser` so OpenCode agents can request structured input from another TeamCopilot user.
+9. Add `getCurrentUser` for the current authenticated user context.
+10. Add editable user profile metadata for `title` and `description`.
+11. Add `search_users` for agent-authored user targeting.
+12. Add `search_resources` for workflow, skill, service, and cronjob discovery.
+13. Add `createMcpSkill` so agents can wrap MCP servers as draft skills.
+14. Add `cronjob_todo_templates` and migrate encoded prompt todos into structured rows.
+15. Add distinct role/role metadata for agent cronjob chat messages.
+16. Add hosted service resource loading from `services/<slug>/service.json`.
+17. Add creator-scoped runtime secret resolution: user secret first, then global secret.
+18. Add `tc.getSecretToken` for workflows/services and route agent `SECRET:...` placeholders through the same resolver.
+19. Add internal Nango supervision plus TeamCopilot-owned OAuth provider setup and connection UI.
+20. Add service process manager with manual start, stop, logs, approval checks, and Unix-socket setup.
+21. Add reverse proxy routing from `TEAMCOPILOT_PORT` to approved service Unix sockets.
+22. Let the agent search, create, and run services, workflows, cronjobs, and MCP-backed skills.
 
 ## First Slice
 
