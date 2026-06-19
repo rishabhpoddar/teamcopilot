@@ -27,6 +27,7 @@ This avoids a large provider-specific monitor framework while still allowing Wha
 Default to the fewest components that can express the automation clearly:
 
 - If an event starts in a hosted service, keep the logic in that service unless there is a strong reason to create a reusable finite workflow.
+- Service handlers should be written to be idempotent and replay-friendly as far as possible, so a restarted process can pick up from the last completed step instead of duplicating work.
 - A service can call `tc.ask_user` directly. It does not need a workflow just to ask for approval.
 - A service can call `tc.run_agent` directly. It does not need a workflow just to start an agent.
 - A workflow can call `tc.ask_user` and `tc.run_agent` directly. It does not need child workflows for ordinary checks, API calls, or side effects.
@@ -148,12 +149,14 @@ TeamCopilot responsibilities:
 - Start and stop.
 - Capture logs.
 - Inject declared secrets.
+- Record each incoming event/request handled by a service-based flow as a durable request row with completed/incomplete status.
 - Expose service HTTP routes through the existing `TEAMCOPILOT_PORT`; users should not need to open a new firewall port per service.
 - Assign each running service a private Unix socket path on macOS/Linux and inject it as `TC_SERVICE_SOCKET`.
 - Reverse-proxy `public_path` on the main TeamCopilot server to the service's Unix socket.
 - Require approved code before start or public exposure.
 - Stop running services when approved code changes.
 - On server startup, automatically start every approved service that was already running before shutdown.
+- On server startup, replay any incomplete service requests so event-driven flows continue from the last unfinished request instead of being dropped.
 
 Service authors should listen for HTTP on the injected Unix socket. Public webhook URLs should always use the existing TeamCopilot origin:
 
@@ -786,7 +789,7 @@ Intermediate user replies are runtime bookkeeping, not durable workflow output. 
 
 ## Hosted Services With Shared SDK
 
-A webhook service can receive a request, do the work locally, ask a user when needed, run an agent when needed, and return an HTTP response. It does not need to hand off to a workflow just because approval or agent work is needed.
+A webhook service can receive a request, do the work locally, ask a user when needed, run an agent when needed, and return an HTTP response. TeamCopilot should track whether each request completed; if the server restarts while a request is still incomplete, the service should replay that request before accepting it as done. The agent that builds the service should be instructed to make each step idempotent where possible and to resume from the last completed step as much as possible. It does not need to hand off to a workflow just because approval or agent work is needed.
 
 Example:
 
