@@ -5,6 +5,11 @@ import path from "path";
 import { promisify } from "util";
 import { assertEnv, assertCondition, parseIntStrict } from "./utils/assert";
 import { syncManagedProviderConfiguration } from "./utils/opencode-auth";
+import {
+    selectOpencodeNativeTarball,
+    opencodeBinaryName,
+    opencodeBinaryCachePaths,
+} from "./utils/opencode-bin";
 
 const execAsync = promisify(exec);
 
@@ -30,33 +35,25 @@ function pinOpencodeBinaryPath(): void {
         return;
     }
 
-    const platformMap: Record<string, string> = { darwin: "darwin", linux: "linux", win32: "windows" };
-    const archMap: Record<string, string> = { x64: "x64", arm64: "arm64", arm: "arm" };
-    const platform = platformMap[os.platform()] ?? os.platform();
-    const arch = archMap[os.arch()] ?? os.arch();
-    const base = `opencode-${platform}-${arch}`;
-    const binaryName = platform === "windows" ? "opencode.exe" : "opencode";
-
     // Resolve our own opencode-ai package (nearest in node_modules), never a parent's.
     const packageDir = path.dirname(require.resolve("opencode-ai/package.json"));
-    const tarballs = fs
-        .readdirSync(packageDir)
-        .filter((name) => name.startsWith(`${base}-`) && name.endsWith(".tgz"));
-    if (tarballs.length === 0) {
+    const tarball = selectOpencodeNativeTarball({
+        rawPlatform: os.platform(),
+        rawArch: os.arch(),
+        tarballNames: fs.readdirSync(packageDir),
+        isMusl: os.platform() === "linux" && fs.existsSync("/etc/alpine-release"),
+    });
+    if (!tarball) {
         // No embedded native tarball for this platform; let the launcher decide.
         return;
     }
 
-    // Prefer the plain variant over baseline/musl, matching the launcher's defaults.
-    const isMusl = platform === "linux" && fs.existsSync("/etc/alpine-release");
-    const score = (name: string): number =>
-        (name.includes("-musl-") === isMusl ? 2 : 0) + (name.includes("-baseline-") ? 0 : 1);
-    const tarball = [...tarballs].sort((a, b) => score(b) - score(a))[0];
-
     // Mirror the launcher's cache layout so we reuse (or populate) the same binary.
-    const cacheDir = path.join(os.homedir(), ".cache", "opencode-ai", path.basename(tarball, ".tgz"));
-    const cacheBinDir = path.join(cacheDir, "bin");
-    const cachedBinary = path.join(cacheBinDir, binaryName);
+    const { cacheDir, cacheBinDir, binaryPath: cachedBinary } = opencodeBinaryCachePaths({
+        homeDir: os.homedir(),
+        tarball,
+        binaryName: opencodeBinaryName(os.platform()),
+    });
     if (!fs.existsSync(cachedBinary)) {
         fs.rmSync(cacheDir, { recursive: true, force: true });
         fs.mkdirSync(cacheDir, { recursive: true });
