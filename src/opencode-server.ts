@@ -1,4 +1,6 @@
-import { exec } from "child_process";
+import { exec, execFileSync } from "child_process";
+import fs from "fs";
+import os from "os";
 import path from "path";
 import { promisify } from "util";
 import { assertEnv, assertCondition, parseIntStrict } from "./utils/assert";
@@ -12,6 +14,63 @@ type OpencodeServerInstance = {
 };
 
 let server: OpencodeServerInstance | null = null;
+
+// The SDK starts opencode by spawning a bare `opencode` resolved through PATH.
+// Both the opencode bin launcher and a parent/sibling project's `.bin/opencode`
+// resolve the native binary by walking UP the directory tree for an
+// `opencode-<platform>-<arch>` install, so an unrelated opencode in any ancestor
+// node_modules shadows ours on every run — even after reinstalling. To stay
+// immune we locate the binary belonging to *our* installed opencode-ai and force
+// it to win resolution: its directory is prepended to PATH (so the bare
+// `opencode` resolves straight to it) and OPENCODE_BIN_PATH is set as a fallback
+// for launcher-based resolution.
+function pinOpencodeBinaryPath(): void {
+    // An explicit override (e.g. a local fork build) always wins.
+    if (process.env.OPENCODE_BIN_PATH) {
+        return;
+    }
+
+    const platformMap: Record<string, string> = { darwin: "darwin", linux: "linux", win32: "windows" };
+    const archMap: Record<string, string> = { x64: "x64", arm64: "arm64", arm: "arm" };
+    const platform = platformMap[os.platform()] ?? os.platform();
+    const arch = archMap[os.arch()] ?? os.arch();
+    const base = `opencode-${platform}-${arch}`;
+    const binaryName = platform === "windows" ? "opencode.exe" : "opencode";
+
+    // Resolve our own opencode-ai package (nearest in node_modules), never a parent's.
+    const packageDir = path.dirname(require.resolve("opencode-ai/package.json"));
+    const tarballs = fs
+        .readdirSync(packageDir)
+        .filter((name) => name.startsWith(`${base}-`) && name.endsWith(".tgz"));
+    if (tarballs.length === 0) {
+        // No embedded native tarball for this platform; let the launcher decide.
+        return;
+    }
+
+    // Prefer the plain variant over baseline/musl, matching the launcher's defaults.
+    const isMusl = platform === "linux" && fs.existsSync("/etc/alpine-release");
+    const score = (name: string): number =>
+        (name.includes("-musl-") === isMusl ? 2 : 0) + (name.includes("-baseline-") ? 0 : 1);
+    const tarball = [...tarballs].sort((a, b) => score(b) - score(a))[0];
+
+    // Mirror the launcher's cache layout so we reuse (or populate) the same binary.
+    const cacheDir = path.join(os.homedir(), ".cache", "opencode-ai", path.basename(tarball, ".tgz"));
+    const cacheBinDir = path.join(cacheDir, "bin");
+    const cachedBinary = path.join(cacheBinDir, binaryName);
+    if (!fs.existsSync(cachedBinary)) {
+        fs.rmSync(cacheDir, { recursive: true, force: true });
+        fs.mkdirSync(cacheDir, { recursive: true });
+        execFileSync("tar", ["-xzf", path.join(packageDir, tarball), "-C", cacheDir, "--strip-components=1"]);
+    }
+
+    // The SDK spawns a bare `opencode`, resolved via PATH. A parent/sibling's
+    // `.bin/opencode` links straight to its own native binary and ignores
+    // OPENCODE_BIN_PATH, so putting our binary's directory first on PATH is what
+    // actually guarantees the right binary runs. OPENCODE_BIN_PATH is also set so
+    // any launcher-based resolution still lands on the same binary.
+    process.env.OPENCODE_BIN_PATH = cachedBinary;
+    process.env.PATH = `${cacheBinDir}${path.delimiter}${process.env.PATH ?? ""}`;
+}
 
 function ensureLocalNodeBinInPath(): void {
     const localBin = path.resolve(__dirname, "../node_modules/.bin");
@@ -54,6 +113,7 @@ export async function startOpencodeServer() {
         return server;
     }
 
+    pinOpencodeBinaryPath();
     await syncManagedProviderConfiguration();
     forceStableOpencodeDatabasePath();
 
