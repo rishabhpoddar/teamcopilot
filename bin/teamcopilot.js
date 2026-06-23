@@ -333,6 +333,10 @@ async function runInit(argv) {
             throw new Error(`Unknown init option: --${key.toLowerCase().replace(/_/g, "-")}`);
         }
     }
+    // Never prompt for the host; always use 0.0.0.0 unless explicitly overridden via --teamcopilot-host.
+    if (!flags.has("TEAMCOPILOT_HOST")) {
+        flags.set("TEAMCOPILOT_HOST", "0.0.0.0");
+    }
     const existingValues = parseExistingEnv();
     const values = await promptForEnvValues(defaultValues, existingValues, flags);
     upsertEnvFile(values);
